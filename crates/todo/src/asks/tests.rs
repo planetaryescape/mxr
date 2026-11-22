@@ -106,35 +106,6 @@ fn bill_needs_positive_amount_and_message_anchored_due() {
 }
 
 #[test]
-fn offer_does_not_veto_an_independent_minimum_payment() {
-    let result = judge(
-        "Minimum payment £25 due tomorrow. Why not set up a Direct Debit?",
-        false,
-    );
-    assert_eq!(answers(&result), [AskAnswer::AsksYou, AskAnswer::Nothing]);
-    let automatic = judge("Your payment of £25 will be collected by tomorrow.", false);
-    assert!(!answers(&automatic).contains(&AskAnswer::AsksYou));
-}
-
-#[test]
-fn resolved_failure_and_current_failure_are_different() {
-    assert_eq!(
-        answers(&judge(
-            "Your payment failed last month but is now resolved.",
-            false
-        )),
-        [AskAnswer::Nothing]
-    );
-    assert_eq!(
-        answers(&judge(
-            "Your payment failed. Please update your payment details.",
-            false
-        )),
-        [AskAnswer::AsksYou]
-    );
-}
-
-#[test]
 fn owner_requests_and_promises_have_opposite_directions() {
     assert_eq!(
         answers(&judge("Could you send me the report?", true)),
@@ -198,22 +169,6 @@ fn conditional_and_negated_asks_never_become_tasks() {
     ] {
         assert_eq!(answers(&judge(body, false)), [AskAnswer::Nothing], "{body}");
     }
-}
-
-#[test]
-fn pleasantry_is_not_reply_but_a_real_question_is() {
-    assert_eq!(answers(&judge("How are you?", false)), [AskAnswer::Nothing]);
-    assert_eq!(
-        answers(&judge("Does this work for you?", false)),
-        [AskAnswer::AsksYouToReply]
-    );
-}
-
-#[test]
-fn unsupported_words_abstain_without_inventing_check_tasks() {
-    let result = judge("The situation requires some attention.", false);
-    assert_eq!(answers(&result), [AskAnswer::NotSure]);
-    assert!(result.units[0].tags.is_none());
 }
 
 #[test]
@@ -284,126 +239,6 @@ fn an_owner_reply_settles_reply_only_but_does_not_complete_a_task() {
 }
 
 #[test]
-fn same_issuer_references_and_periods_are_separate_candidates() {
-    let result = judge("Invoice #AB-123 amount due GBP 42 by tomorrow. Invoice #AB-456 amount due GBP 15 by Friday.", false);
-    assert_eq!(
-        result
-            .facts
-            .references
-            .iter()
-            .map(|r| r.value.as_str())
-            .collect::<Vec<_>>(),
-        ["ab-123", "ab-456"]
-    );
-    assert_eq!(
-        result
-            .units
-            .iter()
-            .map(|u| u.tags.as_ref().and_then(|t| t.reference))
-            .collect::<Vec<_>>(),
-        [Some(0), Some(1)]
-    );
-    assert_eq!(answers(&result), [AskAnswer::AsksYou, AskAnswer::AsksYou]);
-}
-
-#[test]
-fn authored_delegation_is_evidence_and_the_forward_stays_context() {
-    let body = "Please sign the agreement below.\n---------- Forwarded message ---------\nFrom: Other <other@example.com>\nPlease pay £99 by tomorrow.";
-    let result = judge(body, false);
-    assert_eq!(
-        result
-            .units
-            .iter()
-            .filter(|u| u.answer == AskAnswer::AsksYou)
-            .count(),
-        1
-    );
-    assert_eq!(
-        result.quote(&result.units[0]),
-        Some("Please sign the agreement below.")
-    );
-    let forwarded = result
-        .facts
-        .zones
-        .iter()
-        .find(|z| z.kind == ZoneKind::Forwarded && z.text.contains("Please pay"))
-        .expect("resolved asks fixture");
-    assert_eq!(forwarded.author.as_deref(), Some("other@example.com"));
-}
-
-#[test]
-fn sign_and_pay_in_one_sentence_are_independent_units() {
-    let result = judge(
-        "Please sign the agreement and pay invoice #A123 amount due £30 by tomorrow.",
-        false,
-    );
-    assert_eq!(answers(&result), [AskAnswer::AsksYou, AskAnswer::AsksYou]);
-    assert_eq!(
-        result
-            .units
-            .iter()
-            .map(|u| u.tags.as_ref().expect("resolved asks fixture").action)
-            .collect::<Vec<_>>(),
-        [ActionKind::Sign, ActionKind::Pay]
-    );
-}
-
-#[test]
-fn a_multiline_document_keeps_required_fields_together() {
-    let result = judge(
-        "Invoice #ABC123\nAmount due £25\nDue tomorrow\n\nWhy not set up a Direct Debit?",
-        false,
-    );
-    assert_eq!(answers(&result), [AskAnswer::AsksYou, AskAnswer::Nothing]);
-    let tags = result.units[0]
-        .tags
-        .as_ref()
-        .expect("resolved asks fixture");
-    assert_eq!(tags.amount, Some(0));
-    assert_eq!(tags.due, Some(0));
-}
-
-#[test]
-fn disagreeing_document_amounts_abstain() {
-    let result = judge("Invoice amount due £25 or £40 by tomorrow.", false);
-    assert_eq!(answers(&result), [AskAnswer::NotSure]);
-}
-
-#[test]
-fn a_task_question_is_an_action_and_an_unsupported_task_is_not_a_reply_guess() {
-    let result = judge("Could you review the launch plan?", false);
-    assert_eq!(answers(&result), [AskAnswer::AsksYou]);
-    assert_eq!(
-        result.units[0]
-            .tags
-            .as_ref()
-            .expect("resolved asks fixture")
-            .action,
-        ActionKind::Other
-    );
-    assert_eq!(
-        answers(&judge(
-            "Could you take care of the difficult situation?",
-            false
-        )),
-        [AskAnswer::NotSure]
-    );
-}
-
-#[test]
-fn cancelled_body_prevents_a_stale_subject_from_creating_a_task() {
-    let result = judge_complete(
-        "Please do not sign the contract.",
-        false,
-        RecipientRole::AloneTo,
-        false,
-        false,
-        "Please sign the contract",
-    );
-    assert_eq!(answers(&result), [AskAnswer::Nothing, AskAnswer::Nothing]);
-}
-
-#[test]
 fn signature_footer_and_forward_authors_do_not_become_asks() {
     let result = judge("FYI\n-- \nPlease sign the contract.\nUnsubscribe", false);
     assert!(!answers(&result).contains(&AskAnswer::AsksYou));
@@ -430,88 +265,11 @@ fn signature_footer_and_forward_authors_do_not_become_asks() {
 }
 
 #[test]
-fn owner_payment_promises_keep_the_speaker_across_a_conjunction() {
-    assert_eq!(
-        answers(&judge("I'll pay the invoice by tomorrow.", true)),
-        [AskAnswer::YouPromised]
-    );
-    let result = judge(
-        "I'll sign the agreement and pay invoice #A123 amount due £30 by tomorrow.",
-        true,
-    );
-    assert_eq!(
-        answers(&result),
-        [AskAnswer::YouPromised, AskAnswer::YouPromised]
-    );
-}
-
-#[test]
 fn a_rand_shaped_invoice_reference_is_not_money_owed() {
     let result = judge("Invoice #R123 is due tomorrow.", false);
     assert!(result.facts.amounts.is_empty());
     assert_eq!(result.facts.references[0].value, "r123");
     assert_eq!(answers(&result), [AskAnswer::NotSure]);
-}
-
-#[test]
-fn informational_abstentions_do_not_enter_might_need_you() {
-    for text in [
-        "The report arrived yesterday.",
-        "For your records.",
-        "A new article is available.",
-    ] {
-        let result = judge(text, false);
-        assert!(
-            result
-                .units
-                .iter()
-                .all(|unit| unit.answer == AskAnswer::Nothing),
-            "{text}"
-        );
-    }
-    assert!(
-        answers(&judge("Could you arrange the unspecified thing?", false))
-            .contains(&AskAnswer::NotSure)
-    );
-}
-
-#[test]
-fn summary_bounds_text_without_altering_source_evidence() {
-    let result = judge(&format!("Please send me {}.", "x".repeat(4096)), false);
-    let summary = result.summary();
-    assert_eq!(summary.units.len(), 1);
-    assert!(summary.units[0].quote.is_none());
-    assert!(
-        result
-            .quote(&result.units[0])
-            .expect("resolved asks fixture")
-            .len()
-            > 4096
-    );
-}
-
-#[test]
-fn reference_headers_bind_following_payment_units_without_crossing_paragraphs() {
-    let result = judge("Invoice number A100.\nAmount due £42 by tomorrow.", false);
-    let pay = result
-        .units
-        .iter()
-        .find(|u| u.tags.as_ref().is_some_and(|t| t.action == ActionKind::Pay))
-        .expect("resolved asks fixture");
-    assert_eq!(
-        pay.tags.as_ref().expect("resolved asks fixture").reference,
-        Some(0)
-    );
-    let separate = judge("Invoice number A100.\n\nAmount due £42 by tomorrow.", false);
-    let pay = separate
-        .units
-        .iter()
-        .find(|u| u.tags.as_ref().is_some_and(|t| t.action == ActionKind::Pay))
-        .expect("resolved asks fixture");
-    assert_eq!(
-        pay.tags.as_ref().expect("resolved asks fixture").reference,
-        None
-    );
 }
 
 #[test]

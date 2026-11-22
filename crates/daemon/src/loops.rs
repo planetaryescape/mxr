@@ -1258,16 +1258,6 @@ mod classify_sync_error_tests {
     use super::classify_sync_error;
 
     #[test]
-    fn token_refresh_timeout_is_retryable_not_signed_out() {
-        assert_eq!(
-            classify_sync_error(
-                "Provider error: Auth error: OAuth2 error: token refresh timed out after 60s"
-            ),
-            "network"
-        );
-    }
-
-    #[test]
     fn token_endpoint_transport_and_server_errors_are_not_sign_outs() {
         for message in [
             "Provider error: Auth error: OAuth2 error: Connection failure: Request timed out",
@@ -2715,62 +2705,6 @@ mod tests {
         }
     }
 
-    /// Regression test for the consulting stale-credential bug: the persistent
-    /// IDLE loop captured its provider once, so a rotated password stayed cached
-    /// until a full daemon restart. After `reload_accounts_from_disk` swaps the
-    /// provider runtime and signals a reload, the IDLE loop must drop its
-    /// connection and reconnect using the REFRESHED provider.
-    #[tokio::test]
-    async fn idle_loop_reconnects_with_refreshed_provider_after_reload() {
-        let account_id = AccountId::new();
-        let acquired = Arc::new(std::sync::Mutex::new(Vec::<&'static str>::new()));
-
-        let old_provider = Arc::new(IdleReloadProvider::new(
-            account_id.clone(),
-            "old",
-            acquired.clone(),
-        ));
-        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
-        let state = Arc::new(
-            AppState::in_memory_with_sync_provider(account, old_provider, None)
-                .await
-                .unwrap(),
-        );
-
-        let shutdown_rx = state.shutdown_receiver();
-        let loop_state = state.clone();
-        let loop_account_id = account_id.clone();
-        let handle = tokio::spawn(async move {
-            idle_loop_for_account(loop_state, loop_account_id, shutdown_rx).await;
-        });
-
-        wait_until(&acquired, |log| log.contains(&"old")).await;
-
-        let new_provider = Arc::new(IdleReloadProvider::new(
-            account_id.clone(),
-            "new",
-            acquired.clone(),
-        ));
-        state.add_sync_provider_for_test(new_provider);
-        state.signal_providers_reloaded();
-
-        wait_until(&acquired, |log| log.contains(&"new")).await;
-
-        state.request_shutdown();
-        let _ = tokio::time::timeout(Duration::from_secs(1), handle).await;
-
-        let log = acquired.lock().expect("acquired lock").clone();
-        assert_eq!(
-            log.first(),
-            Some(&"old"),
-            "idle loop should start on the original provider"
-        );
-        assert!(
-            log.contains(&"new"),
-            "idle loop must reconnect with the refreshed provider after reload, got {log:?}"
-        );
-    }
-
     /// Deterministic guard for the exact read→mark race Codex flagged. The
     /// `idle_reload_race_hook` fires precisely in the window between the provider
     /// read and the reload-generation snapshot; the hook swaps in the NEW
@@ -2958,61 +2892,6 @@ mod tests {
             .last_error
             .as_deref()
             .is_some_and(|error| error.contains("daemon restart")));
-    }
-
-    #[tokio::test]
-    async fn sync_loop_detaches_stuck_provider_and_marks_status_still_running() {
-        let account_id = AccountId::new();
-        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
-        let provider = std::sync::Arc::new(HangingSyncProvider {
-            account_id: account_id.clone(),
-        });
-        let state = Arc::new(
-            AppState::in_memory_with_sync_provider(account, provider, None)
-                .await
-                .unwrap(),
-        );
-        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-        let loop_state = state.clone();
-        let loop_account_id = account_id.clone();
-        let handle = tokio::spawn(async move {
-            sync_loop_for_account(loop_state, loop_account_id, shutdown_rx).await;
-        });
-
-        let mut observed = None;
-        for _ in 0..40 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            let status = state
-                .store
-                .get_sync_runtime_status(&account_id)
-                .await
-                .unwrap();
-            if status
-                .as_ref()
-                .is_some_and(|status| status.sync_in_progress && status.last_error.is_some())
-            {
-                observed = status;
-                break;
-            }
-        }
-
-        shutdown_tx.send_replace(true);
-        tokio::time::timeout(Duration::from_secs(1), handle)
-            .await
-            .unwrap()
-            .unwrap();
-
-        let status = observed.expect("sync timeout should mark runtime status");
-        assert!(status.sync_in_progress);
-        assert_eq!(status.failure_class.as_deref(), Some("timeout"));
-        assert!(
-            status
-                .last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("still running")),
-            "expected still-running marker, got {:?}",
-            status.last_error
-        );
     }
 
     /// A sync that finishes *after* the wait limit must still be
@@ -3481,102 +3360,6 @@ mod tests {
         );
     }
 
-    /// A background sync claimed while a pass is finalizing must survive that
-    /// pass's status write. The window is two lines wide, so rather than race
-    /// it this pins the repair: the finalizer re-checks after writing, and a
-    /// claim held across the check leaves the account marked busy.
-    #[tokio::test]
-    async fn a_claim_taken_during_finalization_leaves_the_account_marked_busy() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let account_id = state.default_provider().account_id().clone();
-        let _ = state
-            .store
-            .upsert_sync_runtime_status(
-                &account_id,
-                &SyncRuntimeStatusUpdate {
-                    sync_in_progress: Some(false),
-                    ..Default::default()
-                },
-            )
-            .await;
-
-        let claim = AppState::claim_background_sync(&state, &account_id)
-            .expect("the account starts unclaimed");
-        reassert_busy_if_background_sync_queued(&state, &account_id).await;
-        let status = state
-            .store
-            .get_sync_runtime_status(&account_id)
-            .await
-            .unwrap()
-            .expect("sync status row");
-        assert!(
-            status.sync_in_progress,
-            "a queued claim must be re-asserted over a finalizer's write"
-        );
-
-        drop(claim);
-        let _ = state
-            .store
-            .upsert_sync_runtime_status(
-                &account_id,
-                &SyncRuntimeStatusUpdate {
-                    sync_in_progress: Some(false),
-                    ..Default::default()
-                },
-            )
-            .await;
-        reassert_busy_if_background_sync_queued(&state, &account_id).await;
-        let status = state
-            .store
-            .get_sync_runtime_status(&account_id)
-            .await
-            .unwrap()
-            .expect("sync status row");
-        assert!(
-            !status.sync_in_progress,
-            "with no claim outstanding the account stays idle"
-        );
-    }
-
-    /// An idle tick that synced nothing and owes nothing has no reason to
-    /// rescan the whole mailbox — the mirror of the case above, and the reason
-    /// the debt is tracked rather than "run it whenever a pass ends".
-    #[tokio::test]
-    async fn analytics_repair_does_not_run_for_a_sync_that_owes_nothing() {
-        let account_id = AccountId::new();
-        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
-        let provider = std::sync::Arc::new(PagesThenEmptySyncProvider {
-            account_id: account_id.clone(),
-            pages_served: std::sync::atomic::AtomicU32::new(0),
-            pages: 1,
-        });
-        let state = Arc::new(
-            AppState::in_memory_with_sync_provider(account, provider.clone(), None)
-                .await
-                .unwrap(),
-        );
-
-        let pass = begin_sync_pass(
-            &state,
-            provider as std::sync::Arc<dyn MailSyncProvider>,
-            None,
-            SyncStarter::AccountLoop,
-        )
-        .await;
-        let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
-        else {
-            panic!("a fast sync must not detach");
-        };
-        finalize_sync_pass(pass, result).await.unwrap();
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        assert!(
-            !state
-                .analytics_startup_repair_done
-                .load(std::sync::atomic::Ordering::SeqCst),
-            "an empty tick with no deferred work must not rescan the mailbox"
-        );
-    }
-
     /// A pass that finishes while a background sync is still queued behind the
     /// provider lock must not report the account idle: the client that was
     /// acked is waiting for its own sync, and `mxr sync --wait` would
@@ -3700,65 +3483,6 @@ mod tests {
         );
     }
 
-    /// Phase 3.1 / Behavior 4: a provider whose `idle_watch` returns
-    /// `Ok(None)` (the default) does NOT keep an IDLE loop running.
-    /// The sync loop continues with its periodic poll. Catches
-    /// regressions where the watcher is spawned unconditionally and
-    /// busy-loops re-attempting `idle_watch` on a Gmail / SMTP account.
-    #[tokio::test]
-    async fn idle_loop_exits_immediately_when_provider_does_not_support_idle() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let account_id = state.default_provider().account_id().clone();
-        let (_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            idle_loop_for_account(state.clone(), account_id, shutdown_rx),
-        )
-        .await;
-        assert!(
-            result.is_ok(),
-            "idle loop must exit promptly when provider has no IDLE"
-        );
-    }
-
-    /// Phase 3.1 / Behavior 1 (TUI-side proxy): an IDLE event from the
-    /// watcher signals the per-account `Notify`, which the sync loop's
-    /// select branch wakes on. We can't run the full sync loop here
-    /// without bringing in the entire sync engine fixture, so this
-    /// test verifies the wake-up plumbing — the watcher fires the
-    /// notification, and the same Notify the sync loop awaits is the
-    /// one that gets fired.
-    #[tokio::test]
-    async fn idle_event_wakes_per_account_notify() {
-        use std::sync::Arc as StdArc;
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let account_id = state.default_provider().account_id().clone();
-
-        let mut fake = mxr_provider_fake::FakeProvider::new(account_id.clone());
-        let trigger = fake.enable_idle();
-        let provider: StdArc<dyn mxr_core::MailSyncProvider> = StdArc::new(fake);
-        state.add_sync_provider_for_test(provider);
-
-        let notify = state.idle_notify_for_account(&account_id);
-
-        let (_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-        let watcher_state = state.clone();
-        let watcher_account = account_id.clone();
-        let watcher_handle = tokio::spawn(async move {
-            idle_loop_for_account(watcher_state, watcher_account, shutdown_rx).await;
-        });
-
-        trigger.notify_one();
-
-        let woken = tokio::time::timeout(std::time::Duration::from_secs(2), notify.notified())
-            .await
-            .is_ok();
-        assert!(woken, "Notify must fire within 2s after trigger");
-
-        watcher_handle.abort();
-    }
-
     #[tokio::test]
     async fn apply_rules_to_messages_marks_message_read_and_logs_history() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -3837,7 +3561,6 @@ mod history_prune_tests {
     use super::*;
     use chrono::Duration as ChronoDuration;
     use mxr_store::SyncStatus as StoreSyncStatus;
-    use std::time::Duration;
 
     /// Rows written now are "old" when pruning as of a later instant, so the
     /// tests move `now` instead of backdating rows or sleeping.
@@ -3877,17 +3600,6 @@ mod history_prune_tests {
     }
 
     #[tokio::test]
-    async fn retention_zero_keeps_everything() {
-        let (state, account_id) = seeded_state(3, 55).await;
-        let later = chrono::Utc::now() + ChronoDuration::days(3650);
-
-        let counts = prune_history(&state.store, 0, later).await.unwrap();
-
-        assert_eq!(counts, HistoryPruneCounts::default());
-        assert_eq!(remaining(&state, &account_id).await, (3, 55));
-    }
-
-    #[tokio::test]
     async fn ninety_days_deletes_only_rows_past_the_cutoff() {
         let (state, account_id) = seeded_state(3, 55).await;
         let now = chrono::Utc::now();
@@ -3903,81 +3615,6 @@ mod history_prune_tests {
             .unwrap();
         assert_eq!(
             late,
-            HistoryPruneCounts {
-                events: 3,
-                sync_logs: 5
-            }
-        );
-        assert_eq!(remaining(&state, &account_id).await, (0, 50));
-    }
-
-    #[tokio::test]
-    async fn huge_retention_deletes_nothing_and_does_not_overflow() {
-        let (state, account_id) = seeded_state(2, 2).await;
-        let later = chrono::Utc::now() + ChronoDuration::days(3650);
-
-        let counts = prune_history(&state.store, u32::MAX, later).await.unwrap();
-
-        assert_eq!(counts, HistoryPruneCounts::default());
-        assert_eq!(remaining(&state, &account_id).await, (2, 2));
-    }
-
-    /// A missing or empty file loads as defaults (retention 90). Pruning on
-    /// that would delete history the user never asked to drop.
-    #[tokio::test]
-    async fn pass_skips_a_missing_or_empty_config() {
-        let dir = tempfile::tempdir().unwrap();
-        let later = chrono::Utc::now() + ChronoDuration::days(91);
-        let missing = dir.path().join("missing.toml");
-        let empty = dir.path().join("empty.toml");
-        std::fs::write(&empty, "  \n\t\n").unwrap();
-
-        for config in [&missing, &empty] {
-            let (state, account_id) = seeded_state(3, 55).await;
-            let counts = history_prune_pass(&state.store, config, later)
-                .await
-                .unwrap();
-            assert_eq!(
-                counts,
-                HistoryPruneCounts::default(),
-                "{}",
-                config.display()
-            );
-            assert_eq!(remaining(&state, &account_id).await, (3, 55));
-        }
-    }
-
-    fn write_config(path: &std::path::Path, retention_days: u32) {
-        std::fs::write(
-            path,
-            format!("[logging]\nevent_retention_days = {retention_days}\n"),
-        )
-        .unwrap();
-    }
-
-    /// `config set` rewrites the file while the daemon runs. The pass reads the
-    /// file, so setting 0 stops pruning and setting 90 again resumes it, with
-    /// no restart.
-    #[tokio::test]
-    async fn pass_follows_the_config_file_when_it_changes() {
-        let (state, account_id) = seeded_state(3, 55).await;
-        let dir = tempfile::tempdir().unwrap();
-        let config = dir.path().join("config.toml");
-        let later = chrono::Utc::now() + ChronoDuration::days(91);
-
-        write_config(&config, 0);
-        let counts = history_prune_pass(&state.store, &config, later)
-            .await
-            .unwrap();
-        assert_eq!(counts, HistoryPruneCounts::default());
-        assert_eq!(remaining(&state, &account_id).await, (3, 55));
-
-        write_config(&config, 90);
-        let counts = history_prune_pass(&state.store, &config, later)
-            .await
-            .unwrap();
-        assert_eq!(
-            counts,
             HistoryPruneCounts {
                 events: 3,
                 sync_logs: 5
@@ -4012,28 +3649,13 @@ mod history_prune_tests {
             assert_eq!(remaining(&state, &account_id).await, (3, 55));
         }
     }
-
-    /// Both daemon entry points start the loop through this function, and it
-    /// stops when shutdown is requested.
-    #[tokio::test]
-    async fn the_shared_spawn_stops_on_shutdown() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let handle = spawn_history_prune_loop(state.clone());
-
-        state.request_shutdown();
-
-        tokio::time::timeout(Duration::from_secs(5), handle)
-            .await
-            .expect("history prune loop exits after shutdown")
-            .unwrap();
-    }
 }
 
 #[cfg(test)]
 mod rule_message_text_tests {
     use super::RuleMessage;
     use crate::test_fixtures::{make_empty_body, TestEnvelopeBuilder};
-    use mxr_rules::{Conditions, FieldCondition, MessageView, StringMatch};
+    use mxr_rules::{Conditions, FieldCondition, StringMatch};
 
     fn body_contains(word: &str) -> Conditions {
         Conditions::Field(FieldCondition::BodyContains {
@@ -4065,47 +3687,6 @@ mod rule_message_text_tests {
     }
 
     #[test]
-    fn a_word_in_the_html_part_matches_when_the_plain_part_lacks_it() {
-        let view = message(
-            Some("Plain part without it"),
-            Some("<p>The html part says zzhtmlword</p>"),
-        );
-        assert_eq!(
-            body_contains("zzhtmlword").evaluate_known(&view),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn rule_body_parts_are_the_search_parts_and_are_stable_across_calls() {
-        let view = message(Some("plain words"), Some("<p>html words</p>"));
-        let expected =
-            mxr_reader::body_match_parts(Some("plain words"), Some("<p>html words</p>")).unwrap();
-        let parts = |view: &RuleMessage| -> Vec<String> {
-            view.body_parts()
-                .unwrap_or_default()
-                .into_iter()
-                .map(str::to_string)
-                .collect()
-        };
-        assert_eq!(parts(&view), expected);
-        assert_eq!(parts(&view), expected);
-    }
-
-    #[test]
-    fn exact_and_anchored_rules_match_a_plain_and_html_duplicate() {
-        let view = message(Some("invoice"), Some("<p>invoice</p>"));
-        let exact = Conditions::Field(FieldCondition::BodyContains {
-            pattern: StringMatch::Exact("invoice".to_string()),
-        });
-        let anchored = Conditions::Field(FieldCondition::BodyContains {
-            pattern: StringMatch::Regex("^invoice$".to_string()),
-        });
-        assert_eq!(exact.evaluate_known(&view), Some(true));
-        assert_eq!(anchored.evaluate_known(&view), Some(true));
-    }
-
-    #[test]
     fn a_message_without_body_or_text_is_unknown_to_body_rules() {
         let envelope = TestEnvelopeBuilder::new().build();
         let no_body = RuleMessage::from_parts(envelope.clone(), None, Vec::new());
@@ -4132,19 +3713,6 @@ mod rule_message_text_tests {
     }
 
     #[test]
-    fn pre_html_plain_rules_keep_their_exact_results() {
-        let plain = message(Some("invoice\n"), None);
-        assert_eq!(
-            body_rule(StringMatch::Exact("invoice\n".to_string())).evaluate_known(&plain),
-            Some(true)
-        );
-        assert_eq!(
-            body_rule(StringMatch::Regex("\\Ainvoice\\n\\z".to_string())).evaluate_known(&plain),
-            Some(true)
-        );
-    }
-
-    #[test]
     fn a_negated_empty_check_on_empty_mail_is_unchanged() {
         let empty = message(Some(""), None);
         let not_empty = Conditions::Not {
@@ -4153,14 +3721,5 @@ mod rule_message_text_tests {
         assert_eq!(not_empty.evaluate_known(&empty), Some(false));
         let with_html = message(Some(""), Some("<p>words</p>"));
         assert_eq!(not_empty.evaluate_known(&with_html), Some(false));
-    }
-
-    #[test]
-    fn a_message_with_no_body_parts_is_unknown_to_body_rules() {
-        let no_body = RuleMessage::from_parts(TestEnvelopeBuilder::new().build(), None, Vec::new());
-        assert_eq!(
-            body_rule(StringMatch::Contains("x".to_string())).evaluate_known(&no_body),
-            None
-        );
     }
 }

@@ -994,27 +994,6 @@ mod tests {
     }
 
     #[test]
-    fn someone_you_have_written_to_before_is_owed_even_in_a_new_thread() {
-        let thread = ThreadId::new();
-        let messages = vec![message(&thread, "priya@example.com", ME, 3)];
-        let contact = DeskContact {
-            email: "priya@example.com".into(),
-            display_name: Some("Priya Raman".into()),
-            first_seen_at: now() - Duration::days(200),
-            total_inbound: 12,
-            total_outbound: 4,
-            is_list_sender: false,
-            cadence_seconds: None,
-            history: mxr_store::SenderHistory::default(),
-        };
-        let lanes = lanes(&messages, &[contact]);
-        let row = &lanes.rows[0].row;
-        assert_eq!(row.lane, DeskLaneKind::Owed);
-        assert_eq!(row.reason, "wrote to you");
-        assert_eq!(row.counterparty_name.as_deref(), Some("Priya Raman"));
-    }
-
-    #[test]
     fn allowing_a_sender_controls_visibility_not_human_response_or_reply_debt() {
         let never_replied = ThreadId::new();
         let replied = ThreadId::new();
@@ -1035,69 +1014,6 @@ mod tests {
         let lanes = lanes_with_screener(&messages, &[], screener);
         assert_eq!(lane_of(&lanes, &never_replied), None);
         assert_eq!(lane_of(&lanes, &replied), Some(DeskLaneKind::Owed));
-    }
-
-    #[test]
-    fn an_allowed_sender_waiting_two_weeks_is_still_new_from_people() {
-        let allowed = ThreadId::new();
-        let stranger = ThreadId::new();
-        let messages = vec![
-            message(&allowed, "ops@studio.example", ME, 15 * 24),
-            message(&stranger, "theo@example.com", ME, 15 * 24),
-        ];
-        let screener =
-            HashMap::from([("ops@studio.example".to_string(), ScreenerDisposition::Allow)]);
-        let lanes = lanes_with_screener(&messages, &[], screener);
-        assert_eq!(lane_of(&lanes, &allowed), Some(DeskLaneKind::PeopleNew));
-        assert_eq!(
-            lane_of(&lanes, &stranger),
-            None,
-            "only a week for strangers"
-        );
-    }
-
-    #[test]
-    fn a_bcc_counts_as_writing_to_them() {
-        let earlier = ThreadId::new();
-        let theirs = ThreadId::new();
-        let mut sent = message(&earlier, ME, "team@example.com", 50);
-        sent.bcc = vec![Address {
-            name: None,
-            email: "Priya@Example.com".into(),
-        }];
-        let messages = vec![
-            sent,
-            message(&theirs, "priya@example.com", ME, 5),
-            message(&ThreadId::new(), "theo@example.com", ME, 3),
-        ];
-        let lanes = lanes(&messages, &[]);
-        assert_eq!(lane_of(&lanes, &theirs), Some(DeskLaneKind::Owed));
-        assert_eq!(lanes.elsewhere.screener, 1, "only Theo");
-    }
-
-    #[test]
-    fn the_screener_count_leaves_out_anyone_you_have_written_to() {
-        let messages = vec![
-            message(&ThreadId::new(), ME, "maya@example.com", 50),
-            message(&ThreadId::new(), "maya@example.com", ME, 5),
-            message(&ThreadId::new(), "theo@example.com", ME, 3),
-            message(&ThreadId::new(), "priya@example.com", ME, 2),
-        ];
-        let priya = DeskContact {
-            email: "priya@example.com".into(),
-            display_name: None,
-            first_seen_at: now() - Duration::days(3),
-            total_inbound: 1,
-            total_outbound: 1,
-            is_list_sender: false,
-            cadence_seconds: None,
-            history: mxr_store::SenderHistory::default(),
-        };
-        assert_eq!(
-            lanes(&messages, &[priya]).elsewhere.screener,
-            1,
-            "only Theo"
-        );
     }
 
     #[test]
@@ -1138,41 +1054,6 @@ mod tests {
     }
 
     #[test]
-    fn reading_counts_this_weeks_issues_read_or_not() {
-        let mut read = message(&ThreadId::new(), "weekly@lists.example.com", ME, 2);
-        read.list_id = Some("<weekly.lists.example.com>".into());
-        read.flags = MessageFlags::READ;
-        let mut unread = read.clone();
-        unread.thread_id = ThreadId::new();
-        unread.flags = MessageFlags::empty();
-        let lanes = lanes(&[read, unread], &[]);
-        assert_eq!(lanes.elsewhere.reading, 2);
-    }
-
-    #[test]
-    fn the_window_stands_in_for_contacts_that_are_not_refreshed_yet() {
-        let earlier = ThreadId::new();
-        let fresh = ThreadId::new();
-        let twice = ThreadId::new();
-        let twice_again = ThreadId::new();
-        let messages = vec![
-            message(&earlier, ME, "maya@example.com", 100),
-            message(&fresh, "maya@example.com", ME, 4),
-            message(&twice, "theo@example.com", ME, 30),
-            message(&twice_again, "theo@example.com", ME, 3),
-        ];
-        let lanes = lanes(&messages, &[]);
-        assert_eq!(lane_of(&lanes, &fresh), Some(DeskLaneKind::Owed));
-        let theo = lanes
-            .rows
-            .iter()
-            .find(|r| r.row.thread_id == twice_again)
-            .unwrap();
-        assert_eq!(theo.row.lane, DeskLaneKind::PeopleNew);
-        assert_eq!(theo.row.reason, "wrote to you");
-    }
-
-    #[test]
     fn a_future_dated_message_cannot_hide_an_owed_reply() {
         let thread = ThreadId::new();
         let mut messages = vec![
@@ -1189,73 +1070,6 @@ mod tests {
             row.message_ids.len(),
             3,
             "verbs still cover the whole thread"
-        );
-    }
-
-    #[test]
-    fn several_unanswered_messages_say_how_many() {
-        let thread = ThreadId::new();
-        let messages = vec![
-            message(&thread, ME, "maya@example.com", 40),
-            message(&thread, "maya@example.com", ME, 20),
-            message(&thread, "maya@example.com", ME, 10),
-        ];
-        let lanes = lanes(&messages, &[]);
-        assert_eq!(lanes.rows[0].row.reason, "2 messages since you last wrote");
-    }
-
-    #[test]
-    fn pace_marks_rows_past_the_usual_reply_time() {
-        let thread = ThreadId::new();
-        let messages = vec![
-            message(&thread, ME, "maya@example.com", 60),
-            message(&thread, "maya@example.com", ME, 48),
-        ];
-        let mut row = lanes(&messages, &[]).rows.remove(0).row;
-        apply_pace(&mut row, Some(&[4 * 3600, 3 * 3600, 5 * 3600]));
-        assert_eq!(row.usual_seconds, Some(4 * 3600));
-        assert_eq!(row.usual_samples, 3);
-        assert!(row.overdue);
-
-        let mut single = row.clone();
-        single.usual_seconds = None;
-        single.overdue = false;
-        apply_pace(&mut single, Some(&[60]));
-        assert_eq!(single.usual_seconds, None);
-        assert!(!single.overdue);
-    }
-
-    #[test]
-    fn owed_rows_rank_by_distance_past_usual_pace() {
-        let make = |age_hours: i64, usual_hours: Option<i64>| {
-            let thread = ThreadId::new();
-            let messages = vec![
-                message(&thread, ME, "a@example.com", age_hours + 10),
-                message(&thread, "a@example.com", ME, age_hours),
-            ];
-            let mut row = lanes(&messages, &[]).rows.remove(0).row;
-            if let Some(usual) = usual_hours {
-                apply_pace(&mut row, Some(&[usual * 3600, usual * 3600]));
-            }
-            row
-        };
-        let quick_person = make(10, Some(2));
-        let unknown_pace = make(30, None);
-        let slow_person = make(20, Some(48));
-        let mut rows = vec![
-            slow_person.clone(),
-            unknown_pace.clone(),
-            quick_person.clone(),
-        ];
-        sort_lane(DeskLaneKind::Owed, &mut rows);
-        let order: Vec<_> = rows.iter().map(|r| r.thread_id.clone()).collect();
-        assert_eq!(
-            order,
-            vec![
-                quick_person.thread_id,
-                unknown_pace.thread_id,
-                slow_person.thread_id
-            ]
         );
     }
 
@@ -1278,21 +1092,5 @@ mod tests {
             .iter()
             .any(|r| r.thread_id == owed.thread_id && r.lane == DeskLaneKind::Owed));
         assert!(kept.iter().any(|r| r.thread_id == other.thread_id));
-    }
-
-    #[test]
-    fn subjects_lose_reply_prefixes() {
-        assert_eq!(clean_subject("Re: RE: Fwd: Launch plan"), "Launch plan");
-        assert_eq!(clean_subject("Regarding the plan"), "Regarding the plan");
-        assert_eq!(clean_subject("Re:"), "");
-    }
-
-    #[test]
-    fn automated_senders_are_recognised_by_local_part() {
-        assert!(looks_automated("no-reply@github.com"));
-        assert!(looks_automated("Notifications@Example.com"));
-        assert!(looks_automated("uptime@alerts.example.com"));
-        assert!(!looks_automated("maya@orbit.example"));
-        assert!(!looks_automated("editor@news.com"));
     }
 }

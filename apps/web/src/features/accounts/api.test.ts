@@ -24,9 +24,6 @@ describe("startAuthSession flow selection", () => {
 
     await startAuthSession(gmailAccountConfig("user@gmail.com"));
 
-    // Gmail's bundled client is a Desktop app type; the device-code
-    // endpoint rejects it ("invalid_client"). It must use the loopback
-    // (Installed) flow, which the daemon resolves from "auto".
     expect(startBody().flow).toBe("auto");
   });
 

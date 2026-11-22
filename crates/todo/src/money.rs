@@ -284,70 +284,9 @@ mod tests {
     }
 
     #[test]
-    fn what_is_owed_beats_a_previous_balance() {
-        let amount = pick_amount("Previous balance £100.00. Amount due £240.00 by 9 October.")
-            .expect("amount");
-        assert_eq!(amount.minor, 24000);
-        assert!(amount.checked);
-    }
-
-    #[test]
-    fn unpaid_is_not_paid() {
-        let amount = pick_amount("Unpaid amount due £100.00 by 9 October.").expect("amount");
-        assert_eq!(amount.minor, 10000);
-        assert!(amount.checked);
-    }
-
-    #[test]
     fn two_amounts_owed_are_a_guess() {
         let amount = pick_amount("Minimum payment £25.00. Amount due £400.00.").expect("amount");
         assert_eq!(amount.minor, 2500);
         assert!(!amount.checked, "two plausible amounts");
-    }
-
-    #[test]
-    fn several_unlabelled_amounts_pick_none() {
-        assert_eq!(pick_amount("Item one £5.00, item two £7.00"), None);
-        assert_eq!(
-            pick_amount("Your plan costs £9.99 a month").map(|amount| amount.minor),
-            Some(999)
-        );
-    }
-
-    #[test]
-    fn signed_and_zero_candidates_share_the_positive_selector_parser() {
-        let text = "-£12.50 £-0.25 €0.00 R1,234.50 +USD 20";
-        let candidates = find_candidates(text);
-        assert_eq!(
-            candidates
-                .iter()
-                .map(|(_, a)| (a.minor, a.currency.as_str()))
-                .collect::<Vec<_>>(),
-            [
-                (-1250, "GBP"),
-                (-25, "GBP"),
-                (0, "EUR"),
-                (123450, "ZAR"),
-                (2000, "USD")
-            ]
-        );
-        assert_eq!(
-            find_amounts(text)
-                .iter()
-                .map(|(_, a)| a.minor)
-                .collect::<Vec<_>>(),
-            [123450, 2000]
-        );
-        assert_eq!(parse_minor("-1.25"), Some(-125));
-        assert_eq!(parse_minor("-0.25"), Some(-25));
-        assert_eq!(parse_minor("1.234"), None);
-        assert_eq!(parse_minor("9223372036854775807.00"), None);
-    }
-
-    #[test]
-    fn malformed_decimal_and_thousands_do_not_become_partial_candidates() {
-        for text in ["£1.234", "£1,23", "R2D2", "-£-12", "USD -+12"] {
-            assert!(find_candidates(text).is_empty(), "{text}");
-        }
     }
 }

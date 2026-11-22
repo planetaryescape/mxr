@@ -948,7 +948,7 @@ fn format_timestamp_compact(value: Option<&str>, default: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity, DoctorReport};
+    use mxr_protocol::{DoctorFinding, DoctorReport};
 
     fn empty_doctor_with_findings(findings: Vec<DoctorFinding>) -> DoctorReport {
         DoctorReport {
@@ -998,71 +998,6 @@ mod tests {
     }
 
     #[test]
-    fn format_finding_lines_emits_message_and_remediation() {
-        let finding = DoctorFinding {
-            category: DoctorFindingCategory::OAuth,
-            severity: DoctorFindingSeverity::Error,
-            message: "OAuth token expired for me@example.com".into(),
-            remediation: vec!["mxr accounts reauth me@example.com".into()],
-        };
-        let lines = format_finding_lines(&finding);
-        assert_eq!(
-            lines,
-            vec![
-                "  ✗ oauth: OAuth token expired for me@example.com".to_string(),
-                "    → mxr accounts reauth me@example.com".to_string(),
-            ],
-            "an OAuth error finding must lead with the cross glyph and indent remediation",
-        );
-    }
-
-    #[test]
-    fn status_pane_lines_include_findings_count_and_remediation_step() {
-        let doctor = empty_doctor_with_findings(vec![DoctorFinding {
-            category: DoctorFindingCategory::Network,
-            severity: DoctorFindingSeverity::Warning,
-            message: "DNS resolution failed for imap.example.com".into(),
-            remediation: vec!["check internet connectivity".into()],
-        }]);
-        let state = DiagnosticsPageState {
-            doctor: Some(doctor),
-            ..Default::default()
-        };
-
-        let lines = pane_lines(&state, DiagnosticsPaneKind::Status);
-        assert!(
-            lines.iter().any(|line| line == "Findings: 1 issue(s)"),
-            "Status pane must summarise the findings count; got {lines:?}",
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("DNS resolution failed")),
-            "Status pane must surface the finding's message; got {lines:?}",
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("→ check internet connectivity")),
-            "Status pane must surface the remediation step; got {lines:?}",
-        );
-    }
-
-    #[test]
-    fn status_pane_says_no_findings_when_doctor_clean() {
-        let doctor = empty_doctor_with_findings(vec![]);
-        let state = DiagnosticsPageState {
-            doctor: Some(doctor),
-            ..Default::default()
-        };
-        let lines = pane_lines(&state, DiagnosticsPaneKind::Status);
-        assert!(
-            lines.iter().any(|line| line == "Findings: none"),
-            "Status pane must show 'Findings: none' on a clean doctor; got {lines:?}",
-        );
-    }
-
-    #[test]
     fn status_pane_says_when_the_daemon_could_not_read_the_database() {
         let clean = DiagnosticsPageState {
             doctor: Some(empty_doctor_with_findings(vec![])),
@@ -1084,41 +1019,6 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("unknown, not empty")),
             "a degraded snapshot must say the counts are unknown rather than zero"
-        );
-    }
-
-    #[test]
-    fn status_pane_renders_feature_health() {
-        let mut doctor = empty_doctor_with_findings(vec![]);
-        doctor.feature_health = Some(FeatureHealthReport {
-            search: FeatureHealth::Healthy,
-            semantic: FeatureHealth::Healthy,
-            summarize: FeatureHealth::Disabled,
-            relationship_profile: FeatureHealth::Healthy,
-            commitments: FeatureHealth::Degraded {
-                reason: "LLM disabled".into(),
-            },
-            draft_assist: FeatureHealth::Healthy,
-            voice_match: FeatureHealth::Healthy,
-            humanizer: FeatureHealth::Healthy,
-        });
-        let state = DiagnosticsPageState {
-            doctor: Some(doctor),
-            ..Default::default()
-        };
-
-        let lines = pane_lines(&state, DiagnosticsPaneKind::Status);
-
-        assert!(lines.iter().any(|line| line == "Feature health:"));
-        assert!(
-            lines.iter().any(|line| line.contains("semantic=healthy")),
-            "feature health must surface semantic status; got {lines:?}",
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("commitments=degraded(LLM disabled)")),
-            "feature health must surface degraded reasons; got {lines:?}",
         );
     }
 

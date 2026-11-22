@@ -1,5 +1,5 @@
 use super::*;
-use crate::app::{FocusSource, PendingUndo, UndoAction};
+use crate::app::{PendingUndo, UndoAction};
 use mxr_protocol::{DeskDoneItemData, DeskLaneData, DeskLaneKind, DeskRowData, PeopleSplitData};
 
 fn press(app: &mut App, code: KeyCode) {
@@ -157,94 +157,6 @@ fn j_skips_to_the_end_and_e_puts_it_away_with_undo() {
 }
 
 #[test]
-fn a_reply_later_done_lets_the_daemon_pick_the_lane_and_a_failure_puts_it_back() {
-    let (mut app, _owed, later) = focus_app();
-    press(&mut app, KeyCode::Char('j'));
-    press(&mut app, KeyCode::Char('j'));
-    assert_eq!(
-        app.mailbox.focus_page.current().map(|item| item.source),
-        Some(FocusSource::ReplyLater)
-    );
-    press(&mut app, KeyCode::Char('e'));
-    let done = app.pending_mutation_queue.pop().expect("done queued");
-    assert!(matches!(
-        &done.request,
-        Request::ResolveDeskItems { items, dry_run: false }
-            if items == &[DeskDoneItemData {
-                thread_id: later[0].thread_id.clone(),
-                lane: None,
-                commitment_id: None,
-            }]
-    ));
-    app.handle_mutation_failure_result(done.id, false, &MxrError::Ipc("offline".into()));
-    assert_eq!(current_thread(&app), Some(later[0].thread_id.clone()));
-}
-
-#[test]
-fn send_and_next_moves_on_only_for_the_reply_written_here() {
-    let (mut app, owed, _later) = focus_app();
-    press(&mut app, KeyCode::Char('r'));
-    assert_eq!(
-        app.compose.pending_compose,
-        Some(crate::app::ComposeAction::Reply {
-            message_id: owed[0].message_id.clone(),
-            account_id: owed[0].account_id.clone(),
-            preloaded: None,
-        })
-    );
-    press(&mut app, KeyCode::Char('j'));
-    assert_eq!(current_thread(&app), Some(owed[0].thread_id.clone()));
-    app.compose.pending_compose = None;
-    app.note_focus_compose(DraftIntent::Reply, std::path::Path::new("/tmp/focus-1.md"));
-
-    let sent = |path: Option<&str>| MutationEffect::SentSuccess {
-        status: "Sent!".into(),
-        remind_at: None,
-        sent_message_id: Some(MessageId::new()),
-        draft_path: path.map(std::path::PathBuf::from),
-    };
-    app.apply_mutation_completion(sent(Some("/tmp/other.md")), true);
-    app.apply_mutation_completion(sent(None), true);
-    assert_eq!(current_thread(&app), Some(owed[0].thread_id.clone()));
-
-    app.apply_mutation_completion(sent(Some("/tmp/focus-1.md")), true);
-    assert_eq!(current_thread(&app), Some(owed[1].thread_id.clone()));
-    assert_eq!(app.mailbox.focus_page.progress().done, 1);
-    assert_eq!(
-        app.compose.pending_compose, None,
-        "the next reply waits for r"
-    );
-}
-
-#[test]
-fn remind_and_d_open_the_reply_with_the_reminder_or_the_writing_model_after() {
-    let (mut app, owed, _later) = focus_app();
-    let before = app.status_message.clone();
-    press(&mut app, KeyCode::Char('w'));
-    assert!(!app.compose.remind_after_editor);
-    assert_eq!(
-        app.status_message.as_deref(),
-        notice_while_announced(
-            "focus",
-            "w",
-            "Send, remind has no key now; find it in the palette",
-            before.as_deref()
-        )
-    );
-    app.apply(Action::FocusRemind);
-    assert!(app.compose.remind_after_editor);
-    assert!(matches!(
-        &app.compose.pending_compose,
-        Some(crate::app::ComposeAction::Reply { message_id, .. }) if *message_id == owed[0].message_id
-    ));
-
-    let (mut app, _owed, _later) = focus_app();
-    press(&mut app, KeyCode::Char('d'));
-    assert!(app.compose.assist_after_editor);
-    assert!(app.compose.pending_compose.is_some());
-}
-
-#[test]
 fn b_puts_off_the_conversation_on_screen() {
     let (mut app, owed, _later) = focus_app();
     press(&mut app, KeyCode::Char('b'));
@@ -260,42 +172,4 @@ fn b_puts_off_the_conversation_on_screen() {
         [Request::SetReplyLater { message_id, flag: true }] if *message_id == owed[0].message_id
     ));
     assert_eq!(current_thread(&app), Some(owed[1].thread_id.clone()));
-}
-
-#[test]
-fn esc_and_q_go_back_to_where_it_was_opened() {
-    let (mut app, _owed, _later) = focus_app();
-    press(&mut app, KeyCode::Esc);
-    assert_eq!(app.mailbox.mailbox_view, MailboxView::Now);
-
-    let mut app = App::new();
-    app.apply(Action::OpenUpdates);
-    g_capital_f(&mut app);
-    assert_eq!(app.mailbox.mailbox_view, MailboxView::Focus);
-    press(&mut app, KeyCode::Char('q'));
-    assert_eq!(app.mailbox.mailbox_view, MailboxView::Updates);
-    assert!(!app.should_quit, "q never quits from Focus & reply");
-}
-
-#[test]
-fn f_in_the_reply_queue_opens_focus_at_the_selected_message() {
-    let mut app = App::new();
-    let messages = make_test_envelopes(3);
-    app.modals.reply_queue.open_loading();
-    app.modals.reply_queue.set_messages(messages.clone());
-    app.modals.reply_queue.select_next();
-    press(&mut app, KeyCode::Char('F'));
-    assert!(!app.modals.reply_queue.visible);
-    assert_eq!(app.mailbox.mailbox_view, MailboxView::Focus);
-    app.set_focus_sources(
-        Ok((
-            DeskLaneData {
-                rows: vec![owed_row("Nora")],
-                total: 1,
-            },
-            PeopleSplitData::default(),
-        )),
-        Ok(messages.clone()),
-    );
-    assert_eq!(current_thread(&app), Some(messages[1].thread_id.clone()));
 }

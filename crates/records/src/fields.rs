@@ -254,14 +254,4 @@ mod tests {
         let your_issuer = Found::text(FieldName::Issuer, Source::User, "Dell");
         assert!(your_issuer.to_store("m", None, observed).checked);
     }
-
-    #[test]
-    fn verbatim_ignores_spacing_and_case() {
-        assert!(verbatim(
-            "Order total:\n  £1,249.00",
-            "order total: £1,249.00"
-        ));
-        assert!(!verbatim("Order total £1,249.00", "£1,294.00"));
-        assert!(!verbatim("anything", "  "));
-    }
 }

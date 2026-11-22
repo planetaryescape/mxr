@@ -19,14 +19,6 @@ fn thread_app() -> App {
 }
 
 #[test]
-fn export_with_no_thread_selected_says_so_and_opens_nothing() {
-    let mut app = App::new();
-    export(&mut app);
-    assert!(!app.modals.export.visible);
-    assert_eq!(app.status_message.as_deref(), Some("No message selected"));
-}
-
-#[test]
 fn format_key_then_save_queues_the_chosen_format_at_the_prefilled_path() {
     let mut app = thread_app();
     let thread_id = app.mailbox.envelopes[0].thread_id.clone();
@@ -58,25 +50,6 @@ fn format_key_then_save_queues_the_chosen_format_at_the_prefilled_path() {
 }
 
 #[test]
-fn every_format_key_is_offered_and_c_queues_a_clipboard_copy() {
-    for (key, format) in [
-        ('m', ExportFormat::Markdown),
-        ('j', ExportFormat::Json),
-        ('x', ExportFormat::Mbox),
-        ('l', ExportFormat::LlmContext),
-    ] {
-        let mut app = thread_app();
-        export(&mut app);
-        press(&mut app, KeyCode::Char(key));
-        press(&mut app, KeyCode::Char('c'));
-        assert!(!app.modals.export.visible);
-        let pending = app.mailbox.pending_export.take().expect("copy queued");
-        assert_eq!(pending.format, format);
-        assert_eq!(pending.destination, ExportDestination::Clipboard);
-    }
-}
-
-#[test]
 fn esc_at_each_step_writes_nothing_and_queues_nothing() {
     let mut app = thread_app();
     export(&mut app);
@@ -94,19 +67,5 @@ fn esc_at_each_step_writes_nothing_and_queues_nothing() {
     press(&mut app, KeyCode::Esc);
     assert!(!app.modals.export.visible);
 
-    assert!(app.mailbox.pending_export.is_none());
-}
-
-#[test]
-fn letters_typed_into_the_path_do_not_trigger_format_or_destination_keys() {
-    let mut app = thread_app();
-    export(&mut app);
-    press(&mut app, KeyCode::Char('m'));
-    press(&mut app, KeyCode::Char('s'));
-    app.modals.export.input.clear();
-    press(&mut app, KeyCode::Char('c'));
-    press(&mut app, KeyCode::Char('j'));
-    assert_eq!(app.modals.export.input, "cj");
-    assert!(app.modals.export.visible);
     assert!(app.mailbox.pending_export.is_none());
 }

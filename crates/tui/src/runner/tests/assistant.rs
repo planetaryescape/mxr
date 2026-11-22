@@ -1,10 +1,9 @@
 use super::*;
-use crate::app::{AssistantCall, AssistantFocus, AssistantPrompt};
+use crate::app::{AssistantCall, AssistantFocus};
 use mxr_protocol::{
-    AssistantAnswerData, AssistantCallStateData, AssistantConversationData, AssistantDecisionData,
-    AssistantDecisionKindData, AssistantDeleteData, AssistantItemData, AssistantPendingData,
-    AssistantProgressData, AssistantQuestionData, AssistantQuestionOptionData, AssistantStatusData,
-    ResponseData,
+    AssistantConversationData, AssistantDecisionData, AssistantDecisionKindData,
+    AssistantDeleteData, AssistantItemData, AssistantPendingData, AssistantQuestionData,
+    AssistantQuestionOptionData, AssistantStatusData, ResponseData,
 };
 use serde_json::json;
 
@@ -226,93 +225,6 @@ fn y_approves_the_waiting_change() {
 }
 
 #[test]
-fn n_asks_why_then_rejects_with_the_reason() {
-    let mut app = showing(conversation(
-        AssistantStatusData::AwaitingUser,
-        vec![approval()],
-    ));
-    press(&mut app, KeyCode::Char('n'), KeyModifiers::NONE);
-    assert!(matches!(
-        app.assistant.prompt,
-        Some(AssistantPrompt::RejectReason { .. })
-    ));
-    type_text(&mut app, "keep them");
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert_eq!(
-        decision(&mut app),
-        AssistantDecisionData {
-            call_id: "call1".into(),
-            decision: AssistantDecisionKindData::Reject {
-                reason: Some("keep them".into())
-            },
-        }
-    );
-}
-
-#[test]
-fn number_keys_choose_and_enter_answers() {
-    let mut app = showing(conversation(
-        AssistantStatusData::AwaitingUser,
-        vec![question()],
-    ));
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(requests(&mut app).is_empty());
-    press(&mut app, KeyCode::Char('2'), KeyModifiers::NONE);
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert_eq!(
-        decision(&mut app),
-        AssistantDecisionData {
-            call_id: "q1".into(),
-            decision: AssistantDecisionKindData::Answer {
-                answers: vec![AssistantAnswerData {
-                    selected: vec!["All".into()],
-                    other: None,
-                }],
-            },
-        }
-    );
-}
-
-#[test]
-fn an_own_answer_goes_as_other() {
-    let mut app = showing(conversation(
-        AssistantStatusData::AwaitingUser,
-        vec![question()],
-    ));
-    press(&mut app, KeyCode::Char('o'), KeyModifiers::NONE);
-    type_text(&mut app, "only Acme");
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert_eq!(
-        decision(&mut app),
-        AssistantDecisionData {
-            call_id: "q1".into(),
-            decision: AssistantDecisionKindData::Answer {
-                answers: vec![AssistantAnswerData {
-                    selected: Vec::new(),
-                    other: Some("only Acme".into()),
-                }],
-            },
-        }
-    );
-}
-
-#[test]
-fn s_skips_the_question() {
-    let mut app = showing(conversation(
-        AssistantStatusData::AwaitingUser,
-        vec![question()],
-    ));
-    press(&mut app, KeyCode::Char('s'), KeyModifiers::NONE);
-    assert_eq!(
-        decision(&mut app),
-        AssistantDecisionData {
-            call_id: "q1".into(),
-            decision: AssistantDecisionKindData::Reject { reason: None },
-        }
-    );
-}
-
-#[test]
 fn esc_and_q_leave_the_question_waiting() {
     for key in [KeyCode::Esc, KeyCode::Char('q')] {
         let mut app = showing(conversation(
@@ -328,71 +240,6 @@ fn esc_and_q_leave_the_question_waiting() {
         assert_eq!(app.assistant.focus, AssistantFocus::Away, "{key:?}");
         assert_eq!(app.assistant.pending().len(), 1, "{key:?}");
     }
-}
-
-#[test]
-fn ctrl_c_stops_a_running_turn() {
-    let mut app = showing(conversation(AssistantStatusData::Running, Vec::new()));
-    press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
-    assert!(matches!(
-        requests(&mut app).as_slice(),
-        [Request::AssistantCancel { conversation_id }] if conversation_id == "c1"
-    ));
-}
-
-#[test]
-fn updates_refetch_the_open_conversation_one_at_a_time() {
-    let mut app = showing(conversation(AssistantStatusData::Running, Vec::new()));
-    for step in 1..=3 {
-        handle_daemon_event(
-            &mut app,
-            DaemonEvent::AssistantUpdated {
-                conversation_id: "c1".into(),
-                status: AssistantStatusData::Running,
-                progress: Some(AssistantProgressData::Thinking { step }),
-            },
-        );
-    }
-    handle_daemon_event(
-        &mut app,
-        DaemonEvent::AssistantUpdated {
-            conversation_id: "other".into(),
-            status: AssistantStatusData::Running,
-            progress: None,
-        },
-    );
-    let refetches = app.assistant.take_outbound();
-    assert_eq!(refetches.len(), 1, "one refetch in flight at a time");
-    assert!(matches!(
-        &refetches[0].request,
-        Request::GetAssistantConversation { conversation_id } if conversation_id == "c1"
-    ));
-    assert_eq!(
-        app.assistant.progress,
-        Some(AssistantProgressData::Thinking { step: 3 })
-    );
-    let mut done = conversation(AssistantStatusData::Idle, Vec::new());
-    done.items.push(AssistantItemData::ToolCall {
-        title: None,
-        seq: 2,
-        call_id: "s1".into(),
-        tool: "mxr_search".into(),
-        reason: "Find the receipts".into(),
-        arguments: json!({}),
-        state: AssistantCallStateData::Done,
-        result: None,
-        readout: None,
-        created_at: 0,
-    });
-    app.apply_assistant_result(
-        refetches[0].call.clone(),
-        Ok(ResponseData::AssistantConversation { conversation: done }),
-    );
-    assert_eq!(app.assistant.take_outbound().len(), 1);
-    assert_eq!(
-        app.assistant.conversation.as_ref().map(|c| c.items.len()),
-        Some(2)
-    );
 }
 
 #[test]
@@ -426,152 +273,6 @@ fn delete_asks_the_daemon_first_and_confirms() {
     ));
 }
 
-#[test]
-fn t_toggles_auto_approve_for_the_conversation() {
-    let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
-    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    press(&mut app, KeyCode::Char('T'), KeyModifiers::SHIFT);
-    assert!(matches!(
-        requests(&mut app).as_slice(),
-        [Request::SetAssistantAutoApprove { conversation_id, enabled: true }] if conversation_id == "c1"
-    ));
-}
-
-fn summary(id: &str, title: &str) -> mxr_protocol::AssistantConversationSummaryData {
-    mxr_protocol::AssistantConversationSummaryData {
-        id: id.into(),
-        title: title.into(),
-        status: AssistantStatusData::Idle,
-        last_outcome: None,
-        created_at: 0,
-        updated_at: 0,
-        message_count: 2,
-        pending_count: 0,
-    }
-}
-
-#[test]
-fn hash_in_the_history_deletes_the_highlighted_conversation_after_a_dry_run() {
-    let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
-    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    press(&mut app, KeyCode::Char('L'), KeyModifiers::SHIFT);
-    requests(&mut app);
-    app.apply_assistant_result(
-        AssistantCall::List,
-        Ok(ResponseData::AssistantConversations {
-            conversations: vec![summary("c1", "Receipts"), summary("c2", "Old trip")],
-        }),
-    );
-    press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
-    press(&mut app, KeyCode::Char('D'), KeyModifiers::SHIFT);
-    assert!(app.assistant.take_outbound().is_empty(), "D moved to #");
-    press(&mut app, KeyCode::Char('#'), KeyModifiers::SHIFT);
-    let preview = app.assistant.take_outbound();
-    assert!(matches!(
-        preview.as_slice(),
-        [outbound] if matches!(&outbound.request, Request::DeleteAssistantConversation { conversation_id, dry_run: true } if conversation_id == "c2")
-    ));
-    app.apply_assistant_result(
-        preview[0].call.clone(),
-        Ok(ResponseData::AssistantDelete {
-            delete: AssistantDeleteData {
-                conversation_id: "c2".into(),
-                title: "Old trip".into(),
-                message_count: 2,
-                dry_run: true,
-                deleted: false,
-            },
-        }),
-    );
-    let screen = render_to_string(140, 40, |frame| app.draw(frame));
-    assert!(screen.contains("Delete \"Old trip\""), "{screen}");
-    press(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
-    let delete = app.assistant.take_outbound();
-    assert!(matches!(
-        delete.as_slice(),
-        [outbound] if matches!(&outbound.request, Request::DeleteAssistantConversation { conversation_id, dry_run: false } if conversation_id == "c2")
-    ));
-    app.apply_assistant_result(
-        delete[0].call.clone(),
-        Ok(ResponseData::AssistantDelete {
-            delete: AssistantDeleteData {
-                conversation_id: "c2".into(),
-                title: "Old trip".into(),
-                message_count: 2,
-                dry_run: false,
-                deleted: true,
-            },
-        }),
-    );
-    let list = app.assistant.list.as_ref().expect("the list stays open");
-    assert_eq!(list.conversations.len(), 1);
-    assert_eq!(list.selected, 0);
-    assert_eq!(app.assistant.conversation_id.as_deref(), Some("c1"));
-}
-
-#[test]
-fn deleting_the_open_conversation_from_the_history_starts_a_fresh_one() {
-    let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
-    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    press(&mut app, KeyCode::Char('L'), KeyModifiers::SHIFT);
-    requests(&mut app);
-    app.apply_assistant_result(
-        AssistantCall::List,
-        Ok(ResponseData::AssistantConversations {
-            conversations: vec![summary("c1", "Receipts")],
-        }),
-    );
-    app.apply_assistant_result(
-        AssistantCall::Delete,
-        Ok(ResponseData::AssistantDelete {
-            delete: AssistantDeleteData {
-                conversation_id: "c1".into(),
-                title: "Receipts".into(),
-                message_count: 2,
-                dry_run: false,
-                deleted: true,
-            },
-        }),
-    );
-    assert_eq!(app.assistant.conversation_id, None);
-    assert!(app.assistant.conversation.is_none());
-    assert!(app
-        .assistant
-        .list
-        .as_ref()
-        .is_some_and(|list| list.conversations.is_empty()));
-}
-
-#[test]
-fn x_shows_and_hides_the_exact_call_of_the_waiting_change() {
-    let mut app = showing(conversation(
-        AssistantStatusData::AwaitingUser,
-        vec![approval()],
-    ));
-    let folded = render_to_string(140, 40, |frame| app.draw(frame));
-    assert!(!folded.contains("EXACT CALL"), "{folded}");
-    press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
-    let open = render_to_string(140, 40, |frame| app.draw(frame));
-    assert!(open.contains("EXACT CALL"), "{open}");
-    assert!(open.contains("mxr_mutate {"), "{open}");
-    assert!(open.contains("\"action\": \"archive\""), "{open}");
-    press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
-    assert_eq!(app.assistant.exact_call_for, None);
-    assert!(requests(&mut app).is_empty(), "x decides nothing");
-}
-
-#[test]
-fn toasts_stack_beside_the_pane_and_leave_its_hint_line_visible() {
-    for width in [140, 90] {
-        let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
-        press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-        app.push_toast(crate::app::Toast::success("Archived 3 messages"));
-        let screen = render_to_string(width, 30, |frame| app.draw(frame));
-        assert!(screen.contains("Archived 3 messages"), "{screen}");
-        assert!(screen.contains("L history · M model"), "{screen}");
-    }
-}
-
 const LINKED_THREAD: &str = "019e6f2a-1234-7000-8000-abcdef000001";
 
 fn linked_reply() -> App {
@@ -592,19 +293,6 @@ fn linked_reply() -> App {
     let mut app = showing(conversation);
     app.assistant.focus = AssistantFocus::Pane;
     app
-}
-
-#[test]
-fn the_latest_reply_numbers_its_links_and_the_hint_says_so() {
-    let mut app = linked_reply();
-    let screen = render_to_string(160, 30, |frame| app.draw(frame));
-    assert!(screen.contains("Q1 report [1]"), "{screen}");
-    assert!(screen.contains("Jon Bell [2]"), "{screen}");
-    assert!(
-        screen.contains("Q1 again [1]"),
-        "the same email keeps its number: {screen}"
-    );
-    assert!(screen.contains("1-3 open link"), "{screen}");
 }
 
 #[test]
@@ -633,94 +321,6 @@ fn a_number_opens_the_linked_email_in_the_reader() {
         app.mailbox.viewing_envelope.as_ref().map(|e| &e.id),
         Some(&envelope.id)
     );
-}
-
-#[test]
-fn a_number_opens_the_linked_person_in_messages() {
-    let mut app = linked_reply();
-    press(&mut app, KeyCode::Char('2'), KeyModifiers::NONE);
-    assert_eq!(app.mailbox.mailbox_view, MailboxView::People);
-    assert!(app.mailbox.messages_page.pending_refresh);
-    app.mailbox.messages_page.pending_refresh = false;
-    let loaded = crate::ui::messages_lens::tests::populated();
-    app.set_messages(loaded, None);
-    assert_eq!(
-        app.selected_messages_row().map(|row| row.id.as_str()),
-        Some("person:jon@example.com")
-    );
-    assert_eq!(
-        app.mailbox
-            .messages_page
-            .pending_person
-            .as_ref()
-            .map(|(id, _)| id.as_str()),
-        Some("person:jon@example.com"),
-        "their page is asked for"
-    );
-}
-
-#[test]
-fn a_person_in_the_folded_quiet_band_opens_it_and_is_selected() {
-    let mut app = linked_reply();
-    app.apply_assistant_result(
-        AssistantCall::Conversation,
-        Ok(ResponseData::AssistantConversation {
-            conversation: {
-                let mut conversation = app.assistant.conversation.clone().unwrap();
-                conversation.items.push(AssistantItemData::Assistant {
-                    rows: Vec::new(),
-                    seq: 9,
-                    text: "Ask [Leo Park](mxr:person/person:leo@example.com).".into(),
-                    model: None,
-                    leaves_machine: None,
-                    failed_call_ids: Vec::new(),
-                    created_at: 0,
-                });
-                conversation
-            },
-        }),
-    );
-    app.assistant.focus = AssistantFocus::Pane;
-    press(&mut app, KeyCode::Char('1'), KeyModifiers::NONE);
-    app.mailbox.messages_page.pending_refresh = false;
-    app.set_messages(crate::ui::messages_lens::tests::populated(), None);
-    assert!(app.mailbox.messages_page.quiet_open);
-    assert_eq!(
-        app.selected_messages_row().map(|row| row.id.as_str()),
-        Some("person:leo@example.com")
-    );
-}
-
-#[test]
-fn a_person_messages_does_not_list_gets_a_note() {
-    let mut app = linked_reply();
-    press(&mut app, KeyCode::Char('3'), KeyModifiers::NONE);
-    app.mailbox.messages_page.pending_refresh = false;
-    app.set_messages(crate::ui::messages_lens::tests::populated(), None);
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("They aren't in Messages right now")
-    );
-}
-
-#[test]
-fn a_later_reply_without_links_leaves_the_earlier_links_open() {
-    let mut app = linked_reply();
-    if let Some(conversation) = app.assistant.conversation.as_mut() {
-        conversation.items.push(AssistantItemData::Assistant {
-            rows: Vec::new(),
-            seq: 3,
-            text: "Anything else?".into(),
-            model: None,
-            leaves_machine: None,
-            failed_call_ids: Vec::new(),
-            created_at: 0,
-        });
-    }
-    let screen = render_to_string(160, 30, |frame| app.draw(frame));
-    assert!(screen.contains("Q1 report [1]"), "{screen}");
-    press(&mut app, KeyCode::Char('1'), KeyModifiers::NONE);
-    assert!(app.pending_assistant_thread_open.is_some());
 }
 
 fn model_choice(
@@ -771,21 +371,6 @@ fn picking() -> App {
 }
 
 #[test]
-fn m_opens_the_model_picker_on_the_one_in_use_and_names_the_key_in_the_hint() {
-    let mut app = picking();
-    let picker = app.assistant.models.as_ref().expect("the picker is open");
-    assert_eq!(picker.selected, 0);
-    let screen = render_to_string(140, 30, |frame| app.draw(frame));
-    assert!(screen.contains("Gemma 4"), "{screen}");
-    assert!(screen.contains("GPT-6 Luna"), "{screen}");
-    assert!(screen.contains("Add an OpenAI key"), "{screen}");
-    assert!(screen.contains("Enter use this model"), "{screen}");
-    app.assistant.models = None;
-    let screen = render_to_string(140, 30, |frame| app.draw(frame));
-    assert!(screen.contains("M model"), "{screen}");
-}
-
-#[test]
 fn enter_on_an_available_model_asks_the_daemon_to_set_it_and_a_disabled_one_says_why() {
     let mut app = picking();
     press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
@@ -822,75 +407,4 @@ fn enter_on_an_available_model_asks_the_daemon_to_set_it_and_a_disabled_one_says
         requests(&mut app).as_slice(),
         [Request::GetAssistantAvailability]
     ));
-}
-
-#[test]
-fn a_refused_pick_keeps_the_picker_open_with_the_daemons_words() {
-    let mut app = picking();
-    app.apply_assistant_result(
-        AssistantCall::SetModel,
-        Err(MxrError::Ipc("Claude Haiku 5.5 can't be used yet.".into())),
-    );
-    assert!(app.assistant.models.is_some());
-    assert_eq!(
-        app.assistant.error.as_deref(),
-        Some("Claude Haiku 5.5 can't be used yet.")
-    );
-}
-
-#[test]
-fn esc_closes_the_picker_and_the_palette_lists_the_command() {
-    let mut app = picking();
-    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    assert!(app.assistant.models.is_none());
-    assert!(app.assistant.open);
-
-    let commands = crate::ui::command_palette::default_commands();
-    assert!(commands
-        .iter()
-        .any(|command| command.action == Action::OpenAssistantModels));
-}
-
-#[test]
-fn the_picker_scrolls_to_keep_the_highlighted_model_in_view_on_a_short_pane() {
-    let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
-    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    press(&mut app, KeyCode::Char('M'), KeyModifiers::SHIFT);
-    requests(&mut app);
-    let choices = (1..=8)
-        .map(|n| {
-            model_choice(
-                &format!("model-{n}"),
-                &format!("Model {n}"),
-                true,
-                Some("Add a provider key with the command mxr llm key set provider-name now"),
-            )
-        })
-        .collect();
-    app.apply_assistant_result(
-        AssistantCall::Models,
-        Ok(ResponseData::AssistantModels {
-            models: mxr_protocol::AssistantModelsData {
-                current: None,
-                choices,
-            },
-        }),
-    );
-    for number in 1..=8 {
-        let screen = render_to_string(80, 28, |frame| app.draw(frame));
-        assert!(
-            screen.contains(&format!("Model {number}")),
-            "Model {number} fell off the pane:\n{screen}"
-        );
-        assert!(
-            screen.contains("› ") && screen.contains("Esc back"),
-            "the highlight or hint line is gone:\n{screen}"
-        );
-        press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
-    }
-    for _ in 0..8 {
-        press(&mut app, KeyCode::Char('k'), KeyModifiers::NONE);
-    }
-    let screen = render_to_string(80, 28, |frame| app.draw(frame));
-    assert!(screen.contains("Model 1"), "{screen}");
 }

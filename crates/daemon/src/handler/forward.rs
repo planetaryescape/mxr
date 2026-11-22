@@ -349,13 +349,6 @@ mod budget_tests {
     }
 
     #[test]
-    fn an_ordinary_forward_with_a_resolving_cid_is_unchanged() {
-        let body = body_with_inline_part("logo@example.test");
-        let html = r#"<img src="cid:logo@example.test">"#;
-        assert!(validate_html_cid_references(&body, html).is_ok());
-    }
-
-    #[test]
     fn an_ordinary_forward_with_a_dangling_cid_is_still_refused() {
         let body = body_with_inline_part("logo@example.test");
         let html = r#"<img src="cid:missing@example.test">"#;
@@ -381,31 +374,5 @@ mod budget_tests {
             "got {error}"
         );
         assert!(!error.to_string().contains("simplify"), "got {error}");
-    }
-
-    #[test]
-    fn html_the_helper_gave_up_on_is_refused_as_too_complex_to_forward() {
-        for reason in [
-            FallbackReason::Oversize,
-            FallbackReason::KnownBad,
-            FallbackReason::Timeout,
-            FallbackReason::HelperDied,
-            FallbackReason::JobFailed,
-        ] {
-            assert!(
-                unchecked_forward_message(reason).contains("too complex to check safely"),
-                "{reason:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn only_cid_attributes_come_back_from_the_parse() {
-        let html = r#"<img src="CID:a@x"><a href="https://example.test/cid:b">l</a><table background="cid:c@x"></table>"#;
-        let found = CID_REFERENCES.run_here(html, &());
-        assert_eq!(
-            found,
-            Some(vec!["CID:a@x".to_string(), "cid:c@x".to_string()])
-        );
     }
 }

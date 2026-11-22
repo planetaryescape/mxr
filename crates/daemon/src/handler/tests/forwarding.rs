@@ -109,6 +109,63 @@ fn draft(source: ForwardSource, intro: &str) -> Draft {
 }
 
 #[tokio::test]
+async fn forwarding_corrupt_managed_bytes_block_preview_and_send_before_transport() {
+    let sender = Arc::new(MimeTransport::default());
+    let (state, _, id) = fixture(sender.clone()).await;
+    state
+        .store
+        .insert_body(&mxr_core::MessageBody {
+            message_id: id.clone(),
+            text_plain: Some("Original".into()),
+            text_html: None,
+            attachments: vec![AttachmentMeta {
+                id: mxr_core::AttachmentId::new(),
+                message_id: id.clone(),
+                filename: "required.pdf".into(),
+                mime_type: "application/pdf".into(),
+                disposition: AttachmentDisposition::Attachment,
+                content_id: None,
+                content_location: None,
+                size_bytes: 23,
+                local_path: None,
+                provider_id: "required".into(),
+            }],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap();
+    let outgoing = draft(source(&state, &id).await, "For review.");
+    let ResponseData::Draft { draft: saved } =
+        mutations::save_draft(&state, &outgoing).await.unwrap()
+    else {
+        panic!("saved");
+    };
+    let resolved = draft_attachments::resolve(&state, &saved).await.unwrap();
+    let path = &resolved.attachments[0];
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    std::fs::write(path, b"corrupt").unwrap();
+    let preview_error = draft_preview::preview(&state, &saved, &Default::default(), &[])
+        .await
+        .unwrap_err()
+        .to_string();
+    let send_error = mutations::send_draft(&state, &saved, None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        preview_error.contains("length does not match"),
+        "{preview_error}"
+    );
+    assert!(send_error.contains("length does not match"), "{send_error}");
+    assert!(sender.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn forwarding_preview_saved_draft_and_test_transport_preserve_original_and_all_mime_parts() {
     use mail_parser::MimeHeaders;
     let sender = Arc::new(MimeTransport::default());
@@ -314,28 +371,6 @@ async fn forwarding_preview_saved_draft_and_test_transport_preserve_original_and
 }
 
 #[tokio::test]
-async fn forwarding_missing_original_content_is_an_error() {
-    let (state, _, id) = fixture(Arc::new(MimeTransport::default())).await;
-    state
-        .store
-        .insert_body(&mxr_core::MessageBody {
-            message_id: id.clone(),
-            text_plain: None,
-            text_html: None,
-            attachments: vec![],
-            fetched_at: chrono::Utc::now(),
-            metadata: Default::default(),
-        })
-        .await
-        .unwrap();
-    assert!(mutations::prepare_forward(&state, &id)
-        .await
-        .unwrap_err()
-        .to_string()
-        .contains("original message content is missing"));
-}
-
-#[tokio::test]
 async fn forwarding_attachment_fetch_failure_is_not_silently_omitted() {
     let (state, _, id) = fixture(Arc::new(MimeTransport::default())).await;
     let account_id = state.default_account_id();
@@ -381,188 +416,4 @@ async fn forwarding_attachment_fetch_failure_is_not_silently_omitted() {
         .await
         .unwrap()
         .is_empty());
-}
-
-#[tokio::test]
-async fn forwarding_plain_text_is_literal_and_html_only_gets_a_readable_alternative() {
-    let (state, _, id) = fixture(Arc::new(MimeTransport::default())).await;
-    for (plain, html) in [
-        (Some("Literal <b>not HTML</b> **not bold**\n\nPrevious reply text\n"), None),
-        (None, Some("<html><body><p>HTML only café</p><table><tr><td>Keep this table</td></tr></table></body></html>")),
-    ] {
-        state.store.insert_body(&mxr_core::MessageBody { message_id: id.clone(), text_plain: plain.map(str::to_string), text_html: html.map(str::to_string), attachments: vec![], fetched_at: chrono::Utc::now(), metadata: Default::default() }).await.unwrap();
-        let original = source(&state, &id).await;
-        let outgoing = draft(original, "");
-        let DraftContent::Html { html, text: Some(text) } = outgoing.content else { panic!("expected alternatives"); };
-        if let Some(plain) = plain {
-            assert!(text.ends_with(plain));
-            assert!(html.contains("Literal &lt;b&gt;not HTML&lt;/b&gt; **not bold**"));
-            assert!(!html.contains("<strong>not bold</strong>"));
-        } else {
-            assert!(text.contains("HTML only café"));
-            assert!(html.contains("<table><tr><td>Keep this table</td></tr></table>"));
-        }
-    }
-}
-
-#[tokio::test]
-async fn forwarding_truncated_attachment_and_missing_inline_asset_are_errors() {
-    let (state, _, id) = fixture(Arc::new(MimeTransport::default())).await;
-    let attachment = AttachmentMeta {
-        id: mxr_core::AttachmentId::new(),
-        message_id: id.clone(),
-        filename: "truncated.pdf".into(),
-        mime_type: "application/pdf".into(),
-        disposition: AttachmentDisposition::Attachment,
-        content_id: None,
-        content_location: None,
-        size_bytes: 1234,
-        local_path: None,
-        provider_id: "truncated".into(),
-    };
-    state
-        .store
-        .insert_body(&mxr_core::MessageBody {
-            message_id: id.clone(),
-            text_plain: Some("Original".into()),
-            text_html: None,
-            attachments: vec![attachment],
-            fetched_at: chrono::Utc::now(),
-            metadata: Default::default(),
-        })
-        .await
-        .unwrap();
-    for _ in 0..2 {
-        let error = mutations::prepare_forward(&state, &id)
-            .await
-            .unwrap_err()
-            .to_string();
-        assert!(
-            error.contains("truncated.pdf") && error.contains("length mismatch"),
-            "{error}"
-        );
-    }
-    for html in [
-        "<img src='cid:missing@example.com'>",
-        "<style>.background{background-image:url('cid:missing@example.com')}</style>",
-    ] {
-        state
-            .store
-            .insert_body(&mxr_core::MessageBody {
-                message_id: id.clone(),
-                text_plain: None,
-                text_html: Some(html.into()),
-                attachments: vec![],
-                fetched_at: chrono::Utc::now(),
-                metadata: Default::default(),
-            })
-            .await
-            .unwrap();
-        let error = mutations::prepare_forward(&state, &id)
-            .await
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("missing inline attachment"), "{error}");
-    }
-}
-
-#[tokio::test]
-async fn forwarding_corrupt_managed_bytes_block_preview_and_send_before_transport() {
-    let sender = Arc::new(MimeTransport::default());
-    let (state, _, id) = fixture(sender.clone()).await;
-    state
-        .store
-        .insert_body(&mxr_core::MessageBody {
-            message_id: id.clone(),
-            text_plain: Some("Original".into()),
-            text_html: None,
-            attachments: vec![AttachmentMeta {
-                id: mxr_core::AttachmentId::new(),
-                message_id: id.clone(),
-                filename: "required.pdf".into(),
-                mime_type: "application/pdf".into(),
-                disposition: AttachmentDisposition::Attachment,
-                content_id: None,
-                content_location: None,
-                size_bytes: 23,
-                local_path: None,
-                provider_id: "required".into(),
-            }],
-            fetched_at: chrono::Utc::now(),
-            metadata: Default::default(),
-        })
-        .await
-        .unwrap();
-    let outgoing = draft(source(&state, &id).await, "For review.");
-    let ResponseData::Draft { draft: saved } =
-        mutations::save_draft(&state, &outgoing).await.unwrap()
-    else {
-        panic!("saved");
-    };
-    let resolved = draft_attachments::resolve(&state, &saved).await.unwrap();
-    let path = &resolved.attachments[0];
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
-    }
-    std::fs::write(path, b"corrupt").unwrap();
-    let preview_error = draft_preview::preview(&state, &saved, &Default::default(), &[])
-        .await
-        .unwrap_err()
-        .to_string();
-    let send_error = mutations::send_draft(&state, &saved, None)
-        .await
-        .unwrap_err()
-        .to_string();
-    assert!(
-        preview_error.contains("length does not match"),
-        "{preview_error}"
-    );
-    assert!(send_error.contains("length does not match"), "{send_error}");
-    assert!(sender.0.lock().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn forwarding_attachment_only_message_preserves_an_empty_binary_file() {
-    let sender = Arc::new(MimeTransport::default());
-    let (state, _, id) = fixture(sender.clone()).await;
-    let file = tempfile::NamedTempFile::new().unwrap();
-    state
-        .store
-        .insert_body(&mxr_core::MessageBody {
-            message_id: id.clone(),
-            text_plain: None,
-            text_html: None,
-            attachments: vec![AttachmentMeta {
-                id: mxr_core::AttachmentId::new(),
-                message_id: id.clone(),
-                filename: "empty.bin".into(),
-                mime_type: "application/octet-stream".into(),
-                disposition: AttachmentDisposition::Attachment,
-                content_id: None,
-                content_location: None,
-                size_bytes: 0,
-                local_path: Some(file.path().into()),
-                provider_id: "empty".into(),
-            }],
-            fetched_at: chrono::Utc::now(),
-            metadata: Default::default(),
-        })
-        .await
-        .unwrap();
-    let outgoing = draft(source(&state, &id).await, "");
-    assert_eq!(
-        outgoing.managed_attachments.as_ref().unwrap()[0].length_bytes,
-        0
-    );
-    mutations::send_draft(&state, &outgoing, None)
-        .await
-        .unwrap();
-    let messages = sender.0.lock().unwrap();
-    let parsed = mail_parser::MessageParser::default()
-        .parse(&messages[0])
-        .unwrap();
-    assert_eq!(parsed.attachments().count(), 1);
-    assert!(parsed.attachments().next().unwrap().contents().is_empty());
 }

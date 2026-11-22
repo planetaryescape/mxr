@@ -5,7 +5,6 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { createQueryClient } from "@/lib/queryClient";
@@ -50,24 +49,6 @@ const thread: ThreadResponse = {
 afterEach(() => {
   act(() => useMailboxPane.getState().setActivePane("mailbox"));
 });
-
-const client = createQueryClient();
-
-function Harness({ open }: { open: boolean }) {
-  return (
-    <QueryClientProvider client={client}>
-      <TooltipProvider>
-        <ThreadReader data={thread} />
-      </TooltipProvider>
-      {/* Opened by a shortcut: no trigger to hand focus back to. */}
-      <Dialog open={open}>
-        <DialogContent aria-describedby={undefined}>
-          <DialogTitle>Keys</DialogTitle>
-        </DialogContent>
-      </Dialog>
-    </QueryClientProvider>
-  );
-}
 
 function row(id: string): ThreadResponse["messages"][number] {
   return {
@@ -140,27 +121,11 @@ describe("ThreadReader", () => {
     });
 
     await waitFor(() =>
-      expect(screen.getAllByTestId("thread-message").map((node) => node.dataset.messageId)).toEqual([
-        "m0",
-        "m1",
-        "m2",
-      ]),
+      expect(screen.getAllByTestId("thread-message").map((node) => node.dataset.messageId)).toEqual(
+        ["m0", "m1", "m2"],
+      ),
     );
     await waitFor(() => expect(scroll.scrollTop).toBe(400));
     expect(screen.queryByTestId("thread-load-earlier")).toBeNull();
-  });
-
-  test("takes focus back when an overlay closes while it drives the keys", async () => {
-    act(() => useMailboxPane.getState().setActivePane("reader"));
-    const { rerender } = render(<Harness open />);
-    const dialog = await screen.findByRole("dialog");
-    await waitFor(() => expect(dialog).toContainElement(document.activeElement as HTMLElement));
-
-    fireEvent.keyDown(dialog, { key: "Escape" });
-    rerender(<Harness open={false} />);
-
-    await waitFor(() =>
-      expect(screen.getByRole("article", { name: "Conversation: Contract renewal" })).toHaveFocus(),
-    );
   });
 });

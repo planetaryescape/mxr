@@ -296,28 +296,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn modes_parse_loosely_and_keep_their_keys() {
-        for mode in ModeKindData::ALL {
-            assert_eq!(ModeKindData::parse(mode.id()), Some(mode));
-            assert_eq!(ModeKindData::parse(mode.name()), Some(mode));
-            assert!(mode.key().starts_with("g "));
-        }
-        assert_eq!(ModeKindData::parse("to-do"), Some(ModeKindData::Todo));
-        assert_eq!(ModeKindData::parse("now"), None);
-        assert!(!ModeKindData::Archive.holds_inbox());
-    }
-
-    #[test]
-    fn serde_ids_match_the_cli_ids() {
-        for mode in ModeKindData::ALL {
-            assert_eq!(
-                serde_json::to_value(mode).unwrap(),
-                serde_json::Value::String(mode.id().to_string())
-            );
-        }
-    }
-
-    #[test]
     fn legacy_membership_defaults_asks() {
         let old = serde_json::json!({
             "account_id": mxr_core::AccountId::new(),

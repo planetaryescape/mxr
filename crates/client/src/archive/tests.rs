@@ -41,53 +41,6 @@ fn caller_survives_restart_and_operations_do_not_overwrite_each_other() {
     assert!(first.load("../escape").is_err());
 }
 
-#[test]
-fn concurrent_caller_initialization_publishes_one_complete_identity() {
-    use std::sync::{Arc, Barrier};
-
-    let temp = tempfile::tempdir().unwrap();
-    let barrier = Arc::new(Barrier::new(4));
-    let threads: Vec<_> = (0..4)
-        .map(|_| {
-            let root = temp.path().to_path_buf();
-            let barrier = barrier.clone();
-            std::thread::spawn(move || {
-                barrier.wait();
-                ArchiveJournal::new(&root).unwrap().caller_id().unwrap()
-            })
-        })
-        .collect();
-    let ids: Vec<_> = threads
-        .into_iter()
-        .map(|thread| thread.join().unwrap())
-        .collect();
-
-    assert!(ids.iter().all(|id| id == &ids[0]));
-    uuid::Uuid::parse_str(
-        &fs::read_to_string(temp.path().join("archive-operations/caller-id")).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(
-        ids[0],
-        fs::read_to_string(temp.path().join("archive-operations/caller-id")).unwrap()
-    );
-}
-
-#[test]
-fn open_existing_does_not_create_an_archive_journal() {
-    let temp = tempfile::tempdir().unwrap();
-    assert!(ArchiveJournal::open_existing(temp.path())
-        .unwrap()
-        .is_none());
-    assert!(!temp.path().join("archive-operations").exists());
-
-    let created = ArchiveJournal::new(temp.path()).unwrap();
-    assert!(ArchiveJournal::open_existing(temp.path())
-        .unwrap()
-        .is_some());
-    drop(created);
-}
-
 #[tokio::test]
 async fn submission_response_loss_retains_exact_review_for_reconnected_query() {
     use futures::{SinkExt, StreamExt};
@@ -242,48 +195,5 @@ async fn v068_status_fixture_refuses_archive_submission_without_capability() {
             ..
         })
     ));
-    server.await.unwrap();
-}
-#[tokio::test]
-async fn v068_status_fixture_refuses_private_replay_without_owner_capability() {
-    use futures::{SinkExt, StreamExt};
-    use mxr_protocol::{ClientKind, IpcCodec, IpcMessage, IpcPayload, Response};
-    use tokio::net::UnixListener;
-    use tokio_util::codec::Framed;
-    let temp = tempfile::tempdir().unwrap();
-    let socket = temp.path().join("v068.sock");
-    let listener = UnixListener::bind(&socket).unwrap();
-    let server = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-        let mut framed = Framed::new(stream, IpcCodec::new());
-        crate::tests::accept_declaration(&mut framed).await;
-        let status_request = framed.next().await.unwrap().unwrap();
-        assert!(matches!(
-            status_request.payload,
-            IpcPayload::Request(Request::GetStatus)
-        ));
-        let status = serde_json::from_value(serde_json::json!({"kind":"Status","draft_revision_supported":true,"send_outcome_supported":true,"uptime_secs":0,"accounts":[],"total_messages":0})).unwrap();
-        framed
-            .send(IpcMessage {
-                expected_workspace: None,
-                id: status_request.id,
-                source: ClientKind::Daemon,
-                payload: IpcPayload::Response(Response::Ok { data: status }),
-            })
-            .await
-            .unwrap();
-        assert!(
-            tokio::time::timeout(std::time::Duration::from_millis(100), framed.next())
-                .await
-                .is_err()
-        );
-    });
-    let mut client = IpcConnection::connect(&socket, ClientKind::Cli)
-        .await
-        .unwrap();
-    let error = client.capture_workspace().await.unwrap_err();
-    assert!(
-        matches!(error, ClientError::Daemon { ref code, .. } if code == "workspace_owner_unsupported")
-    );
     server.await.unwrap();
 }

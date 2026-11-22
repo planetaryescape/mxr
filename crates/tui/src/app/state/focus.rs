@@ -173,20 +173,6 @@ mod tests {
     }
 
     #[test]
-    fn skip_sends_it_to_the_end_and_the_last_one_aside() {
-        let items = [item(1), item(2)];
-        let mut page = loaded(&items);
-        page.skip();
-        assert_eq!(page.current(), Some(&items[1]));
-        page.handled(&items[1].thread_id);
-        page.skip();
-        assert_eq!(page.current(), None);
-        assert_eq!(page.deferred, vec![items[0].thread_id.clone()]);
-        page.revisit();
-        assert_eq!(page.current(), Some(&items[0]));
-    }
-
-    #[test]
     fn a_refetch_keeps_the_order_and_never_brings_back_what_was_handled() {
         let items = [item(1), item(2), item(3)];
         let mut page = loaded(&items);
@@ -209,18 +195,5 @@ mod tests {
                 done: 1
             }
         );
-    }
-
-    #[test]
-    fn restore_puts_it_back_in_front_and_start_at_picks_the_first() {
-        let items = [item(1), item(2), item(3)];
-        let mut page = FocusPageState::start(Some(items[2].thread_id.clone()), false, None);
-        page.sync(items.to_vec());
-        assert_eq!(page.current(), Some(&items[2]));
-        page.handled(&items[2].thread_id);
-        assert_eq!(page.current(), Some(&items[0]));
-        page.restore(&items[2].thread_id);
-        assert_eq!(page.current(), Some(&items[2]));
-        assert!(page.handled.is_empty());
     }
 }

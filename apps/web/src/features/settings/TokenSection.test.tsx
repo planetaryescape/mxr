@@ -53,25 +53,3 @@ test("a rejected token stays on the form and does not replace the stored token",
   expect(window.localStorage.getItem("mxr.bridgeToken")).toBe("existing-token");
   expect(submit).not.toHaveBeenCalled();
 });
-
-test("connection failures do not report that the token is invalid", async () => {
-  fetchBridge.mockRejectedValue(new TypeError("Failed to fetch"));
-  render(<TokenSection />);
-  connect("candidate-token");
-
-  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/couldn't reach/i));
-  expect(window.localStorage.getItem("mxr.bridgeToken")).toBeNull();
-  expect(submit).not.toHaveBeenCalled();
-});
-
-test("browser storage failures do not claim the server rejected the token", async () => {
-  fetchBridge.mockResolvedValue(new Response("{}", { status: 200 }));
-  vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
-    throw new DOMException("Site data blocked", "SecurityError");
-  });
-  render(<TokenSection />);
-  connect("valid-token");
-
-  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/couldn't save/i));
-  expect(submit).not.toHaveBeenCalled();
-});

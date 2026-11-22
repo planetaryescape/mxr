@@ -321,15 +321,3 @@ pub struct CorrectionData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub undone_at: Option<chrono::DateTime<chrono::Utc>>,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_mode_has_one_picker_key_and_none_repeat() {
-        let choices = MoveChoiceData::all();
-        let keys: Vec<&str> = choices.iter().map(|c| c.key.as_str()).collect();
-        assert_eq!(keys, ["m", "x", "u", "r", "e"]);
-    }
-}

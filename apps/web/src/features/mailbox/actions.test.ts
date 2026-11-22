@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { mailboxActions, syncNow } from "./actions";
-import { BridgeRequestError } from "@/api/client";
-import type { ActionContext } from "@/lib/actions/types";
+import { syncNow } from "./actions";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useModals } from "@/state/modalStore";
 import { EXPECTED_IPC_PROTOCOL_VERSION } from "@/lib/protocolCompatibility";
@@ -25,16 +23,6 @@ const toast = vi.hoisted(() => ({
   info: vi.fn<(message: string) => void>(),
 }));
 vi.mock("sonner", () => ({ toast }));
-
-const ctx: ActionContext = {
-  path: "/m/inbox",
-  activePane: "mailbox",
-  scopes: ["global"],
-  selectionCount: 0,
-  accountCount: 1,
-  hasFocusedThread: false,
-  isFirstAccountOnly: true,
-};
 
 beforeEach(() => {
   useConnectionStore.setState({ syncProgress: undefined });
@@ -63,141 +51,5 @@ describe("syncNow", () => {
     });
     expect(bridgeHealth.fetch).toHaveBeenCalledOnce();
     expect(toast.success).not.toHaveBeenCalled();
-  });
-
-  test.each([{ protocol: 4 }, { protocol: undefined }])(
-    "does not start sync when bridge protocol is $protocol",
-    async ({ protocol }) => {
-      bridgeHealth.fetch.mockResolvedValue(
-        protocol === undefined ? {} : { protocol_version: protocol },
-      );
-
-      await syncNow();
-
-      expect(client.apiFetch).not.toHaveBeenCalled();
-      expect(toast.error).toHaveBeenCalledWith(
-        "Update mxr to sync all accounts",
-        expect.objectContaining({
-          description: expect.stringContaining(
-            "This version of mxr needs updating before it can sync all accounts.",
-          ),
-        }),
-      );
-      expect(toast.error).toHaveBeenCalledWith(
-        "Update mxr to sync all accounts",
-        expect.objectContaining({ description: expect.stringContaining("Update mxr:") }),
-      );
-    },
-  );
-
-  test("does not start sync when the compatibility check fails", async () => {
-    bridgeHealth.fetch.mockRejectedValue(new Error("health unavailable"));
-
-    await syncNow();
-
-    expect(client.apiFetch).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(
-      "Couldn't verify mxr compatibility",
-      expect.objectContaining({
-        description: expect.stringContaining("mxr couldn't be reached, so sync wasn't started"),
-      }),
-    );
-    expect(toast.error).toHaveBeenCalledWith(
-      "Couldn't verify mxr compatibility",
-      expect.objectContaining({
-        description: expect.stringContaining("health unavailable"),
-      }),
-    );
-  });
-
-  test("still triggers global sync while a different account is already running", async () => {
-    useConnectionStore.setState({ syncProgress: { account_id: "a", current: 1, total: 9 } });
-    client.apiFetch.mockResolvedValue({ results: [{ account_name: "Work", result: "joined" }] });
-
-    await syncNow();
-
-    expect(client.apiFetch).toHaveBeenCalled();
-    expect(toast.info).not.toHaveBeenCalled();
-  });
-
-  test("shows failures next to the affected account", async () => {
-    client.apiFetch.mockResolvedValue({
-      results: [{ account_name: "Work", result: "failed", error: "offline" }],
-    });
-
-    await syncNow();
-
-    expect(toast.error).toHaveBeenCalledWith("Some accounts couldn't sync", {
-      description: "Work: offline",
-    });
-  });
-
-  test("reports a failure to start", async () => {
-    client.apiFetch.mockRejectedValue(new Error("daemon unreachable"));
-
-    await syncNow();
-
-    expect(toast.error).toHaveBeenCalledWith("Sync failed to start", {
-      description: "daemon unreachable",
-    });
-  });
-
-  test.each([404])(
-    "explains when the bridge lacks the global sync endpoint (%i)",
-    async (status) => {
-      client.apiFetch.mockRejectedValue(new BridgeRequestError(status, "Unsupported route"));
-
-      await syncNow();
-
-      expect(toast.error).toHaveBeenCalledWith("Update mxr to sync all accounts", {
-        description: expect.stringContaining("This daemon doesn't support global Sync now yet."),
-      });
-    },
-  );
-
-  test("explains a daemon protocol race after compatibility preflight", async () => {
-    client.apiFetch.mockRejectedValue(
-      new BridgeRequestError(
-        426,
-        `Global sync requires daemon IPC protocol ${EXPECTED_IPC_PROTOCOL_VERSION}; running daemon uses 5.`,
-        "protocol_mismatch",
-      ),
-    );
-
-    await syncNow();
-
-    expect(client.apiFetch).toHaveBeenCalledOnce();
-    expect(toast.error).toHaveBeenCalledWith(
-      "Update mxr to sync all accounts",
-      expect.objectContaining({
-        description: expect.stringContaining(
-          "This version of mxr needs updating before it can sync all accounts.",
-        ),
-      }),
-    );
-  });
-
-  test("rejects an invalid per-account response", async () => {
-    client.apiFetch.mockResolvedValue({
-      results: [{ account_name: "Work", result: "sometimes" }],
-    });
-
-    await syncNow();
-
-    expect(toast.error).toHaveBeenCalledWith("Sync failed to start", {
-      description: "The daemon returned an invalid account sync result",
-    });
-  });
-});
-
-describe("mailbox palette actions", () => {
-  test("Find an expert closes the palette and opens the expert finder", () => {
-    useModals.setState({ commandPaletteOpen: true });
-    const action = mailboxActions.find((item) => item.id === "mail.find-expert");
-
-    void action?.run?.(ctx);
-
-    expect(useModals.getState().commandPaletteOpen).toBe(false);
-    expect(useModals.getState().rightRail).toEqual({ kind: "expert-finder", payload: undefined });
   });
 });

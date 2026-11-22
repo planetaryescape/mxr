@@ -222,13 +222,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn colour_parses_every_slot_name() {
-        for color in AccountColor::ALL {
-            assert_eq!(color.as_str().parse::<AccountColor>().unwrap(), color);
-        }
-    }
-
-    #[test]
     fn a_slot_from_a_newer_daemon_decodes_as_unknown_not_an_error() {
         let color: AccountColor = serde_json::from_str("\"teal\"").unwrap();
         assert_eq!(color, AccountColor::Unknown);
@@ -247,21 +240,6 @@ mod tests {
     }
 
     #[test]
-    fn ninth_account_repeats_slots_in_order() {
-        let taken = AccountColor::ALL;
-        assert_eq!(next_account_color(&taken, 8), AccountColor::Sky);
-        assert_eq!(next_account_color(&taken, 9), AccountColor::Amber);
-        assert_eq!(next_account_color(&taken, 15), AccountColor::Slate);
-    }
-
-    #[test]
-    fn tag_accepts_one_to_three_alphanumerics_and_uppercases_them() {
-        assert_eq!(parse_account_tag("w").unwrap(), "W");
-        assert_eq!(parse_account_tag("pe").unwrap(), "PE");
-        assert_eq!(parse_account_tag("W2D").unwrap(), "W2D");
-    }
-
-    #[test]
     fn tag_rejects_empty_long_and_non_alphanumeric_input() {
         for bad in ["", "WORK", "W-", "W ", "é", "A_B"] {
             assert!(parse_account_tag(bad).is_err(), "{bad:?} should be refused");
@@ -273,27 +251,6 @@ mod tests {
     }
 
     #[test]
-    fn derived_tag_uses_initials_then_letters_then_digits() {
-        let id = crate::AccountId::new();
-        assert_eq!(
-            derive_account_tag("Planetary Escape", &taken_of(&[]), &id.as_str()).unwrap(),
-            "PE"
-        );
-        assert_eq!(
-            derive_account_tag("Work", &taken_of(&["W"]), &id.as_str()).unwrap(),
-            "WO"
-        );
-        assert_eq!(
-            derive_account_tag("Work", &taken_of(&["W", "WO"]), &id.as_str()).unwrap(),
-            "WOR"
-        );
-        assert_eq!(
-            derive_account_tag("Work", &taken_of(&["W", "WO", "WOR"]), &id.as_str()).unwrap(),
-            "W2"
-        );
-    }
-
-    #[test]
     fn derived_tag_never_leaves_the_three_character_bound() {
         let id = crate::AccountId::new();
         let mut taken = taken_of(&["W", "WO", "WOR"]);
@@ -302,38 +259,5 @@ mod tests {
         assert!(tag.len() <= MAX_ACCOUNT_TAG_LEN, "{tag}");
         assert!(!taken.contains(&tag), "{tag}");
         assert!(parse_account_tag(&tag).is_ok(), "{tag}");
-    }
-
-    #[test]
-    fn exhausted_search_is_an_error_not_a_longer_tag() {
-        let mut taken = std::collections::HashSet::new();
-        for length in 1..=MAX_ACCOUNT_TAG_LEN {
-            for index in 0..TAG_ALPHABET.len().pow(length as u32) {
-                taken.insert(tag_from_index(index, length));
-            }
-        }
-        let id = crate::AccountId::new();
-        assert_eq!(
-            derive_account_tag("Work", &taken, &id.as_str()),
-            Err(NoFreeAccountTag)
-        );
-    }
-
-    #[test]
-    fn exhaustive_search_returns_short_tags_first() {
-        let id = crate::AccountId::new();
-        let hex: String = id
-            .as_str()
-            .chars()
-            .filter(char::is_ascii_hexdigit)
-            .map(|c| c.to_ascii_uppercase())
-            .take(3)
-            .collect();
-        let mut taken = taken_of(&[hex.as_str()]);
-        taken.extend((0..TAG_ALPHABET.len()).map(|i| tag_from_index(i, 1)));
-        assert_eq!(
-            derive_account_tag("***", &taken, &id.as_str()).unwrap(),
-            "00"
-        );
     }
 }

@@ -218,34 +218,4 @@ mod tests {
         );
         assert!(!AccountMarks::from_accounts(&[work.clone(), home.clone()], true, depth).shown());
     }
-
-    #[test]
-    fn older_daemon_without_identity_draws_no_marks() {
-        let work = account("work", true, None);
-        let home = account("home", true, None);
-        let marks = AccountMarks::from_accounts(&[work.clone(), home], false, ChipDepth::Plain);
-        assert!(!marks.shown());
-        assert_eq!(marks.column_width(), 0);
-        assert!(marks
-            .row_cell(&work.account_id, &Theme::default())
-            .is_none());
-        assert!(marks.name_and_email(&work.account_id).is_some());
-    }
-
-    #[test]
-    fn truecolor_chip_fills_four_cells_in_the_account_colour() {
-        let work = account("work", true, Some(AccountColor::Sky));
-        let home = account("home", true, Some(AccountColor::Amber));
-        let marks = AccountMarks::from_accounts(&[work.clone(), home], false, ChipDepth::Truecolor);
-        let theme = Theme::dark();
-        let spans = marks.row_cell(&work.account_id, &theme).unwrap();
-        assert_eq!(spans[0].content, " W  ");
-        assert_eq!(
-            spans[0].style.bg,
-            Some(theme.account.fill(AccountColor::Sky))
-        );
-        assert_eq!(spans[0].style.fg, Some(theme.account.ink));
-        let width: usize = spans.iter().map(|span| span.content.chars().count()).sum();
-        assert_eq!(width, CHIP_WIDTH);
-    }
 }

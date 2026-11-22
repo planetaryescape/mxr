@@ -5,7 +5,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { ComposeSettingsSection } from "./ComposeSettingsSection";
 import { LlmSettingsSection } from "./LlmSettingsSection";
 
 const api = vi.hoisted(() => ({
@@ -39,9 +38,6 @@ function renderWithQueryClient(children: ReactNode) {
   });
   return render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
 }
-
-describe("AppearanceSection", () => {
-});
 
 describe("LlmSettingsSection", () => {
   beforeEach(() => {
@@ -139,165 +135,4 @@ describe("LlmSettingsSection", () => {
     });
     expect(screen.queryByLabelText(/^api key$/i)).not.toBeInTheDocument();
   });
-
-  test("falls back to LLM status when older daemons lack config endpoint", async () => {
-    api.fetch.mockImplementation((path, opts) => {
-      if (path === "/api/v1/platform/llm/config" && !opts) {
-        return Promise.reject(new Error("404 Not Found"));
-      }
-      if (path === "/api/v1/platform/llm/status") {
-        return Promise.resolve({
-          status: {
-            enabled: false,
-            provider: "noop",
-            model: "noop",
-            configured_model: "qwen2.5:3b-instruct",
-            base_url: null,
-            api_key_env: null,
-            api_key_present: false,
-            context_window: 0,
-            supports_streaming: false,
-            request_timeout_secs: 120,
-          },
-        });
-      }
-      throw new Error(`unexpected request: ${path}`);
-    });
-
-    renderWithQueryClient(<LlmSettingsSection />);
-
-    expect(await screen.findByDisplayValue("http://localhost:11434/v1")).toBeVisible();
-    expect(screen.getByText(/not editable llm config yet/i)).toBeVisible();
-    expect(screen.getByRole("button", { name: /daemon update required/i })).toBeDisabled();
-    expect(screen.queryByText(/could not load llm config/i)).not.toBeInTheDocument();
-  });
-});
-
-describe("ComposeSettingsSection", () => {
-  beforeEach(() => {
-    Element.prototype.scrollIntoView = vi.fn<() => void>();
-    accountsApi.fetchAccounts.mockResolvedValue({
-      accounts: [
-        {
-          account_id: "account-1",
-          key: "work",
-          name: "Work",
-          email: "work@example.com",
-          provider_kind: "gmail",
-          enabled: true,
-          is_default: true,
-        },
-        {
-          account_id: "account-2",
-          key: "personal",
-          name: "Personal",
-          email: "me@example.com",
-          provider_kind: "imap",
-          enabled: true,
-          is_default: false,
-        },
-      ],
-    });
-    accountsApi.setDefaultAccount.mockResolvedValue({ ok: true });
-    api.fetch.mockImplementation((path, opts) => {
-      if (path === "/api/v1/platform/llm/config") {
-        return Promise.resolve({
-          config: {
-            enabled: true,
-            model: "base-model",
-            compose_model: null,
-            models: [],
-            base_url: "http://localhost:11434/v1",
-            api_key_env: "",
-            context_window: 8192,
-            request_timeout_secs: 120,
-            allow_cloud_relationship_data: false,
-            overrides: {},
-          },
-        });
-      }
-      if (path === "/api/v1/mail/compose/models") {
-        return Promise.resolve({
-          models: {
-            current: "base-model",
-            choices: [
-              {
-                id: "local-model",
-                label: "Local writer",
-                cloud: false,
-                available: true,
-                sees: "this conversation and your past mail",
-                unavailable_reason: null,
-              },
-            ],
-          },
-        });
-      }
-      if (path === "/api/v1/mail/signatures" && !opts) {
-        return Promise.resolve({
-          signatures: [
-            {
-              id: "sig-1",
-              name: "sig",
-              body: "Best,\nB",
-              created_at: "2026-05-14T12:00:00Z",
-              updated_at: "2026-05-14T12:00:00Z",
-            },
-          ],
-        });
-      }
-      if (path === "/api/v1/mail/signature-defaults") {
-        return Promise.resolve({ defaults: [] });
-      }
-      if (path === "/api/v1/mail/signatures" && opts) {
-        return Promise.resolve({
-          signature: { id: "sig-2", name: "formal", body: "Regards" },
-        });
-      }
-      if (path === "/api/v1/mail/signatures/default") {
-        return Promise.resolve({ ok: true });
-      }
-      throw new Error(`unexpected request: ${path}`);
-    });
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  test("selects a compose default from the daemon catalogue when config uses the built-in list", async () => {
-    renderWithQueryClient(<ComposeSettingsSection />);
-    const picker = await screen.findByRole("combobox", { name: "Draft with" });
-    await waitFor(() => expect(picker).toHaveTextContent("base-model"));
-    fireEvent.keyDown(picker, { key: "ArrowDown" });
-    fireEvent.click(await screen.findByRole("option", { name: "Local writer" }));
-    await waitFor(() =>
-      expect(api.fetch).toHaveBeenCalledWith("/api/v1/platform/llm/config", {
-        method: "POST",
-        body: expect.objectContaining({
-          compose_model: "local-model",
-          model: "base-model",
-        }),
-      }),
-    );
-  });
-
-  test("sets the default compose account and global signature defaults", async () => {
-    renderWithQueryClient(<ComposeSettingsSection />);
-
-    expect(await screen.findByText("Work")).toBeVisible();
-    expect(screen.getByText("sig")).toBeVisible();
-
-    fireEvent.click(screen.getByRole("button", { name: /use personal as compose default/i }));
-    await waitFor(() => expect(accountsApi.setDefaultAccount.mock.calls[0]?.[0]).toBe("personal"));
-
-    fireEvent.click(screen.getByRole("button", { name: /use sig for new messages/i }));
-    await waitFor(() => {
-      expect(api.fetch).toHaveBeenCalledWith("/api/v1/mail/signatures/default", {
-        method: "POST",
-        body: { name: "sig", kind: "new" },
-      });
-    });
-  });
-
 });

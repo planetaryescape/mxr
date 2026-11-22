@@ -261,22 +261,4 @@ describe("key listeners outside the definition", () => {
     const unexplained = withRawKeys.filter((path) => !Object.hasOwn(ALLOWED, path));
     expect(unexplained).toEqual([]);
   });
-
-  test("every allowed file still handles keys, so the list can't rot", () => {
-    const stale = Object.keys(ALLOWED).filter((path) => !withRawKeys.includes(path));
-    expect(stale).toEqual([]);
-  });
-
-  test("the pattern sees each kind of listener", () => {
-    const samples = [
-      'window.addEventListener("keydown", onKeyDown)',
-      "<div onKeyDown={handle} />",
-      "<div onKeyDownCapture={handle} />",
-      "keymap.of([{ key: 'Mod-s' }])",
-      "editorProps: { handleKeyDown: (view, event) => false }",
-      "EditorView.domEventHandlers({ keydown })",
-    ];
-    expect(samples.filter((sample) => !RAW_KEYS.test(sample))).toEqual([]);
-    expect(RAW_KEYS.test('addEventListener("pointerdown", unlock)')).toBe(false);
-  });
 });

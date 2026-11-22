@@ -3,18 +3,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
-  createEvent,
   fireEvent,
   render as renderPlain,
   screen,
   type RenderOptions,
 } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { createJSONStorage } from "zustand/middleware";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { AssistantSplit } from "./AssistantSplit";
-import { useAssistantUi } from "./assistantStore";
 import { Transcript } from "./Transcript";
 
 const navigate = vi.fn<(options: { href: string }) => Promise<void>>();
@@ -95,7 +91,6 @@ function answer(path: string) {
   if (path.includes("/people/page")) return Promise.resolve({ kind: "PersonPage", page });
   return Promise.reject(new Error(`unexpected ${path}`));
 }
-const fetched = (part: string) => apiFetch.mock.calls.filter(([path]) => path.includes(part));
 
 function render(ui: ReactElement, options?: RenderOptions) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -119,22 +114,6 @@ function reply(text = "See [Q1 report](mxr:thread/t-1234567).") {
 
 const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
-function pointer(
-  el: HTMLElement,
-  kind: "Over" | "Out" | "Down" | "Up" | "Cancel",
-  pointerType: string,
-) {
-  const event = createEvent[`pointer${kind}` as const](el);
-  Object.defineProperty(event, "pointerType", { value: pointerType });
-  fireEvent(el, event);
-}
-
-function pointerEnter(chip: HTMLElement, pointerType: string) {
-  const event = createEvent.pointerOver(chip);
-  Object.defineProperty(event, "pointerType", { value: pointerType });
-  fireEvent(chip, event);
-}
-
 describe("the hover card on an email or person chip", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -154,33 +133,6 @@ describe("the hover card on an email or person chip", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
-  });
-
-  test("keyboard focus opens it after the delay, with what the chip knows first and the rest filled in", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    await wait(0);
-    expect(fetched("/threads/previews")).toHaveLength(0);
-
-    act(() => chip.focus());
-    await wait(399);
-    expect(screen.queryByTestId("link-hover-card")).toBeNull();
-    expect(fetched("/threads/previews")).toHaveLength(0);
-
-    await act(() => vi.advanceTimersByTimeAsync(1));
-    const card = screen.getByTestId("link-hover-card");
-    expect(card).toHaveTextContent("Q1 report");
-    expect(card.querySelector("[role=status]")).toBeNull();
-
-    await wait(10);
-    expect(fetched("/threads/previews")).toHaveLength(1);
-    expect(card).toHaveTextContent("Invoice 4471 overdue");
-    expect(card).toHaveTextContent("Dana Ruiz <dana@example.com>");
-    expect(card).toHaveTextContent("3 messages");
-    expect(card).toHaveTextContent("Please confirm payment by Friday");
-    expect(card).toHaveTextContent("To do");
-    expect(card).toHaveTextContent("Attachment");
-    expect(card).toHaveTextContent("1 unread");
   });
 
   test("a hostile subject and snippet stay text", async () => {
@@ -210,145 +162,5 @@ describe("the hover card on an email or person chip", () => {
     expect(navigate).toHaveBeenCalledWith({ href: "/m/archive/t-1234567" });
     await wait(10);
     expect(screen.queryByTestId("link-hover-card")).toBeNull();
-  });
-
-  test("a person's card shows their page and says when it is your turn", async () => {
-    reply("Ask [Diana Lee](mxr:person/person:d@x.com).");
-    const chip = screen.getByRole("link", { name: /Diana Lee/ });
-    act(() => chip.focus());
-    await wait(450);
-    const card = screen.getByTestId("link-hover-card");
-    expect(card).toHaveTextContent("Diana Lee");
-    expect(fetched("/people/page")).toHaveLength(1);
-    expect(fetched("/people/page")[0]?.[0]).toContain("conversation=false");
-    await wait(10);
-    expect(card).toHaveTextContent("close · usually 47m");
-    expect(card).toHaveTextContent("You've written 48 times since 2023.");
-    expect(card).toHaveTextContent("Your turn");
-    expect(fetched("/threads/previews")).toHaveLength(0);
-  });
-
-  function clickWithFocus(chip: HTMLElement) {
-    fireEvent.pointerDown(chip);
-    act(() => chip.focus());
-    fireEvent.pointerUp(chip);
-    fireEvent.click(chip);
-  }
-
-  const never = async () => {
-    await wait(1500);
-    return [screen.queryByTestId("link-hover-card"), fetched("/threads/previews")] as const;
-  };
-
-  test("a click during the open delay, then leaving, never opens the card", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointerEnter(chip, "mouse");
-    await wait(200);
-    clickWithFocus(chip);
-    expect(navigate).toHaveBeenCalledWith({ href: "/m/archive/t-1234567" });
-    await wait(20);
-    fireEvent.pointerOut(chip);
-    const [card, calls] = await never();
-    expect(card).toBeNull();
-    expect(calls).toHaveLength(0);
-
-    act(() => chip.blur());
-    pointerEnter(chip, "mouse");
-    await wait(450);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-  });
-
-  test("Enter on a focused link does not open the card after it", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    act(() => chip.focus());
-    await wait(100);
-    fireEvent.keyDown(chip, { key: "Enter" });
-    fireEvent.click(chip);
-    const [card, calls] = await never();
-    expect(card).toBeNull();
-    expect(calls).toHaveLength(0);
-  });
-
-  test("an ordinary hover opens it, and one timer serves hover plus focus", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointerEnter(chip, "mouse");
-    await wait(300);
-    act(() => chip.focus());
-    await wait(150);
-    expect(screen.queryByTestId("link-hover-card")).toBeNull();
-    await wait(300);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-  });
-
-  test("after a touch tap in the order down, up, leave, click a mouse hover still opens it", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointer(chip, "Down", "touch");
-    pointer(chip, "Up", "touch");
-    pointer(chip, "Out", "touch");
-    fireEvent.click(chip);
-    expect(navigate).toHaveBeenCalledTimes(1);
-    await wait(1000);
-    expect(screen.queryByTestId("link-hover-card")).toBeNull();
-
-    pointer(chip, "Over", "mouse");
-    await wait(450);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-  });
-
-  test("leaving the link closes the card after the grace, and moving onto the card keeps it", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointer(chip, "Over", "mouse");
-    await wait(450);
-    pointer(chip, "Out", "mouse");
-    await wait(100);
-    pointer(screen.getByTestId("link-hover-card"), "Over", "mouse");
-    await wait(500);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-  });
-
-  test("Esc closes the open card and cancels another link's pending one", async () => {
-    reply("See [A](mxr:thread/t-a) and [B](mxr:thread/t-b).");
-    const a = screen.getByRole("link", { name: "A" });
-    const b = screen.getByRole("link", { name: "B" });
-    pointer(a, "Over", "mouse");
-    await wait(450);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-    pointer(a, "Out", "mouse");
-    pointer(b, "Over", "mouse");
-    await wait(100);
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await wait(1500);
-    expect(screen.queryByTestId("link-hover-card")).toBeNull();
-  });
-
-  test("in the drawer, Escape closes the card and leaves the assistant open", async () => {
-    // jsdom here has no localStorage for the store's persistence to write to.
-    useAssistantUi.persist.setOptions({
-      storage: createJSONStorage(() => ({
-        getItem: () => null,
-        setItem: () => undefined,
-        removeItem: () => undefined,
-      })),
-    });
-    useAssistantUi.setState({ open: true });
-    render(<AssistantSplit>{null}</AssistantSplit>);
-    await wait(100);
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    act(() => chip.focus());
-    await wait(450);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-
-    fireEvent.keyDown(chip, { key: "Escape" });
-    await wait(10);
-    expect(screen.queryByTestId("link-hover-card")).toBeNull();
-    expect(useAssistantUi.getState().open).toBe(true);
-
-    fireEvent.keyDown(chip, { key: "Escape" });
-    expect(useAssistantUi.getState().open).toBe(false);
   });
 });

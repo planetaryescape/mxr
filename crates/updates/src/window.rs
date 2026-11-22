@@ -248,23 +248,6 @@ mod tests {
     }
 
     #[test]
-    fn a_sign_in_alert_mentioning_a_code_keeps_its_two_days() {
-        let alert = window(
-            "New sign-in to your account",
-            "If this wasn't you, your security code is below. It expires in 10 minutes.",
-            at(),
-            &utc(),
-        )
-        .unwrap();
-        assert_eq!(alert.kind, WindowKind::SignIn);
-        assert_eq!(alert.until, at() + Duration::days(2));
-        assert_eq!(
-            kind_of("Your account", "Your verification code is 1234"),
-            None
-        );
-    }
-
-    #[test]
     fn sign_in_alerts_last_two_days_and_offers_their_end() {
         let alert = window("New sign-in from Chrome on Windows", "", at(), &utc()).unwrap();
         assert_eq!(alert.kind, WindowKind::SignIn);

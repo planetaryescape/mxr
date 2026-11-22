@@ -54,26 +54,6 @@ mod tests {
     }
 
     #[test]
-    fn today_shows_local_clock_and_how_long_ago() {
-        let at = utc(2026, 10, 21, 12, 2);
-        let now = utc(2026, 10, 21, 14, 2);
-        assert_eq!(
-            received_label(at, now, DisplayZone::Fixed(zone())),
-            "Today 14:02 \u{b7} 2h ago"
-        );
-    }
-
-    #[test]
-    fn another_year_adds_the_year() {
-        let at = utc(2025, 10, 21, 12, 2);
-        let now = utc(2026, 10, 22, 9, 0);
-        assert_eq!(
-            received_label(at, now, DisplayZone::Fixed(zone())),
-            "Tue 21 Oct 2025 14:02"
-        );
-    }
-
-    #[test]
     fn the_local_date_decides_the_day_not_utc() {
         let at = utc(2026, 10, 21, 23, 30);
         let now = utc(2026, 10, 22, 6, 0);

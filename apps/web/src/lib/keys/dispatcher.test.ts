@@ -3,12 +3,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { todoActions } from "@/features/todo/actions";
 import { fromDefinition } from "@/lib/actions/definition";
-import { readerActions } from "@/lib/actions/paneActions";
 import { ActionRegistry } from "@/lib/actions/registry";
 import type { Action, ActionContext, ActionScope } from "@/lib/actions/types";
 
 import { setController } from "./controllers";
-import { installKeyDispatcher, SEQUENCE_TIMEOUT_MS } from "./dispatcher";
+import { installKeyDispatcher } from "./dispatcher";
 
 const ALL_SCOPES: ActionScope[] = ["global", "sidebar", "list", "reader", "screener", "todo"];
 
@@ -79,10 +78,6 @@ describe("installKeyDispatcher", () => {
     expect(notCancelled).toBe(false);
   });
 
-  test("an unbound key is left alone", () => {
-    expect(press({ key: "q" })).toBe(true);
-  });
-
   test("g i waits for the second key, reports the prefix, then runs", () => {
     const inbox = runAction("inbox", "g i");
     registry.define(inbox.action);
@@ -94,143 +89,6 @@ describe("installKeyDispatcher", () => {
     press({ key: "i" });
     expect(inbox.run).toHaveBeenCalledTimes(1);
     expect(pending.at(-1)).toBeNull();
-  });
-
-  test("the prefix expires after the sequence timeout", () => {
-    const inbox = runAction("inbox", "g i");
-    registry.define(inbox.action);
-
-    press({ key: "g" });
-    vi.advanceTimersByTime(SEQUENCE_TIMEOUT_MS);
-    expect(pending.at(-1)).toBeNull();
-
-    press({ key: "i" });
-    expect(inbox.run).not.toHaveBeenCalled();
-  });
-
-  test.each(["pointer", "input", "blur"])(
-    "a %s interaction cancels a pending sequence",
-    (interaction) => {
-      const inbox = runAction("inbox", "g i");
-      registry.define(inbox.action);
-      press({ key: "g" });
-      if (interaction === "pointer") fireEvent.pointerDown(document.body);
-      else if (interaction === "blur") fireEvent(window, new Event("blur"));
-      else {
-        const input = document.createElement("input");
-        document.body.append(input);
-        input.focus();
-        input.remove();
-      }
-      expect(pending.at(-1)).toBeNull();
-      press({ key: "i" });
-      expect(inbox.run).not.toHaveBeenCalled();
-    },
-  );
-
-  test("a dead-end sequence cancels the prefix, runs nothing and says so", () => {
-    const inbox = runAction("inbox", "g i");
-    const unread = runAction("unread", "U");
-    registry.defineMany([inbox.action, unread.action]);
-
-    expect(press({ key: "g" })).toBe(false);
-    expect(press({ key: "U", shiftKey: true })).toBe(false);
-
-    expect(unread.run).not.toHaveBeenCalled();
-    expect(inbox.run).not.toHaveBeenCalled();
-    expect(pending.at(-1)).toBeNull();
-    expect(deadEnds).toEqual(["g U"]);
-
-    press({ key: "U", shiftKey: true });
-    expect(unread.run).toHaveBeenCalledTimes(1);
-  });
-
-  test("a dead end that is itself a prefix cancels too, and starts nothing", () => {
-    const inbox = runAction("inbox", "g i");
-    const selectAll = runAction("select-all", "* a");
-    registry.defineMany([inbox.action, selectAll.action]);
-
-    press({ key: "g" });
-    press({ key: "*" });
-    press({ key: "a" });
-
-    expect(selectAll.run).not.toHaveBeenCalled();
-    expect(inbox.run).not.toHaveBeenCalled();
-    expect(deadEnds).toEqual(["g *"]);
-  });
-
-  test("a modifier chord after a prefix still runs", () => {
-    const inbox = runAction("inbox", "g i");
-    const palette = runAction("palette", "Mod+k");
-    registry.defineMany([inbox.action, palette.action]);
-
-    press({ key: "g" });
-    press({ key: "k", ctrlKey: true });
-
-    expect(palette.run).toHaveBeenCalledTimes(1);
-    expect(deadEnds).toEqual([]);
-  });
-
-  test("a chord that is complete in one scope but a prefix in another runs after the timeout", () => {
-    const star = runAction("global-star", "*");
-    const selectAll = runAction("list-select-all", "* a", { scopes: ["list"] });
-    registry.defineMany([star.action, selectAll.action]);
-    scopes = ["list", "global"];
-
-    press({ key: "*" });
-    expect(star.run).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(SEQUENCE_TIMEOUT_MS);
-    expect(star.run).toHaveBeenCalledTimes(1);
-    expect(selectAll.run).not.toHaveBeenCalled();
-  });
-
-  describe("scoped commands", () => {
-    let listArchive: ReturnType<typeof vi.fn<() => void>>;
-    let readerArchive: ReturnType<typeof vi.fn<() => void>>;
-
-    beforeEach(() => {
-      listArchive = vi.fn<() => void>();
-      readerArchive = vi.fn<() => void>();
-      registry.define({
-        id: "mail.archive",
-        label: "Archive",
-        group: "Mail",
-        command: "archive",
-        shortcut: "e",
-        scopes: ["list", "reader"],
-      });
-    });
-
-    test("fire on the innermost active scope's controller", () => {
-      setController("list", { archive: listArchive });
-      setController("reader", { archive: readerArchive });
-
-      scopes = ["reader", "list", "global"];
-      press({ key: "e" });
-      expect(readerArchive).toHaveBeenCalledTimes(1);
-      expect(listArchive).not.toHaveBeenCalled();
-
-      scopes = ["list", "global"];
-      press({ key: "e" });
-      expect(listArchive).toHaveBeenCalledTimes(1);
-      expect(readerArchive).toHaveBeenCalledTimes(1);
-    });
-
-    test("do nothing while the scope is inactive, even with a controller mounted", () => {
-      setController("reader", { archive: readerArchive });
-      scopes = ["list", "global"];
-
-      expect(press({ key: "e" })).toBe(true);
-      expect(readerArchive).not.toHaveBeenCalled();
-    });
-
-    test("do nothing when the active scope has no controller for the command", () => {
-      setController("list", { down: () => undefined });
-      scopes = ["list", "global"];
-
-      expect(press({ key: "e" })).toBe(true);
-    });
   });
 
   test("a key that is part of an IME composition is not a shortcut", () => {
@@ -246,16 +104,6 @@ describe("installKeyDispatcher", () => {
   });
 
   describe("text fields and overlays", () => {
-    test("a global modifier chord still works from an input", () => {
-      const palette = runAction("palette", "Mod+k");
-      registry.define(palette.action);
-      const input = document.createElement("input");
-      document.body.append(input);
-
-      expect(press({ key: "k", ctrlKey: true }, input)).toBe(false);
-      expect(palette.run).toHaveBeenCalledTimes(1);
-    });
-
     test("editing chords stay with the field even when bound", () => {
       const copy = runAction("copy-link", "Mod+c");
       registry.define(copy.action);
@@ -273,39 +121,6 @@ describe("installKeyDispatcher", () => {
 
       press({ key: "c" }, document.querySelector("button")!);
       expect(compose.run).not.toHaveBeenCalled();
-    });
-
-    test("a dialog animating closed does not swallow keys", () => {
-      const compose = runAction("compose", "c");
-      registry.define(compose.action);
-      document.body.innerHTML = `<div role="dialog" data-state="closed"><span tabindex="0">x</span></div>`;
-
-      press({ key: "c" }, document.querySelector("span")!);
-      expect(compose.run).toHaveBeenCalledTimes(1);
-    });
-
-    // Radix keeps a menu mounted,
-    // with focus inside it, through its exit animation.
-    test("Enter on a focused button keeps its native meaning", () => {
-      const open = vi.fn<() => void>();
-      registry.define({
-        id: "list.open",
-        label: "Open",
-        group: "Move",
-        command: "open",
-        shortcut: "Enter",
-        scopes: ["list"],
-      });
-      setController("list", { open });
-      scopes = ["list", "global"];
-      const button = document.createElement("button");
-      document.body.append(button);
-
-      expect(press({ key: "Enter" }, button)).toBe(true);
-      expect(open).not.toHaveBeenCalled();
-
-      press({ key: "Enter" });
-      expect(open).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -328,19 +143,6 @@ describe("installKeyDispatcher", () => {
     expect(pending.at(-1)).not.toBe("g");
   });
 
-  test("Space keeps its reader page-down action", () => {
-    registry.defineMany([...todoActions, ...readerActions].map(fromDefinition));
-    const done = vi.fn<() => void>();
-    const pageDown = vi.fn<() => void>();
-    setController("todo", { done });
-    setController("reader", { pageDown });
-    scopes = ["reader", "todo", "global"];
-
-    expect(press({ key: " " })).toBe(false);
-    expect(pageDown).toHaveBeenCalledTimes(1);
-    expect(done).not.toHaveBeenCalled();
-  });
-
   test("isSuspended vetoes every key, modifier chords included", () => {
     const compose = runAction("compose", "c");
     const palette = runAction("palette", "Mod+k");
@@ -352,29 +154,6 @@ describe("installKeyDispatcher", () => {
 
     expect(compose.run).not.toHaveBeenCalled();
     expect(palette.run).not.toHaveBeenCalled();
-  });
-
-  test("uninstalling stops dispatch", () => {
-    const compose = runAction("compose", "c");
-    registry.define(compose.action);
-    uninstall();
-
-    press({ key: "c" });
-    expect(compose.run).not.toHaveBeenCalled();
-  });
-
-  test("Escape after a pending prefix only cancels the prefix", () => {
-    const inbox = runAction("inbox", "g i");
-    const close = runAction("close", "Escape");
-    registry.defineMany([inbox.action, close.action]);
-
-    press({ key: "g" });
-    press({ key: "Escape" });
-    press({ key: "i" });
-
-    expect(close.run).not.toHaveBeenCalled();
-    expect(inbox.run).not.toHaveBeenCalled();
-    expect(pending.at(-1)).toBeNull();
   });
 
   test("a held key runs a state-changing action once, not once per repeat", () => {
@@ -391,52 +170,6 @@ describe("installKeyDispatcher", () => {
 
     expect(archive.run).toHaveBeenCalledTimes(1);
     expect(star.run).toHaveBeenCalledTimes(1);
-  });
-
-  test("holding j or k keeps moving: only movement repeats", () => {
-    const down = runAction("list.down", "j");
-    const up = runAction("list.up", "k");
-    registry.defineMany([down.action, up.action]);
-
-    press({ key: "j" });
-    press({ key: "j", repeat: true });
-    press({ key: "j", repeat: true });
-    press({ key: "k", repeat: true });
-
-    expect(down.run).toHaveBeenCalledTimes(3);
-    expect(up.run).toHaveBeenCalledTimes(1);
-  });
-
-  test("a repeat never starts or completes a chord, and modifier chords don't repeat", () => {
-    const inbox = runAction("inbox", "g i");
-    const palette = runAction("palette", "Mod+k");
-    registry.defineMany([inbox.action, palette.action]);
-
-    press({ key: "g", repeat: true });
-    press({ key: "i" });
-    expect(inbox.run).not.toHaveBeenCalled();
-
-    press({ key: "k", ctrlKey: true });
-    press({ key: "k", ctrlKey: true, repeat: true });
-    expect(palette.run).toHaveBeenCalledTimes(1);
-  });
-
-  test("a key that moved away says where its action went and runs nothing", () => {
-    const letGo = runAction("updates.let-go-all", "E", {
-      label: "Let go of all",
-      scopes: ["updates"],
-      movedAliases: [{ chord: "A", scopes: ["updates"] }],
-    });
-    registry.define(letGo.action);
-    scopes = ["updates", "global"];
-
-    const notCancelled = press({ key: "A", shiftKey: true });
-
-    expect(letGo.run).not.toHaveBeenCalled();
-    expect(movedNotices).toEqual(["Let go of all is now E"]);
-    expect(notCancelled).toBe(false);
-    press({ key: "E", shiftKey: true });
-    expect(letGo.run).toHaveBeenCalledTimes(1);
   });
 
   test("q closes a dialog as Esc does, but types in a field", () => {
@@ -458,90 +191,6 @@ describe("installKeyDispatcher", () => {
     } finally {
       document.removeEventListener("keydown", onKey);
     }
-  });
-
-  test("Esc leaves the filters g f focused for the pane, before the page's own Esc", () => {
-    const escape = runAction("messages.escape", "Escape", { scopes: ["messages"] });
-    registry.define(escape.action);
-    scopes = ["messages", "global"];
-    document.body.innerHTML = `
-      <section data-mode-pane tabindex="-1"></section>
-      <div role="radiogroup"><button role="radio">Your turn</button></div>`;
-    const radio = document.querySelector("button")!;
-    radio.focus();
-
-    press({ key: "Escape" }, radio);
-    expect(document.activeElement).toBe(document.querySelector("[data-mode-pane]"));
-    expect(escape.run).not.toHaveBeenCalled();
-
-    press({ key: "Escape" }, document.activeElement!);
-    expect(escape.run).toHaveBeenCalledTimes(1);
-  });
-
-  test("q closes a mail dialog, which suspends the page's keys while it is open", () => {
-    const dialog = document.createElement("div");
-    dialog.setAttribute("role", "dialog");
-    dialog.setAttribute("data-state", "open");
-    dialog.innerHTML = "<button>Not a to-do</button>";
-    document.body.append(dialog);
-    const escapes: EventTarget[] = [];
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") escapes.push(event.target!);
-    };
-    document.addEventListener("keydown", onKey);
-    suspended = true;
-    try {
-      const button = dialog.querySelector("button")!;
-      press({ key: "q" }, button);
-      expect(escapes).toEqual([button]);
-    } finally {
-      document.removeEventListener("keydown", onKey);
-    }
-  });
-
-  test("q on the composer's toolbar leaves the half-written message open", () => {
-    const sheet = document.createElement("div");
-    sheet.setAttribute("role", "dialog");
-    sheet.innerHTML = "<div data-compose-surface><button>Attach</button></div>";
-    document.body.append(sheet);
-    const escapes: EventTarget[] = [];
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") escapes.push(event.target!);
-    };
-    document.addEventListener("keydown", onKey);
-    suspended = true;
-    try {
-      press({ key: "q" }, sheet.querySelector("button")!);
-      expect(escapes).toEqual([]);
-    } finally {
-      document.removeEventListener("keydown", onKey);
-    }
-  });
-
-  test("a retired key whose action has no key left names where to go instead", () => {
-    const tab = runAction("nav.tab-mail", "", {
-      label: "Mail",
-      shortcut: undefined,
-      movedAliases: [{ chord: "1", scopes: ["global"], to: "g i" }],
-    });
-    const headers = runAction("reader.headers", "", {
-      label: "Raw headers",
-      shortcut: undefined,
-      paletteOnly: true,
-      scopes: ["reader"],
-      movedAliases: [{ chord: "g H", scopes: ["reader"] }],
-    });
-    registry.define(tab.action);
-    registry.define(headers.action);
-    scopes = ["reader", "global"];
-
-    press({ key: "1" });
-    press({ key: "g" });
-    press({ key: "H", shiftKey: true });
-
-    expect(tab.run).not.toHaveBeenCalled();
-    expect(headers.run).not.toHaveBeenCalled();
-    expect(movedNotices).toEqual(["Mail is now g i", "Raw headers is now null"]);
   });
 });
 

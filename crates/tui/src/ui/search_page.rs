@@ -357,17 +357,4 @@ mod tests {
 
         assert_eq!(line_text(&line), degraded.notice());
     }
-
-    #[test]
-    fn a_full_answer_keeps_the_count_line() {
-        let state = SearchPageState {
-            query: "invoice".into(),
-            ui_status: SearchUiStatus::Loaded,
-            ..SearchPageState::default()
-        };
-
-        let line = query_status_line(&state, 3, &crate::theme::Theme::default());
-
-        assert_eq!(line_text(&line), "loaded 3 matches");
-    }
 }

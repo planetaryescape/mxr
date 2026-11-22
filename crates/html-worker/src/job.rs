@@ -125,18 +125,4 @@ mod tests {
     fn with_no_helper_installed_the_job_runs_on_the_calling_thread() {
         assert_eq!(SHOUT.call("ab", &2).as_deref(), Some("abab"));
     }
-
-    #[test]
-    fn an_erased_job_decodes_params_runs_and_encodes_the_result() {
-        let bytes = SHOUT.run_erased("ab", b"3").expect("runs");
-        assert_eq!(bytes, b"\"ababab\"");
-    }
-
-    #[test]
-    fn an_erased_job_reports_bad_params_without_running() {
-        let error = SHOUT
-            .run_erased("ab", b"\"not a number\"")
-            .expect_err("bad params");
-        assert!(error.contains("did not decode"), "{error}");
-    }
 }

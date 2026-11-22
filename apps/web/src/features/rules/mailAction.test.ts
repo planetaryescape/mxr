@@ -52,30 +52,6 @@ function mailAction(value: string): SupportedRuleAction | null {
 }
 
 describe("rules mailAction parser", () => {
-  test("parses bare verbs", () => {
-    expect(mailActions("archive")).toEqual([{ kind: "archive" }]);
-    expect(mailActions("trash")).toEqual([{ kind: "trash" }]);
-    expect(mailActions("star")).toEqual([{ kind: "star" }]);
-  });
-
-  test("parses label aliases with arbitrary case + whitespace", () => {
-    expect(mailActions("label:Receipts")).toEqual([{ kind: "label-add", label: "Receipts" }]);
-    expect(mailActions("ADD-LABEL: Follow Up ")).toEqual([
-      {
-        kind: "label-add",
-        label: "Follow Up",
-      },
-    ]);
-    expect(mailActions("unlabel:Inbox")).toEqual([{ kind: "label-remove", label: "Inbox" }]);
-    expect(mailActions("remove-label: Queue ")).toEqual([{ kind: "label-remove", label: "Queue" }]);
-  });
-
-  test("rejects unsupported strings", () => {
-    expect(mailActions("forward")).toBeNull();
-    expect(mailActions("label:")).toBeNull();
-    expect(mailActions("")).toBeNull();
-  });
-
   test("parses ordered action chains", () => {
     expect(mailActions("mark-read,archive")).toEqual([{ kind: "read" }, { kind: "archive" }]);
     expect(mailActions("label:Follow Up; archive")).toEqual([

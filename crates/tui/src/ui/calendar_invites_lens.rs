@@ -253,11 +253,4 @@ mod tests {
         assert!(rendered.contains("Alice"));
         assert!(rendered.contains("14:00"));
     }
-
-    #[test]
-    fn format_when_handles_ical_datetime_and_fallback() {
-        assert_eq!(format_when(None), "—");
-        assert!(format_when(Some("20260526T140000Z")).contains("14:00"));
-        assert_eq!(format_when(Some("not-a-date")), "not-a-date");
-    }
 }

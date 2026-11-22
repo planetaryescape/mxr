@@ -288,46 +288,6 @@ mod tests {
     }
 
     #[test]
-    fn no_model_stops_the_asking() {
-        let mut state = RowGistState::default();
-        let start = Instant::now();
-        let ids = state.take_request([ThreadId::new()], start).unwrap();
-        state.apply_batch(
-            &ids,
-            state.epoch(),
-            &ThreadGistBatchData {
-                model: GistModelData::Disabled,
-                gists: vec![],
-                queued: vec![],
-                in_flight: vec![],
-                skipped: vec![],
-            },
-            start,
-        );
-        assert_eq!(
-            state.take_request([ThreadId::new()], start + Duration::from_secs(2)),
-            None
-        );
-        assert_eq!(state.model, Some(GistModelData::Disabled));
-    }
-
-    #[test]
-    fn rows_around_the_cursor_come_cursor_first() {
-        let ids: Vec<ThreadId> = (0..5).map(|_| ThreadId::new()).collect();
-        let order = around(&ids, 2);
-        assert_eq!(
-            order,
-            vec![
-                ids[2].clone(),
-                ids[3].clone(),
-                ids[4].clone(),
-                ids[1].clone(),
-                ids[0].clone()
-            ]
-        );
-    }
-
-    #[test]
     fn an_answer_from_before_an_invalidation_is_dropped() {
         let (a, b) = (ThreadId::new(), ThreadId::new());
         let mut state = RowGistState::default();

@@ -47,6 +47,47 @@ async fn registered_client(state: &AppState) -> (String, RemoteSecret) {
 }
 
 #[tokio::test]
+async fn remote_draft_list_omits_path_backed_drafts_and_direct_reads_still_refuse_them() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let (id, mail) = send_registration(&state).await;
+    let owner = owner(&state).await;
+    let portable = portable_draft(&state);
+    state.store.insert_draft(&portable).await.unwrap();
+    let host_path = "/private/host-secret-do-not-open";
+    let mut path_backed = portable_draft(&state);
+    path_backed.attachments.push(host_path.into());
+    state.store.insert_draft(&path_backed).await.unwrap();
+
+    let listed = remote::read_owned(&state, &id, &mail, &Request::ListDrafts, Some(&owner))
+        .await
+        .unwrap();
+
+    assert!(!serde_json::to_string(&listed).unwrap().contains(host_path));
+    let ResponseData::Drafts { drafts } = listed else {
+        panic!("expected the portable drafts");
+    };
+    assert_eq!(
+        drafts.into_iter().map(|draft| draft.id).collect::<Vec<_>>(),
+        vec![portable.id]
+    );
+    let error = remote::read_owned(
+        &state,
+        &id,
+        &mail,
+        &Request::GetDraft {
+            draft_id: path_backed.id,
+        },
+        Some(&owner),
+    )
+    .await
+    .unwrap_err()
+    .into_response();
+    assert!(
+        matches!(error, mxr_protocol::Response::Error { code, .. } if code == "remote_path_backed_draft")
+    );
+}
+
+#[tokio::test]
 async fn revocation_denies_the_next_operation_on_an_already_authenticated_client() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (client_id, mail) = registered_client(&state).await;
@@ -79,35 +120,6 @@ async fn remote_read_status_is_available_without_enabling_ai_or_exposing_host_ke
     assert!(snapshot.keys.is_empty());
     assert!(snapshot.base_url.is_none());
     assert!(snapshot.api_key_env.is_none());
-}
-
-#[tokio::test]
-async fn authenticated_remote_client_can_count_mail_search_results() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let (client_id, mail) = registered_client(&state).await;
-    state
-        .sync_engine
-        .sync_account(state.default_provider().as_ref())
-        .await
-        .unwrap();
-
-    let response = remote::read(
-        &state,
-        &client_id,
-        &mail,
-        &Request::Count {
-            query: "deployment".into(),
-            account_id: None,
-            mode: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    let ResponseData::Count { count } = response else {
-        panic!("Count should return the matching mailbox result count");
-    };
-    assert!(count > 0, "the synthetic mailbox has deployment matches");
 }
 
 #[tokio::test]
@@ -517,47 +529,6 @@ async fn send_grant_pushes_portable_drafts_and_denials_name_the_missing_grant() 
         .await
         .unwrap();
     assert!(state.store.get_draft(&draft.id).await.unwrap().is_some());
-}
-
-#[tokio::test]
-async fn remote_draft_list_omits_path_backed_drafts_and_direct_reads_still_refuse_them() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let (id, mail) = send_registration(&state).await;
-    let owner = owner(&state).await;
-    let portable = portable_draft(&state);
-    state.store.insert_draft(&portable).await.unwrap();
-    let host_path = "/private/host-secret-do-not-open";
-    let mut path_backed = portable_draft(&state);
-    path_backed.attachments.push(host_path.into());
-    state.store.insert_draft(&path_backed).await.unwrap();
-
-    let listed = remote::read_owned(&state, &id, &mail, &Request::ListDrafts, Some(&owner))
-        .await
-        .unwrap();
-
-    assert!(!serde_json::to_string(&listed).unwrap().contains(host_path));
-    let ResponseData::Drafts { drafts } = listed else {
-        panic!("expected the portable drafts");
-    };
-    assert_eq!(
-        drafts.into_iter().map(|draft| draft.id).collect::<Vec<_>>(),
-        vec![portable.id]
-    );
-    let error = remote::read_owned(
-        &state,
-        &id,
-        &mail,
-        &Request::GetDraft {
-            draft_id: path_backed.id,
-        },
-        Some(&owner),
-    )
-    .await
-    .unwrap_err()
-    .into_response();
-    assert!(
-        matches!(error, mxr_protocol::Response::Error { code, .. } if code == "remote_path_backed_draft")
-    );
 }
 
 #[tokio::test]

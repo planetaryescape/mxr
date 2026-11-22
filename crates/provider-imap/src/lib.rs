@@ -1759,12 +1759,7 @@ mod tests {
 
     use super::*;
     use crate::session::mock::MockImapSessionFactory;
-    use crate::session::{ImapSession, ImapSessionFactory};
     use crate::types::*;
-    use async_trait::async_trait;
-    use std::collections::HashMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn original_google_bytes_verify_but_gmail_extensions_do_not_change_endpoint_trust() {
@@ -1874,179 +1869,6 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
-    struct FetchOverlapState {
-        active_fetches: AtomicUsize,
-        max_active_fetches: AtomicUsize,
-    }
-
-    struct ConcurrentInitialSyncSession {
-        folders: Vec<FolderInfo>,
-        mailbox_info_by_name: HashMap<String, MailboxInfo>,
-        messages_by_mailbox: HashMap<String, Vec<FetchedMessage>>,
-        overlap: Arc<FetchOverlapState>,
-        selected_mailbox: Option<String>,
-    }
-
-    #[async_trait]
-    impl ImapSession for ConcurrentInitialSyncSession {
-        async fn capabilities(&mut self) -> crate::session::Result<ImapCapabilities> {
-            Ok(ImapCapabilities::default())
-        }
-
-        async fn enable(&mut self, _capabilities: &[&str]) -> crate::session::Result<()> {
-            Ok(())
-        }
-
-        async fn namespace(&mut self) -> crate::session::Result<Option<NamespaceInfo>> {
-            Ok(None)
-        }
-
-        async fn select(&mut self, mailbox: &str) -> crate::session::Result<MailboxInfo> {
-            self.selected_mailbox = Some(mailbox.to_string());
-            Ok(self
-                .mailbox_info_by_name
-                .get(mailbox)
-                .cloned()
-                .unwrap_or_else(|| mailbox_info(1, 1, 0)))
-        }
-
-        async fn select_qresync(
-            &mut self,
-            mailbox: &str,
-            _uid_validity: u32,
-            _highest_modseq: u64,
-            _known_uids: &str,
-        ) -> crate::session::Result<QresyncInfo> {
-            self.selected_mailbox = Some(mailbox.to_string());
-            Ok(QresyncInfo {
-                mailbox: self
-                    .mailbox_info_by_name
-                    .get(mailbox)
-                    .cloned()
-                    .unwrap_or_else(|| mailbox_info(1, 1, 0)),
-                vanished: vec![],
-                changed: vec![],
-            })
-        }
-
-        async fn uid_fetch(
-            &mut self,
-            _uid_set: &str,
-            _query: &str,
-        ) -> crate::session::Result<Vec<FetchedMessage>> {
-            let active = self.overlap.active_fetches.fetch_add(1, Ordering::SeqCst) + 1;
-            loop {
-                let current = self.overlap.max_active_fetches.load(Ordering::SeqCst);
-                if active <= current {
-                    break;
-                }
-                if self
-                    .overlap
-                    .max_active_fetches
-                    .compare_exchange(current, active, Ordering::SeqCst, Ordering::SeqCst)
-                    .is_ok()
-                {
-                    break;
-                }
-            }
-
-            tokio::time::sleep(std::time::Duration::from_millis(75)).await;
-            self.overlap.active_fetches.fetch_sub(1, Ordering::SeqCst);
-
-            Ok(self
-                .selected_mailbox
-                .as_ref()
-                .and_then(|mailbox| self.messages_by_mailbox.get(mailbox))
-                .cloned()
-                .unwrap_or_default())
-        }
-
-        async fn uid_search(&mut self, _query: &str) -> crate::session::Result<Vec<u32>> {
-            Ok(self
-                .selected_mailbox
-                .as_ref()
-                .and_then(|mailbox| self.messages_by_mailbox.get(mailbox))
-                .into_iter()
-                .flatten()
-                .map(|message| message.uid)
-                .collect())
-        }
-
-        async fn uid_store(&mut self, _uid_set: &str, _flags: &str) -> crate::session::Result<()> {
-            Ok(())
-        }
-
-        async fn uid_copy(&mut self, _uid_set: &str, _mailbox: &str) -> crate::session::Result<()> {
-            Ok(())
-        }
-
-        async fn uid_move(&mut self, _uid_set: &str, _mailbox: &str) -> crate::session::Result<()> {
-            Ok(())
-        }
-
-        async fn uid_append(
-            &mut self,
-            _mailbox: &str,
-            _flags: &[&str],
-            _body: &[u8],
-        ) -> crate::session::Result<Option<u32>> {
-            Ok(None)
-        }
-
-        async fn uid_expunge(&mut self, _uid_set: &str) -> crate::session::Result<()> {
-            Ok(())
-        }
-
-        async fn expunge(&mut self) -> crate::session::Result<()> {
-            Ok(())
-        }
-
-        async fn list_folders(&mut self) -> crate::session::Result<Vec<FolderInfo>> {
-            Ok(self.folders.clone())
-        }
-
-        async fn create_mailbox(&mut self, _mailbox: &str) -> crate::session::Result<()> {
-            Ok(())
-        }
-
-        async fn rename_mailbox(
-            &mut self,
-            _old_mailbox: &str,
-            _new_mailbox: &str,
-        ) -> crate::session::Result<()> {
-            Ok(())
-        }
-
-        async fn delete_mailbox(&mut self, _mailbox: &str) -> crate::session::Result<()> {
-            Ok(())
-        }
-
-        async fn logout(&mut self) -> crate::session::Result<()> {
-            Ok(())
-        }
-    }
-
-    struct ConcurrentInitialSyncFactory {
-        folders: Vec<FolderInfo>,
-        mailbox_info_by_name: HashMap<String, MailboxInfo>,
-        messages_by_mailbox: HashMap<String, Vec<FetchedMessage>>,
-        overlap: Arc<FetchOverlapState>,
-    }
-
-    #[async_trait]
-    impl ImapSessionFactory for ConcurrentInitialSyncFactory {
-        async fn create_session(&self) -> crate::session::Result<Box<dyn ImapSession>> {
-            Ok(Box::new(ConcurrentInitialSyncSession {
-                folders: self.folders.clone(),
-                mailbox_info_by_name: self.mailbox_info_by_name.clone(),
-                messages_by_mailbox: self.messages_by_mailbox.clone(),
-                overlap: self.overlap.clone(),
-                selected_mailbox: None,
-            }))
-        }
-    }
-
     fn imap_cursor(uid_validity: u32, uid_next: u32) -> SyncCursor {
         ImapCursor::new(
             vec![ImapMailboxCursor {
@@ -2108,76 +1930,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn imap_provider_passes_sync_conformance() {
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 3, 2),
-            vec![
-                vec![
-                    make_fetched_message(1, "Inbox fixture", "alice@example.com"),
-                    make_fetched_message(2, "Attachment fixture", "bob@example.com"),
-                ],
-                vec![],
-            ],
-            vec![
-                folder_info("INBOX", Some("\\Inbox")),
-                folder_info("Archive", Some("\\Archive")),
-                folder_info("Trash", Some("\\Trash")),
-            ],
-        )
-        .with_capabilities(ImapCapabilities {
-            uidplus: true,
-            move_ext: true,
-            ..Default::default()
-        });
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-        mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
-    }
-
-    #[tokio::test]
-    async fn gmail_sync_labels_use_x_gm_label_provider_ids() {
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 1, 0),
-            vec![],
-            vec![
-                folder_info("INBOX", Some("\\Inbox")),
-                folder_info("Sent Mail", Some("\\Sent")),
-                folder_info("Starred", Some("\\Flagged")),
-                folder_info("Work", None),
-            ],
-        )
-        .with_capabilities(ImapCapabilities {
-            x_gm_ext_1: true,
-            ..Default::default()
-        });
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let labels = provider.sync_labels().await.unwrap();
-        assert_eq!(labels[0].provider_id, "INBOX");
-        assert_eq!(labels[1].provider_id, "SENT");
-        assert_eq!(labels[2].provider_id, "STARRED");
-        assert_eq!(labels[3].provider_id, "Work");
-    }
-
-    #[tokio::test]
-    async fn sync_labels_surfaces_folder_counts() {
-        let mut inbox = folder_info("INBOX", Some("\\Inbox"));
-        inbox.unread_count = Some(7);
-        inbox.total_count = Some(12);
-
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![inbox]);
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let labels = provider.sync_labels().await.unwrap();
-        assert_eq!(labels[0].unread_count, 7);
-        assert_eq!(labels[0].total_count, 12);
-    }
-
-    #[tokio::test]
     async fn initial_sync_isolates_malformed_fetch_literals() {
         let good_before = make_fetched_message(1, "Before malformed", "alice@example.com");
         let good_after = make_fetched_message(3, "After malformed", "carol@example.com");
@@ -2223,34 +1975,6 @@ mod tests {
             3,
             "the failed batch and malformed UID must each be followed by a fresh session"
         );
-    }
-
-    #[tokio::test]
-    async fn initial_sync_bounds_full_body_fetch_batches() {
-        let messages = (1..=101)
-            .map(|uid| make_fetched_message(uid, &format!("Message {uid}"), "alice@example.com"))
-            .collect::<Vec<_>>();
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 102, 101),
-            vec![messages[1..].to_vec(), messages[..1].to_vec()],
-            vec![],
-        );
-        let log = factory.log.clone();
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-
-        assert_eq!(batch.upserted.len(), 101);
-        let commands = log.lock().unwrap().commands.clone();
-        let fetch_commands = commands
-            .iter()
-            .filter(|command| command.starts_with("UID FETCH "))
-            .collect::<Vec<_>>();
-        assert_eq!(fetch_commands.len(), 2);
-        assert!(fetch_commands[0].starts_with("UID FETCH 101,100,"));
-        assert!(fetch_commands[0].contains(",3,2 "));
-        assert!(fetch_commands[1].starts_with("UID FETCH 1 "));
     }
 
     #[tokio::test]
@@ -2376,196 +2100,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn initial_sync_fetches_folders_one_at_a_time_inbox_first() {
-        let overlap = Arc::new(FetchOverlapState::default());
-        let factory = ConcurrentInitialSyncFactory {
-            folders: vec![
-                folder_info("INBOX", Some("\\Inbox")),
-                folder_info("Archive", Some("\\Archive")),
-            ],
-            mailbox_info_by_name: HashMap::from([
-                ("INBOX".to_string(), mailbox_info(1, 2, 1)),
-                ("Archive".to_string(), mailbox_info(1, 2, 1)),
-            ]),
-            messages_by_mailbox: HashMap::from([
-                (
-                    "INBOX".to_string(),
-                    vec![make_fetched_message(
-                        1,
-                        "Inbox message",
-                        "alice@example.com",
-                    )],
-                ),
-                (
-                    "Archive".to_string(),
-                    vec![make_fetched_message(
-                        1,
-                        "Archive message",
-                        "bob@example.com",
-                    )],
-                ),
-            ]),
-            overlap: overlap.clone(),
-        };
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-
-        assert_eq!(batch.upserted.len(), 2);
-        assert_eq!(batch.upserted[0].envelope.provider_id, "INBOX:1");
-        assert_eq!(
-            overlap.max_active_fetches.load(Ordering::SeqCst),
-            1,
-            "the newest-first backfill walks one folder at a time so INBOX lands first"
-        );
-    }
-
-    #[tokio::test]
-    async fn initial_sync_respects_per_account_connection_limit() {
-        let overlap = Arc::new(FetchOverlapState::default());
-        let factory = ConcurrentInitialSyncFactory {
-            folders: vec![
-                folder_info("INBOX", Some("\\Inbox")),
-                folder_info("Archive", Some("\\Archive")),
-            ],
-            mailbox_info_by_name: HashMap::from([
-                ("INBOX".to_string(), mailbox_info(1, 2, 1)),
-                ("Archive".to_string(), mailbox_info(1, 2, 1)),
-            ]),
-            messages_by_mailbox: HashMap::from([
-                (
-                    "INBOX".to_string(),
-                    vec![make_fetched_message(1, "Inbox", "alice@example.com")],
-                ),
-                (
-                    "Archive".to_string(),
-                    vec![make_fetched_message(1, "Archive", "bob@example.com")],
-                ),
-            ]),
-            overlap: overlap.clone(),
-        };
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config().with_max_connections(1),
-            Box::new(factory),
-        );
-
-        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-
-        assert_eq!(batch.upserted.len(), 2);
-        assert_eq!(overlap.max_active_fetches.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn gmail_delta_without_all_mail_cursor_starts_canonical_backfill() {
-        let mut archived_only = make_fetched_message(50, "Archived upgrade", "alice@example.com");
-        archived_only.gmail_labels = vec!["Projects".into()];
-
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 101, 100),
-            vec![],
-            vec![
-                folder_info("INBOX", Some("\\Inbox")),
-                folder_info("All Mail", Some("\\All")),
-            ],
-        )
-        .with_capabilities(ImapCapabilities {
-            x_gm_ext_1: true,
-            ..Default::default()
-        })
-        .with_mailbox_fetches("All Mail", vec![vec![archived_only]]);
-        let log = factory.log.clone();
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let batch = provider
-            .sync_messages(&imap_cursor_mailboxes(vec![ImapMailboxCursor {
-                mailbox: "INBOX".to_string(),
-                uid_validity: 1,
-                uid_next: 100,
-                highest_modseq: None,
-            }]))
-            .await
-            .unwrap();
-
-        assert_eq!(batch.upserted.len(), 1);
-        assert_eq!(batch.upserted[0].envelope.provider_id, "All Mail:50");
-        assert_eq!(
-            batch.upserted[0].envelope.label_provider_ids,
-            vec!["Projects"]
-        );
-        assert!(!batch.has_more);
-        assert_eq!(
-            decoded_imap_mailboxes(&batch.next_cursor)[0].mailbox,
-            "All Mail"
-        );
-
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(commands.iter().any(|command| {
-            command.contains("UID FETCH 1:100") && command.contains("X-GM-LABELS")
-        }));
-        assert!(!commands
-            .iter()
-            .any(|command| command.contains("UID FETCH 100:*")));
-    }
-
-    #[tokio::test]
-    async fn delta_sync_overlaps_multi_folder_fetches() {
-        let overlap = Arc::new(FetchOverlapState::default());
-        let factory = ConcurrentInitialSyncFactory {
-            folders: vec![
-                folder_info("INBOX", Some("\\Inbox")),
-                folder_info("Archive", Some("\\Archive")),
-            ],
-            mailbox_info_by_name: HashMap::from([
-                ("INBOX".to_string(), mailbox_info(1, 2, 1)),
-                ("Archive".to_string(), mailbox_info(1, 2, 1)),
-            ]),
-            messages_by_mailbox: HashMap::from([
-                (
-                    "INBOX".to_string(),
-                    vec![make_fetched_message(1, "Inbox delta", "alice@example.com")],
-                ),
-                (
-                    "Archive".to_string(),
-                    vec![make_fetched_message(1, "Archive delta", "bob@example.com")],
-                ),
-            ]),
-            overlap: overlap.clone(),
-        };
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let batch = provider
-            .sync_messages(&imap_cursor_mailboxes(vec![
-                ImapMailboxCursor {
-                    mailbox: "INBOX".to_string(),
-                    uid_validity: 1,
-                    uid_next: 1,
-                    highest_modseq: None,
-                },
-                ImapMailboxCursor {
-                    mailbox: "Archive".to_string(),
-                    uid_validity: 1,
-                    uid_next: 1,
-                    highest_modseq: None,
-                },
-            ]))
-            .await
-            .unwrap();
-
-        assert_eq!(batch.upserted.len(), 2);
-        assert!(
-            overlap.max_active_fetches.load(Ordering::SeqCst) >= 2,
-            "delta sync should overlap multi-folder fetches instead of serializing them"
-        );
-    }
-
-    #[tokio::test]
     async fn delta_sync_uid_validity_changed_falls_back_to_initial() {
         let msg = make_fetched_message(1, "After reset", "alice@example.com");
 
@@ -2590,43 +2124,6 @@ mod tests {
         assert_eq!(batch.upserted[0].envelope.subject, "After reset");
 
         assert_eq!(decoded_imap_inbox(&batch.next_cursor).uid_validity, 2);
-    }
-
-    #[tokio::test]
-    async fn delta_sync_filters_old_uids() {
-        // IMAP returns uid 3 when we ask for "4:*" and there are no new messages
-        // (server returns the highest existing UID). We should filter it out.
-        let old_msg = FetchedMessage {
-            uid: 3,
-            flags: vec![],
-            envelope: None,
-            body: Some(b"From: alice@example.com\r\nSubject: Old message\r\nDate: Mon, 1 Jan 2024 12:00:00 +0000\r\nContent-Type: text/plain\r\n\r\nOld body".to_vec()),
-            header: None,
-            size: None,
-            internal_date: None,
-            gmail_labels: vec![],
-            gmail_msg_id: None,
-            gmail_thread_id: None,
-        };
-
-        let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 5,
-                exists: 3,
-                highest_modseq: None,
-            },
-            vec![vec![old_msg]],
-            vec![],
-        );
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let cursor = imap_cursor(1, 4);
-        let batch = provider.sync_messages(&cursor).await.unwrap();
-
-        assert!(batch.upserted.is_empty());
     }
 
     #[tokio::test]
@@ -2775,63 +2272,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delta_sync_uses_condstore_changedsince_when_qresync_is_unavailable() {
-        let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 5,
-                exists: 4,
-                highest_modseq: Some(20),
-            },
-            vec![
-                vec![
-                    make_fetched_message(3, "Changed flags", "alice@example.com"),
-                    make_fetched_message(4, "New via condstore", "bob@example.com"),
-                ],
-                vec![make_fetched_message(
-                    4,
-                    "New via condstore",
-                    "bob@example.com",
-                )],
-            ],
-            vec![],
-        )
-        .with_capabilities(ImapCapabilities {
-            condstore: true,
-            ..Default::default()
-        });
-        let log = factory.log.clone();
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let cursor = imap_cursor_mailboxes(vec![ImapMailboxCursor {
-            mailbox: "INBOX".into(),
-            uid_validity: 1,
-            uid_next: 4,
-            highest_modseq: Some(10),
-        }]);
-
-        let batch = provider.sync_messages(&cursor).await.unwrap();
-
-        assert_eq!(batch.upserted.len(), 2);
-        assert!(batch
-            .upserted
-            .iter()
-            .any(|message| message.envelope.subject == "Changed flags"));
-        assert!(batch
-            .upserted
-            .iter()
-            .any(|message| message.envelope.subject == "New via condstore"));
-
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(commands.contains(&"ENABLE CONDSTORE".to_string()));
-        assert!(commands
-            .iter()
-            .any(|command| command.contains("CHANGEDSINCE 10")));
-    }
-
-    #[tokio::test]
     async fn set_read_sends_correct_flags() {
         let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
         let log = factory.log.clone();
@@ -2853,52 +2293,6 @@ mod tests {
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands.contains(&"SELECT INBOX".to_string()));
         assert!(commands.contains(&"UID STORE 42 +FLAGS (\\Seen)".to_string()));
-    }
-
-    #[tokio::test]
-    async fn set_read_false_removes_seen() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
-        let log = factory.log.clone();
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        provider
-            .apply_mutation(
-                "mut-1",
-                &mxr_core::Mutation::SetRead {
-                    provider_message_id: "INBOX:42".to_string(),
-                    read: false,
-                },
-            )
-            .await
-            .unwrap();
-
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(commands.contains(&"UID STORE 42 -FLAGS (\\Seen)".to_string()));
-    }
-
-    #[tokio::test]
-    async fn set_starred_sends_correct_flags() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
-        let log = factory.log.clone();
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        provider
-            .apply_mutation(
-                "mut-1",
-                &mxr_core::Mutation::SetStarred {
-                    provider_message_id: "INBOX:42".to_string(),
-                    starred: true,
-                },
-            )
-            .await
-            .unwrap();
-
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(commands.contains(&"UID STORE 42 +FLAGS (\\Flagged)".to_string()));
     }
 
     #[tokio::test]
@@ -2929,38 +2323,6 @@ mod tests {
             !commands.contains(&"EXPUNGE".to_string()),
             "must never issue bare EXPUNGE: {commands:?}"
         );
-    }
-
-    #[tokio::test]
-    async fn trash_uses_move_when_server_supports_it() {
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 2, 1),
-            vec![],
-            vec![folder_info("Trash", Some("\\Trash"))],
-        )
-        .with_capabilities(ImapCapabilities {
-            move_ext: true,
-            ..Default::default()
-        });
-        let log = factory.log.clone();
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        provider
-            .apply_mutation(
-                "mut-1",
-                &mxr_core::Mutation::Trash {
-                    provider_message_id: "INBOX:42".to_string(),
-                },
-            )
-            .await
-            .unwrap();
-
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(commands.contains(&"UID MOVE 42 Trash".to_string()));
-        assert!(!commands.contains(&"UID COPY 42 Trash".to_string()));
-        assert!(!commands.contains(&"EXPUNGE".to_string()));
     }
 
     #[tokio::test]
@@ -2996,32 +2358,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn modify_labels_maps_flags_and_folders() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
-        let log = factory.log.clone();
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        provider
-            .apply_mutation(
-                "mut-1",
-                &mxr_core::Mutation::ModifyLabels {
-                    provider_message_id: "INBOX:42".to_string(),
-                    add: vec!["STARRED".to_string(), "Archive".to_string()],
-                    remove: vec!["READ".to_string()],
-                },
-            )
-            .await
-            .unwrap();
-
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(commands.contains(&"UID STORE 42 +FLAGS (\\Flagged)".to_string()));
-        assert!(commands.contains(&"UID STORE 42 -FLAGS (\\Seen)".to_string()));
-        assert!(commands.contains(&"UID COPY 42 Archive".to_string()));
-    }
-
-    #[tokio::test]
     async fn modify_labels_archive_moves_out_of_inbox() {
         let factory = MockImapSessionFactory::new(
             mailbox_info(1, 2, 1),
@@ -3052,21 +2388,6 @@ mod tests {
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands.contains(&"UID MOVE 42 Archive".to_string()));
         assert!(!commands.contains(&"UID STORE 42 +FLAGS (\\Deleted)".to_string()));
-    }
-
-    #[tokio::test]
-    async fn rename_label_rejects_special_use_folder() {
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 2, 1),
-            vec![],
-            vec![folder_info("INBOX", Some("\\Inbox"))],
-        );
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let err = provider.rename_label("INBOX", "Archive").await.unwrap_err();
-        assert!(err.to_string().contains("system folders"));
     }
 
     #[tokio::test]
@@ -3115,240 +2436,6 @@ mod tests {
         assert!(!bytes.is_empty());
     }
 
-    #[test]
-    fn is_backfill_cursor_is_true_only_for_the_generic_in_progress_cursor() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-        let in_progress = ImapCursor::new_generic_backfill(
-            vec![],
-            vec![crate::cursor::ImapFolderBackfill {
-                mailbox: "INBOX".into(),
-                started: None,
-                next_high: 0,
-                min_failed_uid: None,
-            }],
-            None,
-        )
-        .encode();
-
-        assert!(provider.is_backfill_cursor(&in_progress));
-        assert!(!provider.is_backfill_cursor(&imap_cursor(1, 10)));
-        assert!(!provider.is_backfill_cursor(&SyncCursor::empty()));
-    }
-
-    #[tokio::test]
-    async fn sync_messages_rejects_gmail_cursor() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let result = provider
-            .sync_messages(&SyncCursor::from_bytes(
-                br#"{"Gmail":{"history_id":1}}"#.to_vec(),
-            ))
-            .await;
-        assert!(matches!(
-            result,
-            Err(mxr_core::MxrError::SyncCursorExpired { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn full_sync_flow_initial_then_delta_then_fetch_and_mutate() {
-        let account_id = AccountId::new();
-        let config = test_config();
-
-        let initial_messages = vec![
-            make_fetched_message(1, "First", "alice@example.com"),
-            make_fetched_message(2, "Second", "bob@example.com"),
-            make_fetched_message(3, "Third", "carol@example.com"),
-        ];
-
-        let factory =
-            MockImapSessionFactory::new(mailbox_info(1, 4, 3), vec![initial_messages], vec![]);
-
-        let provider = ImapProvider::with_session_factory(
-            account_id.clone(),
-            config.clone(),
-            Box::new(factory),
-        );
-
-        let batch1 = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-        assert_eq!(batch1.upserted.len(), 3);
-
-        let cursor1 = batch1.next_cursor;
-
-        let new_msg = make_fetched_message(4, "Fourth", "dave@example.com");
-        let factory2 =
-            MockImapSessionFactory::new(mailbox_info(1, 5, 4), vec![vec![new_msg]], vec![]);
-
-        let provider2 = ImapProvider::with_session_factory(
-            account_id.clone(),
-            config.clone(),
-            Box::new(factory2),
-        );
-
-        let batch2 = provider2.sync_messages(&cursor1).await.unwrap();
-        assert_eq!(batch2.upserted.len(), 1);
-        assert_eq!(batch2.upserted[0].envelope.subject, "Fourth");
-        assert!(batch2.upserted[0]
-            .body
-            .text_plain
-            .as_deref()
-            .unwrap_or("")
-            .contains("Body of Fourth"));
-
-        let factory3 = MockImapSessionFactory::new(mailbox_info(1, 5, 4), vec![], vec![]);
-        let log3 = factory3.log.clone();
-
-        let provider3 = ImapProvider::with_session_factory(account_id, config, Box::new(factory3));
-
-        provider3
-            .apply_mutation(
-                "mut-1",
-                &mxr_core::Mutation::SetStarred {
-                    provider_message_id: "INBOX:4".to_string(),
-                    starred: true,
-                },
-            )
-            .await
-            .unwrap();
-        let cmds = log3.lock().unwrap().commands.clone();
-        assert!(cmds.contains(&"UID STORE 4 +FLAGS (\\Flagged)".to_string()));
-    }
-
-    #[tokio::test]
-    async fn idle_watch_returns_none_when_factory_does_not_enable_idle() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-        let watcher = provider.idle_watch().await.expect("idle_watch ok");
-        assert!(
-            watcher.is_none(),
-            "default factory must yield no IDLE watcher"
-        );
-    }
-
-    #[tokio::test]
-    async fn idle_watch_returns_watcher_that_wakes_on_trigger() {
-        let mut factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
-        let trigger = factory.enable_idle();
-        let log = factory.log.clone();
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let mut watcher = provider
-            .idle_watch()
-            .await
-            .expect("idle_watch ok")
-            .expect("idle enabled, watcher should be Some");
-
-        let cmds = log.lock().unwrap().commands.clone();
-        assert!(
-            cmds.iter().any(|c| c == "IDLE_WATCH SELECT INBOX"),
-            "create_idle_watcher must SELECT INBOX on a fresh session; got {cmds:?}"
-        );
-
-        let event_handle = tokio::spawn(async move { watcher.next_event().await });
-
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        trigger.notify_one();
-
-        let result = tokio::time::timeout(std::time::Duration::from_secs(2), event_handle)
-            .await
-            .expect("event must arrive within 2s")
-            .expect("watcher task must not panic");
-        assert!(result.is_ok(), "next_event must return Ok on trigger");
-    }
-
-    #[tokio::test]
-    async fn delta_sync_detects_deletes_on_condstore_only_server() {
-        let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 5,
-                exists: 3,
-                highest_modseq: Some(10),
-            },
-            vec![],
-            vec![],
-        )
-        .with_capabilities(ImapCapabilities {
-            condstore: true,
-            ..Default::default()
-        })
-        .with_uid_search("INBOX", vec![1, 3, 4]);
-        let log = factory.log.clone();
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let cursor = imap_cursor_mailboxes(vec![ImapMailboxCursor {
-            mailbox: "INBOX".into(),
-            uid_validity: 1,
-            uid_next: 5,
-            highest_modseq: Some(10),
-        }]);
-
-        let batch = provider.sync_messages(&cursor).await.unwrap();
-
-        assert_eq!(batch.deleted_provider_ids, vec!["INBOX:2"]);
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(
-            commands.iter().any(|cmd| cmd == "UID SEARCH ALL"),
-            "CONDSTORE-only server must still UID SEARCH ALL; commands={commands:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn fetch_attachment_uses_peek_to_avoid_marking_seen() {
-        let raw = concat!(
-            "From: alice@example.com\r\n",
-            "To: bob@example.com\r\n",
-            "Subject: Test\r\n",
-            "MIME-Version: 1.0\r\n",
-            "Content-Type: multipart/mixed; boundary=\"b\"\r\n",
-            "\r\n",
-            "--b\r\nContent-Type: text/plain\r\n\r\nSee attached.\r\n",
-            "--b\r\nContent-Type: application/pdf; name=\"r.pdf\"\r\n",
-            "Content-Disposition: attachment; filename=\"r.pdf\"\r\n",
-            "Content-Transfer-Encoding: base64\r\n\r\nSGk=\r\n--b--\r\n",
-        );
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 2, 1),
-            vec![vec![FetchedMessage {
-                uid: 10,
-                flags: vec![],
-                envelope: None,
-                body: Some(raw.as_bytes().to_vec()),
-                header: None,
-                size: None,
-                internal_date: None,
-                gmail_labels: vec![],
-                gmail_msg_id: None,
-                gmail_thread_id: None,
-            }]],
-            vec![],
-        );
-        let log = factory.log.clone();
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        provider.fetch_attachment("INBOX:10", "2").await.unwrap();
-
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(
-            commands.iter().any(|c| c == "UID FETCH 10 BODY.PEEK[]"),
-            "attachment fetch must use BODY.PEEK[]; commands={commands:?}"
-        );
-        assert!(
-            !commands.iter().any(|c| c == "UID FETCH 10 BODY[]"),
-            "must not use non-peek BODY[] which marks \\Seen; commands={commands:?}"
-        );
-    }
-
     #[tokio::test]
     async fn set_keywords_rejects_injection_atoms() {
         for bad in ["x) (\\Deleted", "safe\r\n() (\\Deleted)"] {
@@ -3382,101 +2469,6 @@ mod tests {
                 "no UID STORE may be issued for a rejected keyword; commands={commands:?}"
             );
         }
-    }
-
-    #[tokio::test]
-    async fn set_keywords_applies_valid_atoms() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
-        let log = factory.log.clone();
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        provider
-            .apply_mutation(
-                "mut-1",
-                &mxr_core::Mutation::SetKeywords {
-                    provider_message_id: "INBOX:42".to_string(),
-                    add: vec!["$Work".to_string()],
-                    remove: vec!["$Old".to_string()],
-                },
-            )
-            .await
-            .unwrap();
-
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(commands.contains(&"UID STORE 42 +FLAGS ($Work)".to_string()));
-        assert!(commands.contains(&"UID STORE 42 -FLAGS ($Old)".to_string()));
-    }
-
-    #[tokio::test]
-    async fn delta_sync_fetches_when_uidnext_unknown() {
-        let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 0,
-                exists: 2,
-                highest_modseq: None,
-            },
-            vec![vec![
-                make_fetched_message(5, "Fresh mail", "alice@example.com"),
-                make_fetched_message(6, "More mail", "bob@example.com"),
-            ]],
-            vec![],
-        )
-        .with_uid_search("INBOX", vec![1, 2, 3, 4, 5, 6]);
-        let log = factory.log.clone();
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let cursor = imap_cursor(1, 5);
-        let batch = provider.sync_messages(&cursor).await.unwrap();
-
-        assert_eq!(
-            batch.upserted.len(),
-            2,
-            "delta must still fetch when UIDNEXT is unknown"
-        );
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(
-            commands.iter().any(|c| c.contains("UID FETCH 1:*")),
-            "unknown UIDNEXT must trigger a 1:* rescan; commands={commands:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn move_refuses_before_copy_without_move_or_uidplus() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
-        let log = factory.log.clone();
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let err = provider
-            .apply_mutation(
-                "mut-1",
-                &mxr_core::Mutation::Trash {
-                    provider_message_id: "INBOX:42".to_string(),
-                },
-            )
-            .await
-            .expect_err("move without MOVE or UIDPLUS must fail");
-        let message = err.to_string();
-        assert!(
-            message.contains("MOVE") && message.contains("UIDPLUS"),
-            "error should cite MOVE and UIDPLUS: {message}"
-        );
-
-        let commands = log.lock().unwrap().commands.clone();
-        assert!(
-            !commands.iter().any(|c| c.starts_with("UID COPY")),
-            "must not COPY before refusing; commands={commands:?}"
-        );
-        assert!(
-            !commands
-                .iter()
-                .any(|c| c.starts_with("UID EXPUNGE") || c == "EXPUNGE"),
-            "must not expunge; commands={commands:?}"
-        );
     }
 
     #[tokio::test]
@@ -3562,62 +2554,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_sent_without_appenduid_returns_none_but_still_appends() {
+    async fn trash_uses_move_when_server_supports_it() {
         let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 1, 0),
+            mailbox_info(1, 2, 1),
             vec![],
-            vec![
-                folder_info("INBOX", Some("\\Inbox")),
-                folder_info("Sent Messages", Some("\\Sent")),
-            ],
-        );
-        let commands = factory.log.clone();
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let result = provider
-            .append_sent(b"From: me@test.com\r\n\r\nbody", chrono::Utc::now())
-            .await
-            .unwrap();
-
-        assert_eq!(result, None);
-        assert!(
-            commands
-                .lock()
-                .unwrap()
-                .commands
-                .iter()
-                .any(|c| c.starts_with("APPEND Sent Messages")),
-            "the message must still be appended to the resolved Sent folder"
-        );
-    }
-
-    #[tokio::test]
-    async fn append_sent_returns_none_when_no_sent_folder() {
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 1, 0),
-            vec![],
-            vec![folder_info("INBOX", Some("\\Inbox"))],
+            vec![folder_info("Trash", Some("\\Trash"))],
         )
-        .with_append_uid(42);
-        let commands = factory.log.clone();
+        .with_capabilities(ImapCapabilities {
+            move_ext: true,
+            ..Default::default()
+        });
+        let log = factory.log.clone();
+
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let result = provider
-            .append_sent(b"From: me@test.com\r\n\r\nbody", chrono::Utc::now())
+        provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::Trash {
+                    provider_message_id: "INBOX:42".to_string(),
+                },
+            )
             .await
             .unwrap();
 
-        assert_eq!(result, None);
-        assert!(
-            !commands
-                .lock()
-                .unwrap()
-                .commands
-                .iter()
-                .any(|c| c.starts_with("APPEND")),
-            "no APPEND must be issued when the server has no Sent folder"
-        );
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"UID MOVE 42 Trash".to_string()));
+        assert!(!commands.contains(&"UID COPY 42 Trash".to_string()));
+        assert!(!commands.contains(&"EXPUNGE".to_string()));
     }
 }

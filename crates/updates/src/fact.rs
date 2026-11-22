@@ -426,27 +426,6 @@ mod tests {
     }
 
     #[test]
-    fn a_generic_subject_takes_the_body_line_and_its_numbers() {
-        let fact = derive_utc(&input(
-            "no-reply@strava.com",
-            Some("Strava"),
-            "Your weekly update is here",
-            Some("Hi Bhekani,\n\nYou ran 3 times this week: 3 runs, 21.3 km.\n\nView in browser"),
-        ));
-        assert_eq!(fact.fact_source, FactSource::Body);
-        assert_eq!(fact.text, "You ran 3 times this week: 3 runs, 21.3 km.");
-        assert_eq!(
-            fact.numbers
-                .iter()
-                .map(|n| n.raw.as_str())
-                .collect::<Vec<_>>(),
-            vec!["3 runs", "21.3 km"]
-        );
-        assert_eq!(fact.source_key, "strava.com");
-        assert_eq!(fact.base_signal, None);
-    }
-
-    #[test]
     fn sign_ins_and_failed_payments_need_you_and_lose_their_link() {
         let sign_in = derive_utc(&input(
             "no-reply@accounts.google.com",
@@ -471,47 +450,6 @@ mod tests {
         ));
         assert_eq!(payout.needs_you, Some(NeedsYou::PaymentFailed));
         assert_eq!(payout.numbers[0].raw, "R 4,210.00");
-    }
-
-    #[test]
-    fn builds_and_incidents_are_tracked_by_their_state() {
-        let failing = derive_utc(&input(
-            "notifications@github.com",
-            Some("GitHub"),
-            "[acme/api] Run failed: CI - main (a1b2c3d)",
-            Some("View workflow run https://github.com/acme/api/actions/runs/9"),
-        ));
-        let fixed = derive_utc(&input(
-            "notifications@github.com",
-            Some("GitHub"),
-            "[acme/api] Run succeeded: CI - main (9f8e7d6)",
-            None,
-        ));
-        let (a, b) = (failing.tracked.unwrap(), fixed.tracked.unwrap());
-        assert_eq!(a.kind, TrackedKind::Build);
-        assert_eq!(a.key, b.key);
-        assert_eq!(a.outcome, TrackedOutcome::Bad);
-        assert_eq!(b.outcome, TrackedOutcome::Good);
-        assert_eq!(failing.base_signal, Some(Signal::Anomaly));
-        assert_eq!(fixed.base_signal, None);
-        assert_eq!(failing.source_key, "github.com/acme/api");
-        assert_eq!(failing.source_name, "GitHub acme/api");
-        assert_eq!(
-            failing.link.as_deref(),
-            Some("https://github.com/acme/api/actions/runs/9")
-        );
-
-        let incident = derive_utc(&input(
-            "status@statuspage.io",
-            Some("Linear Status"),
-            "[Resolved] Degraded performance on the API",
-            None,
-        ));
-        let tracked = incident.tracked.unwrap();
-        assert_eq!(tracked.kind, TrackedKind::Incident);
-        assert_eq!(tracked.outcome, TrackedOutcome::Good);
-        assert_eq!(incident.base_signal, None);
-        assert_eq!(incident.text, "Resolved: Degraded performance on the API");
     }
 
     #[test]

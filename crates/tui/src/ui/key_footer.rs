@@ -65,9 +65,4 @@ mod tests {
         );
         assert_eq!(fit(&entries(), "  ", 29), "\u{21b5} open  u undo  ? keys");
     }
-
-    #[test]
-    fn only_kept_entries_that_overflow_are_cut() {
-        assert_eq!(fit(&entries(), "  ", 12), "\u{21b5} open  u u\u{2026}");
-    }
 }

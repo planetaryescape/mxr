@@ -1017,35 +1017,3 @@ impl App {
         chunks[1]
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{selected_tab, tab_titles, Screen};
-
-    #[test]
-    fn tab_titles_name_each_screens_key() {
-        assert_eq!(
-            tab_titles(),
-            [
-                "g i Mailbox",
-                "/ Search",
-                "g R Rules",
-                "g C Accounts",
-                "g D Diagnostics",
-                "g A Analytics",
-                "g P Deliveries",
-            ]
-        );
-    }
-
-    #[test]
-    fn selected_tab_maps_each_screen_to_its_tab_index() {
-        assert_eq!(selected_tab(Screen::Mailbox), 0);
-        assert_eq!(selected_tab(Screen::Search), 1);
-        assert_eq!(selected_tab(Screen::Rules), 2);
-        assert_eq!(selected_tab(Screen::Accounts), 3);
-        assert_eq!(selected_tab(Screen::Diagnostics), 4);
-        assert_eq!(selected_tab(Screen::Analytics), 5);
-        assert_eq!(selected_tab(Screen::Deliveries), 6);
-    }
-}

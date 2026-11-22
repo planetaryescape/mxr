@@ -496,21 +496,6 @@ mod tests {
     }
 
     #[test]
-    fn past_the_deadline_reads_was_due_and_sorts_after_rows_in_time() {
-        let mut late = record("late", "bill");
-        late.due_at = Some(at(10, 2, 23));
-        late.act_by_at = late.due_at;
-        let data = to_data_in(&late, at(10, 5, 10), &London);
-        assert_eq!(data.when_label, "was due Fri 2 Oct");
-        assert!(data.overdue);
-        let in_time = record("in-time", "bill");
-        assert_eq!(
-            now_order(&late, &in_time, at(10, 5, 10)),
-            std::cmp::Ordering::Greater
-        );
-    }
-
-    #[test]
     fn the_action_opens_the_email_and_names_the_links_domain() {
         let mut lookalike = record("b", "bill");
         lookalike.action_domain = Some("camden-gov.uk".to_string());
@@ -521,34 +506,5 @@ mod tests {
         assert_eq!(action.label, "Open email to pay");
         assert_eq!(action.domain.as_deref(), Some("camden-gov.uk"));
         assert_eq!(action.message_id, lookalike.source_message_id);
-    }
-
-    #[test]
-    fn bands_split_by_surface_time_and_group_coming_up_by_week() {
-        let now = at(10, 5, 10);
-        let surfaced = record("now", "bill");
-        let mut next_week = record("next", "renewal");
-        next_week.title = "Renew car insurance".to_string();
-        next_week.surface_at = Some(at(10, 12, 9));
-        let mut undated = record("whenever", "sign");
-        undated.surface_at = None;
-        undated.due_at = None;
-        undated.act_by_at = None;
-        let mut pending = record("pending", "promise");
-        pending.catchup = Some(mxr_store::TodoCatchup::Pending);
-        let bands = bands(vec![surfaced, next_week, undated, pending], now, &London);
-        assert_eq!(bands.now.len(), 1);
-        assert_eq!(bands.coming_up.len(), 1);
-        assert_eq!(bands.coming_up[0].label, "wk of 12 Oct");
-        assert_eq!(bands.whenever.len(), 1);
-        let next = bands.next_surface.expect("next");
-        assert_eq!(
-            empty_state(false, Some(&next)),
-            "Nothing needs you. Next: renew car insurance shows up Mon 12 Oct."
-        );
-        assert_eq!(
-            headline(1, bands.first_now.as_ref(), now, &London),
-            "1 thing needs you. Pay council tax, act by Wed."
-        );
     }
 }

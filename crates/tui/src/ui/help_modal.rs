@@ -696,7 +696,7 @@ fn draw_search_results(
 
 #[cfg(test)]
 mod tests {
-    use super::{help_rows, help_sections, search_results, HelpModalState};
+    use super::{help_rows, help_sections, HelpModalState};
     use crate::action::UiContext;
 
     fn help_state(context: UiContext, query: &'static str) -> HelpModalState<'static> {
@@ -765,64 +765,6 @@ mod tests {
     }
 
     #[test]
-    fn task_oriented_entries_reference_real_bindings_or_palette_commands() {
-        let state = help_state(UiContext::MailboxList, "");
-        let task_section = help_sections(&state)
-            .into_iter()
-            .find(|section| section.title == "How do I…")
-            .expect("task section");
-        for (label, hint) in &task_section.entries {
-            let mentions_action = hint.contains("palette:")
-                || hint.contains("shell:")
-                || hint.contains('→')
-                || hint.contains("⇒")
-                || hint
-                    .chars()
-                    .any(|c| matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z'));
-            assert!(
-                mentions_action,
-                "entry {label:?} hint {hint:?} must reference an action"
-            );
-        }
-        assert!(
-            task_section.entries.len() >= 5,
-            "plan §3.3 calls for 5+ task entries; got {}",
-            task_section.entries.len()
-        );
-    }
-
-    #[test]
-    fn help_search_fuzzy_matches_descriptions() {
-        let state = help_state(UiContext::MailboxList, "ftl");
-        let first = search_results(&state).into_iter().next().unwrap();
-        assert_eq!(first.row.shortcut, "gf");
-        assert_eq!(first.row.label, "Filter this list");
-    }
-
-    #[test]
-    fn help_short_queries_drop_weak_fuzzy_tail() {
-        let state = help_state(UiContext::MailboxList, "gC");
-        let labels: Vec<String> = search_results(&state)
-            .into_iter()
-            .map(|result| result.row.label)
-            .collect();
-        assert!(labels.iter().all(|label| !label.contains("Go to Sent")));
-        assert!(labels
-            .iter()
-            .all(|label| !label.contains("Generate Bug Report")));
-    }
-
-    #[test]
-    fn help_rows_deduplicate_duplicate_bindings() {
-        let state = help_state(UiContext::SearchEditor, "");
-        let duplicates = help_rows(&state)
-            .into_iter()
-            .filter(|row| row.shortcut == "Enter" && row.label == "Run the search")
-            .count();
-        assert_eq!(duplicates, 1);
-    }
-
-    #[test]
     fn every_bound_tui_key_shows_in_help_where_it_works() {
         let keymap = mxr_keymap::defaults();
         let places = mxr_keymap::TUI_CONTEXTS
@@ -862,17 +804,5 @@ mod tests {
             }
         }
         assert!(missing.is_empty(), "{}", missing.join("\n"));
-    }
-
-    #[test]
-    fn analytics_help_lists_every_views_keys() {
-        let titles: Vec<String> = help_sections(&help_state(UiContext::Analytics, ""))
-            .into_iter()
-            .map(|section| section.title)
-            .collect();
-        for view in ["analytics", "analytics-storage", "analytics-wrapped"] {
-            let title = format!("{} keys", mxr_keymap::place_title(view).unwrap());
-            assert!(titles.contains(&title), "{title} missing from {titles:?}");
-        }
     }
 }

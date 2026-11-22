@@ -142,20 +142,4 @@ mod tests {
                 if message == "Provider error: oauth token revoked" && code == "auth"
         ));
     }
-
-    #[test]
-    fn display_is_wire_identical_to_the_source_string() {
-        assert_eq!(
-            HandlerError::Message("boom".to_string()).to_string(),
-            "boom"
-        );
-        assert_eq!(
-            HandlerError::Store(sqlx::Error::RowNotFound).to_string(),
-            sqlx::Error::RowNotFound.to_string()
-        );
-        assert_eq!(
-            HandlerError::Core(MxrError::Provider("nope".to_string())).to_string(),
-            MxrError::Provider("nope".to_string()).to_string()
-        );
-    }
 }

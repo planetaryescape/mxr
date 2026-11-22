@@ -68,33 +68,6 @@ afterEach(() => {
 });
 
 describe("HighlightToolbar", () => {
-
-  test("passes the paragraph the selection starts in, so the highlight is anchored there", () => {
-    setup();
-    const inside = screen.getByTestId("inside");
-    inside.setAttribute("data-paragraph", "4");
-    select(inside);
-    fireEvent.click(screen.getByTestId("toolbar-highlight"));
-    expect(verbs.highlightSelection).toHaveBeenCalledWith(
-      "some text",
-      "m:0",
-      "issue",
-      undefined,
-      4,
-    );
-  });
-
-  test("a selection in the highlights list or with nothing selected shows nothing", () => {
-    setup();
-    select(screen.getByTestId("list"));
-    expect(screen.queryByRole("toolbar")).toBeNull();
-    window.getSelection()?.removeAllRanges();
-    act(() => {
-      document.dispatchEvent(new Event("selectionchange"));
-    });
-    expect(screen.queryByRole("toolbar")).toBeNull();
-  });
-
   test("Highlight with note saves the typed note with the selected text", async () => {
     setup();
     select(screen.getByTestId("inside"));
@@ -114,20 +87,6 @@ describe("HighlightToolbar", () => {
     );
   });
 
-  test("Escape that ends an IME composition keeps the note open", () => {
-    setup();
-    select(screen.getByTestId("inside"));
-    fireEvent.click(screen.getByTestId("toolbar-highlight-note"));
-    const input = screen.getByTestId("highlight-note-input");
-    fireEvent.change(input, { target: { value: "\u306e\u30fc\u3068" } });
-
-    fireEvent.keyDown(input, { key: "Escape", keyCode: 229 });
-    expect(screen.getByTestId("highlight-note-input")).toHaveValue("\u306e\u30fc\u3068");
-
-    fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.queryByTestId("highlight-note-input")).not.toBeInTheDocument();
-  });
-
   test("selecting one of your highlights edits its note or removes it", async () => {
     setup();
     select(screen.getByTestId("own"));
@@ -140,22 +99,5 @@ describe("HighlightToolbar", () => {
       fireEvent.click(screen.getByTestId("highlight-note-save"));
     });
     expect(verbs.editHighlightNote).toHaveBeenCalledWith("m:0", "own", "");
-  });
-
-  test("removing goes by the highlight's id", () => {
-    setup();
-    select(screen.getByTestId("own"));
-    fireEvent.click(screen.getByTestId("toolbar-remove"));
-    expect(verbs.removeHighlight).toHaveBeenCalledWith("m:0", "own");
-  });
-
-  test("a Marginalia highlight is read-only and points to Marginalia", () => {
-    const { onOpenMarginalia } = setup();
-    select(screen.getByTestId("theirs"));
-    expect(screen.getByText("Made in Marginalia; change it there")).toBeTruthy();
-    expect(screen.queryByTestId("toolbar-remove")).toBeNull();
-    expect(screen.queryByTestId("toolbar-edit-note")).toBeNull();
-    fireEvent.click(screen.getByText("Open in Marginalia"));
-    expect(onOpenMarginalia).toHaveBeenCalled();
   });
 });

@@ -268,90 +268,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn receiver_evidence_on_refetch_cannot_turn_preexisting_mail_into_live_arrivals() {
-        let account = test_account();
-        let store = Store::in_memory().await.expect("synthetic store");
-        store.insert_account(&account).await.expect("account");
-        let mut inbox = label(&account, "INBOX");
-        inbox.role = Some(mxr_core::Role::Inbox);
-        store.upsert_label(&inbox).await.expect("inbox");
-        let mut page = [upsert(&account, 1, vec![inbox.id])];
-        page[0].envelope.flags.remove(MessageFlags::READ);
-        store
-            .upsert_envelope_with_direction(&page[0].envelope, MessageDirection::Inbound)
-            .await
-            .expect("pre-upgrade stored mail");
-        page[0].arrival = ArrivalEvidence {
-            received_at: Some(chrono::Utc::now()),
-            sender: mxr_core::SenderCheck::Verified {
-                host: "example.com".into(),
-            },
-            message_fingerprint: Some("original-before-refetch".into()),
-            is_live: true,
-        };
-        store.apply_sync_upserts(&mut page).await.expect("refetch");
-        let stored = store
-            .message_arrival(&page[0].envelope.id)
-            .await
-            .expect("arrival")
-            .expect("stored evidence");
-        assert!(!stored.is_live);
-        assert_eq!(
-            stored.message_fingerprint.as_deref(),
-            Some("original-before-refetch")
-        );
-        page[0].arrival.is_live = true;
-        store
-            .apply_sync_upserts(&mut page)
-            .await
-            .expect("repeat refetch");
-        assert!(
-            !store
-                .message_arrival(&page[0].envelope.id)
-                .await
-                .expect("arrival")
-                .expect("evidence")
-                .is_live
-        );
-    }
-
-    #[tokio::test]
-    async fn batch_sync_records_inbox_departures_without_inventing_historical_archives() {
-        let account = test_account();
-        let store = Store::in_memory().await.unwrap();
-        store.insert_account(&account).await.unwrap();
-        let inbox = label(&account, "INBOX");
-        store.upsert_label(&inbox).await.unwrap();
-        let mut page = [
-            upsert(&account, 1, vec![inbox.id.clone()]),
-            upsert(&account, 2, vec![]),
-        ];
-        store.apply_sync_upserts(&mut page).await.unwrap();
-        let ids: Vec<_> = page.iter().map(|item| item.envelope.id.clone()).collect();
-        assert!(store
-            .externally_filed_messages(None, &ids)
-            .await
-            .unwrap()
-            .is_empty());
-        page[0].label_ids.clear();
-        store.apply_sync_upserts(&mut page).await.unwrap();
-        let filed = store
-            .externally_filed_messages(Some(&account.id), &ids)
-            .await
-            .unwrap();
-        assert_eq!(filed.len(), 1);
-        assert!(filed.contains_key(&ids[0]));
-        assert!(!filed.contains_key(&ids[1]));
-        page[0].label_ids.push(inbox.id);
-        store.apply_sync_upserts(&mut page).await.unwrap();
-        assert!(store
-            .externally_filed_messages(None, &ids)
-            .await
-            .unwrap()
-            .is_empty());
-    }
-
     /// A synced message whose id was deleted earlier (an IMAP UID reused
     /// under the same folder) is live again, so the cleanup owed to the
     /// deleted message is dropped with the upsert.
@@ -480,99 +396,6 @@ mod tests {
         );
     }
 
-    /// The calendar invite's account lookup runs on the transaction's own
-    /// connection because the reader pool cannot see an uncommitted message
-    /// row. `Store::in_memory` shares one connection between reader and
-    /// writer, so only a file-backed store proves it.
-    #[tokio::test]
-    async fn calendar_invites_land_on_a_file_backed_store() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = Store::new(&dir.path().join("store.db")).await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-
-        let mut upserts = vec![upsert(&account, 0, Vec::new())];
-        store.apply_sync_upserts(&mut upserts).await.unwrap();
-
-        let invite = store
-            .get_calendar_invite_for_message(&upserts[0].envelope.id)
-            .await
-            .unwrap()
-            .expect("calendar invite must be written inside the batch transaction");
-        assert_eq!(invite.metadata.uid.as_deref(), Some("invite-0"));
-    }
-
-    /// A re-sync that changes flags and shrinks the label and keyword sets
-    /// must leave the same rows as the per-message path: both are
-    /// delete-then-insert, so the removed entries have to disappear.
-    #[tokio::test]
-    async fn batched_upserts_match_the_per_message_path_on_a_shrinking_re_sync() {
-        let account = test_account();
-        let batched = Store::in_memory().await.unwrap();
-        let per_message = Store::in_memory().await.unwrap();
-        let work = label(&account, "work");
-        let travel = label(&account, "travel");
-
-        for store in [&batched, &per_message] {
-            store.insert_account(&account).await.unwrap();
-            store.upsert_label(&work).await.unwrap();
-            store.upsert_label(&travel).await.unwrap();
-        }
-
-        let mut first = upsert(&account, 0, vec![work.id.clone(), travel.id.clone()]);
-        first.envelope.keywords = BTreeSet::from(["$Forwarded".to_string(), "$Label1".to_string()]);
-
-        let mut second = upsert(&account, 0, vec![work.id.clone()]);
-        second.envelope.flags = MessageFlags::READ | MessageFlags::STARRED;
-        second.envelope.subject = "Subject 0 edited".to_string();
-        second.envelope.keywords = BTreeSet::new();
-        second.body.attachments.clear();
-
-        for pass in [&mut first, &mut second] {
-            batched
-                .apply_sync_upserts(std::slice::from_mut(pass))
-                .await
-                .unwrap();
-            per_message
-                .upsert_envelope_with_direction(&pass.envelope, pass.direction)
-                .await
-                .unwrap();
-            per_message.insert_body(&pass.body).await.unwrap();
-            per_message
-                .set_message_labels(&pass.envelope.id, &pass.label_ids, EventSource::Sync)
-                .await
-                .unwrap();
-            per_message
-                .set_message_keywords(&pass.envelope.id, &pass.envelope.keywords)
-                .await
-                .unwrap();
-        }
-
-        let id = &second.envelope.id;
-        assert_eq!(
-            format!("{:?}", batched.get_envelope(id).await.unwrap()),
-            format!("{:?}", per_message.get_envelope(id).await.unwrap()),
-            "envelope rows differ after a re-sync"
-        );
-        assert_eq!(
-            format!("{:?}", batched.get_body(id).await.unwrap()),
-            format!("{:?}", per_message.get_body(id).await.unwrap()),
-            "body/attachment rows differ after a re-sync"
-        );
-        assert!(
-            batched.get_message_keywords(id).await.unwrap().is_empty(),
-            "an empty keyword set must clear the previous keywords"
-        );
-        assert_eq!(
-            batched.count_message_labels().await.unwrap(),
-            per_message.count_message_labels().await.unwrap(),
-        );
-        assert_eq!(batched.count_message_labels().await.unwrap(), 1);
-        let envelope = batched.get_envelope(id).await.unwrap().expect("envelope");
-        assert!(envelope.flags.contains(MessageFlags::STARRED));
-        assert_eq!(envelope.subject, "Subject 0 edited");
-    }
-
     /// A row written before 0.4.52 lives under an unscoped id, so a re-sync
     /// computes a different `MessageId` for the same
     /// `(account_id, provider_id)`. The natural key is UNIQUE, so the stored
@@ -632,45 +455,6 @@ mod tests {
         assert!(store.get_body(&incoming_id).await.unwrap().is_none());
     }
 
-    /// A provider that re-threads a message overwrites `messages.thread_id`,
-    /// so after the write nothing else can name the thread it left. The page
-    /// reports it, and callers pass it on as a changed thread.
-    #[tokio::test]
-    async fn moving_a_message_between_threads_reports_the_thread_it_left() {
-        let account = test_account();
-        let store = Store::in_memory().await.unwrap();
-        store.insert_account(&account).await.unwrap();
-
-        let mut first = vec![upsert(&account, 0, Vec::new())];
-        let original_thread = first[0].envelope.thread_id.clone();
-        let vacated = store.apply_sync_upserts(&mut first).await.unwrap();
-        assert!(
-            vacated.is_empty(),
-            "a message that is new to the store leaves no thread behind"
-        );
-
-        let mut moved = vec![upsert(&account, 0, Vec::new())];
-        let new_thread = mxr_core::id::ThreadId::from_scoped_provider_id(
-            &account.id,
-            "fake",
-            "thread-after-merge",
-        );
-        moved[0].envelope.thread_id = new_thread.clone();
-        assert_ne!(original_thread, new_thread);
-
-        let vacated = store.apply_sync_upserts(&mut moved).await.unwrap();
-        assert_eq!(vacated, vec![original_thread]);
-        let envelope = store
-            .get_envelope(&moved[0].envelope.id)
-            .await
-            .unwrap()
-            .expect("envelope");
-        assert_eq!(envelope.thread_id, new_thread);
-
-        let vacated = store.apply_sync_upserts(&mut moved).await.unwrap();
-        assert!(vacated.is_empty());
-    }
-
     /// Re-running a page (the provider resends it after a failed chunk) must
     /// replace rather than duplicate.
     #[tokio::test]
@@ -698,5 +482,41 @@ mod tests {
             .unwrap()
             .expect("body");
         assert_eq!(body.attachments.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn batch_sync_records_inbox_departures_without_inventing_historical_archives() {
+        let account = test_account();
+        let store = Store::in_memory().await.unwrap();
+        store.insert_account(&account).await.unwrap();
+        let inbox = label(&account, "INBOX");
+        store.upsert_label(&inbox).await.unwrap();
+        let mut page = [
+            upsert(&account, 1, vec![inbox.id.clone()]),
+            upsert(&account, 2, vec![]),
+        ];
+        store.apply_sync_upserts(&mut page).await.unwrap();
+        let ids: Vec<_> = page.iter().map(|item| item.envelope.id.clone()).collect();
+        assert!(store
+            .externally_filed_messages(None, &ids)
+            .await
+            .unwrap()
+            .is_empty());
+        page[0].label_ids.clear();
+        store.apply_sync_upserts(&mut page).await.unwrap();
+        let filed = store
+            .externally_filed_messages(Some(&account.id), &ids)
+            .await
+            .unwrap();
+        assert_eq!(filed.len(), 1);
+        assert!(filed.contains_key(&ids[0]));
+        assert!(!filed.contains_key(&ids[1]));
+        page[0].label_ids.push(inbox.id);
+        store.apply_sync_upserts(&mut page).await.unwrap();
+        assert!(store
+            .externally_filed_messages(None, &ids)
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

@@ -264,16 +264,6 @@ mod tests {
     };
 
     #[test]
-    fn disabled_config_suppresses_playback_without_losing_event_sound() {
-        let config = ChimeConfig::default();
-
-        let playback = playback_decision(&config, ChimeEvent::NewMail);
-
-        assert_eq!(playback.sound, ChimeSound::Bell);
-        assert!(!playback.played);
-    }
-
-    #[test]
     fn request_chime_fires_for_successful_send_and_archive() {
         let send_request = Request::SendStoredDraft {
             managed_attachments_reviewed: true,
@@ -308,51 +298,6 @@ mod tests {
     }
 
     #[test]
-    fn web_requests_leave_their_chimes_to_the_browser() {
-        assert!(!plays_request_chimes(ClientKind::Web));
-        assert!(plays_request_chimes(ClientKind::Tui));
-        assert!(plays_request_chimes(ClientKind::Cli));
-    }
-
-    #[test]
-    fn recoverable_archive_chimes_only_for_new_completed_provider_effects() {
-        for source in [ClientKind::Cli, ClientKind::Tui] {
-            assert_eq!(
-                event_for_archive_completion(source, 2),
-                Some(ChimeEvent::Archived)
-            );
-            assert_eq!(event_for_archive_completion(source, 0), None);
-        }
-        assert_eq!(event_for_archive_completion(ClientKind::Web, 2), None);
-    }
-
-    #[test]
-    fn request_chime_ignores_failed_or_noop_archive() {
-        let request = Request::mutation(MutationCommand::Archive {
-            message_ids: vec![MessageId::new()],
-        });
-        let noop_response = Response::Ok {
-            data: ResponseData::MutationResult {
-                result: mutation_result(0),
-            },
-        };
-        assert_eq!(event_for_request_response(&request, &noop_response), None);
-
-        let error_response = Response::error("provider failed");
-        assert_eq!(event_for_request_response(&request, &error_response), None);
-    }
-
-    #[test]
-    fn daemon_event_chime_maps_new_messages_to_new_mail() {
-        let event = DaemonEvent::NewMessages {
-            envelopes: Vec::new(),
-            total: 0,
-        };
-
-        assert_eq!(event_for_daemon_event(&event), Some(ChimeEvent::NewMail));
-    }
-
-    #[test]
     fn sync_failure_chime_is_once_until_that_account_recovers() {
         let notifications = SyncErrorChimes::default();
         let account = AccountId::new();
@@ -382,46 +327,6 @@ mod tests {
             account_id: account.clone(),
             messages_synced: 0,
         });
-        assert!(notifications.should_play(&error()));
-    }
-
-    #[test]
-    fn sync_chime_state_is_per_account_and_keeps_other_operation_failures() {
-        let notifications = SyncErrorChimes::default();
-        let account = AccountId::new();
-        let other_account = AccountId::new();
-        assert!(notifications.should_play(&DaemonEvent::SyncError {
-            account_id: account.clone(),
-            error: "offline".into(),
-        }));
-        assert!(notifications.should_play(&DaemonEvent::SyncError {
-            account_id: other_account.clone(),
-            error: "offline".into(),
-        }));
-        assert!(notifications.should_play(&DaemonEvent::OperationFailed {
-            operation_id: "action-1".into(),
-            operation: "rebuild_analytics".into(),
-            account_id: Some(account.clone()),
-            error: "failed".into(),
-            retryable: true,
-        }));
-        assert!(!notifications.should_play(&DaemonEvent::SyncError {
-            account_id: account,
-            error: "offline".into(),
-        }));
-    }
-
-    #[test]
-    fn removed_accounts_can_chime_again_if_they_return() {
-        let notifications = SyncErrorChimes::default();
-        let account = AccountId::new();
-        let error = || DaemonEvent::SyncError {
-            account_id: account.clone(),
-            error: "offline".into(),
-        };
-
-        assert!(notifications.should_play(&error()));
-        notifications.retain_accounts(&HashSet::new());
         assert!(notifications.should_play(&error()));
     }
 

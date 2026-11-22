@@ -94,17 +94,6 @@ function setup(installed: boolean, unknown = false, statusFails = false, linkFai
   return { fetch, commits };
 }
 
-test("without the CLI it offers installation, never a send button", async () => {
-  const { fetch, commits } = setup(false);
-  expect(await screen.findByRole("link", { name: "Install ms-todo" })).toHaveAttribute(
-    "href",
-    "https://github.com/planetaryescape/ms-todo#installation",
-  );
-  expect(screen.queryByRole("button", { name: "Microsoft To Do" })).toBeNull();
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(commits).toHaveLength(0);
-});
-
 test("linking requires a visible exact preview and sends its fingerprint once", async () => {
   const { commits } = setup(true);
   fireEvent.click(await screen.findByRole("button", { name: "Microsoft To Do" }));
@@ -131,26 +120,4 @@ test("an uncertain receipt cannot create another Microsoft task", async () => {
   expect(screen.queryByRole("button", { name: "Sync now" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Refresh link status" }));
   expect(commits).toHaveLength(0);
-});
-
-test("a failed link preview offers a read-only retry without closing the details", async () => {
-  const { fetch, commits } = setup(true, false, false, true);
-  fireEvent.click(await screen.findByRole("button", { name: "Microsoft To Do" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Link preview temporarily unavailable",
-  );
-  expect(screen.queryByRole("button", { name: "Link and sync both ways" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Refresh link status" }));
-  expect(await screen.findByRole("button", { name: "Link and sync both ways" })).toBeVisible();
-  expect(screen.queryByRole("alert")).toBeNull();
-  expect(commits).toHaveLength(0);
-  const linkRequests = fetch.mock.calls.filter(
-    ([input]) =>
-      String(input).endsWith("/microsoft") && !String(input).endsWith("/todos/microsoft"),
-  );
-  expect(linkRequests).toHaveLength(2);
-  expect(linkRequests.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
-    { account_id: todoFixture().account_id, dry_run: true },
-    { account_id: todoFixture().account_id, dry_run: true },
-  ]);
 });

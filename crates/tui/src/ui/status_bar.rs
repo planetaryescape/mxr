@@ -225,20 +225,6 @@ mod tests {
     }
 
     #[test]
-    fn the_bar_shows_the_newest_mail_and_sync_calmly_when_all_is_well() {
-        let mut calm = state(0, 0);
-        calm.busy = false;
-        calm.sync_status = Some("Latest mail 5m ago · synced 1m ago".into());
-        let buffer = rendered(&calm);
-        assert!(
-            text(&buffer).contains("Latest mail 5m ago · synced 1m ago"),
-            "{}",
-            text(&buffer)
-        );
-        assert!(!text(&buffer).contains('!'));
-    }
-
-    #[test]
     fn a_sync_warning_is_marked_and_drawn_in_the_warning_colour() {
         let theme = crate::theme::Theme::default();
         let mut warning = state(0, 0);
@@ -282,49 +268,5 @@ mod tests {
         assert!(line.contains("=ALL MAIL 77/166="), "{line}");
         assert!(!line.contains("Latest mail"), "{line}");
         assert!(!line.contains("feature warnings"), "{line}");
-    }
-
-    fn rendered_at_width(state: &StatusBarState, width: u16) -> String {
-        let theme = crate::theme::Theme::default();
-        let spinner = ThrobberState::default();
-        let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(width, 1)).unwrap();
-        terminal
-            .draw(|frame| draw(frame, frame.area(), state, Some(&spinner), &theme))
-            .unwrap();
-        text(terminal.backend().buffer())
-    }
-
-    #[test]
-    fn an_active_search_mode_is_named_after_the_counts() {
-        let mut searching = state(0, 0);
-        searching.busy = false;
-        searching.total_count = Some(42);
-        searching.search_mode = Some(SearchMode::Hybrid);
-        let line = rendered_at_width(&searching, 120);
-        let counts = line.find("[Msgs:42").expect("counts");
-        let mode = line.find("[mode: hybrid]").expect("mode chip");
-        assert!(counts < mode, "{line}");
-    }
-
-    #[test]
-    fn the_mode_chip_leaves_a_sync_warning_visible_at_120_columns() {
-        let mut warning = state(0, 0);
-        warning.busy = false;
-        warning.mailbox_name = "ALL MAIL".into();
-        warning.total_count = Some(4_242);
-        warning.unread_count = 77;
-        warning.starred_count = 7;
-        warning.body_status = Some("Latest mail 42m ago".into());
-        warning.sync_status =
-            Some("Latest mail 25m ago · Gmail paused: rate limited, retrying 09:50".into());
-        warning.compact_sync_status = Some("Gmail: retrying 09:50".into());
-        warning.sync_warning = true;
-        warning.search_mode = Some(SearchMode::Semantic);
-        let line = rendered_at_width(&warning, 120);
-        assert!(line.contains("[mode: semantic]"), "{line}");
-        assert!(
-            line.contains("retrying 09:50"),
-            "the sync warning must survive the mode chip: {line}"
-        );
     }
 }

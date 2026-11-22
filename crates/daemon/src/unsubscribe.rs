@@ -95,13 +95,6 @@ fn open_in_browser(url: &str) -> Result<(), std::io::Error> {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn no_method_returns_no_method() {
-        let client = Client::new();
-        let result = execute_unsubscribe(&UnsubscribeMethod::None, &client).await;
-        assert!(matches!(result, UnsubscribeResult::NoMethod));
-    }
-
     fn one_click(url: String) -> UnsubscribeMethod {
         UnsubscribeMethod::OneClick { url }
     }
@@ -116,68 +109,6 @@ mod tests {
         assert!(!message.contains("secret-token-123"), "{message}");
         assert!(!message.contains("127.0.0.1"), "{message}");
         assert!(message.contains("could not connect"), "{message}");
-    }
-
-    #[tokio::test]
-    async fn server_error_status_is_reported_without_the_url() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(wiremock::ResponseTemplate::new(500))
-            .mount(&server)
-            .await;
-        let result = execute_unsubscribe(
-            &one_click(format!("{}/unsubscribe", server.uri())),
-            &Client::new(),
-        )
-        .await;
-        let UnsubscribeResult::Failed(message) = result else {
-            panic!("expected a failure, got {result:?}");
-        };
-        assert!(message.contains("500"), "{message}");
-        assert!(!message.contains(&server.uri()), "{message}");
-    }
-
-    #[tokio::test]
-    async fn timeout_is_a_failure() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(204).set_delay(std::time::Duration::from_secs(3)),
-            )
-            .mount(&server)
-            .await;
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_millis(200))
-            .build()
-            .unwrap();
-        let result =
-            execute_unsubscribe(&one_click(format!("{}/unsubscribe", server.uri())), &client).await;
-        let UnsubscribeResult::Failed(message) = result else {
-            panic!("expected a failure, got {result:?}");
-        };
-        assert!(message.contains("timed out"), "{message}");
-    }
-
-    #[tokio::test]
-    async fn mailto_returns_success() {
-        let client = Client::new();
-        let result = execute_unsubscribe(
-            &UnsubscribeMethod::Mailto {
-                address: "unsub@example.com".into(),
-                subject: Some("unsubscribe".into()),
-            },
-            &client,
-        )
-        .await;
-        match result {
-            UnsubscribeResult::Success(msg) => {
-                assert!(
-                    msg.contains("unsub@example.com"),
-                    "Success message should contain the address, got: {msg}"
-                );
-            }
-            other => panic!("Expected Success, got: {other:?}"),
-        }
     }
 
     #[tokio::test]

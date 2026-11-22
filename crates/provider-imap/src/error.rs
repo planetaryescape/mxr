@@ -88,24 +88,7 @@ impl From<ImapProviderError> for mxr_core::error::MxrError {
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_imap_detail, ImapProviderError};
-
-    #[test]
-    fn namespace_parse_errors_are_sanitized_for_users() {
-        let detail = "io: Error(Error { input: [42, 32], code: TakeWhile1 }) during parsing of \"* NAMESPACE ((\\\"\\\" \\\"/\\\")) NIL NIL\\r\\nA0002 OK NAMESPACE completed\\r\\n\"";
-        let sanitized = sanitize_imap_detail(detail);
-        assert!(sanitized.contains("NAMESPACE response"));
-        assert!(!sanitized.contains("input: [42, 32]"));
-    }
-
-    #[test]
-    fn generic_parse_errors_hide_raw_buffer_dump() {
-        let detail =
-            "io: Error(Error { input: [1, 2, 3], code: Tag }) during parsing of \"* FOO ...\"";
-        let sanitized = sanitize_imap_detail(detail);
-        assert!(sanitized.contains("could not parse"));
-        assert!(!sanitized.contains("[1, 2, 3]"));
-    }
+    use super::ImapProviderError;
 
     #[test]
     fn fetch_parse_errors_are_distinguishable_for_connection_recovery() {

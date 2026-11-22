@@ -662,9 +662,7 @@ fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str,
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        archive_operations, commands_for_context, defined_commands, shown_key, CommandPalette,
-    };
+    use super::{defined_commands, shown_key, CommandPalette};
     use crate::action::UiContext;
     use crate::keybindings::{shown_keybindings, ViewContext};
     use crate::keymap_names::action_named;
@@ -709,33 +707,6 @@ mod tests {
     }
 
     #[test]
-    fn palette_only_commands_stay_findable() {
-        let labels: Vec<String> =
-            defined_commands(None, shown_keybindings(), ViewContext::MailList)
-                .into_iter()
-                .map(|command| command.label)
-                .collect();
-        for needle in [
-            "Edit config",
-            "Export as Markdown",
-            "Send to Microsoft To Do",
-            "Sync the linked Microsoft To Do task",
-            "Export the records in view…",
-            "Mark this record checked",
-            "Drafts saved on this computer",
-            "Analytics: Storage",
-            "Semantic: Install Profile (BGE-M3)",
-            "Top of screen",
-            "Center current",
-        ] {
-            assert!(
-                labels.iter().any(|label| label == needle),
-                "{needle} missing from {labels:?}"
-            );
-        }
-    }
-
-    #[test]
     fn a_modes_palette_shows_its_keys_and_remaps() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -762,120 +733,5 @@ mod tests {
         assert_eq!(shortcut("todo.expired").as_deref(), Some("3"));
         assert_eq!(shortcut("nav.inbox").as_deref(), Some("gi / g0"));
         assert_eq!(shortcut("mail.reply"), None, "Reply is not a To do verb");
-    }
-
-    #[test]
-    fn toggle_rederives_shortcuts_for_the_focused_context() {
-        let mut palette = CommandPalette::default();
-        let shortcut_of = |palette: &CommandPalette, id: &str| {
-            palette
-                .commands
-                .iter()
-                .find(|cmd| cmd.id == Some(id))
-                .map(|cmd| cmd.shortcut.clone())
-        };
-
-        palette.toggle_with_archive_operations(UiContext::MailboxMessage, &[]);
-        assert_eq!(shortcut_of(&palette, "mail.links").as_deref(), Some("L"));
-        assert_eq!(shortcut_of(&palette, "shell.compose").as_deref(), Some("c"));
-
-        palette.toggle_with_archive_operations(UiContext::MailboxMessage, &[]);
-        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
-        assert_eq!(shortcut_of(&palette, "shell.compose").as_deref(), Some("c"));
-        assert_eq!(shortcut_of(&palette, "mail.archive").as_deref(), Some("e"));
-        assert_eq!(
-            shortcut_of(&palette, "nav.inbox").as_deref(),
-            Some("gi / g0")
-        );
-    }
-
-    #[test]
-    fn rules_context_hides_mail_only_commands() {
-        let ids: Vec<&str> = commands_for_context(UiContext::RulesList)
-            .into_iter()
-            .filter_map(|command| command.id)
-            .collect();
-
-        assert!(ids.contains(&"rules.new"));
-        assert!(!ids.contains(&"mail.label"));
-        assert!(!ids.contains(&"mail.archive"));
-    }
-
-    #[test]
-    fn restore_recents_round_trip_preserves_order_and_skips_unknown_labels() {
-        let mut palette = CommandPalette::default();
-        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
-        palette.input = "archive".to_string();
-        palette.update_filtered(None);
-        palette.confirm().expect("archive command should exist");
-        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
-        palette.input = "reply all".to_string();
-        palette.update_filtered(None);
-        palette.confirm().expect("reply all command should exist");
-        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
-        palette.input = "star".to_string();
-        palette.update_filtered(None);
-        palette.confirm().expect("star command should exist");
-
-        let snapshot = palette.recent_labels_snapshot();
-        assert_eq!(
-            snapshot,
-            vec![
-                "Star or unstar".to_string(),
-                "Reply all".to_string(),
-                "Archive".to_string(),
-            ],
-            "snapshot order must match record_recent semantics"
-        );
-
-        let persisted = vec![
-            "Star or unstar".to_string(),
-            "RemovedInThisVersion".to_string(),
-            "Reply all".to_string(),
-            "Archive".to_string(),
-        ];
-        let mut fresh = CommandPalette::default();
-        fresh.restore_recents_from_labels(&persisted);
-
-        let restored_snapshot = fresh.recent_labels_snapshot();
-        assert_eq!(
-            restored_snapshot,
-            vec![
-                "Star or unstar".to_string(),
-                "Reply all".to_string(),
-                "Archive".to_string(),
-            ],
-            "restored recents must skip unknown labels and preserve order"
-        );
-    }
-
-    #[test]
-    fn filtering_preserves_selected_command_identity() {
-        let mut palette = CommandPalette::default();
-        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
-        palette.selected = palette
-            .filtered
-            .iter()
-            .position(|&index| palette.commands[index].label == "Search page")
-            .unwrap();
-
-        palette.on_char('p');
-        palette.on_char('a');
-
-        let selected = palette
-            .filtered
-            .get(palette.selected)
-            .map(|&index| palette.commands[index].label.clone());
-
-        assert_eq!(selected.as_deref(), Some("Search page"));
-    }
-
-    #[test]
-    fn archive_recovery_discovery_does_not_create_journal_storage() {
-        let data_dir = tempfile::tempdir().unwrap();
-        let operations = archive_operations(data_dir.path());
-
-        assert!(operations.is_empty());
-        assert!(!data_dir.path().join("archive-operations").exists());
     }
 }

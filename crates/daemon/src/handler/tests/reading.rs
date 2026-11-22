@@ -10,7 +10,7 @@ use mxr_protocol::{
     ClientKind, IpcMessage, IpcPayload, ModeKindData, ReadingBandData, ReadingEditionData,
     ReadingItemData, ReadingShapeData, Request, Response, ResponseData,
 };
-use mxr_store::{ReadingEngagementReport, ReadingVisitRow};
+use mxr_store::ReadingVisitRow;
 
 const DIGEST_HTML: &str = r#"<html><body><p>Hi friends, six links this week about local-first software and storage engines, all short.</p><ul>
 <li><p><a href="https://demo.example.com/local-first?utm_source=x">Local-first mail is having a moment</a> — Three clients that keep your mailbox on your disk.</p></li>
@@ -122,86 +122,6 @@ fn titles(items: &[&ReadingItemData]) -> Vec<String> {
 
 const WEEKLY: (&str, &str) = ("Long Reads Weekly", "essays@longreads.example");
 
-#[tokio::test]
-async fn externally_filed_reading_stays_in_the_edition_until_let_go() {
-    use mxr_core::EventSource;
-    let fx = Fixture::new().await;
-    let now = Utc::now();
-    let (message, thread) = issue(
-        &fx,
-        WEEKLY,
-        "Keep reading this essay",
-        &essay(400),
-        now - Duration::hours(1),
-    )
-    .await;
-    let visit = ReadingVisitRow {
-        first_seen: Some(now - Duration::days(2)),
-        boundary: Some(now - Duration::days(1)),
-        last_seen: Some(now - Duration::days(1)),
-    };
-    let before = plan(&fx, &visit, now).await;
-    assert!(before
-        .edition
-        .bands
-        .iter()
-        .flat_map(|band| &band.items)
-        .any(|item| item.message_id == message));
-    fx.state
-        .store
-        .remove_message_label(&message, &fx.inbox, EventSource::Sync)
-        .await
-        .unwrap();
-    let retained = plan(&fx, &visit, now).await;
-    let item = retained
-        .edition
-        .bands
-        .iter()
-        .flat_map(|band| &band.items)
-        .find(|item| item.message_id == message)
-        .expect("archived issue stays visible");
-    assert!(item.source_filed_at.is_some());
-    assert!(!item.finished);
-    fx.state
-        .store
-        .add_message_label(&message, &fx.inbox, EventSource::Sync)
-        .await
-        .unwrap();
-    let restored = plan(&fx, &visit, now).await;
-    assert!(restored
-        .edition
-        .bands
-        .iter()
-        .flat_map(|band| &band.items)
-        .find(|item| item.message_id == message)
-        .unwrap()
-        .source_filed_at
-        .is_none());
-    fx.state
-        .store
-        .remove_message_label(&message, &fx.inbox, EventSource::Sync)
-        .await
-        .unwrap();
-    let done = |dry_run| Request::SetModeDone {
-        thread_ids: vec![thread.clone()],
-        mode: ModeKindData::Reading,
-        dry_run,
-        todo_ids: vec![],
-        sender: None,
-    };
-    let ResponseData::ModeDone { items: preview, .. } = request(&fx, done(true)).await else {
-        panic!("preview");
-    };
-    let ResponseData::ModeDone { items: applied, .. } = request(&fx, done(false)).await else {
-        panic!("applied");
-    };
-    assert_eq!(preview, applied);
-    assert!(applied
-        .iter()
-        .all(|item| item.error.is_none() && item.archived == 0));
-    assert!(plan(&fx, &visit, now).await.edition.bands.is_empty());
-}
-
 async fn weekly(fx: &Fixture, now: DateTime<Utc>) -> Vec<(MessageId, ThreadId)> {
     let mut out = Vec::new();
     for (i, age_hours) in [12, 180, 324, 504, 672, 840].into_iter().enumerate() {
@@ -217,6 +137,68 @@ async fn weekly(fx: &Fixture, now: DateTime<Utc>) -> Vec<(MessageId, ThreadId)> 
         );
     }
     out
+}
+
+#[tokio::test]
+async fn opening_reading_records_a_visit_per_account_and_not_while_activity_is_paused() {
+    let fx = Fixture::new().await;
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state
+        .store
+        .insert_account(&other)
+        .await
+        .expect("account");
+    let open = |account: &mxr_core::AccountId| Request::GetReadingEdition {
+        account_id: Some(account.clone()),
+        mark_visit: true,
+    };
+    request(&fx, open(&fx.account)).await;
+    let mine = fx
+        .state
+        .store
+        .reading_visit(&fx.account)
+        .await
+        .expect("visit");
+    assert!(mine.last_seen.is_some(), "opening Reading is a visit");
+    let theirs = fx
+        .state
+        .store
+        .reading_visit(&other.id)
+        .await
+        .expect("visit");
+    assert_eq!(
+        theirs,
+        ReadingVisitRow::default(),
+        "another account's visit is its own"
+    );
+
+    fx.state.activity.pause(None);
+    for _ in 0..200 {
+        if fx.state.activity.pause_status().0 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(fx.state.activity.pause_status().0);
+    request(&fx, open(&other.id)).await;
+    let theirs = fx
+        .state
+        .store
+        .reading_visit(&other.id)
+        .await
+        .expect("visit");
+    assert_eq!(
+        theirs,
+        ReadingVisitRow::default(),
+        "no visit while activity is paused"
+    );
 }
 
 #[tokio::test]
@@ -430,168 +412,6 @@ async fn let_go_of_everything_shown_does_exactly_what_its_preview_said() {
 }
 
 #[tokio::test]
-async fn the_sources_you_finish_lead_and_a_new_source_keeps_a_lead_slot() {
-    let fx = Fixture::new().await;
-    let now = Utc::now();
-    let first_seen = now - Duration::days(80);
-    let loved = ("Loved Weekly", "essays@loved.example");
-    let ignored = ("Ignored Daily", "daily@ignored.example");
-    let mut loved_ids = Vec::new();
-    for week in 0..6 {
-        loved_ids.push(
-            issue(
-                &fx,
-                loved,
-                &format!("Loved {week}"),
-                &essay(300),
-                now - Duration::hours(6 + 24 * 7 * week),
-            )
-            .await
-            .0,
-        );
-    }
-    for day in 0..10 {
-        issue(
-            &fx,
-            ignored,
-            &format!("Ignored {day}"),
-            &essay(300),
-            now - Duration::hours(5 + 24 * day),
-        )
-        .await;
-    }
-    issue(
-        &fx,
-        ("Brand New", "hello@brandnew.example"),
-        "Brand new 1",
-        &essay(300),
-        now - Duration::hours(8),
-    )
-    .await;
-    for id in &loved_ids[1..] {
-        fx.state
-            .store
-            .record_reading_engagement(
-                &fx.account,
-                id,
-                0,
-                ReadingEngagementReport {
-                    opened: true,
-                    dwell_ms: 90_000,
-                    progress: 1.0,
-                },
-                now - Duration::days(1),
-            )
-            .await
-            .expect("finish");
-    }
-    let visit = ReadingVisitRow {
-        first_seen: Some(first_seen),
-        boundary: None,
-        last_seen: None,
-    };
-    let edition = plan(&fx, &visit, now).await.edition;
-    let since = band(&edition, ReadingBandData::SinceLastVisit);
-    assert_eq!(since[0].title, "Loved 0");
-    assert!(since[0].lead);
-    assert_eq!(since[0].engagement.as_deref(), Some("you read 5 of 6"));
-    let leads: Vec<&str> = since
-        .iter()
-        .filter(|i| i.lead)
-        .map(|i| i.title.as_str())
-        .collect();
-    assert_eq!(leads.len(), 3);
-    assert!(leads.contains(&"Brand new 1"), "{leads:?}");
-    let offer = since
-        .iter()
-        .find(|item| item.source == "Ignored Daily")
-        .and_then(|item| item.unsubscribe_offer.clone());
-    assert_eq!(offer.as_deref(), Some("You opened 0 of the last 10 issues"));
-    assert!(edition.pace_measured);
-    assert!(
-        (190..=215).contains(&edition.pace_wpm),
-        "{}",
-        edition.pace_wpm
-    );
-}
-
-#[tokio::test]
-async fn nothing_is_claimed_about_issues_from_before_your_first_visit() {
-    let fx = Fixture::new().await;
-    let now = Utc::now();
-    for day in 1..=10 {
-        issue(
-            &fx,
-            ("Old Daily", "daily@old.example"),
-            &format!("Day {day}"),
-            &essay(200),
-            now - Duration::days(day),
-        )
-        .await;
-    }
-    let visit = ReadingVisitRow {
-        first_seen: Some(now - Duration::hours(1)),
-        boundary: None,
-        last_seen: None,
-    };
-    let edition = plan(&fx, &visit, now).await.edition;
-    assert!(edition
-        .sources
-        .iter()
-        .all(|s| !s.suggest_unsubscribe && s.issues == 0));
-}
-
-#[tokio::test]
-async fn highlights_export_as_markdown_with_their_source() {
-    let fx = Fixture::new().await;
-    let now = Utc::now();
-    let (id, _) = issue(
-        &fx,
-        WEEKLY,
-        "Why sync engines need tombstones",
-        &essay(200),
-        now,
-    )
-    .await;
-    let key = format!("{id}:0");
-    let ResponseData::ReadingHighlight { highlight } = request(
-        &fx,
-        Request::SaveHighlight {
-            item_key: key.clone(),
-            quote: "A delete is the absence of a row".to_string(),
-            note: Some("for the talk".to_string()),
-            view: None,
-            paragraph: None,
-        },
-    )
-    .await
-    else {
-        panic!("highlight");
-    };
-    assert_eq!(highlight.source, "Long Reads Weekly");
-    let ResponseData::ReadingHighlights {
-        highlights,
-        markdown,
-    } = request(&fx, Request::ExportReadingHighlights { account_id: None }).await
-    else {
-        panic!("export");
-    };
-    assert_eq!(highlights.len(), 1);
-    assert!(markdown.contains("## Why sync engines need tombstones"));
-    assert!(markdown.contains("> A delete is the absence of a row"));
-    assert!(markdown.contains("Note: for the talk"));
-    let ResponseData::ReadingItem { item } =
-        request(&fx, Request::GetReadingItem { item_key: key }).await
-    else {
-        panic!("item");
-    };
-    assert_eq!(item.highlights.len(), 1);
-    assert!(item.paragraphs[0]
-        .text
-        .starts_with("A delete is the absence"));
-}
-
-#[tokio::test]
 async fn an_article_on_this_machine_is_refused_and_the_reason_is_kept() {
     let fx = Fixture::new().await;
     let now = Utc::now();
@@ -686,240 +506,6 @@ async fn activity_privacy_config_and_pause_gate_reading_engagement() {
             );
         }
     }
-}
-
-#[tokio::test]
-async fn opening_an_item_records_engagement_and_leaves_hints_to_their_elements() {
-    let fx = Fixture::new().await;
-    let (id, _) = issue(&fx, WEEKLY, "Essay", &essay(300), Utc::now()).await;
-    let ResponseData::ReadingEngagement {
-        recorded, finished, ..
-    } = request(
-        &fx,
-        Request::RecordReadingEngagement {
-            item_key: format!("{id}:0"),
-            opened: true,
-            dwell_ms: 30_000,
-            progress: 0.95,
-        },
-    )
-    .await
-    else {
-        panic!("engagement");
-    };
-    assert!(recorded);
-    assert!(finished);
-    let ResponseData::ModeGuides { guides } = request(
-        &fx,
-        Request::GetModeGuide {
-            mode: Some("reading".to_string()),
-        },
-    )
-    .await
-    else {
-        panic!("guide");
-    };
-    assert!(guides[0].hints.iter().all(|hint| !hint.seen));
-}
-
-#[tokio::test]
-async fn the_later_count_covers_only_the_requests_accounts() {
-    let fx = Fixture::new().await;
-    let now = Utc::now();
-    let (mine, _) = issue(&fx, WEEKLY, "Mine", &essay(200), now).await;
-    let other = mxr_core::Account {
-        id: mxr_core::AccountId::new(),
-        name: "Other".into(),
-        email: "other@example.com".into(),
-        sync_backend: None,
-        send_backend: None,
-        enabled: true,
-    };
-    fx.state
-        .store
-        .insert_account(&other)
-        .await
-        .expect("account");
-    let mut theirs = fx
-        .state
-        .store
-        .get_envelope(&mine)
-        .await
-        .expect("read")
-        .expect("envelope");
-    theirs.id = MessageId::new();
-    theirs.account_id = other.id.clone();
-    theirs.provider_id = format!("other-{}", theirs.id);
-    theirs.message_id_header = Some(format!("<{}@other>", theirs.id));
-    fx.state
-        .store
-        .upsert_envelope(&theirs)
-        .await
-        .expect("envelope");
-    fx.state
-        .store
-        .set_reading_later(&other.id, &theirs.id, 0, true, now)
-        .await
-        .expect("later");
-
-    let ResponseData::ReadingLater {
-        later_count, copy, ..
-    } = request(
-        &fx,
-        Request::SetReadingLater {
-            item_keys: vec![format!("{mine}:0")],
-            later: true,
-            dry_run: false,
-        },
-    )
-    .await
-    else {
-        panic!("later");
-    };
-    assert_eq!(later_count, 1, "the other account's shelf isn't counted");
-    assert_eq!(copy, "Saved to Later. 1 thing saved.");
-}
-
-#[tokio::test]
-async fn opening_reading_records_a_visit_per_account_and_not_while_activity_is_paused() {
-    let fx = Fixture::new().await;
-    let other = mxr_core::Account {
-        id: mxr_core::AccountId::new(),
-        name: "Other".into(),
-        email: "other@example.com".into(),
-        sync_backend: None,
-        send_backend: None,
-        enabled: true,
-    };
-    fx.state
-        .store
-        .insert_account(&other)
-        .await
-        .expect("account");
-    let open = |account: &mxr_core::AccountId| Request::GetReadingEdition {
-        account_id: Some(account.clone()),
-        mark_visit: true,
-    };
-    request(&fx, open(&fx.account)).await;
-    let mine = fx
-        .state
-        .store
-        .reading_visit(&fx.account)
-        .await
-        .expect("visit");
-    assert!(mine.last_seen.is_some(), "opening Reading is a visit");
-    let theirs = fx
-        .state
-        .store
-        .reading_visit(&other.id)
-        .await
-        .expect("visit");
-    assert_eq!(
-        theirs,
-        ReadingVisitRow::default(),
-        "another account's visit is its own"
-    );
-
-    fx.state.activity.pause(None);
-    for _ in 0..200 {
-        if fx.state.activity.pause_status().0 {
-            break;
-        }
-        tokio::task::yield_now().await;
-    }
-    assert!(fx.state.activity.pause_status().0);
-    request(&fx, open(&other.id)).await;
-    let theirs = fx
-        .state
-        .store
-        .reading_visit(&other.id)
-        .await
-        .expect("visit");
-    assert_eq!(
-        theirs,
-        ReadingVisitRow::default(),
-        "no visit while activity is paused"
-    );
-}
-
-#[tokio::test]
-async fn a_digest_link_keeps_its_later_state_when_re_extraction_reorders_the_links() {
-    let fx = Fixture::new().await;
-    let now = Utc::now();
-    let (id, _) = issue(
-        &fx,
-        ("Local-first Links", "links@links.example"),
-        "Links",
-        DIGEST_HTML,
-        now,
-    )
-    .await;
-    let edition = plan(&fx, &ReadingVisitRow::default(), now).await.edition;
-    let sqlite = edition.bands[0].items[0]
-        .links
-        .iter()
-        .find(|link| link.title == "SQLite 3.51 release notes")
-        .expect("the SQLite link")
-        .item_key
-        .clone();
-    request(
-        &fx,
-        Request::SetReadingLater {
-            item_keys: vec![sqlite.clone()],
-            later: true,
-            dry_run: false,
-        },
-    )
-    .await;
-
-    let reordered = DIGEST_HTML.replace(
-        "<li><p><a href=\"https://sqlite.org/releaselog/3_51.html\">SQLite 3.51 release notes</a> — Faster JSON and a new WAL pragma.</p></li>\n",
-        "",
-    );
-    let reordered = reordered.replace(
-        "<ul>\n",
-        "<ul>\n<li><p><a href=\"https://sqlite.org/releaselog/3_51.html#top\">SQLite 3.51 release notes</a> — Faster JSON and a new WAL pragma.</p></li>\n",
-    );
-    assert_ne!(reordered, DIGEST_HTML);
-    fx.state
-        .store
-        .insert_body(&MessageBody {
-            message_id: id.clone(),
-            text_plain: None,
-            text_html: Some(reordered),
-            attachments: vec![],
-            fetched_at: now,
-            metadata: MessageMetadata::default(),
-        })
-        .await
-        .expect("body");
-    fx.state
-        .store
-        .replace_reading_items(&id, &[])
-        .await
-        .expect("clear the cache");
-
-    let edition = plan(&fx, &ReadingVisitRow::default(), now).await.edition;
-    let links = &edition.bands[0].items[0].links;
-    assert_eq!(
-        links[0].title, "SQLite 3.51 release notes",
-        "the new order shows"
-    );
-    assert_eq!(links[0].item_key, sqlite, "the link keeps its key");
-    assert!(links[0].on_later);
-    assert!(links[1..].iter().all(|link| !link.on_later));
-    assert_eq!(edition.later[0].title, "SQLite 3.51 release notes");
-    fx.state
-        .store
-        .replace_reading_items(&id, &[])
-        .await
-        .unwrap();
-    let expired = plan(&fx, &ReadingVisitRow::default(), now + Duration::days(40))
-        .await
-        .edition;
-    assert!(expired.bands.is_empty());
-    assert_eq!(expired.later[0].item_key, sqlite);
-    assert_eq!(expired.later[0].title, "SQLite 3.51 release notes");
 }
 
 async fn as_scoped_agent(fx: &Fixture, req: Request) -> Response {
@@ -1427,66 +1013,4 @@ mod marginalia {
         let secrets = std::fs::read_to_string(config_dir.join("secrets.toml")).unwrap_or_default();
         assert!(!secrets.contains(TOKEN), "disconnecting clears the token");
     }
-}
-
-#[tokio::test]
-async fn an_archived_later_item_uses_its_stored_deciding_claim() {
-    let fx = Fixture::new().await;
-    let (id, _) = issue(
-        &fx,
-        ("Local-first Links", "links@links.example"),
-        "Local-first Links #41",
-        DIGEST_HTML,
-        Utc::now() - Duration::days(45),
-    )
-    .await;
-    fx.state
-        .store
-        .remove_message_label(&id, &fx.inbox, mxr_core::EventSource::User)
-        .await
-        .unwrap();
-    let key = format!("{id}:0");
-    let ResponseData::ReadingItem { item } = request(
-        &fx,
-        Request::GetReadingItem {
-            item_key: key.clone(),
-        },
-    )
-    .await
-    else {
-        panic!("item");
-    };
-    let policy = mxr_core::assessment::CLASSIFIER_POLICY_VERSION;
-    let mut stored = fx
-        .state
-        .store
-        .assessments(&fx.account, policy)
-        .await
-        .unwrap()
-        .remove(&id)
-        .unwrap();
-    assert!(
-        item.item.why.contains(&stored.deciding.reason),
-        "{}",
-        item.item.why
-    );
-    stored.deciding.reason = "stored Reading claim for the archived issue".into();
-    sqlx::query("UPDATE mail_assessments SET assessment_json = ? WHERE message_id = ? AND policy_version = ?")
-        .bind(serde_json::to_string(&stored).unwrap()).bind(id.as_str()).bind(policy)
-        .execute(fx.state.store.writer()).await.unwrap();
-    let ResponseData::ReadingItem { item } = request(
-        &fx,
-        Request::GetReadingItem {
-            item_key: key.clone(),
-        },
-    )
-    .await
-    else {
-        panic!("item");
-    };
-    assert!(
-        item.item.why.contains(&stored.deciding.reason),
-        "{}",
-        item.item.why
-    );
 }

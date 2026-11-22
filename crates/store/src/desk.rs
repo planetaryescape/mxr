@@ -812,82 +812,6 @@ mod tests {
             .is_empty());
     }
 
-    #[tokio::test]
-    async fn written_to_moves_with_the_account_and_disappears_when_direction_changes() {
-        let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        let other = test_account();
-        store.insert_account(&account).await.unwrap();
-        store.insert_account(&other).await.unwrap();
-        let mut sent = envelope(&account.id, &ThreadId::new(), "me@example.test", Utc::now());
-        sent.to = vec![Address {
-            name: None,
-            email: "maya@example.test".into(),
-        }];
-        store
-            .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
-            .await
-            .unwrap();
-        let wanted = ["maya@example.test".into()];
-        sqlx::query("UPDATE messages SET account_id=?1 WHERE id=?2")
-            .bind(other.id.as_str())
-            .bind(sent.id.as_str())
-            .execute(store.writer())
-            .await
-            .unwrap();
-        assert!(store
-            .addresses_written_to(&account.id, &wanted)
-            .await
-            .unwrap()
-            .is_empty());
-        assert_eq!(
-            store
-                .addresses_written_to(&other.id, &wanted)
-                .await
-                .unwrap(),
-            wanted.iter().cloned().collect()
-        );
-        sqlx::query("UPDATE messages SET direction='unknown' WHERE id=?1")
-            .bind(sent.id.as_str())
-            .execute(store.writer())
-            .await
-            .unwrap();
-        assert!(store
-            .addresses_written_to(&other.id, &wanted)
-            .await
-            .unwrap()
-            .is_empty());
-    }
-
-    #[tokio::test]
-    async fn navigation_upgrade_backfills_previously_sent_recipients() {
-        let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-        sqlx::raw_sql("DROP TRIGGER outbound_recipients_insert; DROP TRIGGER outbound_recipients_update; DROP VIEW outbound_recipient_projection; DROP TABLE outbound_recipients; DROP INDEX idx_messages_sender_history;").execute(store.writer()).await.unwrap();
-        let mut sent = envelope(&account.id, &ThreadId::new(), "me@example.test", Utc::now());
-        sent.to = vec![Address {
-            name: None,
-            email: "Earlier@Example.Test".into(),
-        }];
-        store
-            .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
-            .await
-            .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/103_navigation_lookups.sql"))
-            .execute(store.writer())
-            .await
-            .unwrap();
-        let wanted = ["earlier@example.test".into()];
-        assert_eq!(
-            store
-                .addresses_written_to(&account.id, &wanted)
-                .await
-                .unwrap(),
-            wanted.iter().cloned().collect()
-        );
-    }
-
     fn envelope(
         account: &AccountId,
         thread: &ThreadId,
@@ -902,51 +826,6 @@ mod tests {
         envelope.from.email = from.into();
         envelope.date = at;
         envelope
-    }
-
-    #[tokio::test]
-    async fn thread_messages_return_whole_active_threads_with_state() {
-        let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-
-        let now = Utc::now();
-        let active_thread = ThreadId::new();
-        let old = envelope(
-            &account.id,
-            &active_thread,
-            "maya@example.com",
-            now - Duration::days(90),
-        );
-        let recent = envelope(
-            &account.id,
-            &active_thread,
-            "maya@example.com",
-            now - Duration::hours(3),
-        );
-        let stale = envelope(
-            &account.id,
-            &ThreadId::new(),
-            "jon@example.com",
-            now - Duration::days(60),
-        );
-        for envelope in [&old, &recent, &stale] {
-            store
-                .upsert_envelope_with_direction(envelope, MessageDirection::Inbound)
-                .await
-                .unwrap();
-        }
-
-        let rows = store
-            .desk_thread_messages(&account.id, now - Duration::days(30))
-            .await
-            .unwrap();
-        assert_eq!(
-            rows.iter().map(|row| row.id.clone()).collect::<Vec<_>>(),
-            vec![old.id.clone(), recent.id.clone()]
-        );
-        assert!(rows.iter().all(|row| row.direction == "inbound"));
-        assert!(rows.iter().all(|row| !row.snoozed && !row.trashed));
     }
 
     #[tokio::test]

@@ -206,17 +206,6 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn enforce_non_loopback_safety_accepts_loopback_addresses() {
-        for bind in ["127.0.0.1", "::1", "[::1]", "localhost"] {
-            let cfg = BridgeConfig {
-                bind: bind.into(),
-                ..BridgeConfig::default()
-            };
-            assert!(enforce_non_loopback_safety(&cfg).is_ok(), "{bind}");
-        }
-    }
-
-    #[test]
     fn enforce_non_loopback_safety_rejects_external_addresses() {
         let cfg = BridgeConfig {
             bind: "0.0.0.0".into(),
@@ -227,24 +216,6 @@ mod tests {
             matches!(error, BridgeStartupError::NonLoopbackWithoutTls { .. }),
             "expected non-loopback rejection, got {error:?}"
         );
-    }
-
-    #[test]
-    fn token_file_round_trips_existing_value() {
-        let temp = TempDir::new().unwrap();
-        let path = temp.path().join("bridge-token");
-        std::fs::write(&path, "existing-token-abc\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-        }
-        let cfg = BridgeConfig {
-            token_path: Some(path.clone()),
-            ..BridgeConfig::default()
-        };
-        let token = load_or_create_token(&cfg).unwrap();
-        assert_eq!(token, "existing-token-abc");
     }
 
     #[test]

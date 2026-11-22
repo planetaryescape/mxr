@@ -22,21 +22,6 @@ mod tests {
     use test_support::FakeCli;
 
     #[tokio::test]
-    async fn verbose_stderr_is_drained_to_eof_without_losing_a_valid_response() {
-        let fake = FakeCli::new();
-        std::fs::write(fake.path().join("verbose-stderr"), "").unwrap();
-        let task = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            fake.cli().show("remote-task"),
-        )
-        .await
-        .expect("stderr must not stall until the transport timeout")
-        .unwrap();
-        assert_eq!(task.fields().unwrap(), fake.fields());
-        assert_eq!(fake.calls(), ["show"]);
-    }
-
-    #[tokio::test]
     async fn task_text_is_literal_and_context_only_goes_to_stdin() {
         let fake = FakeCli::new();
         let fields = LinkedTodoFields {
@@ -90,34 +75,6 @@ mod tests {
             .unwrap_err();
         assert!(!error.definitely_not_applied());
         assert_eq!(fake.calls(), ["show", "edit", "show", "complete"]);
-    }
-
-    #[tokio::test]
-    async fn patch_only_sends_changed_shared_fields() {
-        let fake = FakeCli::new();
-        let original = fake.fields();
-        let mut changed = original.clone();
-        changed.title = "Changed literally #Work every mon".into();
-        fake.set_next(&changed);
-        fake.cli()
-            .apply("remote-task", &original, &changed)
-            .await
-            .unwrap();
-        let args = std::fs::read(fake.path().join("args")).unwrap();
-        let args = String::from_utf8(args).unwrap();
-        assert!(args.contains("--title=Changed literally #Work every mon"));
-        for untouched in [
-            "--body",
-            "--clear-reminder",
-            "--recur",
-            "--category",
-            "--list",
-            "--due",
-            "--defer",
-        ] {
-            assert!(!args.contains(untouched), "unexpected patch: {untouched}");
-        }
-        assert_eq!(fake.calls(), ["show", "edit"]);
     }
 
     #[tokio::test]

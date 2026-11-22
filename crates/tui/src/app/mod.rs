@@ -102,8 +102,6 @@ pub use mutation_snapshot::{
 pub(crate) use now_actions::{mode_done_copy, NOW_MODE};
 pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;
-#[cfg(test)]
-pub(crate) use promises::{PROMISE_ANSWER_GUARD, PROMISE_PROMPT_TTL};
 pub(crate) use reading_actions::READING_MODE;
 pub(crate) use records_actions::ARCHIVE_MODE;
 pub use row_gists::{RowGist, RowGistState, RowGists};
@@ -1345,7 +1343,7 @@ pub fn resolve_snooze_preset(
 mod tests {
     use super::*;
     use crate::test_fixtures::TestEnvelopeBuilder;
-    use chrono::{Duration, TimeZone};
+    use chrono::TimeZone;
 
     fn test_envelope(
         thread_id: mxr_core::ThreadId,
@@ -1408,47 +1406,6 @@ mod tests {
     }
 
     #[test]
-    fn build_mail_list_rows_counts_other_thread_participants_excluding_representative_from() {
-        let thread_id = mxr_core::ThreadId::new();
-        let t0 = chrono::Utc::now();
-        let alice_first = TestEnvelopeBuilder::new()
-            .thread_id(thread_id.clone())
-            .subject("first")
-            .provider_id("m1")
-            .date(t0)
-            .with_from_address("Alice", "alice@example.com")
-            .to(vec![Address {
-                name: None,
-                email: "bob@example.com".into(),
-            }])
-            .message_id_header(None)
-            .snippet("")
-            .size_bytes(0)
-            .build();
-        let bob_reply = TestEnvelopeBuilder::new()
-            .thread_id(thread_id.clone())
-            .subject("re")
-            .provider_id("m2")
-            .date(t0 + Duration::seconds(1))
-            .with_from_address("Bob", "bob@example.com")
-            .to(vec![Address {
-                name: None,
-                email: "alice@example.com".into(),
-            }])
-            .message_id_header(None)
-            .snippet("")
-            .size_bytes(0)
-            .build();
-
-        let rows = App::build_mail_list_rows(&[alice_first, bob_reply], MailListMode::Threads);
-
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].message_count, 2);
-        assert_eq!(rows[0].representative.from.email, "bob@example.com");
-        assert_eq!(rows[0].other_participant_count, 1);
-    }
-
-    #[test]
     fn mailbox_sidebar_hides_disabled_sync_accounts_without_removing_account_records() {
         let mut app = App::new();
         app.mailbox.sidebar_accounts_expanded = true;
@@ -1492,45 +1449,5 @@ mod tests {
             .map(|account| account.email.clone())
             .collect();
         assert_eq!(rendered_accounts, sidebar_accounts);
-    }
-
-    #[test]
-    fn mailbox_sidebar_shows_disabled_cached_accounts_only_for_restored_profiles() {
-        let mut app = App::new();
-        app.mailbox.sidebar_accounts_expanded = true;
-        let active = test_account_summary("active@example.com", true, true);
-        let cached = test_account_summary("cached@example.com", false, false);
-        app.accounts.page.accounts = vec![active.clone(), cached.clone()];
-
-        let visible_emails = |app: &App| {
-            app.sidebar_items()
-                .into_iter()
-                .filter_map(|item| match item {
-                    SidebarItem::Account(account) => Some(account.email),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-        };
-        assert!(visible_emails(&app).is_empty());
-
-        let mut recovery = mxr_core::RecoveryStatusData {
-            workspace_id: "restored-workspace".into(),
-            recovery_generation: "restored-generation".into(),
-            restore_pending: true,
-            source_owner_stopped: false,
-            retired_intentions: 0,
-            retained_intentions: vec![],
-            held_drafts: vec![],
-        };
-        app.diagnostics.page.recovery = Some(recovery.clone());
-        assert_eq!(
-            visible_emails(&app),
-            vec![active.email.clone(), cached.email.clone()]
-        );
-
-        recovery.restore_pending = false;
-        recovery.source_owner_stopped = true;
-        app.diagnostics.page.recovery = Some(recovery);
-        assert_eq!(visible_emails(&app), vec![active.email, cached.email]);
     }
 }

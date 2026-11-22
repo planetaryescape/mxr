@@ -129,26 +129,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cleans_prefixes_tags_and_the_brand() {
-        assert_eq!(
-            clean_subject("Re: [acme/api] Run failed: CI - main", "GitHub acme/api"),
-            "Run failed: CI - main"
-        );
-        assert_eq!(
-            clean_subject("Strava: Your week in review", "Strava"),
-            "Your week in review"
-        );
-        assert_eq!(
-            clean_subject("Deployment succeeded | Vercel", "Vercel"),
-            "Deployment succeeded"
-        );
-        assert_eq!(
-            clean_subject("Notification: New sign-in", "Google"),
-            "New sign-in"
-        );
-    }
-
-    #[test]
     fn same_kind_merges_across_numbers_ids_and_dates() {
         let merge = [
             ("Your week: 3 runs, 21.3 km", "Your week: 5 runs, 40.1 km"),

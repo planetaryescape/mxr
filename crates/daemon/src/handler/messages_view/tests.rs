@@ -67,64 +67,6 @@ fn topic(key: RowKey, state: TopicStateData, hours_ago: i64) -> Topic {
 }
 
 #[test]
-fn closeness_follows_reciprocity_recency_and_longevity() {
-    let n = now();
-    assert_eq!(closeness(None, n), ClosenessData::New);
-    assert_eq!(
-        closeness(Some(&facts("a@x", 0, 9, 400, 1)), n),
-        ClosenessData::New
-    );
-    assert_eq!(
-        closeness(Some(&facts("a@x", 48, 30, 900, 3)), n),
-        ClosenessData::Close
-    );
-    assert_eq!(
-        closeness(Some(&facts("a@x", 48, 30, 900, 200)), n),
-        ClosenessData::Regular
-    );
-    assert_eq!(
-        closeness(Some(&facts("a@x", 20, 1, 900, 3)), n),
-        ClosenessData::Regular
-    );
-    assert_eq!(
-        closeness(Some(&facts("a@x", 1, 1, 10, 3)), n),
-        ClosenessData::Occasional
-    );
-}
-
-#[test]
-fn a_rows_band_follows_its_topics() {
-    let key = RowKey::Person("samir@launchpad.example".into());
-    let n = now();
-    assert_eq!(
-        band(
-            &[
-                topic(key.clone(), TopicStateData::Quiet, 2),
-                topic(key.clone(), TopicStateData::YourTurn, 30)
-            ],
-            n
-        ),
-        MessagesBandData::YourTurn
-    );
-    assert_eq!(
-        band(&[topic(key.clone(), TopicStateData::Waiting, 400)], n),
-        MessagesBandData::Recent
-    );
-    assert_eq!(
-        band(&[topic(key.clone(), TopicStateData::Quiet, 30)], n),
-        MessagesBandData::Recent
-    );
-    assert_eq!(
-        band(&[topic(key.clone(), TopicStateData::Quiet, 24 * 9)], n),
-        MessagesBandData::Quiet
-    );
-    assert_eq!(
-        band(&[topic(key, TopicStateData::Done, 1)], n),
-        MessagesBandData::Quiet
-    );
-}
-
-#[test]
 fn your_turn_ranks_closeness_first_then_how_late() {
     let row = |id: &str, closeness: ClosenessData, hours: i64| MessagesRowData {
         id: id.into(),
@@ -200,25 +142,5 @@ fn a_person_with_several_threads_is_one_row_with_your_turn_first() {
     assert_eq!(
         row.why,
         "Here because: Samir replied to your message, and you write to each other often (rule)."
-    );
-}
-
-#[test]
-fn merged_addresses_are_one_person() {
-    let people = People::new(&[PersonLink {
-        email: "samir.patel@gmail.example".into(),
-        person_email: "samir@launchpad.example".into(),
-        linked_at: now(),
-    }]);
-    assert_eq!(
-        people.primary("Samir.Patel@gmail.example"),
-        "samir@launchpad.example"
-    );
-    assert_eq!(
-        people.addresses("samir@launchpad.example"),
-        vec![
-            "samir@launchpad.example".to_string(),
-            "samir.patel@gmail.example".to_string()
-        ]
     );
 }

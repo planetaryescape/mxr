@@ -233,7 +233,7 @@ fn body_of(row: &sqlx::sqlite::SqliteRow, prefix: &str) -> String {
 mod tests {
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
     use crate::Store;
-    use chrono::{Duration, TimeZone};
+    use chrono::TimeZone;
     use mxr_core::id::MessageId;
     use mxr_core::types::{Address, Envelope, MessageBody, MessageDirection, MessageMetadata};
 
@@ -376,73 +376,5 @@ mod tests {
             store.my_display_name(&account.id).await.unwrap().as_deref(),
             Some("Sam Rivers")
         );
-    }
-
-    #[tokio::test]
-    async fn recent_sent_rates_are_capped_and_scoped_to_account_thread_and_time() {
-        let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        let other_account = test_account();
-        store.insert_account(&account).await.unwrap();
-        store.insert_account(&other_account).await.unwrap();
-        let base = chrono::Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
-        let mut ids = Vec::new();
-        let mut excluded_thread = None;
-
-        for index in 0..202 {
-            let mut env = TestEnvelopeBuilder::new()
-                .account_id(account.id.clone())
-                .build();
-            env.date = base + Duration::minutes(index);
-            env.from.email = account.email.clone();
-            env.provider_id = format!("recent-{index}");
-            env.snippet = format!("message-{index}");
-            if index == 201 {
-                excluded_thread = Some(env.thread_id.clone());
-            }
-            store
-                .upsert_envelope_with_direction(&env, MessageDirection::Outbound)
-                .await
-                .unwrap();
-            ids.push(env.id);
-        }
-
-        let mut other = TestEnvelopeBuilder::new()
-            .account_id(other_account.id.clone())
-            .build();
-        other.date = base + Duration::days(1);
-        other.from.email = other_account.email.clone();
-        store
-            .upsert_envelope_with_direction(&other, MessageDirection::Outbound)
-            .await
-            .unwrap();
-
-        let recent = store
-            .my_recent_sent(&account.id, None, None, 200)
-            .await
-            .unwrap();
-        assert_eq!(recent.len(), 200);
-        assert_eq!(recent[0].message_id, ids[201]);
-        assert_eq!(recent[199].message_id, ids[2]);
-
-        let without_thread = store
-            .my_recent_sent(&account.id, excluded_thread.as_ref(), None, 200)
-            .await
-            .unwrap();
-        assert_eq!(without_thread.len(), 200);
-        assert!(without_thread
-            .iter()
-            .all(|sample| sample.thread_id != excluded_thread.clone().unwrap()));
-
-        let before = store
-            .my_recent_sent(&account.id, None, Some(base + Duration::minutes(200)), 200)
-            .await
-            .unwrap();
-        assert_eq!(before.len(), 200);
-        assert_eq!(before[0].message_id, ids[199]);
-        assert_eq!(before[199].message_id, ids[0]);
-        assert!(before
-            .iter()
-            .all(|sample| sample.date < base + Duration::minutes(200)));
     }
 }

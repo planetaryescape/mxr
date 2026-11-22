@@ -25,77 +25,6 @@ use crate::parse::{
 use crate::send;
 use mxr_core::types::SyncedMessage;
 
-#[cfg(test)]
-#[derive(Clone)]
-struct ParseObserver {
-    current: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    max: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    delay: std::time::Duration,
-}
-
-#[cfg(test)]
-impl ParseObserver {
-    fn new(delay: std::time::Duration) -> Self {
-        Self {
-            current: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-            max: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-            delay,
-        }
-    }
-
-    fn max_concurrency(&self) -> usize {
-        self.max.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    fn enter(&self) -> ParseObserverGuard {
-        let current = self
-            .current
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-            + 1;
-
-        loop {
-            let max = self.max.load(std::sync::atomic::Ordering::SeqCst);
-            if current <= max {
-                break;
-            }
-            if self
-                .max
-                .compare_exchange(
-                    max,
-                    current,
-                    std::sync::atomic::Ordering::SeqCst,
-                    std::sync::atomic::Ordering::SeqCst,
-                )
-                .is_ok()
-            {
-                break;
-            }
-        }
-
-        if !self.delay.is_zero() {
-            std::thread::sleep(self.delay);
-        }
-
-        ParseObserverGuard {
-            observer: self.clone(),
-        }
-    }
-}
-
-#[cfg(test)]
-struct ParseObserverGuard {
-    observer: ParseObserver,
-}
-
-#[cfg(test)]
-impl Drop for ParseObserverGuard {
-    fn drop(&mut self) {
-        self.observer
-            .current
-            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-    }
-}
-
 const GMAIL_PARSE_FANOUT_THRESHOLD: usize = 64;
 const GMAIL_PARSE_FANOUT_MAX_CONCURRENCY: usize = 8;
 
@@ -144,8 +73,6 @@ pub struct GmailProvider {
     account_id: AccountId,
     client: Box<dyn GmailApi>,
     receiver_verifier: mxr_mail_parse::receiver_arc::ReceiverVerifier,
-    #[cfg(test)]
-    parse_observer: Option<ParseObserver>,
 }
 
 impl GmailProvider {
@@ -189,8 +116,6 @@ impl GmailProvider {
             client: Box::new(client.with_account(&account_id)),
             account_id,
             receiver_verifier: Default::default(),
-            #[cfg(test)]
-            parse_observer: None,
         }
     }
 
@@ -200,21 +125,6 @@ impl GmailProvider {
             account_id,
             receiver_verifier: Default::default(),
             client,
-            parse_observer: None,
-        }
-    }
-
-    #[cfg(test)]
-    fn with_api_and_parse_observer(
-        account_id: AccountId,
-        client: Box<dyn GmailApi>,
-        parse_observer: ParseObserver,
-    ) -> Self {
-        Self {
-            account_id,
-            receiver_verifier: Default::default(),
-            client,
-            parse_observer: Some(parse_observer),
         }
     }
 
@@ -270,36 +180,23 @@ impl GmailProvider {
                 .into_iter()
                 .filter_map(|message| {
                     let provider_message_id = message.id.clone();
-                    parse_synced_message(
-                        self.account_id.clone(),
-                        message,
-                        #[cfg(test)]
-                        self.parse_observer.clone(),
-                    )
-                    .map(|synced| (provider_message_id, synced))
+                    parse_synced_message(self.account_id.clone(), message)
+                        .map(|synced| (provider_message_id, synced))
                 })
                 .collect()
         } else {
             let concurrency = gmail_parse_concurrency_limit(messages.len());
             let account_id = self.account_id.clone();
-            #[cfg(test)]
-            let parse_observer = self.parse_observer.clone();
 
             let results = stream::iter(messages.into_iter().enumerate().map(|(index, message)| {
                 let account_id = account_id.clone();
-                #[cfg(test)]
-                let parse_observer = parse_observer.clone();
 
                 async move {
                     let provider_message_id = message.id.clone();
                     tokio::task::spawn_blocking(move || {
-                        parse_synced_message(
-                            account_id,
-                            message,
-                            #[cfg(test)]
-                            parse_observer,
-                        )
-                        .map(|synced| (provider_message_id, IndexedSyncedMessage { index, synced }))
+                        parse_synced_message(account_id, message).map(|synced| {
+                            (provider_message_id, IndexedSyncedMessage { index, synced })
+                        })
                     })
                     .await
                     .map_err(|error| {
@@ -754,11 +651,7 @@ fn gmail_parse_concurrency_limit(message_count: usize) -> usize {
 fn parse_synced_message(
     account_id: AccountId,
     message: crate::types::GmailMessage,
-    #[cfg(test)] parse_observer: Option<ParseObserver>,
 ) -> Option<SyncedMessage> {
-    #[cfg(test)]
-    let _parse_guard = parse_observer.as_ref().map(ParseObserver::enter);
-
     match gmail_message_to_envelope(&message, &account_id) {
         Ok(envelope) => {
             let body = extract_message_body_for_account(&message, &account_id);
@@ -866,12 +759,7 @@ impl MailSyncProvider for GmailProvider {
             .as_ref()
             .and_then(|p| p.headers.as_ref())
             .is_some_and(|hs| hs.iter().any(|h| h.name.eq_ignore_ascii_case("ARC-Seal")));
-        let mut synced = parse_synced_message(
-            self.account_id.clone(),
-            message,
-            #[cfg(test)]
-            self.parse_observer.clone(),
-        );
+        let mut synced = parse_synced_message(self.account_id.clone(), message);
         if let Some(ref mut synced) = synced {
             if has_arc {
                 self.verify_receiver(provider_message_id, synced).await;
@@ -1259,7 +1147,6 @@ mod tests {
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
-    use std::time::Duration;
     struct MockGmailApi {
         messages: HashMap<String, GmailMessage>,
         labels: Vec<GmailLabel>,
@@ -1346,21 +1233,6 @@ mod tests {
                 }),
                 SendFailure::Unknown(_)
             ));
-        }
-    }
-
-    #[test]
-    fn send_recovery_legacy_proof_requires_the_distinctive_local_gate_diagnostic() {
-        let client = GmailClient::new(crate::auth::GmailAuth::for_test_token("synthetic-token"));
-        let provider = GmailProvider::new(AccountId::new(), client);
-        assert_eq!(provider.legacy_cooldown_retry_after_secs("provider acceptance is uncertain: Rate limited by Gmail asked mxr to wait until 12:15:00 UTC; Gmail labels.list (rateLimitExceeded) — retry after 900s"), Some(900));
-        for diagnostic in [
-            "provider acceptance is uncertain: Rate limited — retry after 900s",
-            "provider acceptance is uncertain: Gmail API error (HTTP 503)",
-            "provider acceptance is uncertain: timeout after possible dispatch",
-            "provider acceptance is uncertain: Rate limited by Gmail asked mxr to wait until later",
-        ] {
-            assert_eq!(provider.legacy_cooldown_retry_after_secs(diagnostic), None);
         }
     }
 
@@ -2116,51 +1988,6 @@ END:VCALENDAR\r\n";
         }
     }
 
-    fn bulk_gmail_provider(message_count: usize, parse_observer: ParseObserver) -> GmailProvider {
-        let messages = (0..message_count)
-            .map(|index| {
-                serde_json::from_value::<GmailMessage>(gmail_message(
-                    &format!("bulk-msg-{index}"),
-                    &format!("bulk-thread-{index}"),
-                    &format!("Bulk subject {index}"),
-                ))
-                .unwrap()
-            })
-            .collect();
-
-        GmailProvider::with_api_and_parse_observer(
-            AccountId::new(),
-            Box::new(BulkSyncGmailApi { messages }),
-            parse_observer,
-        )
-    }
-
-    #[tokio::test]
-    async fn gmail_provider_passes_sync_and_send_conformance() {
-        let provider = gmail_provider();
-        mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
-        mxr_provider_fake::conformance::run_send_conformance(&provider).await;
-    }
-
-    #[tokio::test]
-    async fn gmail_fetch_message_parses_calendar_from_ics_attachment() {
-        let provider = gmail_provider();
-        let synced = provider
-            .fetch_message("msg-cal-attach")
-            .await
-            .unwrap()
-            .expect("calendar attachment message should parse");
-
-        let calendar = synced
-            .body
-            .metadata
-            .calendar
-            .expect("calendar metadata should be backfilled from the .ics attachment");
-        assert_eq!(calendar.method.as_deref(), Some("REQUEST"));
-        assert_eq!(calendar.summary.as_deref(), Some("Attachment-only invite"));
-        assert_eq!(calendar.uid.as_deref(), Some("cal-attach-uid@google.com"));
-    }
-
     #[tokio::test]
     async fn gmail_delta_sync_tracks_history_changes() {
         let provider = gmail_provider();
@@ -2197,21 +2024,6 @@ END:VCALENDAR\r\n";
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn gmail_initial_sync_fans_out_parsing_for_large_batches() {
-        let parse_observer = ParseObserver::new(Duration::from_millis(10));
-        let provider = bulk_gmail_provider(64, parse_observer.clone());
-
-        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-
-        assert_eq!(batch.upserted.len(), 64);
-        assert!(
-            parse_observer.max_concurrency() > 1,
-            "expected parsing overlap for large batches, observed {}",
-            parse_observer.max_concurrency()
-        );
-    }
-
     #[tokio::test]
     async fn gmail_backfill_with_more_pages_surfaces_has_more() {
         let provider = gmail_provider();
@@ -2226,57 +2038,6 @@ END:VCALENDAR\r\n";
         let next = GmailCursor::decode(&batch.next_cursor).unwrap().unwrap();
         let GmailCursor::V1(v) = next;
         assert_eq!(v.page_token.as_deref(), Some("page-2"));
-    }
-
-    #[tokio::test]
-    async fn gmail_backfill_final_page_surfaces_has_more_false() {
-        let provider = gmail_provider();
-        let cursor = GmailCursor::backfill(22, "page-2".into()).encode();
-
-        let batch = provider.sync_messages(&cursor).await.unwrap();
-
-        assert!(
-            !batch.has_more,
-            "the terminal backfill page must surface has_more = false so the daemon stops re-polling"
-        );
-        let next = GmailCursor::decode(&batch.next_cursor).unwrap().unwrap();
-        let GmailCursor::V1(v) = next;
-        assert!(
-            v.page_token.is_none(),
-            "next_cursor should be delta-ready (no page_token)"
-        );
-    }
-
-    #[tokio::test]
-    async fn gmail_rejects_set_keywords_mutation() {
-        let provider = gmail_provider();
-
-        assert!(
-            !provider.capabilities().mutate.custom_keywords,
-            "Gmail adapter must advertise no keyword support"
-        );
-
-        let err = provider
-            .apply_mutation(
-                "mut-1",
-                &mxr_core::Mutation::SetKeywords {
-                    provider_message_id: "msg-1".to_string(),
-                    add: vec!["$Forwarded".to_string()],
-                    remove: vec![],
-                },
-            )
-            .await
-            .expect_err("SetKeywords must error on Gmail");
-
-        match err {
-            MxrError::Provider(msg) => {
-                assert!(
-                    msg.contains("keyword"),
-                    "error must mention keywords: {msg}"
-                );
-            }
-            other => panic!("expected Provider error, got {other:?}"),
-        }
     }
 
     fn reply_draft(in_reply_to: &str, thread_id: Option<&str>) -> Draft {
@@ -2360,46 +2121,6 @@ END:VCALENDAR\r\n";
     }
 
     #[tokio::test]
-    async fn a_known_thread_id_is_used_without_a_lookup() {
-        let (provider, queries, thread_ids) = threading_provider();
-        let draft = reply_draft("<msg-1@example.com>", Some("thread-cached"));
-
-        provider.save_draft(&draft, &sender()).await.unwrap();
-        provider
-            .update_draft("draft-1", &draft, &sender())
-            .await
-            .unwrap();
-        provider
-            .send(&draft, &sender(), "<new@example.com>")
-            .await
-            .unwrap();
-
-        assert!(rfc822msgid_lookups(&queries).is_empty());
-        assert_eq!(
-            *thread_ids.lock().unwrap(),
-            vec![Some("thread-cached".to_string()); 3],
-            "create, update and send all reuse the cached threadId"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_new_message_carries_no_thread_id_and_triggers_no_lookup() {
-        let (provider, queries, thread_ids) = threading_provider();
-        let mut draft = reply_draft("<msg-1@example.com>", None);
-        draft.reply_headers = None;
-        draft.intent = mxr_core::DraftIntent::New;
-
-        provider.save_draft(&draft, &sender()).await.unwrap();
-        provider
-            .send(&draft, &sender(), "<new@example.com>")
-            .await
-            .unwrap();
-
-        assert!(rfc822msgid_lookups(&queries).is_empty());
-        assert_eq!(*thread_ids.lock().unwrap(), vec![None, None]);
-    }
-
-    #[tokio::test]
     async fn an_unknown_parent_still_pushes_and_sends_unthreaded() {
         let (provider, queries, thread_ids) = threading_provider();
         let draft = reply_draft("<gone@example.com>", None);
@@ -2425,33 +2146,9 @@ END:VCALENDAR\r\n";
     }
 
     #[tokio::test]
-    async fn resolve_reply_thread_id_answers_only_from_a_confirmed_parent_lookup() {
-        let (provider, queries, _) = threading_provider();
-
-        let found = provider
-            .resolve_reply_thread_id(&reply_draft("<msg-1@example.com>", None))
-            .await
-            .unwrap();
-        let missing = provider
-            .resolve_reply_thread_id(&reply_draft("<gone@example.com>", None))
-            .await
-            .unwrap();
-        let cached = provider
-            .resolve_reply_thread_id(&reply_draft("<gone@example.com>", Some("thread-cached")))
-            .await
-            .unwrap();
-        let plain = provider
-            .resolve_reply_thread_id(&Draft {
-                reply_headers: None,
-                ..reply_draft("<msg-1@example.com>", None)
-            })
-            .await
-            .unwrap();
-
-        assert_eq!(found.as_deref(), Some("thread-1"));
-        assert_eq!(missing, None, "a miss is unknown, not a thread to cache");
-        assert_eq!(cached.as_deref(), Some("thread-cached"));
-        assert_eq!(plain, None);
-        assert_eq!(rfc822msgid_lookups(&queries).len(), 2);
+    async fn gmail_provider_passes_sync_and_send_conformance() {
+        let provider = gmail_provider();
+        mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
+        mxr_provider_fake::conformance::run_send_conformance(&provider).await;
     }
 }

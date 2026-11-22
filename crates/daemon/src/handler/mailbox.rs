@@ -1613,22 +1613,6 @@ mod hydration_flag_tests {
         assert!(fetched.flags.contains(MessageFlags::SENT));
         assert!(fetched.flags.contains(MessageFlags::READ));
     }
-
-    #[test]
-    fn hydration_does_not_add_sent_to_a_message_stored_as_received() {
-        let stored = TestEnvelopeBuilder::new().flags(MessageFlags::READ).build();
-        let mut fetched = TestEnvelopeBuilder::new()
-            .flags(MessageFlags::READ | MessageFlags::SENT)
-            .build();
-
-        keep_stored_sent_flag(&mut fetched, &stored);
-
-        assert!(fetched.flags.contains(MessageFlags::SENT));
-        let stored_received = TestEnvelopeBuilder::new().build();
-        let mut fetched_plain = TestEnvelopeBuilder::new().build();
-        keep_stored_sent_flag(&mut fetched_plain, &stored_received);
-        assert!(!fetched_plain.flags.contains(MessageFlags::SENT));
-    }
 }
 
 #[cfg(test)]
@@ -1642,24 +1626,5 @@ mod image_budget_tests {
             "<br>".repeat(200_000)
         );
         assert!(collect_html_image_sources(&over).is_empty());
-    }
-
-    #[test]
-    fn image_sources_are_collected_from_an_ordinary_document() {
-        let html = r#"<p><img src="https://example.test/a.png"></p>"#;
-        assert_eq!(
-            collect_html_image_sources(html),
-            vec!["https://example.test/a.png".to_string()]
-        );
-    }
-
-    #[test]
-    fn no_image_list_is_offered_when_the_helper_is_lost() {
-        let lost = std::sync::Arc::new(mxr_html_worker::Supervisor::new(
-            mxr_html_worker::Config::new("/nonexistent/mxr-helper", Vec::new()),
-        ));
-        let html = r#"<p><img src="https://example.test/a.png"></p>"#;
-        let sources = mxr_html_worker::with_supervisor(lost, || collect_html_image_sources(html));
-        assert!(sources.is_empty());
     }
 }

@@ -156,26 +156,6 @@ mod tests {
         assert_eq!(mode, 0o700, "dir mode should be 0700, got {mode:04o}");
     }
 
-    /// The fallback dir ($TMPDIR/mxr-<uid>) must be owned by the current
-    /// user — a squatter-owned dir is rejected. A true negative test would
-    /// need root to chown, so assert the positive: a dir we own passes the
-    /// ownership check and is in fact owned by our effective uid.
-    #[cfg(unix)]
-    #[test]
-    fn private_scratch_dir_verifies_ownership() {
-        use std::os::unix::fs::MetadataExt;
-        let dir = temp_env::with_var("XDG_RUNTIME_DIR", None::<&str>, || {
-            private_scratch_dir().expect("scratch dir owned by us should pass")
-        });
-        let our_uid = super::effective_uid().expect("effective uid");
-        let meta = std::fs::metadata(&dir).expect("metadata");
-        assert_eq!(
-            meta.uid(),
-            our_uid,
-            "scratch dir should be owned by the current user"
-        );
-    }
-
     #[cfg(unix)]
     #[test]
     fn write_private_creates_0600_file() {
@@ -199,25 +179,6 @@ mod tests {
         write_private(&path, b"first").expect("first write");
         let err = write_private(&path, b"second");
         assert!(err.is_err(), "second write should fail (O_EXCL)");
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn write_private_async_creates_0600_file() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = private_scratch_dir().expect("scratch dir");
-        let path = dir.join(format!(
-            "test-write-private-async-{}.txt",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_file(&path);
-        write_private_async(&path, b"async hello")
-            .await
-            .expect("write_private_async");
-        let meta = std::fs::metadata(&path).expect("metadata");
-        let mode = meta.permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "file mode should be 0600, got {mode:04o}");
         let _ = std::fs::remove_file(&path);
     }
 

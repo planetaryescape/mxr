@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { notifyManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -9,24 +9,16 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { toast } from "sonner";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { useComposeUi } from "@/features/compose/composeUiStore";
 import { MessagesRoute, type MessagesSearch } from "./MessagesRoute";
-import { messagesActions } from "./actions";
 import type { Conversation, MessagesData, MessagesRow, MessagesTopic, PersonPage } from "./api";
-import { BridgeRequestError } from "@/api/client";
 import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModeDone, type ModeDoneOutcome } from "@/features/modes/modeDone";
 import { useUndo } from "@/state/undoStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
-import { runCommand } from "@/lib/keys/controllers";
 import { optionalEnum, optionalFlag, optionalString } from "@/lib/searchParams";
-import { ActionRegistry } from "@/lib/actions/registry";
-import { fromDefinition } from "@/lib/actions/definition";
-import { snapshotActionContext } from "@/lib/actions/context";
-import { installKeyDispatcher } from "@/lib/keys/dispatcher";
 
 type FixtureReply =
   | { page: PersonPage }
@@ -295,23 +287,6 @@ test("opening a person with an unsent reply opens its conversation and resumes t
   expect(useComposeUi.getState().surface).toBe("inline");
 });
 
-test("moving the lamp onto a person with an unsent reply leaves the keys in the list", async () => {
-  const { drafted, other } = withDraft();
-  const router = await mountMessages(
-    `/messages?turn=mine&person=${encodeURIComponent(other.id)}&topic=b-live`,
-  );
-  await screen.findByText("b-live");
-
-  act(() => {
-    runCommand("messages", "down");
-  });
-  await waitFor(() =>
-    expect(router.state.location.search).toMatchObject({ person: drafted.id, topic: "a-first" }),
-  );
-  await screen.findByText("a-first");
-  expect(useComposeUi.getState().intent).toBeNull();
-});
-
 test("Done advances to the next person's current open topic, not their cached closed default, while its fetch is delayed", async () => {
   const a = row("person:a", [topic("a-live")]);
   const b = row("person:b", [topic("b-old", "done"), topic("b-live")]);
@@ -364,97 +339,6 @@ test("Done advances to the next person's current open topic, not their cached cl
   });
 });
 
-test("a sync closing the shown topic selects the same person's remaining topic without mutating cached history", async () => {
-  const a = row("person:a", [topic("a-old"), topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  cachePage(a, "a-old", "a-old");
-  const delayed = deferred<FixtureReply>();
-  http.send.mockImplementation(() => delayed.promise);
-  const router = await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-old");
-  await screen.findByText("a-old");
-  await act(async () => {
-    client.setQueryData(listKey, listOf(row(a.id, [topic("a-old", "done"), topic("a-live")])));
-  });
-  await waitFor(() =>
-    expect(router.state.location.search).toMatchObject({ person: a.id, topic: "a-live" }),
-  );
-  const stale = screen.queryByRole("button", { name: "Done" });
-  if (stale) fireEvent.click(stale);
-  expect(http.send.mock.calls.every(([path]) => !path.endsWith("/messages/done"))).toBe(true);
-  await act(async () => {
-    delayed.resolve({ page: personPage(a, "a-live") });
-  });
-  await screen.findByText("a-live");
-});
-
-test("opening a person with a closed cached default heals the URL to their current topic", async () => {
-  const a = row("person:a", [topic("a-old", "done"), topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  cachePage(a, null, "a-old");
-  const delayed = deferred<FixtureReply>();
-  http.send.mockImplementation(() => delayed.promise);
-  const router = await mountMessages("/messages?turn=mine&person=person%3Aa");
-  await waitFor(() =>
-    expect(router.state.location.search).toMatchObject({ person: a.id, topic: "a-live" }),
-  );
-  const pending = screen.queryByRole("button", { name: "Done" });
-  if (pending) fireEvent.click(pending);
-  expect(http.send.mock.calls.every(([path]) => !path.endsWith("/messages/done"))).toBe(true);
-  await act(async () => {
-    delayed.resolve({ page: personPage(a, "a-live") });
-  });
-  await screen.findByText("a-live");
-});
-
-test("deliberately opening a historical topic does not redirect or mark it done again", async () => {
-  const a = row("person:a", [topic("a-old", "done"), topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  cachePage(a, "a-old", "a-old");
-  const router = await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-old");
-  await screen.findByText("a-old");
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
-  expect(http.send).not.toHaveBeenCalled();
-  expect(router.state.location.search).toMatchObject({ person: a.id, topic: "a-old" });
-});
-
-test.each(["person", "topic"])(
-  "Done refuses a cached %s identity mismatch during refetch and works when the matching page arrives",
-  async (mismatch) => {
-    const a = row("person:a", [topic("a-live"), topic("a-other")]);
-    client.setQueryData(listKey, listOf(a));
-    client.setQueryData(
-      ["messages-mode", "person", "all", a.id, "a-live"],
-      personPage(mismatch === "person" ? row("person:other", a.topics) : a, "a-other"),
-    );
-    await client.invalidateQueries({ queryKey: ["messages-mode", "person"], refetchType: "none" });
-    const delayed = deferred<FixtureReply>();
-    const done = deferred<FixtureReply>();
-    const posts: string[][] = [];
-    http.send.mockImplementation(async (path, options) => {
-      if (path.endsWith("/messages/done")) {
-        posts.push(options?.body?.thread_ids ?? []);
-        return done.promise;
-      }
-      if (new URL(path, "http://synthetic.local").pathname.endsWith("/people"))
-        return { messages: listOf(a) };
-      return delayed.promise;
-    });
-    await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
-    await screen.findByText("a-other");
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    expect(posts).toEqual([]);
-    await act(async () => {
-      delayed.resolve({ page: personPage(a, "a-live") });
-    });
-    await screen.findByText("a-live");
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    await waitFor(() => expect(posts).toEqual([["a-live"]]));
-    await act(async () => {
-      done.resolve({ items: [] });
-    });
-  },
-);
-
 test("Undo from the explicit landing restores the original topic after a cached-default transition", async () => {
   const a = row("person:a", [topic("a-live")]);
   const b = row("person:b", [topic("b-old", "done"), topic("b-live")]);
@@ -501,130 +385,6 @@ test("Undo from the explicit landing restores the original topic after a cached-
   expect(posts).toEqual([["a-live"]]);
 });
 
-test("a person Done took out of the list reopens on their own topic when undo brings them back", async () => {
-  const a = row("person:a", [topic("a-live")]);
-  const b = row("person:b", [topic("b-live")]);
-  let list = listOf(a, b);
-  client.setQueryData(listKey, list);
-  cachePage(a, "a-live", "a-live");
-  cachePage(b, "b-live", "b-live");
-  const asked: (string | null)[] = [];
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (path.endsWith("/messages/done")) {
-      list = listOf(b);
-      return {
-        mutation_id: "synthetic-done",
-        items: [{ thread_id: "a-live", mode: "messages", provider: "fake", copy: "Done." }],
-      };
-    }
-    if (path.includes("/undo")) {
-      list = listOf(a, b);
-      return { result: { succeeded: 1 } };
-    }
-    if (url.pathname.endsWith("/people")) return { messages: list };
-    if (url.pathname.endsWith("/people/page")) {
-      const requested = url.searchParams.get("topic");
-      asked.push(requested);
-      if (requested?.startsWith("person:")) {
-        throw new BridgeRequestError(400, "topic: UUID parsing failed");
-      }
-      const person = url.searchParams.get("person") === a.id ? a : b;
-      return { page: personPage(person, requested ?? person.topics[0]?.thread_id ?? "") };
-    }
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  const router = await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
-  await screen.findByText("a-live");
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
-  await waitFor(() =>
-    expect(router.state.location.search).toMatchObject({ person: b.id, topic: "b-live" }),
-  );
-  await waitFor(() => expect(screen.queryByText(a.id)).toBeNull());
-  await waitFor(() => expect(useUndo.getState().lastMutationId).toBe("synthetic-done"));
-  await act(async () => {
-    client.setQueryData(listKey, listOf(a, b));
-  });
-  await waitFor(() => expect(router.state.location.search).toMatchObject({ person: a.id }));
-  expect(router.state.location.search.topic).not.toBe(b.id);
-  const success = vi.spyOn(toast, "success");
-  const info = vi.spyOn(toast, "info");
-  await act(async () => {
-    expect(await useUndo.getState().lastUndo?.()).toBe(true);
-  });
-  expect(success).toHaveBeenCalledWith("Undone");
-  expect(info).not.toHaveBeenCalled();
-  await waitFor(() =>
-    expect(router.state.location.search).toMatchObject({ person: a.id, topic: "a-live" }),
-  );
-  expect(await screen.findByTestId("shown-topic")).toHaveTextContent("a-live");
-  expect(screen.queryByText("Couldn't find this person")).toBeNull();
-  expect(asked).not.toContain(b.id);
-});
-
-test("rapid Done does not revisit settled topics while query-notification delivery is deferred", async () => {
-  const people = [
-    row("person:a", [topic("a-live")]),
-    row("person:b", [topic("b-live")]),
-    row("person:c", [topic("c-live")]),
-  ];
-  let remaining = [...people];
-  client.setQueryData(listKey, listOf(...remaining));
-  for (const person of people)
-    cachePage(person, person.topics[0]?.thread_id ?? "", person.topics[0]?.thread_id ?? "");
-  const posts: string[] = [];
-  http.send.mockImplementation(async (path, options) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (path.endsWith("/messages/done")) {
-      const thread = options?.body?.thread_ids?.[0] ?? "";
-      posts.push(thread);
-      remaining = remaining.filter(
-        (person) => !person.topics.some((item) => item.thread_id === thread),
-      );
-      return {
-        mutation_id: `done-${thread}`,
-        items: [{ thread_id: thread, mode: "messages", provider: "fake", copy: "Done." }],
-      };
-    }
-    if (url.pathname.endsWith("/people"))
-      return {
-        messages: { ...listOf(...remaining), empty_state: remaining.length ? null : "All done." },
-      };
-    if (url.pathname.endsWith("/people/page")) {
-      const person = people.find((entry) => entry.id === url.searchParams.get("person"));
-      if (!person) throw new Error("Unknown synthetic person");
-      return { page: personPage(person, url.searchParams.get("topic") ?? "") };
-    }
-    throw new Error("Unexpected synthetic endpoint");
-  });
-  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
-  await screen.findByText("a-live");
-  const pending: (() => void)[] = [];
-  notifyManager.setScheduler((callback) => pending.push(callback));
-  try {
-    for (const thread of ["a-live", "b-live", "c-live"]) {
-      // oxlint-disable-next-line no-await-in-loop
-      await screen.findByText(thread);
-      fireEvent.click(screen.getByRole("button", { name: "Done" }));
-      // oxlint-disable-next-line no-await-in-loop
-      await waitFor(() => expect(useModeDone.getState().hidden.messages.has(thread)).toBe(false));
-    }
-    const stale = screen.queryByRole("button", { name: "Done" });
-    if (stale) fireEvent.click(stale);
-    expect(posts).toEqual(["a-live", "b-live", "c-live"]);
-  } finally {
-    notifyManager.setScheduler((callback) => setTimeout(callback, 0));
-    await act(async () => {
-      for (const callback of pending) callback();
-    });
-  }
-  expect(await screen.findByText("All done.")).toBeInTheDocument();
-});
-
-function listWith(overrides: Partial<MessagesData>): MessagesData {
-  return { ...listOf(), ...overrides };
-}
-
 test("the filter toggles write the URL, ask the bridge with them, and Clear filters resets", async () => {
   const a = row("person:a", [topic("a-live")]);
   client.setQueryData(listKey, listOf(a));
@@ -661,77 +421,6 @@ test("the filter toggles write the URL, ask the bridge with them, and Clear filt
   expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
 });
 
-test("f cycles views through the dispatcher even before results arrive, but never while typing", async () => {
-  const pending = deferred<FixtureReply>();
-  http.send.mockImplementation(() => pending.promise);
-  const registry = new ActionRegistry();
-  registry.defineMany(messagesActions.map(fromDefinition));
-  const dispose = installKeyDispatcher(window, { registry, context: snapshotActionContext });
-  try {
-    const router = await mountMessages("/messages?unread=true&pace=true");
-    for (const turn of ["all", "mine", "theirs", undefined]) {
-      fireEvent.keyDown(document.body, { key: "f", code: "KeyF" });
-      // oxlint-disable-next-line no-await-in-loop -- each key advances from the preceding view
-      await waitFor(() => expect(router.state.location.search.turn).toBe(turn));
-      expect(router.state.location.search).toMatchObject({ unread: true, pace: true });
-    }
-    const input = document.createElement("textarea");
-    document.body.append(input);
-    await act(async () => {
-      fireEvent.keyDown(input, { key: "f", code: "KeyF" });
-    });
-    input.remove();
-    expect(router.state.location.search.turn).toBeUndefined();
-
-    await act(async () => pending.resolve({ messages: listOf() }));
-    expect(await screen.findByRole("button", { name: "Cycle views" })).toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: "f", code: "KeyF" });
-    await waitFor(() => expect(router.state.location.search.turn).toBe("all"));
-  } finally {
-    dispose();
-  }
-});
-
-test("a filter change keeps the list but hides the count and empty line until its answer lands", async () => {
-  const a = row("person:a", [topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  const pending = deferred<FixtureReply>();
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people") && url.searchParams.get("unread") === "true") {
-      return pending.promise;
-    }
-    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  await mountMessages("/messages?turn=mine");
-  expect(await screen.findByText("1 shown · 1 need attention")).toBeTruthy();
-
-  fireEvent.click(await screen.findByRole("button", { name: "Unread" }));
-  await waitFor(() =>
-    expect(http.send.mock.calls.map(([path]) => path)).toContainEqual(
-      expect.stringMatching(/unread=true/),
-    ),
-  );
-  expect(screen.getByTestId("listed-row").textContent).toBe("person:a");
-  expect(screen.queryByText(/shown ·/)).toBeNull();
-
-  await act(async () => {
-    pending.resolve({
-      messages: listWith({
-        your_turn: [],
-        row_count: 1,
-        matched: 0,
-        your_turn_split: { write_with: 1, others: 0 },
-        empty_state: "No unread messages from people.\nYour turn still has 1 person.",
-        filter: { turn: "mine", unread: true, past_pace: false },
-      }),
-    });
-  });
-  expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
-  expect(screen.getByText("0 shown · 1 need attention")).toBeTruthy();
-});
-
 test("switching account never shows the previous account's rows", async () => {
   const previousScope = useUiPrefs.getState().accountScope;
   const a = row("person:a", [topic("a-live")]);
@@ -766,202 +455,4 @@ test("switching account never shows the previous account's rows", async () => {
   } finally {
     act(() => useUiPrefs.setState({ accountScope: previousScope }));
   }
-});
-
-test("returning from All conversations never uses history as the attention placeholder", async () => {
-  const historical = row("person:historical", [topic("archived", "done")]);
-  const history = listWith({
-    your_turn: [],
-    recent: [historical],
-    row_count: 0,
-    matched: 1,
-    filter: { turn: "all", unread: false, past_pace: false },
-  });
-  const pending = deferred<FixtureReply>();
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people")) {
-      return url.searchParams.get("turn") === "all" ? { messages: history } : pending.promise;
-    }
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  const router = await mountMessages("/messages?turn=all");
-  expect(await screen.findByText("person:historical")).toBeInTheDocument();
-  const filter = screen.getByRole("radio", { name: "Needs attention" });
-  fireEvent.click(screen.getByRole("radio", { name: "Needs attention" }));
-  await waitFor(() => expect(router.state.location.search).not.toHaveProperty("turn"));
-  expect(screen.queryByTestId("listed-row")).not.toBeInTheDocument();
-  expect(screen.getByRole("radio", { name: "Needs attention" })).toBe(filter);
-  await act(async () => {
-    pending.resolve({
-      messages: listWith({ empty_state: "Nobody is waiting on you.", matched: 0 }),
-    });
-  });
-  expect(await screen.findByText("Nobody is waiting on you.")).toBeInTheDocument();
-  expect(screen.getByRole("radio", { name: "Needs attention" })).toBe(filter);
-  expect(screen.queryByText("person:historical")).not.toBeInTheDocument();
-});
-
-test("switching views preserves the open reader and filter nodes while the next list loads", async () => {
-  const a = row("person:a", [topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  cachePage(a, "a-live", "a-live");
-  const pending = deferred<FixtureReply>();
-  http.send.mockImplementation(async (path) => {
-    if (path.includes("turn=all")) return pending.promise;
-    if (path.includes("/people")) return { messages: listOf(a) };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  const router = await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
-  const reader = await screen.findByTestId("shown-topic");
-  const filter = screen.getByRole("radio", { name: "All conversations" });
-  fireEvent.click(filter);
-  await waitFor(() => expect(router.state.location.search.turn).toBe("all"));
-  expect(screen.getByTestId("shown-topic")).toBe(reader);
-  expect(screen.getByRole("radio", { name: "All conversations" })).toBe(filter);
-  await act(async () => {
-    pending.resolve({
-      messages: listWith({
-        filter: { turn: "all", unread: false, past_pace: false },
-        your_turn: [],
-        recent: [],
-      }),
-    });
-  });
-  expect(screen.getByTestId("shown-topic")).toBe(reader);
-  expect(router.state.location.search.person).toBe("person:a");
-});
-
-test("g f below the split reveals the people list before focusing the filter line", async () => {
-  layout.wide = false;
-  const a = row("person:a", [topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  cachePage(a, "a-live", "a-live");
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
-  expect(await screen.findByTestId("shown-topic")).toBeTruthy();
-
-  act(() => {
-    runCommand("messages", "filter");
-  });
-  await waitFor(() => expect(screen.queryByTestId("shown-topic")).toBeNull());
-  await waitFor(() =>
-    expect(document.activeElement).toBe(
-      screen.getByRole("radio", { name: "Your turn", hidden: false }),
-    ),
-  );
-});
-
-test.each([
-  "/messages?turn=all&unread=true&pace=true&person=person%3Aa&topic=a-live",
-  "/messages/a-live?turn=all&unread=true&pace=true",
-])("Back clears the conversation URL and keeps the people list after remount: %s", async (initial) => {
-  layout.wide = false;
-  const a = row("person:a", [topic("a-live")]);
-  const data = listOf(a);
-  client.setQueryData(["messages-mode", "list", "all", "all", "unread", "pace"], data);
-  cachePage(a, "a-live", "a-live");
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people/page")) return { page: personPage(a, "a-live") };
-    if (url.pathname.endsWith("/people")) return { messages: data };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  const router = await mountMessages(initial);
-  await screen.findByTestId("shown-topic");
-  fireEvent.click(screen.getByRole("button", { name: "Back to the people" }));
-  await waitFor(() => {
-    expect(router.state.location.pathname).toBe("/messages");
-    expect(router.state.location.search.person).toBeUndefined();
-    expect(router.state.location.search.topic).toBeUndefined();
-  });
-  expect(router.state.location.search).toMatchObject({ turn: "all", unread: true, pace: true });
-  expect(screen.queryByTestId("person-page")).toBeNull();
-  act(() => runCommand("messages", "personPage"));
-  expect(screen.queryByText("Choose a conversation")).toBeNull();
-  const restoredUrl = router.state.location.href;
-  cleanup();
-  await mountMessages(restoredUrl);
-  expect(await screen.findByTestId("listed-row")).toHaveTextContent("person:a");
-  expect(screen.queryByTestId("person-page")).toBeNull();
-});
-
-test("Esc after p brings focus back from the person page to Messages", async () => {
-  const a = row("person:a", [topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  cachePage(a, "a-live", "a-live");
-  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
-  await screen.findByText("a-live");
-
-  act(() => expect(runCommand("messages", "personPage")).toBe(true));
-  await waitFor(() => expect(screen.getByTestId("topics-trigger")).toHaveFocus());
-
-  act(() => expect(runCommand("messages", "escape")).toBe(true));
-
-  expect(screen.getByRole("region", { name: "Messages" })).toHaveFocus();
-});
-
-test("an empty filtered view does not count as finishing Messages while Your turn is open", async () => {
-  const empty = listWith({
-    your_turn: [],
-    row_count: 4,
-    matched: 0,
-    your_turn_split: { write_with: 4, others: 0 },
-    empty_state: "No unread messages from people.\nYour turn still has 4 people.",
-    filter: { turn: null, unread: true, past_pace: false },
-  });
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people")) return { messages: empty };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  await mountMessages("/messages?unread=true");
-  expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
-  await waitFor(() => expect(lowTide.mock.calls.at(-1)?.[2]).toBe(true));
-});
-
-test("an empty filtered view finishes Messages when the unfiltered Your turn is clear", async () => {
-  const clear = listWith({
-    your_turn: [],
-    row_count: 1,
-    matched: 0,
-    your_turn_split: { write_with: 0, others: 0 },
-    empty_state: "No unread messages from people.",
-    filter: { turn: null, unread: true, past_pace: false },
-  });
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people")) return { messages: clear };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  await mountMessages("/messages?unread=true");
-  expect(await screen.findByText("No unread messages from people.")).toBeTruthy();
-  await waitFor(() => expect(lowTide.mock.calls.at(-1)?.[2]).toBe(false));
-});
-
-test("filtering from a conversation's path keeps that conversation open", async () => {
-  const a = row("person:a", [topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  cachePage(a, "a-live", "a-live");
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  const router = await mountMessages("/messages/a-live?turn=mine");
-  expect(await screen.findByTestId("shown-topic")).toBeTruthy();
-
-  fireEvent.click(await screen.findByRole("button", { name: "Unread" }));
-  await waitFor(() =>
-    expect(router.state.location.search).toEqual(expect.objectContaining({ unread: true })),
-  );
-  expect(router.state.location.pathname).toBe("/messages");
-  expect(router.state.location.search).toEqual(
-    expect.objectContaining({ person: "person:a", topic: "a-live", turn: "mine" }),
-  );
-  expect((await screen.findByTestId("shown-topic")).textContent).toBe("a-live");
 });

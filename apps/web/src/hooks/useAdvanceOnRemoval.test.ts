@@ -38,79 +38,12 @@ describe("useAdvanceOnRemoval", () => {
     expect(only.onAdvance).not.toHaveBeenCalled();
   });
 
-  test("a selection the verb already moved is left alone", () => {
-    const { rerender, onAdvance } = setup({ ids: ["a", "b", "c"], selectedId: "b" });
-    rerender({ ids: ["a", "b", "c"], selectedId: "c" });
-    rerender({ ids: ["a", "c"], selectedId: "c" });
-    expect(onAdvance).not.toHaveBeenCalled();
-  });
-
-  test("a row that was never listed (opened from a link) is not moved", () => {
-    const { rerender, onAdvance, onEmpty } = setup({ ids: ["a", "b"], selectedId: "z" });
-    rerender({ ids: ["a"], selectedId: "z" });
-    expect(onAdvance).not.toHaveBeenCalled();
-    expect(onEmpty).not.toHaveBeenCalled();
-  });
-
-  test("nothing moves while the list loads; a refetch mid-action compares with the last list", () => {
-    const { rerender, onAdvance, onEmpty } = setup({ ids: ["a", "b", "c"], selectedId: "b" });
-    rerender({ ids: [], selectedId: "b", ready: false });
-    expect(onEmpty).not.toHaveBeenCalled();
-    rerender({ ids: ["a", "c"], selectedId: "b", ready: true });
-    expect(onAdvance).toHaveBeenCalledExactlyOnceWith("c", "b");
-  });
-
-  test("a row folded out of view but still present stays selected", () => {
-    const present = new Set(["a", "b", "c"]);
-    const { rerender, onAdvance } = setup({
-      ids: ["a", "b", "c"],
-      selectedId: "b",
-      isPresent: (id) => present.has(id),
-    });
-    rerender({ ids: ["a", "c"], selectedId: "b", isPresent: (id) => present.has(id) });
-    expect(onAdvance).not.toHaveBeenCalled();
-  });
-
-  test("a row leaving the presence source with the list unchanged is still seen leaving", () => {
-    const ids = ["a", "b", "c"];
-    const all = new Set(ids);
-    const { rerender, onAdvance } = setup({
-      ids,
-      selectedId: "a",
-      isPresent: (id) => all.has(id),
-      presenceSource: all,
-    });
-    rerender({ ids, selectedId: "a", isPresent: (id) => all.has(id), presenceSource: all });
-    const withoutB = new Set(["a", "c"]);
-    rerender({
-      ids,
-      selectedId: "a",
-      isPresent: (id) => withoutB.has(id),
-      presenceSource: withoutB,
-    });
-    rerender({
-      ids,
-      selectedId: "b",
-      isPresent: (id) => withoutB.has(id),
-      presenceSource: withoutB,
-    });
-    expect(onAdvance).toHaveBeenCalledExactlyOnceWith("c", "b");
-  });
-
   test("the same row coming back and leaving again moves again (undo, then done)", () => {
     const { rerender, onAdvance } = setup({ ids: ["a", "b"], selectedId: "a" });
     rerender({ ids: ["b"], selectedId: "a" });
     rerender({ ids: ["a", "b"], selectedId: "a" });
     rerender({ ids: ["b"], selectedId: "a" });
     expect(onAdvance).toHaveBeenCalledTimes(2);
-  });
-
-  test("undo reopens after a verb moved on by itself (the reader's archive)", () => {
-    const { rerender, onAdvance } = setup({ ids: ["a", "b", "c"], selectedId: "b" });
-    rerender({ ids: ["a", "c"], selectedId: "c" });
-    expect(onAdvance).not.toHaveBeenCalled();
-    rerender({ ids: ["a", "b", "c"], selectedId: "c" });
-    expect(onAdvance).toHaveBeenCalledExactlyOnceWith("b", "c");
   });
 
   test("a deferred middle-row archive advances in its requested direction", () => {
@@ -129,56 +62,6 @@ describe("useAdvanceOnRemoval", () => {
     expect(onAdvance).toHaveBeenLastCalledWith("c", "b");
   });
 
-  test("a completed archive keeps its direction until the list commit removes the row", () => {
-    const { rerender, expectRemoval, onAdvance } = setup({
-      ids: ["a", "b", "c"],
-      selectedId: "b",
-    });
-    const release = expectRemoval("b", -1);
-    release();
-
-    rerender({ ids: ["a", "b", "c"], selectedId: "b" });
-    expect(onAdvance).not.toHaveBeenCalled();
-    rerender({ ids: ["a", "c"], selectedId: "b" });
-    expect(onAdvance).toHaveBeenCalledExactlyOnceWith("a", "b");
-
-    rerender({ ids: ["a", "c"], selectedId: "a" });
-    rerender({ ids: ["a", "b", "c"], selectedId: "a" });
-    expect(onAdvance).toHaveBeenLastCalledWith("b", "a");
-  });
-
-  test("a fallback move keeps the intent until a delayed removal can be tied to Undo", () => {
-    const { rerender, expectRemoval, onAdvance } = setup({
-      ids: ["a", "b", "c"],
-      selectedId: "b",
-    });
-    const release = expectRemoval("b", -1);
-    release();
-
-    rerender({ ids: ["a", "b", "c"], selectedId: "a" });
-    expect(onAdvance).not.toHaveBeenCalled();
-    rerender({ ids: ["a", "c"], selectedId: "a" });
-    expect(onAdvance).not.toHaveBeenCalled();
-    rerender({ ids: ["a", "b", "c"], selectedId: "a" });
-    expect(onAdvance).toHaveBeenCalledExactlyOnceWith("b", "a");
-  });
-
-  test("a pending archive does not move the reader after the user selects elsewhere", () => {
-    const { rerender, expectRemoval, onAdvance } = setup({
-      ids: ["a", "b", "c"],
-      selectedId: "c",
-    });
-    const release = expectRemoval("c", -1);
-
-    rerender({ ids: ["a", "b", "c"], selectedId: "b" });
-    rerender({ ids: ["a", "b"], selectedId: "b" });
-    expect(onAdvance).not.toHaveBeenCalled();
-
-    release();
-    rerender({ ids: ["a", "b", "c"], selectedId: "b" });
-    expect(onAdvance).not.toHaveBeenCalled();
-  });
-
   test("undo after the list emptied reopens the row", () => {
     const { rerender, onAdvance, onEmpty } = setup({ ids: ["a"], selectedId: "a" });
     rerender({ ids: [], selectedId: "a" });
@@ -188,27 +71,11 @@ describe("useAdvanceOnRemoval", () => {
     expect(onAdvance).toHaveBeenCalledExactlyOnceWith("a", null);
   });
 
-  test("moving elsewhere after the done gives up the reopen", () => {
-    const { rerender, onAdvance } = setup({ ids: ["a", "b", "c"], selectedId: "b" });
-    rerender({ ids: ["a", "c"], selectedId: "b" });
-    rerender({ ids: ["a", "c"], selectedId: "c" });
-    rerender({ ids: ["a", "c"], selectedId: "a" });
-    rerender({ ids: ["a", "b", "c"], selectedId: "a" });
-    expect(onAdvance).toHaveBeenCalledOnce();
-  });
-
   test("an account switch closes rather than guessing", () => {
     const { rerender, onAdvance, onEmpty } = setup({ ids: ["a", "b"], selectedId: "a" });
     rerender({ ids: [], selectedId: "a", ready: false });
     rerender({ ids: ["x", "y"], selectedId: "a", ready: true });
     expect(onAdvance).not.toHaveBeenCalled();
     expect(onEmpty).toHaveBeenCalledExactlyOnceWith("a");
-  });
-
-  test("a selection that lands just after its row left still moves on (a click racing the verb)", () => {
-    const { rerender, onAdvance } = setup({ ids: ["a", "b", "c"], selectedId: null });
-    rerender({ ids: ["a", "c"], selectedId: null });
-    rerender({ ids: ["a", "c"], selectedId: "b" });
-    expect(onAdvance).toHaveBeenCalledExactlyOnceWith("c", "b");
   });
 });

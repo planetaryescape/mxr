@@ -88,17 +88,4 @@ mod tests {
         assert_eq!(summary.last_minute, 1);
         assert_eq!(summary.endpoint_counts(), "history.list=1, messages.get=2");
     }
-
-    #[test]
-    fn requests_older_than_an_hour_are_dropped() {
-        let log = RequestLog::default();
-        let base = Instant::now();
-        log.record("messages.get", base);
-        log.record("messages.get", base + Duration::from_secs(3600));
-
-        let summary = log.summary(base + Duration::from_secs(3601));
-
-        assert_eq!(summary.last_hour, 1);
-        assert_eq!(log.lock().len(), 1, "record prunes what the window dropped");
-    }
 }

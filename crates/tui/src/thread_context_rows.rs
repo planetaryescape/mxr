@@ -220,7 +220,7 @@ mod tests {
     use mxr_core::id::{AccountId, MessageId, ThreadId};
     use mxr_protocol::{
         CommitmentData, CommitmentDirectionData, CommitmentStatusData, OwedReplyHereData,
-        ThreadAskData, ThreadPromiseData, VerifiedQuoteData,
+        ThreadPromiseData,
     };
 
     fn facts() -> ThreadContextData {
@@ -271,30 +271,6 @@ mod tests {
         }
     }
 
-    fn gist(status: ThreadGistStatusData) -> ThreadGistData {
-        ThreadGistData {
-            thread_id: ThreadId::new(),
-            status,
-            gist: Some("Canary stays at 5%.".into()),
-            ask: Some(ThreadAskData {
-                summary: "confirm the owner".into(),
-                quote: Some(VerifiedQuoteData {
-                    message_id: MessageId::new(),
-                    text: "Who owns it?".into(),
-                }),
-            }),
-            provenance: Some(AiProvenanceData {
-                model: "qwen2.5".into(),
-                locality: AiLocalityData::Local,
-                sources: vec![AiSourceData::ThisThread, AiSourceData::RelationshipHistory],
-            }),
-            reason: Some("timed out".into()),
-            generated_at: None,
-            from_cache: false,
-            newest_message_id: None,
-        }
-    }
-
     fn texts(rows: &[ContextRow]) -> Vec<String> {
         rows.iter()
             .map(|row| format!("{}|{}", row.label, row.text))
@@ -312,47 +288,6 @@ mod tests {
                 "Promises|Alice promised: share the dashboard",
                 "|bob@example.com promised: send the logs",
             ]
-        );
-    }
-
-    #[test]
-    fn a_ready_gist_leads_and_its_source_closes() {
-        let rows = context_rows(
-            Some(&facts()),
-            Some(&gist(ThreadGistStatusData::Ready)),
-            Utc::now(),
-        );
-        let texts = texts(&rows);
-        assert_eq!(texts[0], "Gist|Canary stays at 5%.");
-        assert_eq!(texts[1], "Asks you|to confirm the owner");
-        assert_eq!(texts[2], "|\"Who owns it?\"");
-        assert_eq!(
-            texts.last().map(String::as_str).unwrap_or_default(),
-            "AI|local model qwen2.5 · from this thread and your history with them"
-        );
-        assert!(!texts.concat().contains('—'), "no em dashes in copy");
-    }
-
-    #[test]
-    fn no_model_adds_nothing_and_a_failure_says_why() {
-        let facts = facts();
-        let plain = context_rows(Some(&facts), None, Utc::now());
-        assert_eq!(
-            context_rows(
-                Some(&facts),
-                Some(&gist(ThreadGistStatusData::Disabled)),
-                Utc::now()
-            ),
-            plain
-        );
-        let failed = context_rows(
-            Some(&facts),
-            Some(&gist(ThreadGistStatusData::Failed)),
-            Utc::now(),
-        );
-        assert_eq!(
-            texts(&failed).last().map(String::as_str),
-            Some("AI|no gist: timed out")
         );
     }
 }

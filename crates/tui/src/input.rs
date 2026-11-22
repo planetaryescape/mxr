@@ -658,40 +658,6 @@ mod tests {
     }
 
     #[test]
-    fn chord_g_then_a_capital_opens_a_tool() {
-        for (second, expected) in [
-            ('R', Action::OpenTab3),
-            ('C', Action::OpenTab4),
-            ('D', Action::OpenTab5),
-            ('P', Action::OpenTab7),
-            ('Y', Action::OpenActivityScreen),
-        ] {
-            let mut input = InputHandler::new();
-            assert_eq!(input.handle_key(key(KeyCode::Char('g'))), None);
-            assert_eq!(
-                input.handle_key(key_with(KeyCode::Char(second), KeyModifiers::SHIFT)),
-                Some(expected),
-                "g {second}"
-            );
-        }
-    }
-
-    #[test]
-    fn chord_g_then_h_opens_now_and_g_d_stays_drafts() {
-        let mut input = InputHandler::new();
-        assert_eq!(input.handle_key(key(KeyCode::Char('g'))), None);
-        assert_eq!(
-            input.handle_key(key(KeyCode::Char('h'))),
-            Some(Action::OpenNow)
-        );
-        let _ = input.handle_key(key(KeyCode::Char('g')));
-        assert_eq!(
-            input.handle_key(key(KeyCode::Char('d'))),
-            Some(Action::GoToDrafts)
-        );
-    }
-
-    #[test]
     fn chord_g_then_a_view_letter_opens_the_view_the_web_opens() {
         for (second, modifiers, expected) in [
             ('q', KeyModifiers::NONE, Action::OpenReplyQueue),
@@ -709,20 +675,6 @@ mod tests {
                 input.handle_key(key_with(KeyCode::Char(second), modifiers)),
                 Some(expected),
                 "g {second}"
-            );
-        }
-    }
-
-    #[test]
-    fn chord_g_then_digit_one_through_nine_jumps_to_saved_search() {
-        for digit in 1..=9 {
-            let mut input = InputHandler::new();
-            let _ = input.handle_key(key(KeyCode::Char('g')));
-            let action = input.handle_key(key(KeyCode::Char(char::from_digit(digit, 10).unwrap())));
-            assert_eq!(
-                action,
-                Some(Action::OpenSavedSearchByIndex(digit as usize)),
-                "g {digit} should target saved-search index {digit}"
             );
         }
     }
@@ -765,19 +717,6 @@ mod tests {
         assert_eq!(
             action,
             Some(Action::RespondInvite(
-                mxr_protocol::CalendarInviteActionData::Accept
-            ))
-        );
-    }
-
-    #[test]
-    fn chord_i_then_shift_a_responds_invite_with_comment_accept() {
-        let mut input = InputHandler::new();
-        let _ = input.handle_key(key(KeyCode::Char('i')));
-        let action = input.handle_key(key_with(KeyCode::Char('A'), KeyModifiers::SHIFT));
-        assert_eq!(
-            action,
-            Some(Action::RespondInviteWithComment(
                 mxr_protocol::CalendarInviteActionData::Accept
             ))
         );

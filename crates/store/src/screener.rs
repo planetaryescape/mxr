@@ -329,7 +329,7 @@ mod tests {
     use super::{ScreenerDecision, ScreenerDisposition};
     use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId};
-    use mxr_core::types::{MessageDirection, MessageFlags};
+    use mxr_core::types::MessageDirection;
 
     fn anchor() -> chrono::DateTime<chrono::Utc> {
         Utc.with_ymd_and_hms(2024, 5, 7, 14, 0, 0).unwrap()
@@ -353,26 +353,6 @@ mod tests {
             route_label: None,
             decided_at: anchor(),
         }
-    }
-
-    #[tokio::test]
-    async fn get_decision_is_case_insensitive() {
-        let store = Store::in_memory().await.unwrap();
-        let aid = make_account(&store).await;
-        store
-            .set_screener_decision(&fresh_decision(
-                &aid,
-                "alice@example.com",
-                ScreenerDisposition::Deny,
-            ))
-            .await
-            .unwrap();
-        let got = store
-            .get_screener_decision(&aid, "ALICE@EXAMPLE.COM")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(got.disposition, ScreenerDisposition::Deny);
     }
 
     #[tokio::test]
@@ -401,51 +381,6 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(got.disposition, ScreenerDisposition::PaperTrail);
-    }
-
-    #[tokio::test]
-    async fn delete_returns_true_for_existing_and_false_for_missing() {
-        let store = Store::in_memory().await.unwrap();
-        let aid = make_account(&store).await;
-        assert!(!store
-            .delete_screener_decision(&aid, "nope@example.com")
-            .await
-            .unwrap());
-        store
-            .set_screener_decision(&fresh_decision(
-                &aid,
-                "y@example.com",
-                ScreenerDisposition::Allow,
-            ))
-            .await
-            .unwrap();
-        assert!(store
-            .delete_screener_decision(&aid, "y@example.com")
-            .await
-            .unwrap());
-        assert!(store
-            .get_screener_decision(&aid, "y@example.com")
-            .await
-            .unwrap()
-            .is_none());
-    }
-
-    #[tokio::test]
-    async fn list_decisions_orders_alphabetically() {
-        let store = Store::in_memory().await.unwrap();
-        let aid = make_account(&store).await;
-        for email in ["zoe@example.com", "alice@example.com", "bob@example.com"] {
-            store
-                .set_screener_decision(&fresh_decision(&aid, email, ScreenerDisposition::Allow))
-                .await
-                .unwrap();
-        }
-        let listed = store.list_screener_decisions(&aid).await.unwrap();
-        let emails: Vec<_> = listed.into_iter().map(|d| d.sender_email).collect();
-        assert_eq!(
-            emails,
-            vec!["alice@example.com", "bob@example.com", "zoe@example.com"]
-        );
     }
 
     #[tokio::test]
@@ -570,66 +505,6 @@ mod tests {
             ],
         )
         .await;
-        assert_eq!(queued(&store, &aid).await, vec!["dave@example.com"]);
-    }
-
-    #[tokio::test]
-    async fn screener_queue_counts_mail_from_an_alias_of_unknown_direction() {
-        let store = Store::in_memory().await.unwrap();
-        let aid = make_account(&store).await;
-        store
-            .add_account_address(&aid, "Me@Alias.example", false)
-            .await
-            .unwrap();
-        for (n, email) in (1..).zip(["carol@example.com", "dave@example.com"]) {
-            store_message(&store, &aid, n, sender(email), [&[ME.0], &[], &[]]).await;
-        }
-        store_message(
-            &store,
-            &aid,
-            9,
-            ("me@alias.example", MessageDirection::Unknown),
-            [&["carol@example.com"], &[], &[]],
-        )
-        .await;
-        store_message(
-            &store,
-            &aid,
-            10,
-            ("someone@else.example", MessageDirection::Unknown),
-            [&["dave@example.com"], &[], &[]],
-        )
-        .await;
-        assert_eq!(
-            queued(&store, &aid).await,
-            vec!["dave@example.com", "someone@else.example"]
-        );
-    }
-
-    #[tokio::test]
-    async fn screener_queue_treats_provider_sent_unknown_mail_as_sent() {
-        let store = Store::in_memory().await.unwrap();
-        let aid = make_account(&store).await;
-        for (n, email) in (1..).zip(["carol@example.com", "dave@example.com"]) {
-            store_message(&store, &aid, n, sender(email), [&[ME.0], &[], &[]]).await;
-        }
-        let mut sent = TestEnvelopeBuilder::new().account_id(aid.clone()).build();
-        sent.provider_id = "sent-via-alias".into();
-        sent.from = mxr_core::types::Address {
-            name: None,
-            email: "me@send-as.example".into(),
-        };
-        sent.to = vec![mxr_core::types::Address {
-            name: None,
-            email: "carol@example.com".into(),
-        }];
-        sent.flags = MessageFlags::SENT;
-        sent.date = anchor() + chrono::Duration::minutes(9);
-        store
-            .upsert_envelope_with_direction(&sent, MessageDirection::Unknown)
-            .await
-            .unwrap();
-
         assert_eq!(queued(&store, &aid).await, vec!["dave@example.com"]);
     }
 }

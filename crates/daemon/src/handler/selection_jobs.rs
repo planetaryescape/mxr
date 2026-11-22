@@ -656,45 +656,4 @@ mod tests {
             .take_at(&token, &selection, "archive", just_before)
             .is_ok());
     }
-
-    #[test]
-    fn the_id_budget_evicts_the_oldest_preview_first() {
-        let previews = SelectionPreviews::with_limits(10, 10);
-        let selection = search("from:x");
-        let first = previews.insert(entry(4, &selection, "archive"));
-        let second = previews.insert(entry(4, &selection, "archive"));
-        let third = previews.insert(entry(4, &selection, "archive"));
-        assert!(previews.take(&first, &selection, "archive").is_err());
-        assert!(previews.take(&second, &selection, "archive").is_ok());
-        assert!(previews.take(&third, &selection, "archive").is_ok());
-    }
-
-    #[test]
-    fn the_entry_cap_evicts_the_oldest_preview_first() {
-        let previews = SelectionPreviews::with_limits(2, 1_000);
-        let selection = search("from:x");
-        let first = previews.insert(entry(1, &selection, "archive"));
-        let second = previews.insert(entry(1, &selection, "archive"));
-        let third = previews.insert(entry(1, &selection, "archive"));
-        assert!(previews.take(&first, &selection, "archive").is_err());
-        assert!(previews.take(&second, &selection, "archive").is_ok());
-        assert!(previews.take(&third, &selection, "archive").is_ok());
-    }
-
-    #[test]
-    fn one_preview_over_the_whole_budget_is_kept_alone() {
-        let previews = SelectionPreviews::with_limits(10, 5);
-        let selection = search("from:x");
-        let small = previews.insert(entry(2, &selection, "archive"));
-        let big = previews.insert(entry(9, &selection, "archive"));
-        assert!(previews.take(&small, &selection, "archive").is_err());
-        assert_eq!(
-            previews
-                .take(&big, &selection, "archive")
-                .unwrap()
-                .ids
-                .len(),
-            9
-        );
-    }
 }

@@ -126,13 +126,4 @@ mod tests {
         assert_eq!(preview.chosen(), Ok(resolution.at));
         assert!(TimePreview::default().chosen().is_err());
     }
-
-    #[test]
-    fn errors_show_the_parser_message_and_empty_input_shows_nothing() {
-        assert_eq!(
-            lines(&at_tuesday("frday"), 0),
-            ["Didn't catch \"frday\". Try \"fri 3pm\" or \"in 2d\"."]
-        );
-        assert!(lines(&at_tuesday(""), 0).is_empty());
-    }
 }

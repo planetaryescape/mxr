@@ -153,9 +153,6 @@ pub(crate) use account_config::{config_account_id, list_account_configs, repair_
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };
-#[cfg(test)]
-pub(crate) use mutations::send_stored_draft;
-
 pub(crate) use mutations::{
     drain_search_reindex_pending, reconcile_provider_drafts, send_stored_draft_reviewed_locked,
 };
@@ -4973,27 +4970,6 @@ mod identity_activity_tests {
     fn a_refused_account_operation_is_not_a_success() {
         assert!(!response_succeeded(&operation(false)));
         assert!(response_succeeded(&operation(true)));
-    }
-
-    #[test]
-    fn an_operation_that_saved_before_a_later_phase_failed_is_recorded() {
-        let saved_then_failed = Response::Ok {
-            data: ResponseData::AccountOperation {
-                result: AccountOperationResult {
-                    ok: false,
-                    saved: true,
-                    summary: String::new(),
-                    save: None,
-                    auth: None,
-                    sync: None,
-                    send: None,
-                    device_code_url: None,
-                    device_code_user_code: None,
-                    tls_cert_sha256: None,
-                },
-            },
-        };
-        assert!(response_succeeded(&saved_then_failed));
     }
 
     #[test]

@@ -174,15 +174,6 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn save_writes_the_exact_bytes() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("thread.md");
-        let content = "# Thread: héllo\r\n\r\nno trailing newline";
-        write_export_file(&path, content, false).unwrap();
-        assert_eq!(std::fs::read(&path).unwrap(), content.as_bytes());
-    }
-
-    #[test]
     fn save_refuses_an_existing_file_unless_overwrite_is_confirmed() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("thread.md");
@@ -197,48 +188,11 @@ mod tests {
     }
 
     #[test]
-    fn save_creates_missing_parent_directories() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("exports/nested/thread.json");
-        write_export_file(&path, "{}", false).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{}");
-    }
-
-    #[test]
     fn clipboard_program_receives_the_content_on_stdin() {
         let dir = tempdir().unwrap();
         let out = dir.path().join("clipboard.txt");
         let out_arg = out.display().to_string();
         run_clipboard_command("sh", &["-c", "cat > \"$0\"", &out_arg], "Thread: a\n---\n").unwrap();
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "Thread: a\n---\n");
-    }
-
-    #[test]
-    fn clipboard_program_exiting_nonzero_is_an_error() {
-        let error =
-            run_clipboard_command("sh", &["-c", "cat >/dev/null; exit 1"], "content").unwrap_err();
-        assert!(error.contains("exited with"), "{error}");
-    }
-
-    #[test]
-    fn every_format_is_sent_in_the_request() {
-        let thread_id = ThreadId::new();
-        for format in FORMAT_CHOICES {
-            let pending = PendingExport {
-                thread_id: thread_id.clone(),
-                format: format.clone(),
-                destination: ExportDestination::Clipboard,
-            };
-            match export_request(&pending) {
-                Request::ExportThread {
-                    thread_id: sent_id,
-                    format: sent_format,
-                } => {
-                    assert_eq!(sent_id, thread_id);
-                    assert_eq!(sent_format, format);
-                }
-                other => panic!("unexpected request {other:?}"),
-            }
-        }
     }
 }

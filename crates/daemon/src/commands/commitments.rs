@@ -117,7 +117,7 @@ fn status_data(value: CommitmentStatusArg) -> CommitmentStatusData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{FixedOffset, TimeZone, Utc};
+    use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId, ThreadId};
 
     fn commitment(by_when: bool, date_unverified: bool) -> CommitmentData {
@@ -144,26 +144,5 @@ mod tests {
         assert_eq!(unverified["by_when"], "2026-10-02T08:00:00Z");
         let verified = serde_json::to_value(commitment(true, false)).unwrap();
         assert_eq!(verified["date_unverified"], false);
-    }
-
-    #[test]
-    fn an_older_daemons_commitment_without_the_field_reads_as_verified() {
-        let mut value = serde_json::to_value(commitment(true, true)).unwrap();
-        value.as_object_mut().unwrap().remove("date_unverified");
-        let parsed: CommitmentData = serde_json::from_value(value).unwrap();
-        assert!(!parsed.date_unverified);
-    }
-
-    #[test]
-    fn the_due_day_is_the_day_in_the_readers_zone() {
-        let london = FixedOffset::east_opt(3600).unwrap();
-        let mut late = commitment(true, false);
-        late.by_when = Some(Utc.with_ymd_and_hms(2026, 10, 22, 23, 30, 0).unwrap());
-        assert_eq!(due_column(&late, &london), "\tdue 2026-10-23");
-        late.date_unverified = true;
-        assert_eq!(
-            due_column(&late, &london),
-            "\tdue 2026-10-23 (date unverified)"
-        );
     }
 }

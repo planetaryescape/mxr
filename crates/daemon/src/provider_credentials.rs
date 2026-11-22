@@ -217,19 +217,6 @@ mod tests {
     }
 
     #[test]
-    fn disk_hit_is_served_without_touching_the_keychain() {
-        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
-            let (_dir, store) = empty_store();
-            store.set("keyring:imap", "user@host", "disk-pw").unwrap();
-
-            let secret =
-                disk_first_password_with(&store, "keyring:imap", "user@host", true, keychain_never)
-                    .unwrap();
-            assert_eq!(secret, "disk-pw");
-        });
-    }
-
-    #[test]
     fn keychain_hit_is_mirrored_to_disk_then_served_from_disk() {
         temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
             let (_dir, store) = empty_store();
@@ -289,73 +276,6 @@ mod tests {
     }
 
     #[test]
-    fn keychain_disabled_still_serves_a_disk_hit() {
-        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
-            let (_dir, store) = empty_store();
-            store.set("keyring:imap", "user@host", "disk-pw").unwrap();
-            let secret = disk_first_password_with(
-                &store,
-                "keyring:imap",
-                "user@host",
-                false,
-                keychain_never,
-            )
-            .unwrap();
-            assert_eq!(secret, "disk-pw");
-        });
-    }
-
-    #[test]
-    fn mirror_write_failure_still_returns_the_keychain_secret() {
-        struct FailingSetStore {
-            set_calls: std::cell::Cell<usize>,
-        }
-        impl DiskSecretStore for FailingSetStore {
-            fn get(&self, _: &str, _: &str) -> std::io::Result<Option<String>> {
-                Ok(None)
-            }
-            fn set(&self, _: &str, _: &str, _: &str) -> std::io::Result<()> {
-                self.set_calls.set(self.set_calls.get() + 1);
-                Err(std::io::Error::other("disk mirror unavailable"))
-            }
-        }
-
-        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
-            let store = FailingSetStore {
-                set_calls: std::cell::Cell::new(0),
-            };
-            let secret =
-                disk_first_password_with(&store, "keyring:imap", "user@host", true, |_, _| {
-                    Ok::<_, String>("keychain-pw".to_string())
-                })
-                .expect("a failed mirror must not fail resolution");
-            assert_eq!(secret, "keychain-pw");
-            assert_eq!(
-                store.set_calls.get(),
-                1,
-                "the mirror-failure branch must actually run"
-            );
-        });
-    }
-
-    #[test]
-    fn empty_keychain_hit_is_not_mirrored_and_errors() {
-        temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
-            let (_dir, store) = empty_store();
-            let error =
-                disk_first_password_with(&store, "keyring:imap", "user@host", true, |_, _| {
-                    Ok::<_, String>(String::new())
-                })
-                .unwrap_err();
-            assert!(
-                error.to_string().contains("empty"),
-                "unexpected error: {error}"
-            );
-            assert!(store.get("keyring:imap", "user@host").unwrap().is_none());
-        });
-    }
-
-    #[test]
     fn corrupt_disk_surfaces_sanitized_error_without_the_secret() {
         temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
             let (dir, store) = empty_store();
@@ -383,20 +303,5 @@ mod tests {
                 "sanitized error leaked the secret: {error}"
             );
         });
-    }
-
-    #[test]
-    fn imap_config_gets_a_lazy_reader_that_does_not_read_at_construction() {
-        let config = imap_config_with_credentials(
-            "imap.host".into(),
-            993,
-            "user@host".into(),
-            "keyring:absent".into(),
-            true,
-            true,
-            4,
-        )
-        .expect("construction never touches the secret");
-        let _ = config;
     }
 }

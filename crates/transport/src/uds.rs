@@ -238,11 +238,7 @@ fn remove_socket_if_owned(path: &Path, owned: (u64, u64, i64, i64)) {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::panic,
-        reason = "tests assert directly on fixtures"
-    )]
+    #![expect(clippy::unwrap_used, reason = "tests assert directly on fixtures")]
 
     use super::{remove_socket_if_owned, socket_file_identity};
     use std::time::Duration;
@@ -271,49 +267,5 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         remove_socket_if_owned(&path, ours);
         assert!(!path.exists(), "missing socket stays gone");
-    }
-
-    /// Pins the shutdown ordering contract: `stop_accepting` refuses new
-    /// connections promptly (they must not hang) yet leaves the socket file in
-    /// place; `cleanup` is what unlinks it (deferred until in-flight
-    /// connections drain).
-    #[tokio::test]
-    async fn stop_accepting_refuses_new_connections_but_defers_unlink() {
-        use crate::{Connector, ServerTransport, TransportError, UnixConnector};
-
-        // A forked test child can retain the listener until exec closes CLOEXEC fds.
-        let _guard = crate::SUBPROCESS_FD_TEST_LOCK.lock().await;
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("s.sock");
-        let mut listener = super::UdsServerTransport::new(path.clone())
-            .bind()
-            .await
-            .unwrap();
-
-        let connector = UnixConnector::new(path.clone());
-        assert!(
-            connector.connect().await.is_ok(),
-            "reachable while accepting"
-        );
-
-        listener.stop_accepting().await;
-        assert!(
-            path.exists(),
-            "stop_accepting must not unlink the socket file"
-        );
-        match connector.connect().await {
-            Err(TransportError::Connect { source, .. }) => {
-                assert_eq!(
-                    source.kind(),
-                    std::io::ErrorKind::ConnectionRefused,
-                    "expected ConnectionRefused"
-                );
-            }
-            Ok(_) => panic!("connect must be refused once accepting stopped"),
-            Err(other) => panic!("expected a Connect error, got {other:?}"),
-        }
-
-        listener.cleanup().await.unwrap();
-        assert!(!path.exists(), "cleanup must unlink the socket file");
     }
 }

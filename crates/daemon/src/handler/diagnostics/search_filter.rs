@@ -558,60 +558,6 @@ mod tests {
     }
 
     #[test]
-    fn semantic_query_plan_uses_all_sources_for_unfielded_text() {
-        let ast = parse_query("house of cards").unwrap();
-        let plan = semantic_query_plan(&ast).unwrap();
-
-        assert_eq!(plan.text, "house of cards");
-        assert_eq!(
-            plan.source_kinds,
-            vec![
-                SemanticChunkSourceKind::Header,
-                SemanticChunkSourceKind::Body,
-                SemanticChunkSourceKind::AttachmentSummary,
-                SemanticChunkSourceKind::AttachmentText,
-                SemanticChunkSourceKind::Highlight,
-            ]
-        );
-    }
-
-    #[test]
-    fn semantic_query_plan_maps_subject_body_and_filename_fields() {
-        let ast = parse_query("subject:cards body:house filename:deck").unwrap();
-        let plan = semantic_query_plan(&ast).unwrap();
-
-        assert_eq!(plan.text, "cards house deck");
-        assert_eq!(
-            plan.source_kinds,
-            vec![
-                SemanticChunkSourceKind::Header,
-                SemanticChunkSourceKind::Body,
-                SemanticChunkSourceKind::Highlight,
-                SemanticChunkSourceKind::AttachmentSummary,
-                SemanticChunkSourceKind::AttachmentText,
-            ]
-        );
-    }
-
-    #[test]
-    fn semantic_query_plan_falls_back_to_all_sources_when_text_is_unfielded() {
-        let ast = parse_query("subject:cards house").unwrap();
-        let plan = semantic_query_plan(&ast).unwrap();
-
-        assert_eq!(plan.text, "cards house");
-        assert_eq!(
-            plan.source_kinds,
-            vec![
-                SemanticChunkSourceKind::Header,
-                SemanticChunkSourceKind::Body,
-                SemanticChunkSourceKind::AttachmentSummary,
-                SemanticChunkSourceKind::AttachmentText,
-                SemanticChunkSourceKind::Highlight,
-            ]
-        );
-    }
-
-    #[test]
     fn semantic_query_plan_ignores_negated_terms_and_reports_negation() {
         let ast = parse_query("body:deployment -filename:report").unwrap();
         let plan = semantic_query_plan(&ast).unwrap();

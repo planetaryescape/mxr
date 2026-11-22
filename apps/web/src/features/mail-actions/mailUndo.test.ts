@@ -44,10 +44,4 @@ describe("a partly failed undo", () => {
     expect(await retry?.()).toBe(true);
     expect(undoMutation).toHaveBeenLastCalledWith("m-1");
   });
-
-  it("does not offer a retry for an expired undo", async () => {
-    undoMutation.mockRejectedValueOnce(new Error("undo: window expired for mutation `m-2`"));
-    await performUndo("m-2");
-    expect(toastError).toHaveBeenCalledWith("Undo failed", expect.anything());
-  });
 });

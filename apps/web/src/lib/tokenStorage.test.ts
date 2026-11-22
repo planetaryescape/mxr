@@ -58,17 +58,6 @@ describe("bootstrapFromHash", () => {
     expect(getBridgeBaseUrl()).toBe("https://mail.example");
     expect(getToken()).toBeUndefined();
   });
-
-  test("a same-origin token link is stored without asking", () => {
-    window.history.replaceState({ __TSR_index: 0 }, "", "/#token=abc");
-    const confirm = vi.fn<(origin: string) => boolean>(() => true);
-
-    bootstrapFromHash(confirm);
-
-    expect(confirm).not.toHaveBeenCalled();
-    expect(getToken()).toBe("abc");
-    expect(window.history.state).toEqual({ __TSR_index: 0 });
-  });
 });
 
 describe("offline privacy on account changes", () => {

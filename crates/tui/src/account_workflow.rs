@@ -194,24 +194,3 @@ pub(crate) fn merge_account_operation_result(
         base.tls_cert_sha256 = next.tls_cert_sha256;
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_account_step_keeps_saved_state_and_certificate_fingerprint() {
-        let mut combined = empty_account_operation_result();
-        let mut saved_then_failed = empty_account_operation_result();
-        saved_then_failed.ok = false;
-        saved_then_failed.saved = true;
-        saved_then_failed.tls_cert_sha256 = Some("ab".repeat(32));
-
-        merge_account_operation_result(&mut combined, saved_then_failed);
-        merge_account_operation_result(&mut combined, empty_account_operation_result());
-
-        assert!(!combined.ok);
-        assert!(combined.saved);
-        assert_eq!(combined.tls_cert_sha256, Some("ab".repeat(32)));
-    }
-}

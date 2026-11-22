@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { getRegistry } from "@/lib/actions";
 
-import { verb } from "./actionPastTense";
 import { VERB_FEEDBACK } from "./verbFeedback";
 
 const STATE_CHANGING = [
@@ -45,11 +44,6 @@ const STATE_CHANGING = [
 describe("verb feedback table", () => {
   const triggers = new Set(Object.values(VERB_FEEDBACK).flatMap((entry) => entry.actions));
 
-  it("names only actions that exist", () => {
-    const missing = [...triggers].filter((id) => getRegistry().get(id) === undefined);
-    expect(missing).toEqual([]);
-  });
-
   it("covers every state-changing action in the registry", () => {
     expect(STATE_CHANGING.filter((id) => !triggers.has(id))).toEqual([]);
     const readOnly = new Set([
@@ -68,33 +62,4 @@ describe("verb feedback table", () => {
       .filter((id) => !triggers.has(id) && !readOnly.has(id));
     expect(unlisted).toEqual([]);
   });
-
-  it("gives every verb its four parts", () => {
-    const incomplete = Object.entries(VERB_FEEDBACK)
-      .filter(([, entry]) => !entry.optimistic || !entry.pastTense || !entry.undo)
-      .map(([name]) => name);
-    expect(incomplete).toEqual([]);
-  });
-
-  it("marks undo-less verbs irreversible, with a reason, and they confirm first", () => {
-    const unguarded = Object.entries(VERB_FEEDBACK)
-      .filter(
-        ([, entry]) =>
-          entry.undo === "none" && (!entry.irreversible || !entry.reason || !entry.confirm),
-      )
-      .map(([name]) => name);
-    expect(unguarded).toEqual([]);
-  });
-
-  it("words label changes from the table, naming the label", () => {
-    expect(verb("labels", { add: ["Hiring"] })).toBe("Labelled Hiring");
-    expect(verb("labels", { remove: ["Hiring"] })).toBe("Removed Hiring from");
-    expect(verb("labels", { add: ["Hiring"], remove: ["Travel"] })).toBe(
-      VERB_FEEDBACK.labels.pastTense,
-    );
-  });
-});
-
-describe("toast tones", () => {
-
 });

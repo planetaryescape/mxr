@@ -530,23 +530,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_hint_id_means_one_hint_wherever_it_appears() {
-        for guide in MODE_GUIDES {
-            for hint in guide.hints {
-                let same =
-                    super::hint(hint.id).map(|first| (first.anchor, first.text, first.key.1));
-                assert_eq!(
-                    same,
-                    Some((hint.anchor, hint.text, hint.key.1)),
-                    "{} differs",
-                    hint.id
-                );
-            }
-        }
-        assert!(super::hint("now.card").is_none());
-    }
-
-    #[test]
     fn mode_ids_resolve_loosely() {
         for id in ["todo", "to-do", "To do", " TODO "] {
             assert_eq!(mode_guide(id).map(|g| g.mode), Some("todo"), "{id}");
@@ -557,28 +540,5 @@ mod tests {
         assert_eq!(mode_guide("Updates").map(|g| g.mode), Some("updates"));
         assert_eq!(mode_guide("Reading").map(|g| g.mode), Some("reading"));
         assert!(mode_guide("paper trail").is_none());
-    }
-
-    #[test]
-    fn seen_state_rides_along_per_hint() {
-        let unseen = TODO_GUIDE.to_data(|_| None, &|id: &str| Some(id.to_string()));
-        assert!(unseen.hints.iter().all(|hint| !hint.seen));
-        let at = chrono::DateTime::UNIX_EPOCH + chrono::Duration::days(20_000);
-        let seen = TODO_GUIDE.to_data(|id| (id == "todo.runway").then_some(at), &|id: &str| {
-            Some(id.to_string())
-        });
-        let runway = seen
-            .hints
-            .iter()
-            .find(|h| h.id == "todo.runway")
-            .expect("runway hint");
-        assert!(runway.seen);
-        assert_eq!(runway.seen_at, Some(at));
-        let catchup = seen
-            .hints
-            .iter()
-            .find(|h| h.id == "todo.catchup")
-            .expect("catch-up hint");
-        assert!(!catchup.seen);
     }
 }

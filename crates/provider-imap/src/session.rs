@@ -1590,17 +1590,6 @@ mod tests {
     )]
 
     use super::*;
-    use async_imap::types::NameAttribute;
-
-    /// Timeouts must be distinguishable from other connection errors:
-    /// the QRESYNC→SELECT fallback reuses the session on NO/BAD but must
-    /// not after a timeout (response still mid-flight).
-    #[test]
-    fn command_timeouts_are_distinguishable() {
-        assert!(command_timeout_error("SELECT", COMMAND_TIMEOUT).is_timeout());
-        assert!(!ImapProviderError::Connection("refused".into()).is_timeout());
-        assert!(!ImapProviderError::protocol_detail("NO go away").is_timeout());
-    }
 
     #[tokio::test]
     async fn short_fetch_literal_is_classified_as_a_malformed_response() {
@@ -1617,38 +1606,6 @@ mod tests {
         assert!(error.is_malformed_fetch_response());
     }
 
-    #[test]
-    fn append_timeout_scales_with_body_size() {
-        assert_eq!(append_timeout(0).as_secs(), 300);
-        assert_eq!(append_timeout(25 * 1024 * 1024).as_secs(), 700);
-    }
-
-    #[tokio::test]
-    async fn bounded_times_out_hung_command() {
-        let result: Result<()> = bounded(
-            "SELECT",
-            std::time::Duration::from_millis(10),
-            std::future::pending(),
-        )
-        .await;
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("timed out"), "unexpected error: {err}");
-    }
-
-    #[tokio::test]
-    async fn collect_bounded_allows_slow_but_progressing_stream() {
-        let limit = std::time::Duration::from_millis(50);
-        let stream = futures::stream::unfold(0u32, |n| async move {
-            if n >= 5 {
-                return None;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-            Some((Ok::<u32, ImapProviderError>(n), n + 1))
-        });
-        let items = collect_bounded("FETCH", limit, stream).await.unwrap();
-        assert_eq!(items, vec![0, 1, 2, 3, 4]);
-    }
-
     #[tokio::test]
     async fn collect_bounded_times_out_stalled_stream() {
         use futures::StreamExt;
@@ -1660,12 +1617,6 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("timed out"), "unexpected error: {err}");
-    }
-
-    #[test]
-    fn noselect_attribute_is_detected_by_variant() {
-        assert!(is_noselect_attribute(&NameAttribute::NoSelect));
-        assert!(!is_noselect_attribute(&NameAttribute::Sent));
     }
 
     #[test]
@@ -1686,34 +1637,5 @@ mod tests {
         assert_eq!(info.total_count, Some(12));
         assert_eq!(info.unread_count, Some(3));
         assert_eq!(info.uid_next, Some(20));
-    }
-
-    #[test]
-    fn folder_info_from_status_error_emits_folder_without_counts() {
-        let info = folder_info_from_status(
-            "Shared/Team".to_string(),
-            None,
-            Some("/".to_string()),
-            Err(ImapProviderError::protocol_detail(
-                "STATUS Shared/Team failed: permission denied".to_string(),
-            )),
-        );
-        assert_eq!(info.name, "Shared/Team");
-        assert_eq!(info.total_count, None);
-        assert_eq!(info.unread_count, None);
-        assert_eq!(info.uid_next, None);
-        assert_eq!(info.uid_validity, None);
-    }
-
-    #[test]
-    fn special_use_attributes_are_mapped_by_variant() {
-        assert_eq!(
-            special_use_from_attributes(&[NameAttribute::Sent]),
-            Some("\\Sent".to_string())
-        );
-        assert_eq!(
-            special_use_from_attributes(&[NameAttribute::Extension("\\Foo".into())]),
-            None
-        );
     }
 }

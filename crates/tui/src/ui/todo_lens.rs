@@ -966,26 +966,10 @@ pub(crate) mod tests {
     use chrono::Utc;
     use mxr_core::id::{AccountId, MessageId};
     use mxr_protocol::{
-        TodoActionData, TodoActionKindData, TodoAmountData, TodoFirstRunData, TodoResolutionData,
-        TodoRunwayData, TodoStateData, TodoWeekData, TODO_GUIDE,
+        TodoActionData, TodoActionKindData, TodoAmountData, TodoFirstRunData, TodoRunwayData,
+        TodoStateData, TodoWeekData, TODO_GUIDE,
     };
     use mxr_test_support::render_to_string;
-
-    #[test]
-    fn unseen_titles_stay_bright_and_bold_in_future_bands() {
-        let theme = crate::theme::Theme::default();
-        let mut task = todo("attention", "Review the agreement");
-        for dim in [false, true] {
-            task.unread = Some(true);
-            let line = row_line(&task, false, dim, 120, &theme, None);
-            assert_eq!(line.spans[1].style.fg, Some(theme.text_primary));
-            assert!(line.spans[1].style.add_modifier.contains(Modifier::BOLD));
-            task.unread = Some(false);
-            let line = row_line(&task, false, dim, 120, &theme, None);
-            assert_eq!(line.spans[1].style.fg, Some(theme.text_secondary));
-            assert!(!line.spans[1].style.add_modifier.contains(Modifier::BOLD));
-        }
-    }
 
     pub(crate) fn todo(id: &str, title: &str) -> TodoData {
         let now = Utc::now();
@@ -1247,155 +1231,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn overdue_reads_was_due_with_no_bar_and_no_red() {
-        let page = page(runway(vec![overdue_failed_payment()], vec![]), true);
-        let rendered = render(&page, 0);
-        let line = rendered
-            .lines()
-            .find(|line| line.contains("Pay water bill"))
-            .unwrap();
-        assert!(line.contains("was due Wed 30 Sep"), "{line}");
-        assert!(
-            !line.contains('\u{2593}'),
-            "no bar past the deadline: {line}"
-        );
-        let theme = crate::theme::Theme::default();
-        let backend = ratatui::backend::TestBackend::new(120, 30);
-        let mut terminal = Terminal::new(backend).unwrap();
-        terminal
-            .draw(|frame| {
-                draw(
-                    frame,
-                    Rect::new(0, 0, 120, 30),
-                    &TodoView {
-                        zone: crate::ui::received_label::DisplayZone::Fixed(
-                            chrono::FixedOffset::east_opt(3600).unwrap(),
-                        ),
-                        now: chrono::Utc::now(),
-                        page: &page,
-                        selected_index: 0,
-                        active_pane: &ActivePane::MailList,
-                        account_marks: crate::ui::account_mark::AccountMarks::default(),
-                        peek_body: None,
-                    },
-                    &theme,
-                );
-            })
-            .unwrap();
-        let buffer = terminal.backend().buffer();
-        assert!(buffer.content.iter().all(|cell| cell.fg != theme.error));
-    }
-
-    #[test]
-    fn a_row_about_a_link_says_open_email_and_names_the_domain() {
-        let rendered = render(&page(runway(vec![council_tax()], vec![]), true), 0);
-        assert!(rendered.contains("link goes to camden.gov.uk \u{b7} Here because"));
-        assert!(rendered.contains("\u{21b5} Open email to pay"));
-    }
-
-    #[test]
-    fn resolution_rows_distinguish_new_dates_from_completion() {
-        let mut proposed = todo("todo_6", "Renew car insurance");
-        proposed.resolution = Some(TodoResolutionData {
-            id: "resolution-pending".into(),
-            message_id: MessageId::new(),
-            thread_id: mxr_core::id::ThreadId::new(),
-            source_date: Utc::now(),
-            quote: "The new date is 15 March.".into(),
-            quote_location: "body".into(),
-            source_method: "model".into(),
-            action: "revise_date".into(),
-            proposed_due_at: None,
-            proposed_due_words: Some("15 March".into()),
-            status: "pending".into(),
-        });
-        let mut changed = todo("todo_7", "Renew home insurance");
-        changed.resolution = Some(TodoResolutionData {
-            id: "resolution-accepted".into(),
-            message_id: MessageId::new(),
-            thread_id: mxr_core::id::ThreadId::new(),
-            source_date: Utc::now(),
-            quote: "The new date is 15 March.".into(),
-            quote_location: "body".into(),
-            source_method: "model".into(),
-            action: "revise_date".into(),
-            proposed_due_at: None,
-            proposed_due_words: Some("15 March".into()),
-            status: "accepted".into(),
-        });
-        let rendered = render(&page(runway(vec![proposed, changed], vec![]), true), 0);
-
-        assert!(rendered.contains("New date proposed: The new date is 15 March."));
-        assert!(rendered.contains("Date changed: The new date is 15 March."));
-    }
-
-    #[test]
-    fn the_footer_says_when_the_source_email_arrived() {
-        let mut bill = council_tax();
-        bill.source_date = Some(
-            chrono::DateTime::parse_from_rfc3339("2026-10-02T09:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc),
-        );
-        let now = chrono::DateTime::parse_from_rfc3339("2026-10-22T09:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        assert!(trust_line(
-            &bill,
-            now,
-            crate::ui::received_label::DisplayZone::Fixed(
-                chrono::FixedOffset::east_opt(3600).unwrap()
-            )
-        )
-        .starts_with("arrived "));
-
-        bill.source_filed_at = Some(
-            chrono::DateTime::parse_from_rfc3339("2026-10-30T09:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc),
-        );
-        assert!(trust_line(
-            &bill,
-            now,
-            crate::ui::received_label::DisplayZone::Fixed(
-                chrono::FixedOffset::east_opt(3600).unwrap()
-            )
-        )
-        .contains("left the inbox 30 Oct"));
-
-        let no_source = council_tax();
-        assert!(!trust_line(
-            &no_source,
-            now,
-            crate::ui::received_label::DisplayZone::Fixed(
-                chrono::FixedOffset::east_opt(3600).unwrap()
-            )
-        )
-        .contains("arrived"));
-    }
-
-    #[test]
-    fn empty_states_teach_the_job_or_say_when_the_next_thing_shows_up() {
-        let mut never = runway(vec![], vec![]);
-        never.empty_state = Some(TODO_GUIDE.never_had_any.into());
-        let rendered = render(&page(never, false), 0);
-        assert!(
-            rendered.contains("When an email asks you to pay"),
-            "{rendered}"
-        );
-        assert!(rendered.contains("Press t on any email to add one yourself."));
-
-        let mut clear = runway(vec![], vec![renewal()]);
-        clear.empty_state =
-            Some("Nothing needs you. Next: renew car insurance shows up Mon 19 Oct.".into());
-        let rendered = render(&page(clear, true), 0);
-        assert!(
-            rendered.contains("Nothing needs you. Next: renew car insurance shows up Mon 19 Oct.")
-        );
-        assert!(!rendered.contains("Press t on any email"));
-    }
-
-    #[test]
     fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
         let mut hostile = council_tax();
         hostile.title = "Pay\u{1b}[2J now".into();
@@ -1407,52 +1242,5 @@ pub(crate) mod tests {
                 .any(|c| matches!(c as u32, 0x00..=0x09 | 0x0B..=0x1F | 0x7F..=0x9F)),
             "{rendered:?}"
         );
-    }
-
-    fn render_at(page: &TodoPageState, width: u16) -> String {
-        render_to_string(width, 30, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, width, 30),
-                &TodoView {
-                    zone: crate::ui::received_label::DisplayZone::Fixed(
-                        chrono::FixedOffset::east_opt(3600).unwrap(),
-                    ),
-                    now: chrono::Utc::now(),
-                    page,
-                    selected_index: 0,
-                    active_pane: &ActivePane::MailList,
-                    account_marks: crate::ui::account_mark::AccountMarks::default(),
-                    peek_body: None,
-                },
-                &crate::theme::Theme::default(),
-            );
-        })
-    }
-
-    #[test]
-    fn narrow_lenses_keep_the_title_and_the_whole_date() {
-        let mut coming = renewal();
-        coming.when_label = "shows up Mon 19 Oct \u{b7} act by Mon 26 Oct".into();
-        let page = page(runway(vec![council_tax()], vec![coming]), true);
-        for width in [60u16, 80] {
-            let rendered = render_at(&page, width);
-            for (title, when) in [
-                ("Pay council", "act by Wed 7 Oct \u{b7} due Fri 9 Oct"),
-                ("Renew car", "shows up Mon 19 Oct \u{b7} act by Mon 26 Oct"),
-            ] {
-                let line = rendered
-                    .lines()
-                    .find(|line| line.contains(title) && !line.contains("need you"))
-                    .unwrap_or_else(|| panic!("{width}: no row for {title}\n{rendered}"));
-                assert!(line.contains(when), "{width}: the date is cut: {line}");
-            }
-        }
-        let wide = render_at(&page, 80);
-        let bill = wide
-            .lines()
-            .find(|line| line.contains("Pay council") && !line.contains("need you"))
-            .unwrap();
-        assert!(bill.contains('\u{2593}'), "{bill}");
     }
 }

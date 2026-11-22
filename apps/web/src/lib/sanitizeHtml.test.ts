@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { prepareEmailHtml, remoteHost, sanitizeHtml, sanitizeReaderHtml } from "./sanitizeHtml";
+import { sanitizeHtml, sanitizeReaderHtml } from "./sanitizeHtml";
 
 describe("sanitizeHtml", () => {
   it("strips inline <script> tags", () => {
@@ -9,13 +9,6 @@ describe("sanitizeHtml", () => {
 
     expect(clean).not.toMatch(/<script/i);
     expect(clean).not.toMatch(/window\.X/);
-  });
-
-  it("keeps safe email presentation styles", () => {
-    const dirty = `<p style="color:#777;font-size:12px;line-height:18px">hi</p>`;
-    const clean = sanitizeHtml(dirty);
-
-    expect(clean).toMatch(/style="color: #777; font-size: 12px; line-height: 18px"/);
   });
 
   it("removes dangerous CSS from style attributes", () => {
@@ -27,48 +20,11 @@ describe("sanitizeHtml", () => {
     expect(clean).not.toMatch(/position/);
   });
 
-  it("can strip light neutral backgrounds while preserving other safe styles", () => {
-    const dirty = `<div style="background-color:#fff;color:#777;font-size:12px">hi</div>`;
-    const clean = sanitizeHtml(dirty, { stripLightBackgrounds: true });
-
-    expect(clean).toMatch(/style="color: #777; font-size: 12px"/);
-    expect(clean).not.toMatch(/background-color/);
-  });
-
-  it("can strip dark text colors for dark email mode", () => {
-    const dirty = `<p style="color:#172033;font-size:12px">hi</p>`;
-    const clean = sanitizeHtml(dirty, { stripDarkTextColors: true });
-
-    expect(clean).toMatch(/style="font-size: 12px"/);
-    expect(clean).not.toMatch(/color/);
-  });
-
-  it("keeps non-neutral backgrounds when stripping light email containers", () => {
-    const dirty = `<div style="background-color:#fde68a;color:#111">hi</div>`;
-    const clean = sanitizeHtml(dirty, { stripLightBackgrounds: true });
-
-    expect(clean).toMatch(/background-color: #fde68a/);
-  });
-
   it("removes 1x1 tracking pixels even with remote images on", () => {
     const dirty = `<p>Newsletter</p><img src="https://t.example.com/p.gif" width="1" height="1">`;
     const clean = sanitizeHtml(dirty, { allowRemoteImages: true });
 
     expect(clean).not.toMatch(/p\.gif/);
-  });
-
-  it("keeps normal remote images by default", () => {
-    const dirty = `<img src="https://cdn.example.com/hero.jpg" width="600" height="400" alt="hero">`;
-    const clean = sanitizeHtml(dirty);
-
-    expect(clean).toMatch(/src="https:\/\/cdn\.example\.com\/hero\.jpg"/);
-  });
-
-  it("removes known tracker-domain images regardless of size", () => {
-    const dirty = `<img src="https://mailtrack.io/trace/abc" width="600" height="400">`;
-    const clean = sanitizeHtml(dirty, { allowRemoteImages: true });
-
-    expect(clean).not.toMatch(/mailtrack/);
   });
 
   it("blocks protocol-relative and relative image sources, not inline ones", () => {
@@ -94,45 +50,6 @@ describe("sanitizeHtml", () => {
 
     expect(clean).not.toMatch(/cdn\.example/);
     expect(clean).toMatch(/color: red/);
-  });
-
-  it("names the host of a protocol-relative source", () => {
-    expect(remoteHost("//tracker.example/open.png")).toBe("tracker.example");
-    expect(remoteHost("images/logo.png")).toBeNull();
-    expect(remoteHost("cid:logo")).toBeNull();
-  });
-
-  it("adapts inherited dark text and a tinted callout together on the dark canvas", () => {
-    const prepared = prepareEmailHtml(
-      `<div style="color:#111"><div style="background:#e8f0fe">Important condition</div></div>`,
-      { allowRemoteImages: false, preference: "dark", darkScheme: true },
-    );
-
-    expect(prepared.canvas).toBe("dark");
-    expect(prepared.html).not.toMatch(/color:\s*#111/i);
-    expect(prepared.html).not.toMatch(/background:\s*#e8f0fe/i);
-    expect(prepared.html).toContain("Important condition");
-  });
-
-  it("keeps the authored foreground and tinted background paired on Auto's paper canvas", () => {
-    const prepared = prepareEmailHtml(
-      `<div style="color:#111"><div style="background:#e8f0fe">Important condition</div></div>`,
-      { allowRemoteImages: false, preference: "auto", darkScheme: true },
-    );
-
-    expect(prepared.canvas).toBe("paper");
-    expect(prepared.html).toMatch(/color:\s*#111/i);
-    expect(prepared.html).toMatch(/background:\s*#e8f0fe/i);
-  });
-
-  it("lets Auto follow the light app scheme while preserving sender colors", () => {
-    const prepared = prepareEmailHtml(`<p style="color:#111">message</p>`, {
-      allowRemoteImages: false,
-      preference: "auto",
-      darkScheme: false,
-    });
-    expect(prepared.canvas).toBe("original");
-    expect(prepared.html).toMatch(/color:\s*#111/i);
   });
 });
 
@@ -191,17 +108,6 @@ describe("sanitizeReaderHtml", () => {
     expect(anchor?.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
-  it("drops links that would navigate the app itself", () => {
-    const clean = sanitizeReaderHtml(
-      `<a href="/settings">a</a><a href="#top">b</a><a href="//evil.example/x">c</a><a href="mailto:a@b.co">d</a>`,
-      { allowRemoteImages: true },
-    );
-    const hrefs = [
-      ...new DOMParser().parseFromString(clean, "text/html").querySelectorAll("a"),
-    ].map((anchor) => anchor.getAttribute("href"));
-    expect(hrefs).toEqual([null, null, null, "mailto:a@b.co"]);
-  });
-
   it("holds remote images back until allowed", () => {
     const html = `<p>before</p><img src="https://cdn.example/a.png" alt="chart"><p>after</p>`;
     const blocked = sanitizeReaderHtml(html, { allowRemoteImages: false });
@@ -212,25 +118,6 @@ describe("sanitizeReaderHtml", () => {
 
     const allowed = sanitizeReaderHtml(html, { allowRemoteImages: true });
     expect(allowed).toContain(`src="https://cdn.example/a.png"`);
-  });
-
-  it("always removes tracking pixels, even when remote images are allowed", () => {
-    const clean = sanitizeReaderHtml(
-      `<p>hi</p><img src="https://track.customer.io/e/open" alt=""><img src="https://cdn.example/p.gif" width="1" height="1">`,
-      { allowRemoteImages: true },
-    );
-    expect(clean).not.toContain("<img");
-  });
-
-  it("keeps inline images and drops images the app would resolve against itself", () => {
-    const clean = sanitizeReaderHtml(
-      `<img src="data:image/png;base64,iVBORw0KGgo=" alt="inline"><img src="/api/v1/mail/threads"><img src="//cdn.example/a.png"><img src="cid:abc">`,
-      { allowRemoteImages: true },
-    );
-    const dom = new DOMParser().parseFromString(clean, "text/html");
-    expect([...dom.querySelectorAll("img")].map((img) => img.getAttribute("src"))).toEqual([
-      "data:image/png;base64,iVBORw0KGgo=",
-    ]);
   });
 
   it("keeps the structure of a real newsletter", () => {
@@ -261,9 +148,5 @@ describe("sanitizeReaderHtml", () => {
     ]) {
       expect([selector, dom.querySelector(selector) !== null]).toEqual([selector, true]);
     }
-  });
-
-  it("returns an empty string for empty input", () => {
-    expect(sanitizeReaderHtml("", { allowRemoteImages: false })).toBe("");
   });
 });

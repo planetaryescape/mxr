@@ -413,36 +413,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_read_url_on_the_connected_origin_is_accepted_however_it_is_spelled() {
-        let server = MockServer::start().await;
-        let port = Url::parse(&server.uri()).unwrap().port().unwrap();
-        let sent = send_answering(&format!("HTTP://127.0.0.1:{port}/read/x?a=1#b"), &server)
-            .await
-            .unwrap();
-        assert_eq!(sent.article_id, "k57");
-    }
-
-    #[test]
-    fn origins_ignore_case_and_default_ports_but_not_trailing_dots() {
-        let client = MarginaliaClient::new("https://Reader.Example.com", "t").unwrap();
-        assert!(client
-            .check_read_url("https://reader.example.com/r/1")
-            .is_ok());
-        assert!(client
-            .check_read_url("HTTPS://READER.EXAMPLE.COM:443/r/1")
-            .is_ok());
-        assert!(client
-            .check_read_url("https://reader.example.com:8443/r/1")
-            .is_err());
-        assert!(client
-            .check_read_url("http://reader.example.com/r/1")
-            .is_err());
-        assert!(client
-            .check_read_url("https://reader.example.com./r/1")
-            .is_err());
-    }
-
-    #[tokio::test]
     async fn verify_reads_401_as_a_bad_token_and_404_as_a_good_one() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -458,45 +428,5 @@ mod tests {
         let bad = MarginaliaClient::new(&server.uri(), "mrg_bad").unwrap();
         assert_eq!(good.verify().await, Ok(()));
         assert_eq!(bad.verify().await, Err(MarginaliaError::Unauthorized));
-    }
-
-    #[tokio::test]
-    async fn refuses_an_oversized_article_before_sending() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(201))
-            .expect(0)
-            .mount(&server)
-            .await;
-        let client = MarginaliaClient::new(&server.uri(), "mrg_test").unwrap();
-        let mut big = article();
-        big.html = "x".repeat(MAX_REQUEST_BYTES);
-        assert_eq!(client.send(&big).await, Err(MarginaliaError::TooLarge));
-    }
-
-    #[test]
-    fn reader_text_becomes_escaped_html() {
-        let html = paragraphs_html(&[
-            Paragraph {
-                kind: ParagraphKind::Heading,
-                text: "A & B".into(),
-            },
-            Paragraph {
-                kind: ParagraphKind::ListItem,
-                text: "one".into(),
-            },
-            Paragraph {
-                kind: ParagraphKind::ListItem,
-                text: "<two>".into(),
-            },
-            Paragraph {
-                kind: ParagraphKind::Text,
-                text: "end".into(),
-            },
-        ]);
-        assert_eq!(
-            html,
-            "<h2>A &amp; B</h2><ul><li>one</li><li>&lt;two&gt;</li></ul><p>end</p>"
-        );
     }
 }

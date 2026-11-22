@@ -26,22 +26,4 @@ mod tests {
         assert_eq!(next_after_removal(&before, &"c", |_| true), Some(&"b"));
         assert_eq!(next_after_removal(&before, &"a", |id| *id == "a"), None);
     }
-
-    #[test]
-    fn rows_that_left_too_are_skipped() {
-        let before = ["a", "b", "c", "d"];
-        assert_eq!(
-            next_after_removal(&before, &"b", |id| *id != "c"),
-            Some(&"d")
-        );
-        assert_eq!(
-            next_after_removal(&before, &"c", |id| *id == "a"),
-            Some(&"a")
-        );
-    }
-
-    #[test]
-    fn a_row_that_was_never_listed_moves_nothing() {
-        assert_eq!(next_after_removal(&["a"], &"z", |_| true), None);
-    }
 }

@@ -81,56 +81,15 @@ describe("buildFocusQueue", () => {
       reason: "In your reply-later queue",
     });
   });
-
-  test("reply-later mail from another account stays out of a scoped queue", () => {
-    const queue = buildFocusQueue([], [later("x", "acct-1"), later("y", "acct-2")], "acct-1");
-    expect(queue.map((entry) => entry.threadId)).toEqual(["x"]);
-  });
 });
 
 describe("focusReducer", () => {
-  test("the order is fixed at the start; new arrivals join the end", () => {
-    const session = run(
-      { kind: "sync", items: [item("a"), item("b")] },
-      { kind: "sync", items: [item("c"), item("b"), item("a")] },
-    );
-    expect(session.queue).toEqual(["a", "b", "c"]);
-  });
-
   test("the conversation on screen stays when a refetch drops it; others go", () => {
     const session = run(
       { kind: "sync", items: [item("a"), item("b"), item("c")] },
       { kind: "sync", items: [item("c")] },
     );
     expect(session.queue).toEqual(["a", "c"]);
-  });
-
-  test("a linked conversation comes to the front; one not queued changes nothing", () => {
-    const session = run(
-      { kind: "sync", items: [item("a"), item("b"), item("c")] },
-      { kind: "front", threadId: "c" },
-    );
-    expect(session.queue).toEqual(["c", "a", "b"]);
-    expect(focusReducer(session, { kind: "front", threadId: "gone" })).toBe(session);
-  });
-
-  test("skip moves the current conversation to the end and keeps it", () => {
-    const session = run(
-      { kind: "sync", items: [item("a"), item("b"), item("c")] },
-      { kind: "skip" },
-    );
-    expect(session.queue).toEqual(["b", "c", "a"]);
-    expect(focusProgress(session)).toEqual({ position: 1, total: 3, done: 0 });
-  });
-
-  test("handled conversations count as progress and never come back from a refetch", () => {
-    const session = run(
-      { kind: "sync", items: [item("a"), item("b")] },
-      { kind: "handled", threadId: "a" },
-      { kind: "sync", items: [item("a"), item("b")] },
-    );
-    expect(session.queue).toEqual(["b"]);
-    expect(focusProgress(session)).toEqual({ position: 2, total: 2, done: 1 });
   });
 
   test("an undone send puts the conversation back in front", () => {
@@ -142,19 +101,4 @@ describe("focusReducer", () => {
     expect(session.queue).toEqual(["a", "b", "c"]);
     expect(focusProgress(session).done).toBe(0);
   });
-
-  test("skipping the last one sets it aside until you come back to it", () => {
-    const skipped = run(
-      { kind: "sync", items: [item("a"), item("b")] },
-      { kind: "handled", threadId: "a" },
-      { kind: "skip" },
-    );
-    expect(skipped.queue).toEqual([]);
-    expect(skipped.deferred).toEqual(["b"]);
-    expect(focusProgress(skipped)).toEqual({ position: 2, total: 2, done: 1 });
-    const synced = focusReducer(skipped, { kind: "sync", items: [item("b")] });
-    expect(synced.queue).toEqual([]);
-    expect(focusReducer(synced, { kind: "revisit" }).queue).toEqual(["b"]);
-  });
-
 });

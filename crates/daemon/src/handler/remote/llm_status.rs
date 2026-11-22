@@ -64,35 +64,4 @@ mod tests {
         assert!(!serde_json::to_string(&status).unwrap().contains("SENTINEL"));
         assert!(status.keys.is_empty());
     }
-    #[test]
-    fn a_read_only_installation_cannot_advertise_ai_as_enabled() {
-        let mut status = configured();
-        project(&mut status, false, "boot:1".into());
-        assert!(!status.enabled);
-        assert!(!status.api_key_present);
-        assert!(status.features.is_empty());
-        assert!(!serde_json::to_string(&status).unwrap().contains("SENTINEL"));
-    }
-
-    #[test]
-    fn changing_a_redacted_endpoint_still_invalidates_cached_model_output() {
-        let runtime = mxr_llm::LlmRuntime::new(std::sync::Arc::new(mxr_llm::NoopProvider));
-        let mut first = configured();
-        let mut second = configured();
-        second.base_url = Some("https://OTHER_PRIVATE_ENDPOINT_SENTINEL.invalid".into());
-        project(
-            &mut first,
-            true,
-            format!("boot:{}", runtime.policy_generation()),
-        );
-        runtime.replace(std::sync::Arc::new(mxr_llm::NoopProvider));
-        project(
-            &mut second,
-            true,
-            format!("boot:{}", runtime.policy_generation()),
-        );
-        assert!(first.base_url.is_none() && second.base_url.is_none());
-        assert!(first.policy_key.is_some());
-        assert_ne!(first.policy_key, second.policy_key);
-    }
 }

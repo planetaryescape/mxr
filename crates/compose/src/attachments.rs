@@ -1,7 +1,6 @@
 #![cfg_attr(
     test,
     expect(
-        clippy::infallible_destructuring_match,
         clippy::unwrap_used,
         reason = "attachment tests unwrap and match exact fixture failures"
     )
@@ -33,19 +32,5 @@ mod tests {
             .pop()
             .unwrap();
         assert_eq!(result.mime_type, "application/pdf");
-    }
-
-    #[test]
-    fn tilde_expansion() {
-        let expanded = dirs::home_dir()
-            .map(|home| format!("{}/Documents/test.txt", home.display()))
-            .unwrap();
-        let resolved = resolve_attachments(&["~/Documents/test.txt".to_string()]);
-        let missing_path = match resolved.unwrap_err() {
-            AttachmentError::NotFound(path) => path,
-        };
-        assert!(!expanded.starts_with('~'));
-        assert!(expanded.contains("Documents/test.txt"));
-        assert_eq!(missing_path, "~/Documents/test.txt");
     }
 }

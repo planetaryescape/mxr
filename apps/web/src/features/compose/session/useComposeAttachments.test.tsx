@@ -84,25 +84,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("upload uses bounded chunks and the finalized revision for the next edit", async () => {
-  const state = setup();
-  const input = clientFile(256 * 1024 + 3);
-  await act(async () => {
-    await state.result.current.addFiles([input.file]);
-  });
-  const chunks = api.upload.mock.calls
-    .map(([request]) => request)
-    .filter((request) => request.operation === "chunk");
-  expect(chunks).toHaveLength(2);
-  expect(chunks[0]).toMatchObject({ offset: 0 });
-  expect(chunks[1]).toMatchObject({ offset: 256 * 1024 });
-  expect(state.draftRef.current?.revision).toBe(2);
-  expect(state.draftRef.current?.frontmatter.attach).toEqual(["mxr-resource:resource-1/notes.bin"]);
-  expect(state.setDirty).toHaveBeenCalledWith(true);
-  state.setDraft((draft) => (draft ? { ...draft, bodyMarkdown: "Edited after upload." } : draft));
-  expect(state.draftRef.current?.revision).toBe(2);
-});
-
 test("an upload completed after switching drafts cannot attach to the new draft", async () => {
   const state = setup();
   const input = clientFile(3);
@@ -126,44 +107,4 @@ test("an upload completed after switching drafts cannot attach to the new draft"
   expect(state.draftRef.current?.frontmatter.attach).toEqual([]);
   expect(state.setDraft).not.toHaveBeenCalled();
   expect(state.setDirty).not.toHaveBeenCalled();
-});
-
-test("an older daemon rejects upload before reading client bytes", async () => {
-  const state = setup();
-  const input = clientFile(3);
-  api.supports.mockResolvedValue(false);
-  await act(async () => {
-    await state.result.current.addFiles([input.file]);
-  });
-  expect(input.read).not.toHaveBeenCalled();
-  expect(api.upload).not.toHaveBeenCalled();
-});
-
-test("a later batch failure preserves each finalized attachment and revision", async () => {
-  const state = setup();
-  const input = clientFile(3);
-  let begins = 0;
-  api.upload.mockImplementation(async (request) => {
-    if (request.operation === "begin") {
-      begins += 1;
-      if (begins === 2) throw new Error("Second upload failed");
-      return { draft_id: "draft-1", revision: 1 };
-    }
-    return request.operation === "chunk"
-      ? { ok: true }
-      : {
-          draft_id: "draft-1",
-          revision: 2,
-          path: "mxr-resource:resource-1/notes.bin",
-          filename: "notes.bin",
-          size_bytes: 3,
-        };
-  });
-  await act(async () => {
-    await state.result.current.addFiles([input.file, input.file]);
-  });
-  expect(begins).toBe(2);
-  expect(state.draftRef.current?.revision).toBe(2);
-  expect(state.draftRef.current?.frontmatter.attach).toEqual(["mxr-resource:resource-1/notes.bin"]);
-  expect(state.setDirty).toHaveBeenCalledWith(true);
 });

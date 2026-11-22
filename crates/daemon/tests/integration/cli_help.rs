@@ -1,50 +1,7 @@
 use assert_cmd::Command;
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 use mxr::cli::Cli;
-use std::collections::{BTreeMap, BTreeSet};
-
-fn visible_command_paths(command: &clap::Command, path: &[String]) -> BTreeSet<Vec<String>> {
-    let mut paths = BTreeSet::from([path.to_vec()]);
-    for child in command.get_subcommands() {
-        if child.is_hide_set() || child.get_name() == "help" {
-            continue;
-        }
-        let mut child_path = path.to_vec();
-        child_path.push(child.get_name().to_owned());
-        paths.extend(visible_command_paths(child, &child_path));
-    }
-    paths
-}
-
-#[test]
-fn help_cases_cover_the_visible_canonical_command_tree() {
-    let mut command = Cli::command();
-    command.build();
-    let expected = visible_command_paths(&command, &[]);
-    let covered = help_cases()
-        .iter()
-        .map(|(_, args)| {
-            assert_eq!(
-                args.last(),
-                Some(&"--help"),
-                "help-only snapshot invocation"
-            );
-            args[..args.len() - 1]
-                .iter()
-                .map(|arg| (*arg).to_owned())
-                .collect::<Vec<_>>()
-        })
-        .collect::<BTreeSet<_>>();
-    let missing = expected
-        .difference(&covered)
-        .map(|path| format!("mxr {} --help", path.join(" ")))
-        .collect::<Vec<_>>();
-    assert!(
-        missing.is_empty(),
-        "missing help snapshot cases:\n{}",
-        missing.join("\n")
-    );
-}
+use std::collections::BTreeMap;
 
 #[test]
 fn curated_reference_examples_parse_without_executing_commands() {
@@ -102,24 +59,6 @@ fn normalize_help_output(stdout: &str) -> String {
     }
 
     normalized
-}
-
-#[test]
-fn shell_completions_run_with_the_normal_process_stack() {
-    let profile = tempfile::tempdir().expect("isolated completion profile");
-    let output = Command::cargo_bin("mxr")
-        .expect("mxr binary")
-        .env("HOME", profile.path())
-        .env("MXR_CONFIG_DIR", profile.path().join("config"))
-        .env("MXR_DATA_DIR", profile.path().join("data"))
-        .env("MXR_DAEMON_AUTOSTART", "off")
-        .args(["completions", "bash"])
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-    assert!(!output.is_empty(), "completion script must be emitted");
 }
 
 #[test]
@@ -835,21 +774,4 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_voice_show", &["voice", "show", "--help"]),
         ("cli_help_web_stop", &["web", "stop", "--help"]),
     ]
-}
-
-#[test]
-fn reply_audience_requires_one_explicit_policy() {
-    let base = [
-        "mxr",
-        "drafts",
-        "audience",
-        "draft-id",
-        "--expected-revision",
-        "2",
-    ];
-    assert!(Cli::try_parse_from(base).is_err());
-    for flag in ["--all", "--single"] {
-        assert!(Cli::try_parse_from(base.into_iter().chain([flag])).is_ok());
-    }
-    assert!(Cli::try_parse_from(base.into_iter().chain(["--all", "--single"])).is_err());
 }

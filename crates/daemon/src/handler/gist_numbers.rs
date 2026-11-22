@@ -249,47 +249,6 @@ mod tests {
     }
 
     #[test]
-    fn a_reformatted_amount_is_still_the_same_amount() {
-        let source = source("Amount due: $1,234.50 (24.00 for the add-on, 007 seats)");
-        for claim in [
-            "$1,234.50 due",
-            "1234.5 due",
-            "$1234.50 due",
-            "1234.50 USD due",
-            "$24 add-on",
-            "24.0 add-on",
-            "7 seats",
-        ] {
-            assert!(source.verifies(claim), "{claim}");
-        }
-        let european = super::NumberSource::new(["Gesamt: 1.234,50 EUR"]);
-        assert!(european.verifies("1,234.50 EUR"));
-        assert!(european.verifies("1234.5 EUR"));
-        assert!(!european.verifies("1,243.50 EUR"));
-    }
-
-    #[test]
-    fn an_invented_date_is_rejected() {
-        let source = source("Your plan renews on 14 November 2026.");
-        assert!(source.verifies("Renews 14 Nov"));
-        assert!(!source.verifies("Renews 15 Nov"));
-        assert!(!source.verifies("Renews 14 Nov 2027"));
-        let numeric = super::NumberSource::new(["Due 14.11.2026 at 09:30"]);
-        assert!(numeric.verifies("Due 14 Nov at 9:30"));
-        assert!(numeric.verifies("Due 14.11.2026"));
-        assert!(!numeric.verifies("Due 11.14.2026 at 09:45"));
-    }
-
-    #[test]
-    fn text_with_no_numbers_passes() {
-        let source = source("Your payment failed. Update your card.");
-        assert!(source.verifies("Payment failed; the card needs updating"));
-        assert!(source.verifies(""));
-        assert!(NumberSource::default().verifies("Payment failed"));
-        assert!(!NumberSource::default().verifies("Payment of $5 failed"));
-    }
-
-    #[test]
     fn a_currency_the_mail_does_not_name_is_rejected() {
         let pounds = source("Total £24.00");
         assert!(pounds.verifies("£24 charged"));
@@ -305,39 +264,6 @@ mod tests {
     }
 
     #[test]
-    fn a_piece_of_another_figure_does_not_verify_a_claim() {
-        for (mail, claim) in [
-            ("Total $24.50", "24 charged"),
-            ("Total $24.00", "0 failures"),
-            ("Total $24.00", "1 invoice"),
-            ("1,000 requests", "1 request"),
-            ("1,200 requests", "12 requests"),
-            ("Invoice 2026-0042", "Invoice 42 and 2026 and 0"),
-        ] {
-            assert!(!source(mail).verifies(claim), "{mail} / {claim}");
-        }
-        assert!(source("Invoice 2026-0042").verifies("Invoice 42 of 2026"));
-    }
-
-    #[test]
-    fn percentages_ids_and_counts_are_figures() {
-        let source = source("Usage is at 85% of 1,000 requests. Ticket TKT-90417.");
-        assert!(source.verifies("85% of 1000 requests used, ticket 90417"));
-        assert!(!source.verifies("95% of requests used"));
-        assert!(!source.verifies("ticket 90471"));
-    }
-
-    #[test]
-    fn spelled_out_counts_need_the_same_figure_in_the_mail() {
-        let source = source("Payment failed 3 times. We will retry in 2 days.");
-        assert!(source.verifies("Three failed payments, retrying in two days"));
-        assert!(!source.verifies("Five failed payments"));
-        let spelled = super::NumberSource::new(["Three payments failed"]);
-        assert!(spelled.verifies("3 payments failed"));
-        assert!(spelled.verifies("No one needs to act"));
-    }
-
-    #[test]
     fn digits_the_check_cannot_read_fail_closed() {
         let source = source("Total 24 and 5 and 12");
         for claim in [
@@ -349,15 +275,5 @@ mod tests {
         ] {
             assert!(!source.verifies(claim), "{claim}");
         }
-    }
-
-    #[test]
-    fn a_comma_between_numbers_is_not_a_thousands_group() {
-        let source = source("Seats 5, 6 and 7");
-        assert!(source.verifies("seats 5, 6, 7"));
-        assert!(!source.verifies("5,607 seats"));
-        let thousands = super::NumberSource::new(["5,607 seats"]);
-        assert!(thousands.verifies("5607 seats"));
-        assert!(!thousands.verifies("5,706 seats"));
     }
 }

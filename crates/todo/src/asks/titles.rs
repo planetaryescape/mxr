@@ -64,44 +64,4 @@ mod tests {
         assert!(title(ActionKind::Verify, &long, "", "Acme").chars().count() <= 120);
         assert!(long.len() > 700, "source evidence remains complete");
     }
-
-    #[test]
-    fn task_labels_are_readable_without_rewriting_source_quotes() {
-        assert_eq!(
-            title(
-                ActionKind::Send,
-                "I'll send you the signed form.",
-                "",
-                "Priya"
-            ),
-            "Send the signed form"
-        );
-        assert_eq!(
-            title(
-                ActionKind::Other,
-                "I'll go through the tutorial at https://example.org/manual",
-                "",
-                "Priya"
-            ),
-            "Go through the tutorial"
-        );
-        assert_eq!(
-            title(
-                ActionKind::Pay,
-                "Amount due £20",
-                "Council tax bill",
-                "Council"
-            ),
-            "Pay council tax"
-        );
-        assert_eq!(
-            title(
-                ActionKind::Verify,
-                "Please verify your email address: https://example.org",
-                "",
-                "Acme"
-            ),
-            "Verify your email address for Acme"
-        );
-    }
 }

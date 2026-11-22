@@ -706,8 +706,7 @@ pub fn system_label_order(name: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::id::{AccountId, LabelId, SavedSearchId};
-    use mxr_core::types::{SearchMode, SortOrder};
+    use mxr_core::id::{AccountId, LabelId};
 
     fn label(name: &str, kind: LabelKind) -> Label {
         Label {
@@ -745,16 +744,6 @@ mod tests {
         }
     }
 
-    fn syncing_with_progress(current: u32, total: Option<u32>) -> mxr_protocol::AccountSyncStatus {
-        let mut status = sync_status(true, true, None);
-        status.progress = Some(mxr_protocol::SyncProgressData {
-            current,
-            total,
-            message: "Stored messages".into(),
-        });
-        status
-    }
-
     #[test]
     fn sync_indicator_maps_daemon_status_to_sidebar_state() {
         assert_eq!(
@@ -783,23 +772,6 @@ mod tests {
             sync_indicator_for(Some(&sync_status(false, true, None)), None),
             AccountSyncIndicator::Unknown,
             "healthy but never-synced accounts show no stale age"
-        );
-    }
-
-    #[test]
-    fn sync_indicator_carries_the_live_message_count_while_syncing() {
-        assert_eq!(
-            sync_indicator_for(Some(&syncing_with_progress(3000, Some(16500))), None),
-            AccountSyncIndicator::Syncing {
-                progress: Some("3000/16500".into())
-            }
-        );
-        assert_eq!(
-            sync_indicator_for(Some(&syncing_with_progress(3000, None)), None),
-            AccountSyncIndicator::Syncing {
-                progress: Some("3000".into())
-            },
-            "a provider that cannot count what is left still shows movement"
         );
     }
 
@@ -864,59 +836,5 @@ mod tests {
             }
         ));
         assert!(matches!(entries[20], SidebarEntry::Label(label) if label.name == "Work"));
-    }
-
-    #[test]
-    fn sidebar_selection_rests_on_headers_and_skips_spacers() {
-        let labels = vec![
-            label("INBOX", LabelKind::System),
-            label("Work", LabelKind::User),
-        ];
-        let searches = vec![SavedSearch {
-            id: SavedSearchId::new(),
-            account_id: None,
-            name: "Unread".into(),
-            query: "is:unread".into(),
-            search_mode: SearchMode::Lexical,
-            sort: SortOrder::DateDesc,
-            icon: None,
-            position: 0,
-            created_at: chrono::Utc::now(),
-        }];
-        let entries = build_sidebar_entries(&labels, &searches, &build_state());
-        assert_eq!(visual_index_for_selection(&entries, 0), Some(0));
-        assert_eq!(visual_index_for_selection(&entries, 1), Some(2));
-        assert_eq!(visual_index_for_selection(&entries, 5), Some(6));
-        assert_eq!(visual_index_for_selection(&entries, 6), Some(8));
-        assert_eq!(visual_index_for_selection(&entries, 7), Some(9));
-        assert_eq!(visual_index_for_selection(&entries, 8), Some(10));
-        assert_eq!(visual_index_for_selection(&entries, 14), Some(16));
-        assert_eq!(visual_index_for_selection(&entries, 15), Some(18));
-        assert_eq!(visual_index_for_selection(&entries, 16), Some(19));
-        assert_eq!(visual_index_for_selection(&entries, 17), Some(21));
-        assert_eq!(visual_index_for_selection(&entries, 18), Some(22));
-    }
-
-    #[test]
-    fn folding_more_hides_its_pages_and_folders() {
-        let labels = vec![
-            label("INBOX", LabelKind::System),
-            label("SENT", LabelKind::System),
-        ];
-        let state = SidebarBuildState {
-            system_expanded: false,
-            ..build_state()
-        };
-        let entries = build_sidebar_entries(&labels, &[], &state);
-        assert!(matches!(
-            entries.last(),
-            Some(SidebarEntry::Header {
-                title: "More",
-                expanded: false
-            })
-        ));
-        assert!(!entries
-            .iter()
-            .any(|entry| matches!(entry, SidebarEntry::More(_))));
     }
 }

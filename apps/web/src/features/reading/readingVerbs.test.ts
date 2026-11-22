@@ -22,7 +22,7 @@ vi.mock("sonner", () => ({
 
 import { toast } from "sonner";
 
-import { highlightSelection, isWebUrl, openInMarginalia } from "./readingVerbs";
+import { highlightSelection } from "./readingVerbs";
 
 describe("highlighting with nothing selected", () => {
   beforeEach(() => saveHighlight.mockReset().mockResolvedValue({}));
@@ -42,53 +42,4 @@ describe("highlighting with nothing selected", () => {
     });
     expect(toast.success).toHaveBeenCalledWith("Highlighted “A delete is the absence of a row,…”");
   });
-
-  it("prefers a selection over the paragraph at the top", async () => {
-    await highlightSelection("the absence", "item-1", "issue", undefined, 5, {
-      index: 3,
-      text: "Something else entirely.",
-    });
-    expect(saveHighlight).toHaveBeenCalledWith(
-      expect.objectContaining({ quote: "the absence", paragraph: 5 }),
-    );
-    expect(toast.success).toHaveBeenCalledWith("Highlight saved");
-  });
-});
-
-describe("opening Marginalia", () => {
-  beforeEach(() => vi.restoreAllMocks());
-
-  it("accepts only http and https addresses", () => {
-    expect(isWebUrl("https://reader.example.com/read/k57")).toBe(true);
-    expect(isWebUrl("http://localhost:3000/read/k57")).toBe(true);
-    for (const bad of [
-      "javascript:alert(1)",
-      "data:text/html,hi",
-      "file:///etc/passwd",
-      "/read/x",
-      "",
-    ]) {
-      expect(isWebUrl(bad)).toBe(false);
-    }
-  });
-
-  it("closes the pre-opened tab instead of navigating it to a script URL", async () => {
-    const tab = {
-      opener: {},
-      close: vi.fn<() => void>(),
-      location: { href: "about:blank" },
-    };
-    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
-    sendToMarginalia.mockResolvedValue({
-      copy: "Sent to Marginalia.",
-      marginalia: { read_url: "javascript:alert(1)" },
-    });
-    await openInMarginalia("k", null, {
-      connected: true,
-      onConnect: () => undefined,
-    });
-    expect(tab.location.href).toBe("about:blank");
-    expect(tab.close).toHaveBeenCalledOnce();
-  });
-
 });

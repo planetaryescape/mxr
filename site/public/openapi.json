@@ -13548,7 +13548,6 @@
       },
       "ComposeFrontmatter": {
         "type": "object",
-        "description": "YAML frontmatter for compose files.",
         "required": [
           "to",
           "subject",
@@ -13609,8 +13608,7 @@
             "type": [
               "string",
               "null"
-            ],
-            "description": "Provider-native thread hint (e.g. Gmail thread id). Used so replies stay in-thread."
+            ]
           },
           "to": {
             "type": "string"

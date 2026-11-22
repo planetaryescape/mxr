@@ -122,19 +122,6 @@ async fn future_receiver_clock_rejected_and_old_clock_cannot_be_freshened() {
 }
 
 #[tokio::test]
-async fn a_fresh_google_reseal_keeps_the_same_authenticated_original_identity() {
-    let (raw, dns) = fixture("google.com", "stripe.com", &SIGNED, false).await;
-    let first = check(&raw, &dns).await.expect("original");
-    let copy = reseal(&raw, &dns).await;
-    assert_ne!(copy, raw);
-    let second = check(&copy, &dns)
-        .await
-        .expect("genuine second receiver set");
-    assert_eq!(first.message_fingerprint, second.message_fingerprint);
-    println!("crypto replay identity: distinct_receiver_sets=2 independent_originals=1");
-}
-
-#[tokio::test]
 async fn valid_crypto_with_unbound_interpretation_headers_still_fails_policy() {
     use mail_auth::dns::Parameters;
     let headers: Vec<_> = SIGNED

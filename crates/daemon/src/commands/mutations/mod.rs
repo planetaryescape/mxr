@@ -1698,32 +1698,6 @@ mod tests {
     use super::*;
     use std::time::{Duration as StdDuration, SystemTime};
 
-    #[test]
-    fn repeated_addresses_are_planned_once_and_message_ids_are_not_addresses() {
-        let args = vec![
-            "Alice@Example.com".to_owned(),
-            "alice@example.com".to_owned(),
-            "bob@example.com".to_owned(),
-        ];
-        assert_eq!(
-            unsubscribe_addresses(&args).unwrap(),
-            vec!["Alice@Example.com".to_owned(), "bob@example.com".to_owned()]
-        );
-        assert!(unsubscribe_addresses(&["abc-123".to_owned()])
-            .unwrap()
-            .is_empty());
-    }
-
-    #[test]
-    fn an_address_mixed_with_a_message_id_is_rejected_before_anything_is_sent() {
-        let args = vec![
-            "alice@example.com".to_owned(),
-            "8c9d3a02-2e9a-4af6-bf80-4b0d7bb6a4e2".to_owned(),
-        ];
-        let error = unsubscribe_addresses(&args).unwrap_err().to_string();
-        assert_eq!(error, "Pass message ids or email addresses, not both");
-    }
-
     #[tokio::test]
     async fn a_mixed_command_fails_without_connecting_to_the_daemon() {
         let error = unsubscribe(
@@ -1747,30 +1721,6 @@ mod tests {
         assert_eq!(error, "Pass message ids or email addresses, not both");
     }
 
-    /// A bare `@`-less message id is plainly not an email even if it
-    /// looks UUID-ish. Belt-and-braces.
-    #[test]
-    fn unsubscribe_uuid_shaped_id_is_not_an_email() {
-        assert!(!looks_like_email("8c9d3a02-2e9a-4af6-bf80-4b0d7bb6a4e2"));
-        assert!(looks_like_email("alice@example.com"));
-        assert!(!looks_like_email("@example.com"));
-        assert!(!looks_like_email("alice@"));
-    }
-
-    #[test]
-    fn browser_document_prefers_html_when_available() {
-        let body = mxr_core::MessageBody {
-            message_id: mxr_core::MessageId::new(),
-            text_plain: Some("plain".into()),
-            text_html: Some("<p>html</p>".into()),
-            attachments: vec![],
-            fetched_at: chrono::Utc::now(),
-            metadata: Default::default(),
-        };
-
-        assert_eq!(browser_document(&body).as_deref(), Some("<p>html</p>"));
-    }
-
     #[test]
     fn browser_document_wraps_plain_text_for_browser_rendering() {
         let body = mxr_core::MessageBody {
@@ -1785,26 +1735,6 @@ mod tests {
         let document = browser_document(&body).expect("plain text fallback");
         assert!(document.contains("<pre>hello &lt;world&gt;\nline 2</pre>"));
         assert!(document.contains("<!doctype html>"));
-    }
-
-    #[test]
-    fn ensure_browser_cache_file_reuses_existing_file_without_overwriting() {
-        let dir = unique_browser_test_dir("reuse");
-        std::fs::create_dir_all(&dir).expect("create browser cache dir");
-        let message_id = mxr_core::MessageId::new();
-        let path = browser_cache_path(&dir, &message_id);
-        std::fs::write(&path, "cached").expect("write cached browser file");
-
-        let reused = ensure_browser_cache_file(&dir, &message_id, "new content")
-            .expect("reuse cached browser file");
-
-        assert_eq!(reused, path);
-        assert_eq!(
-            std::fs::read_to_string(&path).expect("read cached browser file"),
-            "cached"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

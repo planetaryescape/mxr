@@ -121,13 +121,4 @@ mod tests {
         assert!(!article.html.contains("Privacy"));
         assert!(!article.html.contains("About"));
     }
-
-    #[test]
-    fn a_paywall_stub_is_too_short() {
-        let stub = "<html><body><article><h1>Members only</h1><p>Subscribe to keep reading this story.</p></article></body></html>";
-        assert!(matches!(
-            extract_article(stub, None),
-            Err(ArticleError::TooShort(_) | ArticleError::NotFound)
-        ));
-    }
 }

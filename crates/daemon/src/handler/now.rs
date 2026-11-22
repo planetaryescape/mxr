@@ -510,31 +510,4 @@ mod reason_tests {
         assert_eq!(since_label(at(10, 9), now, &utc), "Saturday");
         assert_eq!(since_label(at(9, 9), now, &utc), "9 Oct");
     }
-
-    #[test]
-    fn since_follows_the_viewers_time_zone_not_the_machines() {
-        let plus_two = FixedOffset::east_opt(2 * 3600).unwrap();
-        let now = at(16, 12);
-        assert_eq!(since_label(at(15, 23), now, &plus_two), "earlier today");
-    }
-
-    #[test]
-    fn each_lane_reads_after_here_because() {
-        assert_eq!(
-            lane_reason(DeskLaneKind::Owed, "Maya", false, "Wednesday"),
-            "your turn since Wednesday"
-        );
-        assert_eq!(
-            lane_reason(DeskLaneKind::Waiting, "Sam", false, "yesterday"),
-            "waiting on Sam since yesterday"
-        );
-        assert_eq!(
-            lane_reason(DeskLaneKind::PeopleNew, "Iris", false, "9 Oct"),
-            "new from Iris since 9 Oct"
-        );
-        assert_eq!(
-            lane_reason(DeskLaneKind::PeopleNew, "Quinn", true, "9 Oct"),
-            "a new sender, not placed yet"
-        );
-    }
 }

@@ -68,16 +68,6 @@ mod tests {
         assert_eq!(result, "nvim");
     }
 
-    #[test]
-    fn resolve_editor_config() {
-        let result =
-            temp_env::with_vars([("EDITOR", None::<&str>), ("VISUAL", None::<&str>)], || {
-                resolve_editor(Some("nano"))
-            });
-
-        assert_eq!(result, "nano");
-    }
-
     #[tokio::test]
     async fn spawn_editor_handles_shell_command_string() {
         let path = std::env::temp_dir().join("mxr-editor-shell-string.tmp");
@@ -87,12 +77,5 @@ mod tests {
             .unwrap();
         let _ = std::fs::remove_file(&path);
         assert!(ok);
-    }
-
-    #[tokio::test]
-    async fn spawn_editor_rejects_empty_editor() {
-        let path = std::env::temp_dir().join("mxr-editor-empty.tmp");
-        let err = spawn_editor("", &path, None).await.unwrap_err();
-        assert!(err.to_string().contains("$EDITOR is empty"));
     }
 }

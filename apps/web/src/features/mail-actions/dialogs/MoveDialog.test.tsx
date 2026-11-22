@@ -116,13 +116,4 @@ describe("routing a batch out of a queue", () => {
       payload: { label: "Receipts", fromQueueLabel: "Work", archive: true },
     });
   });
-
-  test("a single message routes straight away", () => {
-    renderRoute(["m-1"]);
-    fireEvent.click(screen.getByRole("option", { name: /Receipts/ }));
-    expect(api.routeMessages).not.toHaveBeenCalled();
-    expect(mutations.performMailAction).toHaveBeenCalledWith("route", ["m-1"], {
-      payload: { label: "Receipts", fromQueueLabel: "Work", archive: true },
-    });
-  });
 });

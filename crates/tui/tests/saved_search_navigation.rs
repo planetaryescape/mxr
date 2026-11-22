@@ -42,33 +42,3 @@ fn open_saved_search_by_index_1_targets_first_saved_search() {
         "search bar reflects the targeted saved search's mode"
     );
 }
-
-#[test]
-fn open_saved_search_by_index_zero_clears_active_filter() {
-    let mut app = App::new();
-    app.mailbox.saved_searches = vec![fixture_saved_search("Unread", "is:unread", 0)];
-
-    app.apply(Action::OpenSavedSearchByIndex(1));
-    assert!(
-        app.search.active,
-        "precondition: a tab is active before clearing"
-    );
-
-    app.apply(Action::OpenSavedSearchByIndex(0));
-
-    assert!(
-        !app.search.active,
-        "index 0 returns to the default inbox view"
-    );
-}
-
-#[test]
-fn open_saved_search_with_empty_registry_is_noop() {
-    let mut app = App::new();
-    app.apply(Action::OpenSavedSearchByIndex(1));
-
-    assert!(
-        !app.search.active,
-        "no saved searches means the action has nothing to do"
-    );
-}

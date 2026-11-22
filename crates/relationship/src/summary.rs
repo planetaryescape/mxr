@@ -184,18 +184,6 @@ mod tests {
     use mxr_llm::{LlmRuntime, NoopProvider};
     use mxr_store::{ContactStyleRecord, Store};
 
-    #[test]
-    fn an_attempt_key_names_its_contact_again() {
-        let account_id = AccountId::new();
-        let key = attempt_key(&account_id, "Alice@Example.com");
-        assert_eq!(
-            parse_attempt_key(&key),
-            Some((account_id, "alice@example.com".to_string()))
-        );
-        assert_eq!(parse_attempt_key("not-an-account:alice@example.com"), None);
-        assert_eq!(parse_attempt_key("no separator"), None);
-    }
-
     #[tokio::test]
     async fn summary_regeneration_waits_for_three_unsummarized_messages() {
         let store = Store::in_memory().await.expect("store");

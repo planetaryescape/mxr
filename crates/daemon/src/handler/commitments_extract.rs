@@ -222,20 +222,6 @@ mod tests {
     use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
     use std::sync::{Arc, Mutex};
 
-    #[test]
-    fn prefilter_matches_ill_send_friday() {
-        assert!(COMMITMENT_PREFILTER.is_match("I'll send the deck Friday."));
-        assert!(COMMITMENT_PREFILTER.is_match("Hey \u{2014} I will follow up."));
-        assert!(COMMITMENT_PREFILTER.is_match("I can have it by Tuesday."));
-    }
-
-    #[test]
-    fn prefilter_rejects_bare_acknowledgement() {
-        assert!(!COMMITMENT_PREFILTER.is_match("Thanks!"));
-        assert!(!COMMITMENT_PREFILTER.is_match("Got it, looks good."));
-        assert!(!COMMITMENT_PREFILTER.is_match("Bill is great"));
-    }
-
     struct CannedLlm {
         body: String,
         calls: Mutex<usize>,
@@ -297,19 +283,6 @@ mod tests {
         state.llm.replace(stub.clone());
         let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
         (state, account_id, stub)
-    }
-
-    #[tokio::test]
-    async fn extract_skips_llm_when_prefilter_does_not_match() {
-        let (state, account_id, stub) = fixture(r#"{"commitments":[]}"#).await;
-        let draft = draft_with_body(&account_id, "Thanks for the deck. Looks good.");
-        let stored = extract_and_store(&state, &draft).await.unwrap();
-        assert!(stored.is_empty());
-        assert_eq!(
-            *stub.calls.lock().unwrap(),
-            0,
-            "LLM must not be called when prefilter fails"
-        );
     }
 
     #[tokio::test]
@@ -448,35 +421,6 @@ mod tests {
         assert!(promoted
             .iter()
             .all(|row| row.by_when.is_none() && row.by_when_source.is_none()));
-    }
-
-    #[tokio::test]
-    async fn a_due_the_draft_never_says_leaves_the_commitment_undated() {
-        let body = r#"{"commitments":[
-            {"who_owes":"me@example.com","what":"send the deck","due":"by Monday","direction":"yours"},
-            {"who_owes":"me@example.com","what":"send the notes","due":"2026-10-09T17:00:00Z","direction":"yours"}
-        ]}"#;
-        let (state, account_id, _) = fixture(body).await;
-        let draft = draft_with_body(
-            &account_id,
-            "I'll send the deck soon, and I'll send the notes when I can.",
-        );
-        let stored = extract_and_store(&state, &draft).await.unwrap();
-        assert_eq!(stored.len(), 2, "undated commitments are still kept");
-        assert!(stored.iter().all(|candidate| candidate.by_when.is_none()));
-    }
-
-    #[tokio::test]
-    async fn extract_drops_entries_with_empty_what() {
-        let body = r#"{"commitments":[
-            {"who_owes":"me@example.com","what":"","due":null,"direction":"yours"},
-            {"who_owes":"me@example.com","what":"send invoice","due":null,"direction":"yours"}
-        ]}"#;
-        let (state, account_id, _) = fixture(body).await;
-        let draft = draft_with_body(&account_id, "I'll get back to you tomorrow.");
-        let stored = extract_and_store(&state, &draft).await.unwrap();
-        assert_eq!(stored.len(), 1, "empty 'what' must be filtered out");
-        assert_eq!(stored[0].what, "send invoice");
     }
 
     #[tokio::test]

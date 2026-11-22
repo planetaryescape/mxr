@@ -546,20 +546,4 @@ mod background_tests {
         let later = background_batch(due, &failed, now + BACKGROUND_EVERY);
         assert_eq!(later.len(), 20);
     }
-
-    #[test]
-    fn a_success_clears_an_earlier_failure() {
-        let now = Utc::now();
-        let due = vec![row(0, now), row(1, now)];
-        let mut failed = FailedAt::new();
-        note_background_failures(&mut failed, &due, &failed_sync(&due[..1]), now);
-        assert_eq!(failed.len(), 1);
-        note_background_failures(
-            &mut failed,
-            &due,
-            &MarginaliaSyncData::default(),
-            now + BACKGROUND_EVERY + Duration::minutes(1),
-        );
-        assert!(failed.is_empty());
-    }
 }

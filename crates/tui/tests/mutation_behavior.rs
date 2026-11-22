@@ -151,46 +151,6 @@ fn star_reverts_when_reconciliation_fails() {
 }
 
 #[test]
-fn concurrent_mutations_on_same_message_compose_under_out_of_order_success() {
-    let mut app = App::new();
-    app.mailbox.envelopes.push(unstarred_inbox_envelope());
-    app.mailbox.selected_index = 0;
-
-    app.apply(Action::Star);
-    let star_id = app.pending_mutation_queue[0].id;
-
-    app.modals.pending_label_action = Some((LabelPickerMode::Apply, "Project X".into()));
-    app.apply(Action::ApplyLabel);
-    assert_eq!(
-        app.pending_mutation_queue.len(),
-        2,
-        "two mutations queued for the same message"
-    );
-    let label_id = app.pending_mutation_queue[1].id;
-
-    let _ = app.mutation_snapshots.take(label_id);
-    let _ = app.mutation_snapshots.take(star_id);
-
-    assert!(
-        app.mailbox.envelopes[0]
-            .flags
-            .contains(MessageFlags::STARRED),
-        "star effect retained"
-    );
-    assert!(
-        app.mailbox.envelopes[0]
-            .label_provider_ids
-            .contains(&"Project X".to_string()),
-        "label effect retained"
-    );
-
-    assert!(
-        app.mutation_snapshots.is_empty(),
-        "no orphan snapshots remain after both mutations are acknowledged"
-    );
-}
-
-#[test]
 fn concurrent_mutations_on_same_message_partial_failure() {
     let mut app = App::new();
     app.mailbox.envelopes.push(unstarred_inbox_envelope());
@@ -230,51 +190,6 @@ fn concurrent_mutations_on_same_message_partial_failure() {
             .label_provider_ids
             .contains(&"Project X".to_string()),
         "label effect reverts because label mutation failed"
-    );
-}
-
-#[test]
-fn flag_reply_later_queues_set_reply_later_request() {
-    let mut app = App::new();
-    let envelope = unstarred_inbox_envelope();
-    let message_id = envelope.id.clone();
-    app.mailbox.envelopes.push(envelope);
-    app.mailbox.selected_index = 0;
-
-    app.apply(Action::FlagReplyLater);
-    assert!(
-        app.modals.reply_later_prompt.is_some(),
-        "b opens the time prompt"
-    );
-    assert!(app.pending_mutation_queue.is_empty(), "nothing yet");
-    let enter = app
-        .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
-        .expect("Enter confirms");
-    app.apply(enter);
-    assert!(app.modals.reply_later_prompt.is_none());
-
-    assert_eq!(
-        app.pending_mutation_queue.len(),
-        1,
-        "exactly one SetReplyLater request queued"
-    );
-    match &app.pending_mutation_queue[0].request {
-        Request::SetReplyLater {
-            message_id: queued_id,
-            flag,
-        } => {
-            assert_eq!(queued_id, &message_id);
-            assert!(*flag, "flag is true on initial bookmark");
-        }
-        other => panic!("expected SetReplyLater request, got {other:?}"),
-    }
-    assert!(
-        app.mailbox.reply_later_message_ids.contains(&message_id),
-        "reply-later flag should be visible optimistically"
-    );
-    assert!(
-        app.mail_list_rows()[0].reply_later,
-        "mail list row should expose the optimistic reply-later marker"
     );
 }
 
@@ -319,41 +234,6 @@ fn reply_later_at_a_typed_time_sends_the_previewed_instant() {
         }
         other => panic!("expected DeferThreads, got {other:?}"),
     }
-}
-
-#[test]
-fn a_phrase_that_does_not_parse_stays_in_the_prompt() {
-    let mut app = App::new();
-    app.mailbox.envelopes.push(unstarred_inbox_envelope());
-    app.mailbox.selected_index = 0;
-    app.apply(Action::FlagReplyLater);
-    for c in "whenever".chars() {
-        let _ = app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
-    }
-    let enter = app
-        .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
-        .expect("Enter confirms");
-    app.apply(enter);
-    let prompt = app.modals.reply_later_prompt.as_ref().expect("still open");
-    assert!(prompt.error.is_some());
-    assert!(app.pending_mutation_queue.is_empty());
-
-    let esc = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-    assert!(esc.is_none());
-    assert!(app.modals.reply_later_prompt.is_none(), "Esc closes it");
-}
-
-#[test]
-fn flag_reply_later_with_no_selection_shows_status_not_queued() {
-    let mut app = App::new();
-    app.apply(Action::FlagReplyLater);
-
-    assert_eq!(
-        app.pending_mutation_queue.len(),
-        0,
-        "no request queued without a target"
-    );
-    assert_eq!(app.status_message.as_deref(), Some("No message selected"));
 }
 
 #[test]

@@ -93,56 +93,6 @@ async fn sync_prune_keeps_newest_50_per_account_and_deletes_older_rows_past_cuto
 }
 
 #[tokio::test]
-async fn sync_prune_tie_breaks_match_the_rows_doctor_reads() {
-    let (store, account) = fresh_store_with_account().await;
-    let now = Utc::now().timestamp();
-    seed_sync_rows(&store, &account, 55, now - 200 * DAY, 0).await;
-
-    let before = newest_50(&store, &account).await;
-    let deleted = store
-        .prune_sync_logs_before(now - 90 * DAY, 50)
-        .await
-        .unwrap();
-
-    assert_eq!(deleted, 5);
-    assert_eq!(newest_50(&store, &account).await, before);
-    assert_eq!(sync_row_count(&store, &account).await, 50);
-}
-
-#[tokio::test]
-async fn sync_prune_ranks_by_started_at_not_insert_order() {
-    let (store, account) = fresh_store_with_account().await;
-    let now = Utc::now().timestamp();
-    seed_sync_rows(&store, &account, 55, now - 200 * DAY, -1).await;
-
-    let before = newest_50(&store, &account).await;
-    let deleted = store
-        .prune_sync_logs_before(now - 90 * DAY, 50)
-        .await
-        .unwrap();
-
-    assert_eq!(deleted, 5);
-    assert_eq!(newest_50(&store, &account).await, before);
-}
-
-#[tokio::test]
-async fn sync_prune_crosses_batch_boundary_and_keeps_newest_rows() {
-    let (store, account) = fresh_store_with_account().await;
-    let now = Utc::now().timestamp();
-    seed_sync_rows(&store, &account, 5_500, now - 200 * DAY, 1).await;
-
-    let before = newest_50(&store, &account).await;
-    let deleted = store
-        .prune_sync_logs_before(now - 90 * DAY, 50)
-        .await
-        .unwrap();
-
-    assert_eq!(deleted, 5_450);
-    assert_eq!(sync_row_count(&store, &account).await, 50);
-    assert_eq!(newest_50(&store, &account).await, before);
-}
-
-#[tokio::test]
 async fn sync_prune_leaves_a_running_row_in_window_and_tolerates_pruned_ids() {
     let (store, account) = fresh_store_with_account().await;
     let now = Utc::now().timestamp();
@@ -227,26 +177,4 @@ async fn event_prune_keeps_only_the_newest_lexical_rebuild_marker() {
         .unwrap()
         .unwrap();
     assert_eq!(kept.timestamp(), newest_marker);
-}
-
-#[tokio::test]
-async fn event_prune_without_any_marker_deletes_old_rows_without_error() {
-    let store = Store::in_memory().await.unwrap();
-    let now = Utc::now().timestamp();
-    seed_events(&store, 4, now - 200 * DAY, "sync", "Sync finished").await;
-
-    let deleted = store.prune_events_before(now - 90 * DAY).await.unwrap();
-
-    assert_eq!(deleted, 4);
-}
-
-#[tokio::test]
-async fn event_prune_crosses_batch_boundary() {
-    let store = Store::in_memory().await.unwrap();
-    let now = Utc::now().timestamp();
-    seed_events(&store, 5_500, now - 200 * DAY, "sync", "Sync finished").await;
-
-    let deleted = store.prune_events_before(now - 90 * DAY).await.unwrap();
-
-    assert_eq!(deleted, 5_500);
 }

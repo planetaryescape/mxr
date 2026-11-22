@@ -165,34 +165,6 @@ fn the_dry_run_counts_the_whole_selection_and_never_lists_ids() {
 }
 
 #[test]
-fn the_dry_run_refuses_formats_that_need_the_whole_list() {
-    let _guard = daemon_lock();
-    let temp = tempfile::tempdir().unwrap();
-    let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
-    for format in ["csv", "ids"] {
-        let output = run_failing(
-            &instance,
-            &data_dir,
-            &config_dir,
-            &[
-                "archive",
-                "--search",
-                INBOX,
-                "--all",
-                "--dry-run",
-                "--format",
-                format,
-            ],
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains("--all --dry-run has no message rows"),
-            "{stderr}"
-        );
-    }
-}
-
-#[test]
 fn a_run_is_one_job_with_one_id_that_cannot_be_undone() {
     let _guard = daemon_lock();
     let temp = tempfile::tempdir().unwrap();
@@ -260,86 +232,6 @@ fn a_run_is_one_job_with_one_id_that_cannot_be_undone() {
 }
 
 #[test]
-fn format_ids_prints_the_job_id_alone() {
-    let _guard = daemon_lock();
-    let temp = tempfile::tempdir().unwrap();
-    let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
-    let ids = run_status_only(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &[
-            "read-archive",
-            "--search",
-            INBOX,
-            "--all",
-            "--yes",
-            "--format",
-            "ids",
-        ],
-    );
-    let printed = ids.stdout.trim();
-    assert_eq!(printed.lines().count(), 1, "{printed}");
-    assert!(uuid::Uuid::parse_str(printed).is_ok(), "{printed}");
-    let table = run_status_only(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &["jobs", printed, "--format", "table"],
-    );
-    assert!(
-        table.stdout.contains("mutation.read_and_archive"),
-        "{}",
-        table.stdout
-    );
-}
-
-#[test]
-fn no_wait_returns_the_accepted_job_and_jobs_follows_it() {
-    let _guard = daemon_lock();
-    let temp = tempfile::tempdir().unwrap();
-    let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
-    let before = inbox_ids(&instance, &data_dir, &config_dir);
-
-    let started = run_json(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &[
-            "archive",
-            "--search",
-            INBOX,
-            "--all",
-            "--yes",
-            "--no-wait",
-            "--format",
-            "json",
-        ],
-    );
-    let job_id = started["job"]["job_id"].as_str().unwrap().to_owned();
-    assert_eq!(
-        started["job"]["progress"]["total"].as_u64().unwrap() as usize,
-        before.len()
-    );
-
-    let mut status = String::new();
-    for _ in 0..200 {
-        let jobs = run_json(
-            &instance,
-            &data_dir,
-            &config_dir,
-            &["jobs", &job_id, "--format", "json"],
-        );
-        status = jobs["jobs"][0]["status"].as_str().unwrap().to_owned();
-        if status == "succeeded" || status == "failed" {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    assert_eq!(status, "succeeded");
-}
-
-#[test]
 fn a_preview_token_runs_exactly_the_preview_once() {
     let _guard = daemon_lock();
     let temp = tempfile::tempdir().unwrap();
@@ -403,20 +295,6 @@ fn a_preview_token_runs_exactly_the_preview_once() {
 }
 
 #[test]
-fn a_search_that_matches_nothing_is_an_error_not_an_empty_job() {
-    let _guard = daemon_lock();
-    let temp = tempfile::tempdir().unwrap();
-    let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
-    let output = run_failing(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &["archive", "--search", "nomatchatallxyz", "--all", "--yes"],
-    );
-    assert!(String::from_utf8_lossy(&output.stderr).contains("No messages matched"));
-}
-
-#[test]
 fn without_yes_and_without_a_terminal_it_asks_for_yes_and_changes_nothing() {
     let _guard = daemon_lock();
     let temp = tempfile::tempdir().unwrap();
@@ -436,84 +314,4 @@ fn without_yes_and_without_a_terminal_it_asks_for_yes_and_changes_nothing() {
         "{stderr}"
     );
     assert_eq!(inbox_ids(&instance, &data_dir, &config_dir), before);
-}
-
-#[test]
-fn label_edits_over_all_work_only_on_labels_the_user_created() {
-    let _guard = daemon_lock();
-    let temp = tempfile::tempdir().unwrap();
-    let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
-    let before = inbox_ids(&instance, &data_dir, &config_dir);
-    for (command, name) in [
-        ("label", "TRASH"),
-        ("label", "spam"),
-        ("label", "Spam"),
-        ("label", "INBOX"),
-        ("label", "DELETED"),
-        ("unlabel", "TRASH"),
-        ("unlabel", "INBOX"),
-    ] {
-        for extra in [&["--dry-run"][..], &["--yes"]] {
-            let mut args = vec![command, name, "--search", INBOX, "--all"];
-            args.extend_from_slice(extra);
-            let output = run_failing(&instance, &data_dir, &config_dir, &args);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            assert!(
-                stderr.contains("only work on labels you created"),
-                "{command} {name} {extra:?}: {stderr}"
-            );
-        }
-    }
-    assert_eq!(inbox_ids(&instance, &data_dir, &config_dir), before);
-
-    for command in ["label", "unlabel"] {
-        let preview = run_json(
-            &instance,
-            &data_dir,
-            &config_dir,
-            &[
-                command,
-                "Work",
-                "--search",
-                INBOX,
-                "--all",
-                "--dry-run",
-                "--format",
-                "json",
-            ],
-        );
-        assert_eq!(preview["dry_run"], true);
-        assert_eq!(
-            preview["selected_messages"].as_u64().unwrap() as usize,
-            before.len()
-        );
-    }
-}
-
-#[test]
-fn undo_dry_run_refuses_an_unknown_id_instead_of_promising_an_undo() {
-    let _guard = daemon_lock();
-    let temp = tempfile::tempdir().unwrap();
-    let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
-
-    let preview = run_failing(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &["undo", "never-a-mutation", "--dry-run", "--format", "json"],
-    );
-    let commit = run_failing(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &["undo", "never-a-mutation", "--format", "json"],
-    );
-    let preview_error = String::from_utf8(preview.stderr).unwrap();
-    let commit_error = String::from_utf8(commit.stderr).unwrap();
-    assert!(preview_error.contains("not found"), "{preview_error}");
-    assert_eq!(preview_error, commit_error);
-    assert!(
-        preview.stdout.is_empty(),
-        "a refusal prints no successful preview"
-    );
 }

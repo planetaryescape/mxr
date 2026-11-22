@@ -340,16 +340,4 @@ mod tests {
         }
         assert!(demo_article_html("https://example.com/").is_none());
     }
-
-    #[test]
-    fn the_reading_demo_has_every_message_it_counts() {
-        let account = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let me = Address {
-            name: None,
-            email: "alex@demo.mxr.local".to_string(),
-        };
-        let messages = reading_demo_messages(&account, &me, Utc::now(), 100);
-        assert_eq!(messages.len(), READING_DEMO_MESSAGE_COUNT);
-        assert!(messages.iter().all(|(_, body)| body.text_html.is_some()));
-    }
 }

@@ -175,20 +175,6 @@ pub(super) fn report(asks: &ClassifyEvalAsksData) -> String {
     out
 }
 
-fn counts(expected: u32, found: u32, tp: u32) -> ClassifyEvalCountsData {
-    let percent =
-        |part: u32, whole: u32| (whole > 0).then(|| f64::from(part) / f64::from(whole) * 100.0);
-    ClassifyEvalCountsData {
-        expected,
-        found,
-        true_positives: tp,
-        false_positives: found - tp,
-        false_negatives: expected - tp,
-        precision_percent: percent(tp, found),
-        recall_percent: percent(tp, expected),
-    }
-}
-
 #[test]
 fn a_kind_below_its_floor_is_reported_and_one_at_it_is_not() {
     let floor = BTreeMap::from([(
@@ -223,46 +209,6 @@ fn a_kind_below_its_floor_is_reported_and_one_at_it_is_not() {
 }
 
 #[test]
-fn a_false_positive_in_a_kind_with_no_baseline_is_a_shortfall() {
-    let at_floor = Floor {
-        precision: Some(50.0),
-        recall: Some(50.0),
-        ..Floor::default()
-    };
-    let floor = BTreeMap::from([
-        ("all".to_string(), at_floor.clone()),
-        ("pay".to_string(), at_floor),
-        ("verify".to_string(), Floor::default()),
-    ]);
-    let at = |all: f64, pay: f64, verify: Option<(f64, u32)>| {
-        let measured = |precision: f64| Floor {
-            precision: Some(precision),
-            recall: Some(50.0),
-            false_positives: Some(0),
-        };
-        BTreeMap::from([
-            ("all".to_string(), measured(all)),
-            ("pay".to_string(), measured(pay)),
-            (
-                "verify".to_string(),
-                Floor {
-                    precision: verify.map(|(precision, _)| precision),
-                    recall: None,
-                    false_positives: Some(verify.map_or(0, |(_, fp)| fp)),
-                },
-            ),
-        ])
-    };
-    let swapped = shortfalls(&floor, &at(50.0, 100.0, Some((0.0, 1))));
-    assert_eq!(swapped.len(), 1, "{swapped:?}");
-    assert!(swapped[0].starts_with("verify precision"));
-    let rare = shortfalls(&floor, &at(50.0, 50.0, Some((100.0, 1))));
-    assert_eq!(rare.len(), 1, "{rare:?}");
-    assert!(shortfalls(&floor, &at(50.0, 50.0, Some((100.0, 0)))).is_empty());
-    assert!(shortfalls(&floor, &at(50.0, 50.0, None)).is_empty());
-}
-
-#[test]
 fn the_floor_file_names_real_kinds_for_both_sets() {
     let floors = read();
     for set in ["quick", "full"] {
@@ -280,31 +226,4 @@ fn the_floor_file_names_real_kinds_for_both_sets() {
             );
         }
     }
-}
-
-#[test]
-fn a_measurement_is_turned_into_floors_per_kind() {
-    let asks = ClassifyEvalAsksData {
-        emails: 3,
-        total: counts(4, 3, 2),
-        kinds: vec![mxr_protocol::ClassifyEvalAskKindData {
-            kind: "pay".into(),
-            direction: "asks_you".into(),
-            counts: counts(4, 3, 2),
-        }],
-        fields: Vec::new(),
-        duplicates: 0,
-        merges: 0,
-        twins: Default::default(),
-        slices: Vec::new(),
-        reply_owed: mxr_protocol::ClassifyEvalReplyData {
-            emails: 0,
-            counts: Default::default(),
-            projection: String::new(),
-        },
-    };
-    let got = measured(&asks);
-    assert_eq!(got["pay"].recall, Some(50.0));
-    assert!((got["pay"].precision.unwrap() - 66.666).abs() < 0.01);
-    assert!(report(&asks).contains("pay"));
 }

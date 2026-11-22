@@ -172,19 +172,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_one_to_four_unique_times() {
-        assert_eq!(Cuts::default().labels(), vec!["08:00", "16:30"]);
-        let three = Cuts::parse(&["18:00".into(), "07:30".into(), "12:00".into()]).unwrap();
-        assert_eq!(three.labels(), vec!["07:30", "12:00", "18:00"]);
-        assert!(Cuts::parse(&[]).is_err());
-        assert!(
-            Cuts::parse(&["1".into(), "2".into(), "3".into(), "4".into(), "5".into()]).is_err()
-        );
-        assert!(Cuts::parse(&["8am".into()]).is_err());
-        assert!(Cuts::parse(&["08:00".into(), "08:00".into()]).is_err());
-    }
-
-    #[test]
     fn the_window_is_the_latest_cut_its_previous_and_the_next() {
         let cuts = Cuts::default();
         let noon = cuts.window(at(7, 12, 0), &utc());

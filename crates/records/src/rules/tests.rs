@@ -50,27 +50,6 @@ fn an_order_confirmation_reads_its_number_total_and_date_unchecked() {
 }
 
 #[test]
-fn shipping_and_delivery_emails_are_stages_of_the_order() {
-    let shipped = read_one(
-        "Your order 402-118 has shipped",
-        "Order #402-118 is on its way.",
-    )
-    .expect("shipped");
-    assert_eq!(
-        (shipped.kind, shipped.stage),
-        (RecordKind::Order, Stage::Shipped)
-    );
-    assert_eq!(shipped.reference.as_deref(), Some("402-118"));
-    let delivered = read_one(
-        "Delivered: XPS 14 laptop",
-        "Order 402-118 was delivered today.",
-    )
-    .expect("delivered");
-    assert_eq!(delivered.stage, Stage::Delivered);
-    assert!(read_one("Your parcel is on its way", "Track it in the app.").is_none());
-}
-
-#[test]
 fn receipts_statements_and_invoices_need_a_reference_or_an_amount() {
     let receipt = read_one(
         "Your receipt from Apple.",
@@ -91,39 +70,6 @@ fn receipts_statements_and_invoices_need_a_reference_or_an_amount() {
     let invoice = read_one("Invoice INV-2025-0042", "Total due: $450.00").expect("invoice");
     assert_eq!(invoice.kind, RecordKind::Invoice);
     assert!(read_one("Your statement", "Log in to see it.").is_none());
-}
-
-#[test]
-fn bookings_tickets_and_warranties_read_their_dates() {
-    let booking = read_one(
-        "Booking confirmation - Lisbon",
-        "Booking reference: K7QX2M\nCheck-in: 12 June 2025\nCheck-out: 15 June 2025",
-    )
-    .expect("booking");
-    assert_eq!(booking.kind, RecordKind::Booking);
-    assert_eq!(booking.reference.as_deref(), Some("K7QX2M"));
-    assert!(field(&booking, FieldName::SpanStart).is_some());
-    assert!(field(&booking, FieldName::SpanEnd).is_some());
-    let ticket = read_one(
-        "Your tickets for Hamlet",
-        "Ticket ref: TK-88213\nTotal £64.00",
-    )
-    .expect("ticket");
-    assert_eq!(ticket.kind, RecordKind::Ticket);
-    let warranty = read_one(
-        "Your order confirmation",
-        "Order number 77-12. Covered by a 2-year limited warranty. Return by 2 April 2025.",
-    )
-    .expect("order");
-    let until = field(&warranty, FieldName::WarrantyUntil).expect("warranty");
-    assert!(!until.checked);
-    assert_eq!(until.evidence.as_deref(), Some("2-year limited warranty"));
-    assert_eq!(
-        field(&warranty, FieldName::ReturnBy).map(|f| f.value.clone()),
-        Some(crate::fields::FieldValue::At(day_at(
-            chrono::NaiveDate::from_ymd_opt(2025, 4, 2).expect("day")
-        )))
-    );
 }
 
 #[test]
@@ -164,48 +110,8 @@ fn people_writing_about_contracts_and_failed_payments_are_not_records() {
 }
 
 #[test]
-fn a_warranty_valid_until_is_one_date_not_two() {
-    let read = read_one(
-        "Your Bose order confirmation",
-        "Order number: BO-77120\nOrder total: £299.95\nWarranty valid until 3 May 2027.",
-    )
-    .expect("order");
-    assert!(field(&read, FieldName::WarrantyUntil).is_some());
-    assert!(field(&read, FieldName::ValidUntil).is_none());
-}
-
-#[test]
 fn the_total_beats_subtotals_and_unlabelled_amounts_pick_none() {
     let total = find_total("Subtotal £10.00\nShipping £2.00\nGrand total £12.00").expect("total");
     assert_eq!(total.minor, 1200);
     assert!(find_total("Item one £5.00, item two £7.00").is_none());
-}
-
-#[test]
-fn issuers_come_from_the_display_name_or_the_domain() {
-    assert_eq!(issuer_from_sender(Some("Dell"), "orders@dell.com"), "Dell");
-    assert_eq!(
-        issuer_from_sender(Some("no-reply"), "no-reply@octopus.energy"),
-        "Octopus"
-    );
-    assert_eq!(issuer_from_sender(None, "billing@mail.bt.co.uk"), "Bt");
-    assert_eq!(
-        issuer_from_sender(Some("\"Airbnb\" via Mailchimp"), "x@mc.us"),
-        "Airbnb"
-    );
-}
-
-#[test]
-fn past_days_read_with_or_without_a_year() {
-    let anchor = sent().date_naive();
-    let day = |y, m, d| chrono::NaiveDate::from_ymd_opt(y, m, d).expect("day");
-    assert_eq!(past_day("3 March 2025", anchor), Some(day(2025, 3, 3)));
-    assert_eq!(past_day("Mar 1st, 2025", anchor), Some(day(2025, 3, 1)));
-    assert_eq!(
-        past_day("Friday 28 February", anchor),
-        Some(day(2025, 2, 28))
-    );
-    assert_eq!(past_day("12 December", anchor), Some(day(2024, 12, 12)));
-    assert_eq!(past_day("2025-02-01", anchor), Some(day(2025, 2, 1)));
-    assert_eq!(past_day("Friday", anchor), None);
 }

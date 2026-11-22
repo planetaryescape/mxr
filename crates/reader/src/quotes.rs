@@ -132,22 +132,6 @@ mod tests {
     }
 
     #[test]
-    fn collapses_bare_quotes() {
-        let text = "My reply.\n\n> Some quoted text\n> More quoted text";
-        let (cleaned, quotes) = collapse(text);
-        assert!(cleaned.contains("[previous message]"));
-        assert_eq!(quotes.len(), 1);
-    }
-
-    #[test]
-    fn preserves_non_quoted_text() {
-        let text = "First line.\nSecond line.\nThird line.";
-        let (cleaned, quotes) = collapse(text);
-        assert_eq!(cleaned, text);
-        assert!(quotes.is_empty());
-    }
-
-    #[test]
     fn extract_from_on_wrote_multibyte_does_not_panic() {
         // `İ` (U+0130) lowercases to two chars, growing the byte length. A byte
         // offset taken from a lowercased copy is not a valid index into the

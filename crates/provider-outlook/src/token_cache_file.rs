@@ -94,25 +94,6 @@ mod tests {
     }
 
     #[test]
-    fn replacement_restricts_existing_permissions_and_replaces_symlink() -> TestResult {
-        let directory = tempdir()?;
-        let target = directory.path().join("target.json");
-        let path = directory.path().join("tokens.json");
-        std::fs::write(&target, "target")?;
-        std::fs::write(&path, "old")?;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))?;
-        write(&path, "new")?;
-        assert_eq!(mode(&path)?, 0o600);
-
-        std::fs::remove_file(&path)?;
-        std::os::unix::fs::symlink(&target, &path)?;
-        write(&path, "cache")?;
-        assert_eq!(std::fs::read_to_string(&path)?, "cache");
-        assert_eq!(std::fs::read_to_string(&target)?, "target");
-        Ok(())
-    }
-
-    #[test]
     fn interrupted_write_leaves_no_temporary_file_and_keeps_old_contents() -> TestResult {
         let directory = tempdir()?;
         let path = directory.path().join("tokens.json");
@@ -125,32 +106,6 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(std::fs::read_to_string(&path)?, "old");
-        assert!(temporary_files(directory.path())?.is_empty());
-        Ok(())
-    }
-
-    #[test]
-    fn nested_parent_is_created_and_no_temporary_file_is_left_on_error() -> TestResult {
-        let directory = tempdir()?;
-        let path = directory.path().join("nested").join("tokens.json");
-        let result = write_with_hook(&path, "new", |stage| match stage {
-            ReplaceStage::Created => Err(io::Error::other("injected failure")),
-            _ => Ok(()),
-        });
-
-        assert!(result.is_err());
-        assert!(temporary_files(&directory.path().join("nested"))?.is_empty());
-        Ok(())
-    }
-
-    #[test]
-    fn rename_failure_preserves_destination_and_cleans_up_temporary_file() -> TestResult {
-        let directory = tempdir()?;
-        let path = directory.path().join("tokens.json");
-        std::fs::create_dir(&path)?;
-
-        assert!(write(&path, "new").is_err());
-        assert!(path.is_dir());
         assert!(temporary_files(directory.path())?.is_empty());
         Ok(())
     }

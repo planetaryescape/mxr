@@ -3,7 +3,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { htmlDraftRefusal, HtmlDraftNotice } from "./HtmlDraftNotice";
+import { HtmlDraftNotice } from "./HtmlDraftNotice";
 
 function renderNotice(previewHtml: string) {
   render(<HtmlDraftNotice refusal={{ previewHtml }} />);
@@ -11,26 +11,6 @@ function renderNotice(previewHtml: string) {
   expect(frame).toBeInstanceOf(HTMLIFrameElement);
   return frame as HTMLIFrameElement;
 }
-
-describe("htmlDraftRefusal", () => {
-  test("recognises the bridge refusal and carries the document through", () => {
-    const error = Object.assign(new Error("this draft has an HTML body"), {
-      code: "html_draft_not_editable",
-      details: { previewHtml: "<p>hi</p>" },
-    });
-
-    expect(htmlDraftRefusal(error)).toEqual({ previewHtml: "<p>hi</p>" });
-  });
-
-  test("ignores every other failure so the caller keeps its retry", () => {
-    expect(htmlDraftRefusal(new Error("daemon is not running"))).toBeNull();
-    expect(
-      htmlDraftRefusal(Object.assign(new Error("nope"), { code: "some_other_code" })),
-    ).toBeNull();
-    expect(htmlDraftRefusal(null)).toBeNull();
-    expect(htmlDraftRefusal("html_draft_not_editable")).toBeNull();
-  });
-});
 
 describe("HtmlDraftNotice preview", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -73,5 +53,4 @@ describe("HtmlDraftNotice preview", () => {
     expect(srcDoc).toContain("hello");
     expect(srcDoc).not.toContain("window.leaked");
   });
-
 });

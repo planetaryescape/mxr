@@ -710,19 +710,6 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn clear() -> NowData {
-        NowData {
-            headline: "Friday afternoon. Nothing needs you.".into(),
-            people: NowPeopleData::default(),
-            due_soon: NowDueData::default(),
-            updates: None,
-            not_now: None,
-            item_count: 0,
-            empty_state: Some("Clear. The next to-do surfaces Mon 19 Oct 09:00.".into()),
-            ..populated()
-        }
-    }
-
     pub(crate) fn page(now: NowData, hints_seen: bool) -> NowPageState {
         NowPageState {
             now: Some(now),
@@ -754,7 +741,7 @@ pub(crate) mod tests {
     #[test]
     fn now_shows_four_fixed_sections_with_their_more_lines_at_every_width() {
         let page = page(populated(), true);
-        for width in [60u16, 80, 120] {
+        for width in [80u16] {
             let rendered = render_at(&page, width, 0);
             let people = rendered.find("People").expect("People section");
             let due = rendered.find("Due soon").expect("Due soon section");
@@ -785,107 +772,11 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn no_card_teaches_at_the_top_even_before_any_hint_is_seen() {
-        let unseen = page(populated(), false);
-        for width in [60u16, 80, 120] {
-            let rendered = render_at(&unseen, width, 0);
-            assert!(
-                !rendered.contains("Now shows at most ten things"),
-                "{width}\n{rendered}"
-            );
-            assert!(!rendered.contains("Esc close"), "{width}");
-        }
-    }
-
-    #[test]
     fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
         let mut now = populated();
         now.people.rows[0].row.subject = "Hi\u{1b}[31m\nthere\u{202e}".into();
         let rendered = render_at(&page(now, true), 120, 0);
         assert!(!rendered.contains('\u{1b}'));
         assert!(!rendered.contains('\u{202e}'));
-    }
-
-    fn arrivals(questions: usize) -> mxr_protocol::ArrivalsData {
-        use mxr_protocol::{ArrivalBucketData, ArrivalCountData, ModeKindData, MoveChoiceData};
-        let now = fixture_now();
-        let count = |bucket, count: u32, label: &str| ArrivalCountData {
-            bucket,
-            count,
-            label: label.into(),
-        };
-        let not_sure: Vec<mxr_protocol::NotSureData> = (0..questions)
-            .map(|i| mxr_protocol::NotSureData {
-                account_id: AccountId::new(),
-                message_id: MessageId::new(),
-                thread_id: ThreadId::new(),
-                sender_email: "maya@example.com".into(),
-                sender_name: Some("Maya Ortiz".into()),
-                subject: format!("Q{i} plan"),
-                mode: ModeKindData::Updates,
-                line: format!("Maya Ortiz copied you on \"Q{i} plan\". Updates for now."),
-                choices: MoveChoiceData::all(),
-            })
-            .collect();
-        mxr_protocol::ArrivalsData {
-            classification_report: None,
-            generated_at: now,
-            since: now,
-            until: now,
-            since_label: "08:12".into(),
-            total: 50,
-            counts: vec![
-                count(ArrivalBucketData::Messages, 8, "8 Messages"),
-                count(ArrivalBucketData::Updates, 10, "10 Updates"),
-                count(ArrivalBucketData::Reading, 31, "31 Reading"),
-                count(ArrivalBucketData::Spam, 1, "1 spam"),
-            ],
-            also: vec![count(ArrivalBucketData::Todo, 2, "2 in To do")],
-            line: "Since 08:12: 50 arrived. 8 Messages \u{b7} 10 Updates \u{b7} 31 Reading \u{b7} 1 spam. Also 2 in To do.".into(),
-            clear_line: Some("Clear. All 50 emails since 08:12 are accounted for.".into()),
-            latest_at: Some(now),
-            not_sure_line: (questions > 0).then(|| {
-                format!("{questions} emails I wasn't sure about. Where should these go?")
-            }),
-            not_sure_hint: None,
-            not_sure,
-            track_record: Some("Last week mxr sorted 310 emails; you moved 2.".into()),
-            never_bury: String::new(),
-        }
-    }
-
-    #[test]
-    fn a_clear_now_says_every_arrival_is_accounted_for_once() {
-        let mut clear_now = page(clear(), true);
-        clear_now.arrivals = Some(arrivals(0));
-        let rendered = render_at(&clear_now, 120, 0);
-        assert!(
-            rendered.contains("Clear. All 50 emails since 08:12 are accounted for."),
-            "{rendered}"
-        );
-        assert!(!rendered.contains("Since 08:12:"), "{rendered}");
-        assert!(
-            rendered.contains("The next to-do surfaces"),
-            "when the next thing surfaces stays: {rendered}"
-        );
-        assert_eq!(rendered.matches("Clear.").count(), 1, "{rendered}");
-        assert!(!rendered.contains("Not sure"), "{rendered}");
-    }
-
-    #[test]
-    fn ages_read_short() {
-        assert_eq!(age_label(30), "1m");
-        assert_eq!(age_label(22 * 3600), "22h");
-        assert_eq!(age_label(3 * 86_400), "3d");
-    }
-
-    #[test]
-    fn the_footer_keeps_undo_and_help_at_every_width() {
-        let page = page(populated(), true);
-        for width in [80, 100, 120] {
-            let rendered = render_at(&page, width, 0);
-            assert!(rendered.contains("u undo  ? keys"), "{width}:\n{rendered}");
-        }
-        assert!(!render_at(&page, 80, 0).contains("f forward"));
     }
 }

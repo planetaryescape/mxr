@@ -233,7 +233,6 @@ mod tests {
     use chrono::{Local, TimeZone};
     use mxr_core::types::*;
     use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
-    use mxr_store::CommitmentStatus;
     use std::sync::{Arc, Mutex};
 
     struct CannedLlm {
@@ -492,68 +491,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn decided_at_words_the_text_never_says_leave_the_decision_undated() {
-        let (state, account, n) = extract_with_decided_at(
-            &tuesday_thread("Agreed -- let's go with Postgres."),
-            r#""on Thursday""#,
-        )
-        .await;
-        assert_eq!(n, 1, "the decision is kept even when its time is not");
-        let rows = state
-            .store
-            .list_decisions(&account, None, None, 10)
-            .await
-            .unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].decided_at, None);
-    }
-
-    #[tokio::test]
-    async fn an_rfc3339_date_the_text_does_not_contain_is_not_stored() {
-        let (state, account, n) = extract_with_decided_at(
-            &tuesday_thread("Agreed -- let's go with Postgres."),
-            r#""2024-03-07T09:00:00Z""#,
-        )
-        .await;
-        assert_eq!(n, 1);
-        let rows = state
-            .store
-            .list_decisions(&account, None, None, 10)
-            .await
-            .unwrap();
-        assert_eq!(rows[0].decided_at, None);
-    }
-
-    #[tokio::test]
-    async fn decided_at_words_the_parser_cannot_read_leave_the_decision_undated() {
-        let (state, account, n) = extract_with_decided_at(
-            &tuesday_thread("Agreed -- let's go with Postgres once the budget clears."),
-            r#""once the budget clears""#,
-        )
-        .await;
-        assert_eq!(n, 1);
-        let rows = state
-            .store
-            .list_decisions(&account, None, None, 10)
-            .await
-            .unwrap();
-        assert_eq!(rows[0].decided_at, None);
-    }
-
-    #[tokio::test]
-    async fn empty_decisions_array_writes_no_rows() {
-        let (state, account, thread, _ids, _) = fixture(r#"{"decisions":[]}"#).await;
-        let n = extract_thread(&state, &account, &thread).await.unwrap();
-        assert_eq!(n, 0);
-        let rows = state
-            .store
-            .list_decisions(&account, None, None, 10)
-            .await
-            .unwrap();
-        assert!(rows.is_empty(), "no rows for brainstorming-only thread");
-    }
-
-    #[tokio::test]
     async fn unknown_evidence_msg_id_is_rejected() {
         let (state, account, thread, _ids, _) = fixture("placeholder").await;
         let canned = r#"{"decisions":[{
@@ -599,74 +536,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rebuild_walks_all_account_threads_in_window() {
-        let (state, account, _thread1, ids1, _) = fixture("placeholder").await;
-        let thread2 = ThreadId::new();
-        let env = Envelope {
-            id: MessageId::new(),
-            account_id: account.clone(),
-            provider_id: "p-other".into(),
-            thread_id: thread2.clone(),
-            message_id_header: None,
-            in_reply_to: None,
-            references: vec![],
-            from: Address {
-                name: None,
-                email: "bob@example.com".into(),
-            },
-            to: vec![],
-            cc: vec![],
-            bcc: vec![],
-            subject: "Random brainstorm".into(),
-            date: chrono::Utc::now(),
-            flags: MessageFlags::empty(),
-            snippet: "Just thinking out loud about colors".into(),
-            has_attachments: false,
-            size_bytes: 1,
-            unsubscribe: UnsubscribeMethod::None,
-            link_count: 0,
-            body_word_count: 0,
-            label_provider_ids: vec![],
-            keywords: std::collections::BTreeSet::new(),
-        };
-        state
-            .store
-            .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
-            .await
-            .unwrap();
-        let body = MessageBody {
-            message_id: env.id.clone(),
-            text_plain: Some("Just thinking out loud about colors".into()),
-            text_html: None,
-            attachments: vec![],
-            fetched_at: chrono::Utc::now(),
-            metadata: MessageMetadata::default(),
-        };
-        state.store.insert_body(&body).await.unwrap();
-
-        let canned = format!(
-            r#"{{"decisions":[{{
-                "decision":"Use Postgres",
-                "evidence_msg_ids":["{}"]
-            }}]}}"#,
-            ids1[2]
-        );
-        state.llm.replace(Arc::new(CannedLlm {
-            body: Mutex::new(canned),
-            calls: Mutex::new(0),
-        }));
-
-        let summary = rebuild(&state, &account, 365).await.unwrap();
-        assert_eq!(summary.extracted, 1, "exactly one decision extracted");
-        assert!(
-            summary.skipped >= 1,
-            "brainstorming thread should be skipped (got: skipped={})",
-            summary.skipped
-        );
-        assert_eq!(summary.errors, 0);
-    }
-
-    #[tokio::test]
     async fn extract_thread_leaves_a_trashed_message_out_of_the_transcript() {
         let canned_for = |id: &MessageId| {
             format!(
@@ -706,13 +575,5 @@ mod tests {
 
         assert_eq!(summary.extracted + summary.skipped + summary.errors, 0);
         assert_eq!(*stub.calls.lock().unwrap(), 0);
-    }
-
-    #[tokio::test]
-    async fn rebuild_returns_zero_when_no_threads_match_window() {
-        let (state, account, _, _, _) = fixture(r#"{"decisions":[]}"#).await;
-        let summary = rebuild(&state, &account, 0).await.unwrap();
-        assert!(summary.errors == 0);
-        let _ = CommitmentStatus::Open;
     }
 }

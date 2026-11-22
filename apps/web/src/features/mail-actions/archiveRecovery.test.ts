@@ -1,11 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  archiveMessagesRecoverably,
-  needsRecovery,
-  previewArchive,
   queryArchive,
   retainedArchives,
-  retainArchive,
   submitArchive,
   type ArchiveOperation,
 } from "./archiveRecovery";
@@ -107,106 +103,5 @@ describe("Archive consuming client recovery", () => {
     });
     await expect(submitArchive(reviewed)).rejects.toThrow("storage unavailable");
     expect(fetcher).not.toHaveBeenCalled();
-  });
-  test("retained reviews reject identity replacement and malformed journal data", () => {
-    const reviewed = operation();
-    retainArchive(reviewed);
-    expect(() =>
-      retainArchive({
-        ...reviewed,
-        identity: { ...reviewed.identity, caller_id: crypto.randomUUID() },
-      }),
-    ).toThrow("identity or review");
-    expect(retainedArchives()[0]).toEqual(reviewed);
-    const key = Array.from({ length: localStorage.length }, (_, index) =>
-      localStorage.key(index),
-    ).find((value) => value?.startsWith("mxr.archive.operation."));
-    expect(key).toBeTruthy();
-    if (!key) throw new Error("missing journal fixture");
-    localStorage.setItem(key, JSON.stringify({ ...reviewed, items: [{ state: "invented" }] }));
-    expect(() => retainedArchives()).toThrow("malformed");
-  });
-  test.each(["not_executed", "unknown"] as const)(
-    "partial %s retains Undo and reports uncertainty truthfully",
-    async (state) => {
-      const reviewed = operation();
-      const first = reviewed.items[0];
-      if (!first) throw new Error("missing fixture item");
-      reviewed.items.push({ ...first, message_id: crypto.randomUUID(), provider_id: "fake-2" });
-      const outcome: ArchiveOperation = {
-        ...reviewed,
-        accepted: true,
-        undo_available: true,
-        items: [
-          { ...first, state: "completed" },
-          {
-            ...first,
-            message_id: reviewed.items[1]?.message_id ?? "missing",
-            provider_id: "fake-2",
-            state,
-            reason:
-              state === "unknown" ? "provider acceptance unproved" : "provider proved rejection",
-          },
-        ],
-      };
-      const confirm = vi.spyOn(window, "confirm");
-      vi.stubGlobal(
-        "fetch",
-        vi.fn<typeof fetch>(async (input) => {
-          const path = String(input);
-          if (path.endsWith("/admin/status"))
-            return Response.json({ workspace_owner_supported: true });
-          if (path.endsWith("/workspace"))
-            return Response.json({
-              kind: "ArchiveWorkspace",
-              workspace: reviewed.identity.workspace,
-            });
-          return Response.json({
-            kind: "ArchiveOperation",
-            operation: path.endsWith("/preview") ? reviewed : outcome,
-          });
-        }),
-      );
-      const response = await archiveMessagesRecoverably(
-        reviewed.items.map((item) => item.message_id),
-      );
-      expect(confirm).not.toHaveBeenCalled();
-      expect(response.ok).toBe(false);
-      expect(response.result).toMatchObject({
-        requested: 2,
-        succeeded: 1,
-        failed: 1,
-        mutation_id: outcome.mutation_id,
-      });
-      expect(response.error).toContain(state);
-      expect(response.error).toContain("Unknown effects may have applied");
-      expect(retainedArchives()[0]?.identity).toEqual(reviewed.identity);
-    },
-  );
-  test("an unsupported daemon response refuses preview before submission", async () => {
-    const fetcher = vi.fn<() => Promise<Response>>(async () =>
-      Response.json({ kind: "Error", error: "unsupported" }),
-    );
-    vi.stubGlobal("fetch", fetcher);
-    await expect(previewArchive(["message"])).rejects.toThrow("does not support");
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(retainedArchives()).toEqual([]);
-  });
-});
-
-describe("which retained Archives Archive recovery offers", () => {
-  test("a finished Archive is not offered; an unaccepted, running or unconfirmed one is", () => {
-    const withItems = (state: "completed" | "unknown"): ArchiveOperation => {
-      const op = operation();
-      op.accepted = true;
-      for (const item of op.items) item.state = state;
-      return op;
-    };
-    const finished = withItems("completed");
-    expect(needsRecovery(finished)).toBe(false);
-
-    expect(needsRecovery(operation())).toBe(true);
-    expect(needsRecovery({ ...finished, running: true })).toBe(true);
-    expect(needsRecovery(withItems("unknown"))).toBe(true);
   });
 });

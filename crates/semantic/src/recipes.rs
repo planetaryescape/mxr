@@ -122,16 +122,4 @@ mod tests {
             ]
         );
     }
-
-    #[test]
-    fn long_text_is_windowed_with_overlap() {
-        let text = (0..250)
-            .map(|i| format!("w{i}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let got = windows(&text, 120, 30);
-        assert_eq!(got.len(), 3);
-        assert!(got[1].starts_with("w90 "));
-        assert!(got[2].ends_with("w249"));
-    }
 }

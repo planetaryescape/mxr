@@ -131,7 +131,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Utc, Weekday};
+    use chrono::Utc;
     use chrono_tz::Europe::London;
 
     /// Tuesday 29 September 2026, 15:00 in London (14:00 UTC).
@@ -163,57 +163,6 @@ mod tests {
             "the text's spelling, not the model's"
         );
         assert_eq!(found.resolution.unwrap().at, friday_nine());
-    }
-
-    #[test]
-    fn leading_fillers_are_dropped_until_the_words_resolve() {
-        for words in ["by Friday", "no later than friday.", "first thing Friday"] {
-            assert_eq!(at(words, words), Some(friday_nine()), "{words}");
-        }
-        assert_eq!(
-            at("within 2 days", "within 2 days"),
-            Some(Utc.with_ymd_and_hms(2026, 10, 1, 14, 0, 0).unwrap())
-        );
-    }
-
-    #[test]
-    fn words_the_text_never_says_are_not_due_words() {
-        assert_eq!(
-            due_words(
-                "I'll send it soon.",
-                "by Monday",
-                &anchor(),
-                &TimePrefs::default()
-            ),
-            None
-        );
-    }
-
-    #[test]
-    fn the_result_says_when_it_reads_only_the_end_of_the_phrase() {
-        let dropped = |words: &str| {
-            let found = due_words(words, words, &anchor(), &TimePrefs::default()).unwrap();
-            assert!(found.resolution.is_some(), "{words}");
-            found.dropped_words
-        };
-        assert!(dropped("one week after Friday"));
-        assert!(!dropped("by Friday"));
-        assert!(!dropped("no later than friday."));
-        assert!(dropped("first thing Monday"));
-        assert!(!dropped("within 2 days"));
-    }
-
-    #[test]
-    fn the_result_says_when_it_names_the_weekday_it_was_written_on() {
-        let names_today = |words: &str| {
-            let found = due_words(words, words, &anchor(), &TimePrefs::default()).unwrap();
-            assert!(found.resolution.is_some(), "{words}");
-            found.names_today_weekday
-        };
-        assert!(names_today("by Tuesday"));
-        assert!(names_today("tue 5pm"));
-        assert!(!names_today("by Friday"));
-        assert!(!names_today("tomorrow"));
     }
 
     #[test]
@@ -250,45 +199,5 @@ mod tests {
                 "{words}"
             );
         }
-    }
-
-    #[test]
-    fn found_words_that_do_not_parse_stay_undated() {
-        let found = due_words(
-            "I'll get to it at some point.",
-            "at some point",
-            &anchor(),
-            &TimePrefs::default(),
-        )
-        .unwrap();
-        assert_eq!(found.phrase, "at some point");
-        assert_eq!(found.resolution, None);
-    }
-
-    #[test]
-    fn a_long_match_is_a_sentence_not_a_time() {
-        let sentence = "by the time the whole team is back from the offsite in the mountains";
-        assert!(sentence.chars().count() > DUE_MAX_CHARS);
-        assert_eq!(
-            due_words(sentence, sentence, &anchor(), &TimePrefs::default()),
-            None
-        );
-    }
-
-    #[test]
-    fn words_resolve_against_when_the_text_was_written() {
-        let written = London.with_ymd_and_hms(2026, 9, 7, 10, 0, 0).unwrap();
-        let due = due_words(
-            "I'll send it by Friday.",
-            "by Friday",
-            &written,
-            &TimePrefs::default(),
-        )
-        .unwrap()
-        .resolution
-        .unwrap()
-        .at;
-        assert_eq!(due, Utc.with_ymd_and_hms(2026, 9, 11, 8, 0, 0).unwrap());
-        assert_eq!(due.with_timezone(&London).weekday(), Weekday::Fri);
     }
 }

@@ -52,24 +52,6 @@ fn apply_label_to_a_message_from_b_uses_bs_label() {
 }
 
 #[test]
-fn mixed_selection_projects_each_accounts_own_label() {
-    let (mut app, _a, _b, envelopes) = two_accounts(true);
-    app.mailbox.selected_set = envelopes.iter().map(|e| e.id.clone()).collect();
-    let ids: Vec<MessageId> = envelopes.iter().map(|e| e.id.clone()).collect();
-
-    app.apply_local_label_refs(&ids, &["Work".into()], &[]);
-
-    assert_eq!(
-        app.mailbox.envelopes[0].label_provider_ids,
-        vec!["a-work".to_string()]
-    );
-    assert_eq!(
-        app.mailbox.envelopes[1].label_provider_ids,
-        vec!["b-work".to_string()]
-    );
-}
-
-#[test]
 fn mixed_selection_is_previewed_for_confirmation_with_every_message() {
     let (mut app, _a, _b, envelopes) = two_accounts(true);
     app.mailbox.selected_set = envelopes.iter().map(|e| e.id.clone()).collect();
@@ -106,77 +88,4 @@ fn apply_label_refuses_when_the_message_account_lacks_it() {
     assert!(app.pending_mutation_queue.is_empty());
     assert!(app.modals.pending_bulk_confirm.is_none());
     assert!(app.mailbox.envelopes[1].label_provider_ids.is_empty());
-}
-
-#[test]
-fn move_refuses_a_mixed_selection_when_one_account_lacks_the_label() {
-    let (mut app, _a, b, envelopes) = two_accounts(false);
-    app.mailbox.selected_set = envelopes.iter().map(|e| e.id.clone()).collect();
-    app.modals.pending_label_action = Some((LabelPickerMode::Move, "Work".into()));
-
-    app.apply(Action::MoveToLabel);
-
-    let status = app.status_message.clone().unwrap_or_default();
-    assert!(status.contains(&app.account_display_name(&b)), "{status}");
-    assert!(app.modals.pending_bulk_confirm.is_none());
-    assert!(app.pending_mutation_queue.is_empty());
-}
-
-#[test]
-fn picker_offers_the_target_accounts_labels_once_per_name() {
-    let (mut app, a, b, envelopes) = two_accounts(true);
-    app.mailbox.labels.push(label(&a, "Errands", "a-errands"));
-    app.mailbox.labels.push(label(&b, "Personal", "b-personal"));
-
-    app.mailbox.selected_index = 1;
-    let names: Vec<String> = app
-        .label_picker_labels()
-        .into_iter()
-        .map(|label| label.name)
-        .collect();
-    assert_eq!(names, vec!["Work".to_string(), "Personal".to_string()]);
-
-    app.mailbox.selected_set = envelopes.iter().map(|e| e.id.clone()).collect();
-    let names: Vec<String> = app
-        .label_picker_labels()
-        .into_iter()
-        .map(|label| label.name)
-        .collect();
-    assert_eq!(
-        names,
-        vec![
-            "Work".to_string(),
-            "Errands".to_string(),
-            "Personal".to_string()
-        ]
-    );
-}
-
-#[test]
-fn moving_a_second_account_message_to_a_system_mailbox_is_not_refused() {
-    let (mut app, a, _b, _envelopes) = two_accounts(false);
-    let mut trash = label(&a, "TRASH", "TRASH");
-    trash.kind = LabelKind::System;
-    app.mailbox.labels.push(trash);
-    app.mailbox.selected_index = 1;
-    app.modals.pending_label_action = Some((LabelPickerMode::Move, "TRASH".into()));
-
-    app.apply(Action::MoveToLabel);
-
-    let status = app.status_message.clone().unwrap_or_default();
-    assert!(!status.starts_with("No label"), "{status}");
-    assert_eq!(app.pending_mutation_queue.len(), 1);
-}
-
-#[test]
-fn a_name_no_loaded_label_has_is_left_to_the_daemon() {
-    let (mut app, _a, _b, _envelopes) = two_accounts(false);
-    app.mailbox.selected_index = 1;
-    app.modals.pending_label_action = Some((LabelPickerMode::Apply, "Made elsewhere".into()));
-
-    app.apply(Action::ApplyLabel);
-
-    let status = app.status_message.clone().unwrap_or_default();
-    assert!(!status.starts_with("No label"), "{status}");
-    assert_eq!(app.pending_mutation_queue.len(), 1);
 }

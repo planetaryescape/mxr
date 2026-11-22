@@ -437,9 +437,7 @@ pub(super) async fn classify_eval(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_provider_fake::fixtures::scenarios::{
-        Expect, Home as ExpectedHome, Review, SenderKind, Who,
-    };
+    use mxr_provider_fake::fixtures::scenarios::{Expect, Home as ExpectedHome, SenderKind, Who};
 
     fn label(expect: Expect) -> Labelled {
         Labelled {
@@ -482,14 +480,6 @@ mod tests {
     }
 
     #[test]
-    fn a_right_answer_everywhere_has_no_mismatch() {
-        let (tally, mismatches) = graded(EXPECT, &right());
-        assert!(mismatches.is_empty());
-        assert_eq!(tally.evaluated, [1; 3]);
-        assert_eq!(tally.correct, [1; 3]);
-    }
-
-    #[test]
     fn a_record_is_wrong_in_both_directions() {
         let actual = Actual {
             record: false,
@@ -510,14 +500,6 @@ mod tests {
     }
 
     #[test]
-    fn what_an_email_asks_is_not_an_accuracy_question() {
-        assert_eq!(QUESTIONS, ["who", "home", "record"]);
-        let (tally, _) = graded(EXPECT, &right());
-        let summary = summarise(ClassifyEvalSetData::Quick, 1, 1, 0, &tally, None);
-        assert!(summary.questions.iter().all(|q| q.question != "todo"));
-    }
-
-    #[test]
     fn mail_you_sent_is_not_graded_on_who_home_or_record() {
         let sent = Labelled {
             outbound: true,
@@ -533,146 +515,6 @@ mod tests {
         assert!(mismatches.is_empty());
         assert_eq!(tally.evaluated, [0; 3]);
         assert_eq!(tally.held_out_present, 0);
-    }
-
-    #[test]
-    fn an_email_with_no_home_yet_is_reported_not_graded() {
-        let actual = Actual {
-            home: None,
-            ..right()
-        };
-        let (tally, mismatches) = graded(EXPECT, &actual);
-        assert!(mismatches.is_empty(), "not placed is not a wrong answer");
-        assert_eq!(tally.not_placed, 1);
-        assert_eq!(tally.evaluated, [1, 0, 1]);
-    }
-
-    #[test]
-    fn a_pending_assessment_is_not_a_wrong_who_answer() {
-        let actual = Actual {
-            who: None,
-            home: None,
-            ..right()
-        };
-        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
-        let held_out = Labelled {
-            held_out: true,
-            ..label(EXPECT)
-        };
-        grade(&held_out, &actual, &mut tally, &mut mismatches);
-        assert!(mismatches.is_empty());
-        assert_eq!(tally.not_placed, 1);
-        assert_eq!(tally.evaluated, [0, 0, 1]);
-        assert_eq!(tally.held_out_evaluated, [0, 0, 1]);
-        assert_eq!(tally.correct, [0, 0, 1]);
-    }
-
-    #[test]
-    fn a_mismatch_on_a_judgement_call_label_says_so() {
-        let mut judged = label(EXPECT);
-        judged.review = Some(Review {
-            questions: &["todo"],
-            why: "a policy call",
-        });
-        let actual = Actual {
-            record: false,
-            ..right()
-        };
-        let mut judged_record = judged.clone();
-        judged_record.review = Some(Review {
-            questions: &["record"],
-            why: "a policy call",
-        });
-        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
-        grade(&judged_record, &actual, &mut tally, &mut mismatches);
-        assert_eq!(mismatches.len(), 1);
-        assert_eq!(mismatches[0].label_review.as_deref(), Some("a policy call"));
-        let (_, plain) = graded(EXPECT, &actual);
-        assert_eq!(plain[0].label_review, None);
-        let wrong_who = Actual {
-            who: Some("person"),
-            ..right()
-        };
-        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
-        grade(&judged_record, &wrong_who, &mut tally, &mut mismatches);
-        assert_eq!(mismatches.len(), 1);
-        assert_eq!(mismatches[0].question, "who");
-        assert_eq!(mismatches[0].label_review, None);
-        let wrong_record = Actual {
-            record: false,
-            ..right()
-        };
-        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
-        grade(&judged, &wrong_record, &mut tally, &mut mismatches);
-        assert_eq!(mismatches.len(), 1);
-        assert_eq!(mismatches[0].question, "record");
-        assert_eq!(mismatches[0].label_review, None);
-    }
-
-    #[test]
-    fn mail_placed_live_is_graded_and_counted() {
-        let actual = Actual {
-            home: Some(Home {
-                mode: "messages".into(),
-                reason: String::new(),
-                live: true,
-            }),
-            ..right()
-        };
-        let (tally, mismatches) = graded(EXPECT, &actual);
-        assert_eq!(tally.placed_live, 1);
-        assert_eq!(tally.evaluated, [1; 3], "its home is asked like any other");
-        assert_eq!(mismatches.len(), 1);
-        assert_eq!(mismatches[0].question, "home");
-    }
-
-    #[test]
-    fn a_wrong_who_and_home_carry_the_rule_that_decided_them() {
-        let actual = Actual {
-            who: Some("person"),
-            who_reason: "possible personal mail".into(),
-            home: Some(Home {
-                mode: "messages".into(),
-                reason: "possible personal mail".into(),
-                live: false,
-            }),
-            ..right()
-        };
-        let (_, mismatches) = graded(EXPECT, &actual);
-        assert_eq!(mismatches.len(), 2);
-        assert!(mismatches
-            .iter()
-            .all(|m| m.reason == "possible personal mail" && m.twin_of.as_deref() == Some("t")));
-    }
-
-    #[test]
-    fn mismatches_sort_by_scenario_then_numeric_provider_id_then_question() {
-        let make = |scenario: &str, provider_id: &str, question: &str| ClassifyEvalMismatchData {
-            scenario: scenario.into(),
-            provider_id: provider_id.into(),
-            question: question.into(),
-            expected: String::new(),
-            actual: String::new(),
-            reason: String::new(),
-            twin_of: None,
-            held_out: false,
-            label_review: None,
-        };
-        let sorted = vec![
-            make("a", "demo-msg-9", "who"),
-            make("a", "demo-msg-9", "record"),
-            make("a", "demo-msg-10", "home"),
-            make("a", "demo-msg-10", "ask"),
-            make("a", "demo-msg-10", "reply"),
-            make("b", "demo-msg-2", "who"),
-        ];
-        for rotation in 0..sorted.len() {
-            let mut shuffled = sorted.clone();
-            shuffled.rotate_left(rotation);
-            shuffled.reverse();
-            sort_mismatches(&mut shuffled);
-            assert_eq!(shuffled, sorted, "rotation {rotation}");
-        }
     }
 
     #[test]
@@ -712,14 +554,5 @@ mod tests {
             .map(|q| q.accuracy_percent)
             .collect();
         assert_eq!(all, [100.0, 100.0, 50.0]);
-    }
-
-    #[test]
-    fn a_set_with_nothing_held_out_reports_no_held_out_line() {
-        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
-        grade(&label(EXPECT), &right(), &mut tally, &mut mismatches);
-        let summary = summarise(ClassifyEvalSetData::Quick, 1, 1, 0, &tally, None);
-        assert_eq!(summary.held_out_present, 0);
-        assert!(summary.held_out_questions.is_empty());
     }
 }

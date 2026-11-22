@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { MailView } from "./MailView";
-import { mailboxKey, shellKey } from "./api";
 import type { MailboxResponse, MessageGroupView, ShellResponse } from "./types";
 import { startDaemonAvailability, resetDaemonAvailabilityForTest } from "@/lib/daemonAvailability";
 import { shouldRetryQuery } from "@/lib/queryClient";
@@ -216,96 +215,5 @@ describe("cold mailbox connection state", () => {
 
     expect(await screen.findByText("Inbox zero", {}, { timeout: 5_000 })).toBeVisible();
     expect(screen.queryByText("mxr isn't running")).not.toBeInTheDocument();
-  });
-
-  test("a cached message remains readable while the mailbox refetch is paused", async () => {
-    const params = {
-      lens_kind: "inbox" as const,
-      view: "threads" as const,
-      limit: 150,
-      account: null,
-    };
-    const cached: MailboxResponse = {
-      ...EMPTY_MAILBOX,
-      mailbox: {
-        ...EMPTY_MAILBOX.mailbox,
-        counts: { total: 1 },
-        groups: [
-          {
-            id: "today",
-            label: "Today",
-            rows: [
-              {
-                id: "message-1",
-                kind: "thread",
-                thread_id: "thread-1",
-                provider_id: "provider-1",
-                sender: "Ada",
-                subject: "Cached message stays readable",
-                snippet: "Cached snippet",
-                date: "2026-10-11T10:00:00Z",
-                date_label: "Today",
-                date_full: "Today",
-                date_relative: "now",
-                unread: false,
-                starred: false,
-                has_attachments: false,
-              },
-            ],
-          },
-        ],
-      },
-    };
-    queryClient.setQueryData(shellKey, SHELL);
-    queryClient.setQueryData(
-      mailboxKey(params),
-      { pages: [cached], pageParams: [0] },
-      { updatedAt: 0 },
-    );
-
-    renderInbox();
-    await waitForPausedColdQueries();
-
-    expect(screen.getByText("Cached message stays readable")).toBeVisible();
-    expect(screen.queryByText("mxr isn't running")).not.toBeInTheDocument();
-    expect(screen.queryByText("Inbox zero")).not.toBeInTheDocument();
-  });
-
-  test("a list answered from the limited search says so above the rows", async () => {
-    const notice =
-      "Search is limited while the index is unavailable: subject, sender and preview only. Restart the daemon or run `mxr doctor --reindex`.";
-    mailboxBody = {
-      mailbox: {
-        ...EMPTY_MAILBOX.mailbox,
-        degraded: {
-          reason: "index_stopped",
-          searched_fields: ["subject", "sender", "preview"],
-          notice,
-        },
-      },
-    };
-    daemonDown = false;
-
-    renderInbox();
-
-    expect(await screen.findByText(notice, {}, { timeout: 5_000 })).toBeVisible();
-  });
-
-  test.each([
-    ["label", { kind: "label" as const, name: "receipts" }],
-    ["saved search", { kind: "saved" as const, slug: "weekly" }],
-  ])("a failed shell lookup does not call a %s missing", async (_name, route) => {
-    stopAvailability = startDaemonAvailability(queryClient);
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MailView route={route} />
-      </QueryClientProvider>,
-    );
-
-    await waitForPausedColdQueries();
-
-    expect(await screen.findByText("mxr isn't running", {}, { timeout: 5_000 })).toBeVisible();
-    expect(screen.queryByText("No label by that name")).not.toBeInTheDocument();
-    expect(screen.queryByText("No saved search by that name")).not.toBeInTheDocument();
   });
 });

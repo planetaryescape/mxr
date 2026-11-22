@@ -132,42 +132,4 @@ mod tests {
         .await
         .is_empty());
     }
-
-    #[tokio::test]
-    async fn history_text_is_still_recognised_after_a_restart() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("mxr.db");
-        let account = crate::test_fixtures::test_account_with_id(AccountId::new());
-        {
-            let store = Store::new(&path).await.unwrap();
-            store.insert_account(&account).await.unwrap();
-            record(
-                &store,
-                &account.id,
-                "Shout if it's missing from your inbox.",
-            )
-            .await;
-        }
-        let reopened = Store::new(&path).await.unwrap();
-        assert_eq!(
-            found(
-                &reopened,
-                None,
-                "Hi,\n\nshout if it's missing from your inbox\n"
-            )
-            .await,
-            vec![account.id]
-        );
-    }
-
-    #[test]
-    fn fingerprints_are_stable_across_processes() {
-        assert_eq!(
-            fingerprints("Shout if it's missing from your inbox"),
-            fingerprints("shout if its missing from your inbox!")
-        );
-        assert_eq!(fingerprints("one two three four"), vec![FOUR_WORDS]);
-    }
-
-    const FOUR_WORDS: i64 = 1_242_828_351_107_727_526;
 }

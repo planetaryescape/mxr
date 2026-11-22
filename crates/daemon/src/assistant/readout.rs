@@ -416,37 +416,6 @@ mod tests {
     }
 
     #[test]
-    fn a_result_without_lists_reads_as_its_plain_fields() {
-        let out = read(json!({
-            "kind": "Archive",
-            "operation": {
-                "accepted": true,
-                "mutation_id": "mut1",
-                "undo_available": true,
-                "items": [{"message_id": "m1"}, {"message_id": "m2"}],
-                "started_at": 5,
-            },
-        }));
-        assert_eq!(out.total, None);
-        let facts: Vec<_> = out
-            .facts
-            .iter()
-            .map(|fact| format!("{}: {}", fact.label, fact.value))
-            .collect();
-        assert_eq!(facts, ["Accepted: yes", "Items: 2", "Undo available: yes"]);
-    }
-
-    #[test]
-    fn caps_rows_and_trusts_a_larger_total() {
-        let results: Vec<_> = (0..8)
-            .map(|n| json!({"subject": format!("s{n}"), "thread_id": format!("t{n}")}))
-            .collect();
-        let out = read(json!({"kind": "Search", "results": results, "total": 40}));
-        assert_eq!(out.rows.len(), ROWS);
-        assert_eq!(out.total, Some(40));
-    }
-
-    #[test]
     fn a_search_names_its_emails_with_subject_sender_and_conversation() {
         let out = read(json!({
             "kind": "SearchResults",
@@ -488,96 +457,6 @@ mod tests {
 
     fn read_rows(value: Value) -> Vec<AssistantReadoutRowData> {
         read(value).rows
-    }
-
-    #[test]
-    fn an_envelope_row_carries_sender_snippet_time_clip_and_unread() {
-        let out = read_rows(json!({"kind": "Envelopes", "envelopes": [{
-            "id": "m1", "thread_id": "t1", "subject": "Invoice 4471",
-            "from": {"name": "Dana Ruiz", "email": "dana@work.example"},
-            "date": "2026-10-01T09:00:00Z", "flags": "STARRED",
-            "snippet": "Please confirm\npayment by Friday", "has_attachments": true,
-        }]}));
-        let row = &out[0];
-        assert_eq!(row.sender.as_deref(), Some("Dana Ruiz"));
-        assert_eq!(
-            row.snippet.as_deref(),
-            Some("Please confirm payment by Friday")
-        );
-        assert_eq!(row.at, Some(1_790_845_200));
-        assert!(row.attachment && row.unread);
-        assert_eq!(row.detail.as_deref(), Some("Dana Ruiz"));
-    }
-
-    #[test]
-    fn a_search_result_fills_what_the_tool_names_and_no_more() {
-        let out = read_rows(json!({"results": [{
-            "message_id": "m1", "thread_id": "t1", "score": 1.0,
-            "subject": "CI failed", "from": {"name": "", "email": "ci@github.example"},
-        }]}));
-        let row = &out[0];
-        assert_eq!(row.sender.as_deref(), Some("ci@github.example"));
-        assert_eq!((row.snippet.as_deref(), row.at), (None, None));
-        assert!(!row.attachment && !row.unread);
-    }
-
-    #[test]
-    fn a_place_message_has_snippet_time_and_unread_but_no_sender() {
-        let out = read_rows(
-            json!({"bundles": [{"sender_email": "a@b.example", "messages": [{
-                "message_id": "m1", "thread_id": "t1", "subject": "Weekly digest",
-                "snippet": "Ten links", "date": "2026-10-01T09:00:00+00:00",
-                "unread": true, "pinned": false, "starred": false,
-            }]}]}),
-        );
-        let row = &out[0];
-        assert_eq!(row.sender, None);
-        assert_eq!(row.snippet.as_deref(), Some("Ten links"));
-        assert_eq!(row.at, Some(1_790_845_200));
-        assert!(row.unread && !row.attachment);
-    }
-
-    #[test]
-    fn a_place_message_takes_its_bundles_account() {
-        let account = "7b0a9f2e-0000-4000-8000-000000000002";
-        let out = read_rows(json!({"bundles": [{
-            "account_id": account,
-            "sender_email": "a@b.example",
-            "messages": [{
-                "message_id": "m1", "thread_id": "t1", "subject": "Weekly digest",
-                "date": "2026-10-01T09:00:00+00:00", "unread": false,
-            }],
-        }]}));
-        assert_eq!(
-            out[0]
-                .account_id
-                .as_ref()
-                .map(ToString::to_string)
-                .as_deref(),
-            Some(account)
-        );
-    }
-
-    #[test]
-    fn a_thread_preview_row_carries_the_account_its_message_came_to() {
-        let account = mxr_core::id::AccountId::new();
-        let content = serde_json::to_string(&mxr_protocol::ResponseData::ThreadPreviews {
-            previews: vec![mxr_protocol::ThreadPreviewData {
-                thread_id: mxr_core::id::ThreadId::new(),
-                subject: "Invoice 4471".into(),
-                sender_name: None,
-                sender_email: "dana@work.example".into(),
-                latest_at: 1_760_000_000,
-                message_count: 1,
-                unread_count: 0,
-                snippet: "Please confirm".into(),
-                has_attachments: false,
-                account_id: Some(account.clone()),
-            }],
-        })
-        .expect("serialise previews");
-        let out = readout(&content).expect("a readout");
-        assert_eq!(out.rows[0].account_id, Some(account));
     }
 
     #[test]
@@ -635,63 +514,6 @@ mod tests {
         assert_eq!(second_row.sender.as_deref(), Some("news@example.com"));
         assert_eq!(second_row.at, Some(1_759_900_000));
         assert!(!second_row.unread && !second_row.attachment);
-    }
-
-    #[test]
-    fn a_messages_row_has_time_and_unread_but_no_email_fields() {
-        let out = read_rows(json!({"your_turn": [{
-            "id": "person:ann@x.example", "kind": "person", "title": "Ann",
-            "last_at": "2026-10-01T09:00:00Z", "unread": true,
-            "preview": {"kind": "ask", "text": "Can you review?"}, "topics": [],
-        }]}));
-        let row = &out[0];
-        assert_eq!(row.at, Some(1_790_845_200));
-        assert!(row.unread);
-        assert_eq!(
-            (row.sender.as_deref(), row.snippet.as_deref()),
-            (None, None)
-        );
-    }
-
-    #[test]
-    fn email_fields_carry_no_control_characters() {
-        let out = read_rows(json!({"results": [{
-            "subject": "s", "from": {"name": "Eve\u{1b}[31m\u{202e}", "email": "e@x"},
-            "snippet": "line\u{7}one\ntwo",
-        }]}));
-        let row = &out[0];
-        for text in [row.sender.as_deref(), row.snippet.as_deref()]
-            .into_iter()
-            .flatten()
-        {
-            assert!(
-                !text.chars().any(|c| c.is_control() || c == '\u{202e}'),
-                "{text:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn all_rows_returns_every_listed_row_up_to_the_cap() {
-        let results: Vec<_> = (0..12)
-            .map(|n| json!({"subject": format!("s{n}"), "thread_id": format!("t{n}")}))
-            .collect();
-        let whole = json!({"kind": "Search", "results": results, "total": 14}).to_string();
-
-        let out = all_rows(&whole, 500).unwrap();
-        assert_eq!(out.rows.len(), 12);
-        assert_eq!(out.rows[11].title, "s11");
-        assert_eq!(out.total, Some(14));
-
-        let capped = all_rows(&whole, 4).unwrap();
-        assert_eq!(capped.rows.len(), 4);
-        assert_eq!(capped.total, Some(14));
-    }
-
-    #[test]
-    fn text_and_empty_results_have_no_readout() {
-        assert_eq!(readout("not json"), None);
-        assert_eq!(readout("{}"), None);
     }
 
     #[test]

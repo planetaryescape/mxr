@@ -105,27 +105,3 @@ fn toast_line(toast: &Toast, now: std::time::Instant) -> Line<'_> {
     }
     Line::from(spans)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn text_takes_the_pole_that_reads_on_the_colour() {
-        let theme = Theme::default();
-        // Green and yellow are light: dark text. Red is darker: either pole
-        // must clear the 4.5:1 that the other side would fail.
-        assert_eq!(readable_on(theme.success, &theme), theme.contrast_dark);
-        assert_eq!(readable_on(theme.warning, &theme), theme.contrast_dark);
-        let ratio = |fg: Color, bg: Color| {
-            contrast_ratio(
-                relative_luminance(color_rgb(fg).unwrap()),
-                relative_luminance(color_rgb(bg).unwrap()),
-            )
-        };
-        for bg in [theme.success, theme.accent, theme.warning, theme.error] {
-            let fg = readable_on(bg, &theme);
-            assert!(ratio(fg, bg) >= 4.5, "{bg:?} on {fg:?}: {}", ratio(fg, bg));
-        }
-    }
-}

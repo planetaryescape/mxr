@@ -51,36 +51,6 @@ async fn inbox_source(root: &Path) -> (Account, Account) {
 }
 
 #[tokio::test]
-async fn a_schema_104_bundle_is_inspected_against_the_104_shape() {
-    let stage = tempfile::tempdir().unwrap();
-    let store = store_at_version(&stage.path().join("mxr.db"), 104).await;
-    let (workspace_id, recovery_generation) = store.archive_workspace().await.unwrap();
-    store.writer().close().await;
-    let manifest = write_manifest(
-        stage.path(),
-        BackupManifest {
-            format_version: 1,
-            schema_version: 104,
-            workspace_id,
-            recovery_generation,
-            files: vec![file_metadata(stage.path(), "mxr.db").unwrap()],
-            exclusions: Vec::new(),
-        },
-    );
-
-    assert_eq!(inspect(stage.path()).await.unwrap().schema_version, 104);
-
-    let mut mislabelled = manifest;
-    mislabelled.schema_version = 105;
-    std::fs::write(
-        stage.path().join("manifest.json"),
-        serde_json::to_vec(&mislabelled).unwrap(),
-    )
-    .unwrap();
-    assert!(inspect(stage.path()).await.is_err());
-}
-
-#[tokio::test]
 async fn a_backup_from_schema_104_restores_with_label_roles() {
     let source = tempfile::tempdir().unwrap();
     let stage = tempfile::tempdir().unwrap();

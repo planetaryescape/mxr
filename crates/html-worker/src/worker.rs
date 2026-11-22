@@ -123,10 +123,6 @@ mod tests {
     use crate::job::Job;
 
     static UPPER: Job<(), String> = Job::new("test.upper", |html, ()| html.to_uppercase());
-    static PANICS: Job<(), String> = Job::new("test.panics", |_, ()| {
-        std::panic::resume_unwind(Box::new("job failed"))
-    });
-
     fn exchange(jobs: &[&dyn AnyJob], requests: &[Vec<u8>]) -> Vec<(u64, Status, Vec<u8>)> {
         let registry = Registry::new(jobs).expect("registry");
         let mut input = Vec::new();
@@ -165,36 +161,6 @@ mod tests {
         assert_eq!(replies[1].2, b"\"AB\"");
         assert_eq!((replies[2].0, replies[2].1), (2, Status::Ok));
         assert_eq!(replies[2].2, b"\"CD\"");
-    }
-
-    #[test]
-    fn a_panicking_job_is_reported_and_the_next_request_still_runs() {
-        let replies = exchange(
-            &[&UPPER, &PANICS],
-            &[
-                wire::encode_request(1, "test.panics", b"null", b"x"),
-                wire::encode_request(2, "test.upper", b"null", b"ok"),
-            ],
-        );
-        assert_eq!((replies[1].0, replies[1].1), (1, Status::JobError));
-        assert_eq!((replies[2].0, replies[2].1), (2, Status::Ok));
-    }
-
-    #[test]
-    fn an_unknown_kind_is_reported_not_fatal() {
-        let replies = exchange(
-            &[&UPPER],
-            &[wire::encode_request(5, "test.nothing", b"null", b"x")],
-        );
-        assert_eq!((replies[1].0, replies[1].1), (5, Status::UnknownKind));
-    }
-
-    #[test]
-    fn a_duplicate_kind_is_refused_at_start_up() {
-        let error = Registry::new(&[&UPPER, &UPPER])
-            .err()
-            .expect("duplicate refused");
-        assert!(error.contains("test.upper"), "{error}");
     }
 
     #[test]

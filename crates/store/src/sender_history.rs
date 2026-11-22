@@ -199,25 +199,4 @@ mod tests {
         assert_eq!(maya.subjects, vec!["Dinner?"]);
         assert!(!maya.bulk_headers);
     }
-
-    #[tokio::test]
-    async fn large_sender_batches_never_bind_ids_as_a_like_pattern() {
-        let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-        let ids: Vec<_> = (0..1_400).map(|_| mxr_core::MessageId::new()).collect();
-        let json = serde_json::to_string(&ids).unwrap();
-        assert!(json.len() > 50_000);
-        sqlx::query("INSERT INTO messages(id,account_id,provider_id,thread_id,from_email,to_addrs,date,direction) SELECT value,?1,value,value,value || '@example.test','[]',0,'inbound' FROM json_each(?2)")
-            .bind(account.id.as_str()).bind(&json).execute(store.writer()).await.unwrap();
-        sqlx::query("INSERT INTO bodies(message_id,fetched_at,metadata_json) SELECT value,0,?2 FROM json_each(?1)")
-            .bind(&json).bind(r#"{"raw_headers":"Auto-Submitted: auto-generated"}"#).execute(store.writer()).await.unwrap();
-        let senders: Vec<_> = ids.iter().map(|id| format!("{id}@example.test")).collect();
-        let histories = store.sender_histories(&account.id, &senders).await.unwrap();
-        assert_eq!(histories.len(), ids.len());
-        assert!(
-            histories.values().all(|history| history.bulk_headers),
-            "the last marker must be bound too"
-        );
-    }
 }

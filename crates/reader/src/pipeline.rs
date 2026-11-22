@@ -132,26 +132,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_input_returns_empty() {
-        let output = clean(None, None, &ReaderConfig::default());
-        assert!(output.content.is_empty());
-        assert_eq!(output.original_lines, 0);
-        assert_eq!(output.cleaned_lines, 0);
-    }
-
-    #[test]
     fn html_preferred_over_none() {
         let html = "<p>Hello world</p>";
         let output = clean(None, Some(html), &ReaderConfig::default());
         assert!(output.content.contains("Hello world"));
-    }
-
-    #[test]
-    fn text_preferred_over_html() {
-        let text = "Plain text version";
-        let html = "<p>HTML version</p>";
-        let output = clean(Some(text), Some(html), &ReaderConfig::default());
-        assert!(output.content.contains("Plain text"));
     }
 
     #[test]

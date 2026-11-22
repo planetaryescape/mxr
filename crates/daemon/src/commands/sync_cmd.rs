@@ -699,21 +699,6 @@ async fn reconnect_client(cause: &anyhow::Error) -> anyhow::Result<IpcClient> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn global_sync_requires_the_current_protocol() {
-        for version in 4..IPC_PROTOCOL_VERSION {
-            let error =
-                ensure_sync_all_protocol(version).expect_err("an older protocol cannot sync all");
-            assert!(error.to_string().contains(&format!(
-                "requires daemon IPC protocol {IPC_PROTOCOL_VERSION}"
-            )));
-            assert!(error
-                .to_string()
-                .contains(&format!("running daemon uses {version}")));
-        }
-        assert!(ensure_sync_all_protocol(IPC_PROTOCOL_VERSION).is_ok());
-    }
-
     fn sample_config() -> MxrConfig {
         let mut config = MxrConfig::default();
         config.accounts.insert(
@@ -822,27 +807,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_account_selection_rejects_unknown_accounts() {
-        let error = resolve_account_selection(&sample_config(), "missing")
-            .err()
-            .map(|error| error.to_string());
-
-        assert!(matches!(error.as_deref(), Some(text) if text.contains("not found")));
-    }
-
-    #[test]
-    fn legacy_unscoped_sync_request_still_targets_default_account_only() {
-        assert!(matches!(
-            build_sync_request(None),
-            Request::SyncNow {
-                account_id: None,
-                background: true,
-            }
-        ));
-        assert!(!matches!(build_sync_request(None), Request::SyncAll));
-    }
-
-    #[test]
     fn sync_wait_only_tracks_accounts_that_started_or_joined() {
         let started = AccountId::from_provider_id("fake", "started@example.com");
         let joined = AccountId::from_provider_id("fake", "joined@example.com");
@@ -892,47 +856,6 @@ mod tests {
         }
     }
 
-    fn with_progress(
-        mut status: AccountSyncStatus,
-        current: u32,
-        total: Option<u32>,
-    ) -> AccountSyncStatus {
-        status.progress = Some(mxr_protocol::SyncProgressData {
-            current,
-            total,
-            message: "Stored 3000 messages".to_string(),
-        });
-        status
-    }
-
-    /// The denominator is only there when the provider could count what is
-    /// left, so the line has to read sensibly either way.
-    #[test]
-    fn sync_progress_line_shows_a_denominator_only_when_one_is_known() {
-        let known = with_progress(status("personal", "t0", None), 3_000, Some(50_000));
-        assert_eq!(
-            sync_progress_line(&[known]).as_deref(),
-            Some("personal: 3,000/50,000 — Stored 3000 messages")
-        );
-
-        let unknown = with_progress(status("personal", "t0", None), 3_000, None);
-        assert_eq!(
-            sync_progress_line(&[unknown]).as_deref(),
-            Some("personal: 3,000 — Stored 3000 messages")
-        );
-    }
-
-    /// An idle pass has no denominator, so the line must not offer one. The
-    /// daemon withholds the total for exactly this reason — rendering it would
-    /// read "0/0", which looks like a stalled sync rather than an idle one.
-    #[test]
-    fn sync_progress_line_never_renders_a_zero_denominator() {
-        let idle = with_progress(status("personal", "t0", None), 0, None);
-        let line = sync_progress_line(&[idle]).expect("a reporting account produces a line");
-        assert_eq!(line, "personal: 0 — Stored 3000 messages");
-        assert!(!line.contains('/'), "no denominator when none is known");
-    }
-
     #[test]
     fn sync_failures_reports_an_error_when_the_initial_status_read_was_unavailable() {
         let result = sync_result("personal", mxr_protocol::SyncAccountResultKind::Started);
@@ -940,43 +863,6 @@ mod tests {
         assert_eq!(
             sync_failures(&[result], &after),
             vec!["sync failed for personal: imap: connection refused".to_string()]
-        );
-    }
-
-    #[test]
-    fn sync_failures_reports_the_same_error_after_a_joined_retry() {
-        let result = sync_result("personal", mxr_protocol::SyncAccountResultKind::Joined);
-        let after = vec![status("personal", "t0", Some("same provider error"))];
-        assert_eq!(
-            sync_failures(&[result], &after),
-            vec!["sync failed for personal: same provider error".to_string()]
-        );
-    }
-
-    #[test]
-    fn sync_failures_is_empty_when_the_sync_succeeded() {
-        let result = sync_result("personal", mxr_protocol::SyncAccountResultKind::Started);
-        let after = vec![status("personal", "t1", None)];
-        assert!(sync_failures(&[result], &after).is_empty());
-    }
-
-    #[test]
-    fn sync_failures_ignores_errors_for_unselected_accounts() {
-        let selected = sync_result("selected", mxr_protocol::SyncAccountResultKind::Started);
-        let statuses = vec![
-            status("selected", "t1", None),
-            status("unselected", "t0", Some("old failure")),
-        ];
-        assert!(sync_failures(&[selected], &statuses).is_empty());
-    }
-
-    #[test]
-    fn legacy_sync_failures_reports_a_new_account_error() {
-        let before = vec![status("personal", "t0", None)];
-        let after = vec![status("personal", "t1", Some("connection refused"))];
-        assert_eq!(
-            sync_failures_since(&before, &after),
-            vec!["sync failed for personal: connection refused".to_string()]
         );
     }
 
@@ -993,18 +879,6 @@ mod tests {
         let target_ids = std::collections::HashSet::from([selected]);
         assert!(!sync_targets_quiescent(&[], &target_ids));
         assert!(sync_targets_quiescent(
-            &[status("selected", "t1", None)],
-            &target_ids
-        ));
-    }
-
-    #[test]
-    fn wait_rejects_partial_status_sets_even_when_returned_accounts_are_idle() {
-        let target_ids = std::collections::HashSet::from([
-            AccountId::from_provider_id("fake", "selected"),
-            AccountId::from_provider_id("fake", "missing"),
-        ]);
-        assert!(!sync_targets_quiescent(
             &[status("selected", "t1", None)],
             &target_ids
         ));

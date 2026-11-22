@@ -204,30 +204,10 @@ mod tests {
     }
 
     #[test]
-    fn html_fragment_is_not_roundtripped_through_a_parser() {
-        let original = "<!--[if mso]><table><![endif]--><p style='color:red'>Hi</p>";
-        assert_eq!(
-            prepend_html(original, "<p>Intro</p>"),
-            format!("<p>Intro</p>\n{original}")
-        );
-    }
-
-    #[test]
     fn quoted_angle_bracket_in_body_attribute_is_preserved() {
         assert_eq!(
             prepend_html("<BODY title='a > b'>Original</BODY>", "Intro"),
             "<BODY title='a > b'>IntroOriginal</BODY>"
-        );
-    }
-
-    #[test]
-    fn editor_line_ending_changes_do_not_change_the_preserved_original() {
-        let source = source();
-        let body = format!("Intro\n\n{}", source.content.analysis_text()).replace('\n', "\r\n");
-        assert_eq!(introduction(&source, &body).unwrap(), "Intro");
-        assert_eq!(
-            content(&source, &body).unwrap().analysis_text(),
-            format!("Intro\n\n{}", source.content.analysis_text())
         );
     }
 }

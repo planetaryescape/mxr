@@ -393,13 +393,6 @@ pub(crate) fn locate(index: usize) -> (usize, usize) {
     (period * PERIOD + thread, within - layout.starts[thread])
 }
 
-/// The first message of a thread, as an index into the bulk.
-#[cfg(test)]
-pub(crate) fn first_index(thread_num: usize) -> usize {
-    let layout = layout();
-    (thread_num / PERIOD) * layout.per_period + layout.starts[thread_num % PERIOD]
-}
-
 /// The person writing the thread: the same one throughout, so a thread reads
 /// as a conversation with someone.
 pub(crate) fn counterpart(thread_num: usize) -> Person {

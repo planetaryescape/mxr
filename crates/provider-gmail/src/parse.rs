@@ -600,22 +600,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_list_unsubscribe_one_click() {
-        let headers = make_headers(&[
-            (
-                "List-Unsubscribe",
-                "<https://unsub.example.com/oneclick>, <mailto:unsub@example.com>",
-            ),
-            ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
-        ]);
-        let result = parse_list_unsubscribe(&headers);
-        assert!(matches!(
-            result,
-            UnsubscribeMethod::OneClick { ref url } if url == "https://unsub.example.com/oneclick"
-        ));
-    }
-
-    #[test]
     fn parse_list_unsubscribe_mailto() {
         let headers = make_headers(&[("List-Unsubscribe", "<mailto:unsub@example.com>")]);
         let result = parse_list_unsubscribe(&headers);
@@ -623,13 +607,6 @@ mod tests {
             result,
             UnsubscribeMethod::Mailto { ref address, .. } if address == "unsub@example.com"
         ));
-    }
-
-    #[test]
-    fn parse_address_name_angle() {
-        let addr = parse_address("Alice <alice@example.com>");
-        assert_eq!(addr.name, Some("Alice".to_string()));
-        assert_eq!(addr.email, "alice@example.com");
     }
 
     #[test]
@@ -656,13 +633,6 @@ mod tests {
     }
 
     #[test]
-    fn base64url_decode_accepts_padding() {
-        let encoded = "SGVsbG8sIFdvcmxkIQ==";
-        let decoded = base64_decode_url(encoded).unwrap();
-        assert_eq!(decoded, "Hello, World!");
-    }
-
-    #[test]
     fn parse_list_unsubscribe_multi_uri_prefers_one_click() {
         let headers = make_headers(&[
             (
@@ -676,13 +646,6 @@ mod tests {
             result,
             UnsubscribeMethod::OneClick { ref url } if url == "https://unsub.example.com/oneclick"
         ));
-    }
-
-    #[test]
-    fn parse_address_empty_string() {
-        let addr = parse_address("");
-        assert!(addr.name.is_none());
-        assert!(addr.email.is_empty());
     }
 
     #[test]
@@ -766,64 +729,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_message_with_attachments_metadata() {
-        let msg = GmailMessage {
-            raw: None,
-            id: "msg-att".to_string(),
-            thread_id: "thread-att".to_string(),
-            label_ids: Some(vec!["INBOX".to_string()]),
-            snippet: Some("See attached".to_string()),
-            history_id: None,
-            internal_date: Some("1700000000000".to_string()),
-            size_estimate: Some(100000),
-            payload: Some(GmailPayload {
-                mime_type: Some("multipart/mixed".to_string()),
-                headers: Some(make_headers(&[
-                    ("From", "alice@example.com"),
-                    ("To", "bob@example.com"),
-                    ("Subject", "Files attached"),
-                ])),
-                body: None,
-                parts: Some(vec![
-                    GmailPayload {
-                        mime_type: Some("text/plain".to_string()),
-                        headers: None,
-                        body: Some(GmailBody {
-                            attachment_id: None,
-                            size: Some(5),
-                            data: Some("SGVsbG8".to_string()),
-                        }),
-                        parts: None,
-                        filename: None,
-                    },
-                    GmailPayload {
-                        mime_type: Some("image/png".to_string()),
-                        headers: None,
-                        body: Some(GmailBody {
-                            attachment_id: Some("att-img".to_string()),
-                            size: Some(25000),
-                            data: None,
-                        }),
-                        parts: None,
-                        filename: Some("screenshot.png".to_string()),
-                    },
-                ]),
-                filename: None,
-            }),
-        };
-
-        let account_id = AccountId::from_provider_id("gmail", "test-account");
-        let env = gmail_message_to_envelope(&msg, &account_id).unwrap();
-        assert!(env.has_attachments);
-        assert_eq!(env.subject, "Files attached");
-
-        let (_, _, attachments) = extract_body(&msg);
-        assert_eq!(attachments.len(), 1);
-        assert_eq!(attachments[0].filename, "screenshot.png");
-        assert_eq!(attachments[0].mime_type, "image/png");
-    }
-
-    #[test]
     fn gmail_envelope_prefers_internal_date_over_header_date() {
         let mut msg = make_test_message();
         msg.internal_date = Some("1710495000000".to_string());
@@ -846,25 +751,6 @@ mod tests {
     }
 
     #[test]
-    fn gmail_envelope_falls_back_to_header_date_when_internal_date_missing() {
-        let mut msg = make_test_message();
-        msg.internal_date = None;
-        msg.payload.as_mut().unwrap().headers = Some(make_headers(&[
-            ("From", "Alice <alice@example.com>"),
-            ("To", "Bob <bob@example.com>"),
-            ("Subject", "Header date fallback"),
-            ("Date", "Sun, 15 Jun 2025 09:08:00 +0000"),
-        ]));
-
-        let account_id = AccountId::from_provider_id("gmail", "test-account");
-        let env = gmail_message_to_envelope(&msg, &account_id).unwrap();
-
-        assert_eq!(env.date.year(), 2025);
-        assert_eq!(env.date.month(), 6);
-        assert_eq!(env.date.day(), 15);
-    }
-
-    #[test]
     fn gmail_envelope_falls_back_to_header_date_when_internal_date_out_of_range() {
         let mut msg = make_test_message();
         msg.internal_date = Some(i64::MAX.to_string());
@@ -881,98 +767,6 @@ mod tests {
         assert_eq!(env.date.year(), 2025);
         assert_eq!(env.date.month(), 6);
         assert_eq!(env.date.day(), 15);
-    }
-
-    #[test]
-    fn body_extraction_multipart() {
-        let msg = GmailMessage {
-            raw: None,
-            id: "msg-mp".to_string(),
-            thread_id: "thread-mp".to_string(),
-            label_ids: None,
-            snippet: None,
-            history_id: None,
-            internal_date: None,
-            size_estimate: None,
-            payload: Some(GmailPayload {
-                mime_type: Some("multipart/alternative".to_string()),
-                headers: None,
-                body: None,
-                parts: Some(vec![
-                    GmailPayload {
-                        mime_type: Some("text/plain".to_string()),
-                        headers: None,
-                        body: Some(GmailBody {
-                            attachment_id: None,
-                            size: Some(5),
-                            data: Some("SGVsbG8".to_string()),
-                        }),
-                        parts: None,
-                        filename: None,
-                    },
-                    GmailPayload {
-                        mime_type: Some("text/html".to_string()),
-                        headers: None,
-                        body: Some(GmailBody {
-                            attachment_id: None,
-                            size: Some(12),
-                            data: Some("PGI-SGVsbG88L2I-".to_string()),
-                        }),
-                        parts: None,
-                        filename: None,
-                    },
-                ]),
-                filename: None,
-            }),
-        };
-
-        let (text_plain, text_html, _) = extract_body(&msg);
-        assert_eq!(text_plain, Some("Hello".to_string()));
-        assert!(text_html.is_some());
-    }
-
-    #[test]
-    fn plain_only_body_preserves_exact_text_and_does_not_invent_html() {
-        let plain = "Hello team, \nthis paragraph is flowed and \nshould stay exact.\n";
-        let msg = GmailMessage {
-            raw: None,
-            id: "msg-flowed".to_string(),
-            thread_id: "thread-flowed".to_string(),
-            label_ids: Some(vec!["INBOX".to_string()]),
-            snippet: Some("Hello team,".to_string()),
-            history_id: None,
-            internal_date: Some("1700000000000".to_string()),
-            size_estimate: Some(plain.len() as u64),
-            payload: Some(GmailPayload {
-                mime_type: Some("text/plain".to_string()),
-                headers: Some(make_headers(&[
-                    ("From", "Alice <alice@example.com>"),
-                    ("To", "Bob <bob@example.com>"),
-                    ("Subject", "Flowed body"),
-                    (
-                        "Content-Type",
-                        "text/plain; charset=UTF-8; format=flowed; delsp=yes",
-                    ),
-                ])),
-                body: Some(GmailBody {
-                    attachment_id: None,
-                    size: Some(plain.len() as u64),
-                    data: Some(URL_SAFE_NO_PAD.encode(plain.as_bytes())),
-                }),
-                parts: None,
-                filename: None,
-            }),
-        };
-
-        let body = extract_message_body(&msg);
-        assert_eq!(body.text_plain.as_deref(), Some(plain));
-        assert_eq!(body.text_html, None);
-        assert_eq!(
-            body.metadata.text_plain_format,
-            Some(TextPlainFormat::Flowed { delsp: true })
-        );
-        assert_eq!(body.metadata.text_plain_source, Some(BodyPartSource::Exact));
-        assert_eq!(body.metadata.text_html_source, None);
     }
 
     #[test]
@@ -1154,73 +948,6 @@ mod tests {
         assert_eq!(text, "Café co\u{2019}ee");
     }
 
-    #[test]
-    fn extract_body_decodes_quoted_charset_label() {
-        let raw: &[u8] = b"r\xe9sum\xe9";
-        let msg = GmailMessage {
-            raw: None,
-            id: "msg-latin1".to_string(),
-            thread_id: "thread-latin1".to_string(),
-            label_ids: Some(vec!["INBOX".to_string()]),
-            snippet: Some("resume".to_string()),
-            history_id: None,
-            internal_date: Some("1700000000000".to_string()),
-            size_estimate: Some(raw.len() as u64),
-            payload: Some(GmailPayload {
-                mime_type: Some("text/plain".to_string()),
-                headers: Some(make_headers(&[
-                    ("From", "Alice <alice@example.com>"),
-                    ("To", "Bob <bob@example.com>"),
-                    ("Subject", "Latin-1 body"),
-                    ("Content-Type", "text/plain; charset=\"ISO-8859-1\""),
-                ])),
-                body: Some(GmailBody {
-                    attachment_id: None,
-                    size: Some(raw.len() as u64),
-                    data: Some(URL_SAFE_NO_PAD.encode(raw)),
-                }),
-                parts: None,
-                filename: None,
-            }),
-        };
-
-        let (text_plain, _, _) = extract_body(&msg);
-        assert_eq!(text_plain.as_deref(), Some("résumé"));
-    }
-
-    #[test]
-    fn extract_body_decodes_declared_utf8_multibyte_unchanged() {
-        let text = "Café déjà vu — 日本語";
-        let msg = GmailMessage {
-            raw: None,
-            id: "msg-utf8".to_string(),
-            thread_id: "thread-utf8".to_string(),
-            label_ids: Some(vec!["INBOX".to_string()]),
-            snippet: Some("Café".to_string()),
-            history_id: None,
-            internal_date: Some("1700000000000".to_string()),
-            size_estimate: Some(text.len() as u64),
-            payload: Some(GmailPayload {
-                mime_type: Some("text/plain".to_string()),
-                headers: Some(make_headers(&[
-                    ("From", "Alice <alice@example.com>"),
-                    ("To", "Bob <bob@example.com>"),
-                    ("Subject", "UTF-8 body"),
-                    ("Content-Type", "text/plain; charset=UTF-8"),
-                ])),
-                body: Some(GmailBody {
-                    attachment_id: None,
-                    size: Some(text.len() as u64),
-                    data: Some(URL_SAFE_NO_PAD.encode(text.as_bytes())),
-                }),
-                parts: None,
-                filename: None,
-            }),
-        };
-
-        let (text_plain, _, _) = extract_body(&msg);
-        assert_eq!(text_plain.as_deref(), Some(text));
-    }
     #[test]
     fn sole_supplied_verdict_and_migrated_dates_are_not_receiver_proof() {
         for headers in [

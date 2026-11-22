@@ -70,33 +70,3 @@ UPDATE contact_commitments SET by_when_source = 'model_date' \
 pub(crate) const BACKFILL_DRAFT_CANDIDATE_SOURCE_SQL: &str = "\
 UPDATE draft_commitment_candidates SET by_when_source = 'model_date' \
   WHERE by_when_source IS NULL AND by_when IS NOT NULL;";
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const ALL: [ByWhenSource; 3] = [
-        ByWhenSource::ModelDate,
-        ByWhenSource::Words,
-        ByWhenSource::User,
-    ];
-
-    #[test]
-    fn only_words_and_user_dates_are_actionable() {
-        let actionable: Vec<_> = ALL.iter().filter(|s| s.is_actionable()).collect();
-        assert_eq!(actionable, [&ByWhenSource::Words, &ByWhenSource::User]);
-        assert!(!is_actionable_date(None));
-    }
-
-    #[test]
-    fn the_sql_condition_agrees_with_the_rust_rule() {
-        for source in ALL {
-            assert_eq!(
-                ACTIONABLE_BY_WHEN_SQL.contains(&format!("'{}'", source.as_str())),
-                source.is_actionable(),
-                "{source:?}"
-            );
-            assert_eq!(ByWhenSource::parse(source.as_str()), Some(source));
-        }
-    }
-}

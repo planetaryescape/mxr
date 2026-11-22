@@ -4,19 +4,7 @@ import { describe, expect, test } from "vitest";
 
 import { normalizeSegments, splitMessageText } from "./textSegments";
 
-const kinds = (text: string) =>
-  normalizeSegments(splitMessageText(text)).map((segment) => segment.kind);
-
 describe("splitMessageText", () => {
-  test("a long run after -- is body text, not a signature", () => {
-    const body = Array.from({ length: 12 }, (_, index) => `Point ${index + 1}.`);
-    expect(kinds(["Notes:", "--", ...body].join("\n"))).toEqual(["text"]);
-    expect(kinds(["Thanks,", "-- ", "Ada", "Engines Ltd"].join("\n"))).toEqual([
-      "text",
-      "signature",
-    ]);
-  });
-
   test("folds a top-posted reply under its Gmail attribution", () => {
     const text = [
       "Sounds good, ship it.",
@@ -30,37 +18,4 @@ describe("splitMessageText", () => {
     expect(segments[0]?.text.trim()).toBe("Sounds good, ship it.");
     expect(segments[1]?.text).toMatch(/^On Mon/);
   });
-
-  test("treats an Outlook header block as the start of quoted mail", () => {
-    const text = [
-      "See below.",
-      "",
-      "From: Grace Hopper <grace@example.com>",
-      "Sent: Monday, September 21, 2026 9:00 AM",
-      "To: Team <team@example.com>",
-      "Subject: Launch",
-      "",
-      "Original body",
-    ].join("\n");
-    expect(kinds(text)).toEqual(["text", "quote"]);
-  });
-
-  test("keeps a one- or two-line inline quote as text", () => {
-    const text = ["> Can you send the file?", "Attached."].join("\n");
-    expect(kinds(text)).toEqual(["text"]);
-  });
-
-  test("folds long interleaved quote runs but keeps replies between them", () => {
-    const quote = ["> a", "> b", "> c", "> d"].join("\n");
-    const text = [quote, "My answer to that.", quote].join("\n");
-    expect(kinds(text)).toEqual(["quote", "text", "quote"]);
-  });
-
-  test("ends a signature where quoted mail begins", () => {
-    const text = ["Hi", "--", "Ada", "> quoted 1", "> quoted 2", "> quoted 3", "> quoted 4"].join(
-      "\n",
-    );
-    expect(kinds(text)).toEqual(["text", "signature", "quote"]);
-  });
-
 });

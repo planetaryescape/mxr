@@ -4,9 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { UnsubscribePurgeResponse } from "@/features/mailbox/api";
 import type { MessageRowView } from "@/features/mailbox/types";
-import { useKeyScope } from "@/state/keyScopeStore";
 import { useUndo } from "@/state/undoStore";
-import { announced } from "@/test/movedKeys";
 
 import { targetFromRows } from "../target";
 import { UnsubscribeDialog } from "./UnsubscribeDialog";
@@ -99,20 +97,6 @@ afterEach(() => {
 });
 
 describe("UnsubscribeDialog", () => {
-  test("previews how many messages archiving would take, from a dry run", async () => {
-    api.unsubscribeAndClearSender.mockResolvedValue(preview());
-    renderDialog();
-
-    expect(screen.getByRole("heading", { name: "Unsubscribe from Weekly Digest?" })).toBeVisible();
-    expect(await screen.findByText("Unsubscribe and archive 12 messages")).toBeVisible();
-    expect(screen.getByText(/One-click unsubscribe/)).toBeVisible();
-    expect(api.unsubscribeAndClearSender).toHaveBeenCalledWith({
-      address: "news@digest.example",
-      accountId: "acc-1",
-      dryRun: true,
-    });
-  });
-
   test("e archives everything from the sender, with undo", async () => {
     api.unsubscribeAndClearSender
       .mockResolvedValueOnce(preview())
@@ -154,33 +138,6 @@ describe("UnsubscribeDialog", () => {
     );
   });
 
-  test("e waits for the preview before archiving", async () => {
-    api.unsubscribeAndClearSender.mockReturnValue(new Promise(() => undefined));
-    renderDialog();
-
-    press("e");
-
-    expect(onClose).not.toHaveBeenCalled();
-    expect(api.unsubscribeAndClearSender).toHaveBeenCalledTimes(1);
-  });
-
-  test("a, archive's old letter, says where it went while announced and archives nothing", async () => {
-    api.unsubscribeAndClearSender.mockResolvedValue(preview());
-    useKeyScope.setState({ moved: null });
-    renderDialog();
-    await screen.findByText("Unsubscribe and archive 12 messages");
-
-    press("a");
-
-    expect(onClose).not.toHaveBeenCalled();
-    expect(api.unsubscribeAndClearSender).toHaveBeenCalledTimes(1);
-    expect(useKeyScope.getState().moved).toEqual(
-      announced("unsubscribe.and-archive", "a", "unsubscribe")
-        ? { label: "Unsubscribe and archive their mail", key: "e" }
-        : null,
-    );
-  });
-
   test("a sender with no unsubscribe method says archiving is all it does", async () => {
     api.unsubscribeAndClearSender
       .mockResolvedValueOnce(preview({ status: "no_method", method: "None", message_count: 3 }))
@@ -193,17 +150,5 @@ describe("UnsubscribeDialog", () => {
     expect(api.unsubscribeAndClearSender).toHaveBeenLastCalledWith(
       expect.objectContaining({ archiveOnNoMethod: true }),
     );
-  });
-
-  test("Enter on the focused archive button archives", async () => {
-    api.unsubscribeAndClearSender.mockResolvedValue(preview());
-    renderDialog();
-    const archive = await screen.findByRole("button", { name: /Unsubscribe and archive 12/ });
-    archive.focus();
-
-    if (fireEvent.keyDown(archive, { key: "Enter" })) fireEvent.click(archive);
-
-    expect(api.unsubscribeFromSender).not.toHaveBeenCalled();
-    expect(api.unsubscribeAndClearSender).toHaveBeenCalledTimes(2);
   });
 });

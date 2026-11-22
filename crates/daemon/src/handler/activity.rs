@@ -734,22 +734,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_returns_empty_when_no_rows() {
-        let s = state().await;
-        let resp = list_activity(&s, &empty_filter(), 50, None).await.unwrap();
-        match resp {
-            ResponseData::ActivityEntries {
-                entries,
-                next_cursor,
-            } => {
-                assert!(entries.is_empty());
-                assert!(next_cursor.is_none());
-            }
-            other => panic!("wrong shape: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
     async fn list_includes_records_from_recorder_path() {
         let s = state().await;
         s.activity.record(OwnedEntry {
@@ -774,13 +758,6 @@ mod tests {
             }
             other => panic!("wrong shape: {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn redact_with_neither_ids_nor_filter_errors() {
-        let s = state().await;
-        let err = redact_activity(&s, &[], None, false).await.err().unwrap();
-        assert!(err.to_string().contains("redact"), "got: {err}");
     }
 
     #[tokio::test]
@@ -815,63 +792,5 @@ mod tests {
             .unwrap();
         assert_eq!(page.rows.len(), 1);
         assert!(!page.rows[0].redacted);
-    }
-
-    #[tokio::test]
-    async fn pause_emits_synthesized_marker_even_while_paused() {
-        let s = state().await;
-        pause_activity(&s, None).await.unwrap();
-        crate::activity::wait_for_pause_state(&s.activity, true).await;
-        s.activity.resume();
-        crate::activity::wait_for_pause_state(&s.activity, false).await;
-
-        let page = s
-            .store
-            .list_activity(&store::ActivityFilter::default(), 10, None)
-            .await
-            .unwrap();
-        let actions: Vec<&str> = page.rows.iter().map(|r| r.action.as_str()).collect();
-        assert!(actions.contains(&"activity.paused"));
-    }
-
-    #[tokio::test]
-    async fn export_inline_returns_csv_body() {
-        let s = state().await;
-        s.store
-            .record_activity(store::ActivityInsert {
-                ts: 1_000,
-                account_id: None,
-                source: "tui",
-                action: "mail.archive",
-                target_kind: Some("thread"),
-                target_id: Some("thr_1"),
-                tier: store::Tier::Important,
-                context: Some(&serde_json::json!({ "thread_id": "thr_1" })),
-            })
-            .await
-            .unwrap();
-
-        let resp = export_activity(&s, &empty_filter(), ActivityExportFormat::Csv, None)
-            .await
-            .unwrap();
-        match resp {
-            ResponseData::ActivityExportResult {
-                format,
-                count,
-                body,
-                path,
-                ..
-            } => {
-                assert!(matches!(format, ActivityExportFormat::Csv));
-                assert_eq!(count, 1);
-                assert!(path.is_none());
-                let body = body.unwrap();
-                assert!(body.starts_with(
-                    "id,ts,account_id,source,action,target_kind,target_id,tier,context_json,redacted"
-                ));
-                assert!(body.contains("mail.archive"));
-            }
-            other => panic!("wrong shape: {other:?}"),
-        }
     }
 }

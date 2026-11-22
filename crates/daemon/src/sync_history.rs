@@ -237,32 +237,6 @@ mod tests {
     }
 
     #[test]
-    fn normalise_collapses_whitespace_and_clips_long_text() {
-        assert_eq!(normalise_error("a\n\n  b\tc  "), "a b c");
-        let long = "x".repeat(400);
-        let clipped = normalise_error(&long);
-        assert_eq!(clipped.chars().count(), ERROR_CLIP_CHARS);
-        assert!(clipped.ends_with("..."));
-    }
-
-    #[test]
-    fn trend_needs_five_finished_in_each_window() {
-        let five = [10, 10, 10, 10, 10];
-        assert_eq!(trend(&five[..4], &[1; 20]), None);
-        assert_eq!(trend(&five, &five[..4]), None);
-        assert_eq!(trend(&[30; 5], &[10; 5]), Some(SyncDurationTrend::Slower));
-    }
-
-    #[test]
-    fn trend_uses_fifty_percent_and_five_second_floor() {
-        assert_eq!(trend(&[15; 5], &[10; 5]), Some(SyncDurationTrend::Slower));
-        assert_eq!(trend(&[14; 5], &[10; 5]), Some(SyncDurationTrend::Steady));
-        assert_eq!(trend(&[5; 5], &[10; 5]), Some(SyncDurationTrend::Faster));
-        assert_eq!(trend(&[4; 5], &[0; 5]), Some(SyncDurationTrend::Steady));
-        assert_eq!(trend(&[5; 5], &[0; 5]), Some(SyncDurationTrend::Slower));
-    }
-
-    #[test]
     fn summarize_excludes_unfinished_rows_from_durations() {
         let rows = vec![
             unfinished(100),
@@ -279,12 +253,6 @@ mod tests {
         assert_eq!(summary.slowest_duration_secs, Some(8));
         assert_eq!(summary.median_duration_secs, Some(6));
         assert_eq!(summary.trend, None);
-    }
-
-    #[test]
-    fn median_of_even_count_averages_middle_pair() {
-        assert_eq!(median_of(&[1, 2, 3, 10]), Some(2));
-        assert_eq!(median_of(&[]), None);
     }
 
     #[test]

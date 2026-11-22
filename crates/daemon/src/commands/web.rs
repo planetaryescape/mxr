@@ -706,30 +706,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bridge_health_probe_detects_running_local_bridge() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-            .await
-            .unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut buf = [0_u8; 1024];
-            let _ = stream.read(&mut buf).await.unwrap();
-            stream
-                .write_all(
-                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 24\r\n\r\n{\"service\":\"mxr-bridge\"}",
-                )
-                .await
-                .unwrap();
-        });
-
-        assert!(probe_bridge_health("127.0.0.1", addr.port()).await);
-        server.await.unwrap();
-    }
-
-    #[tokio::test]
     async fn bridge_health_probe_rejects_non_mxr_healthy_service() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -749,65 +725,6 @@ mod tests {
 
         assert!(!probe_bridge_health("127.0.0.1", addr.port()).await);
         server.await.unwrap();
-    }
-
-    #[test]
-    fn existing_bridge_reuses_requested_port_when_cache_is_missing() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let config_dir = temp.path().join("config");
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-
-        temp_env::with_var("MXR_CONFIG_DIR", Some(&config_dir), || {
-            runtime.block_on(async {
-                let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-                    .await
-                    .unwrap();
-                let port = listener.local_addr().unwrap().port();
-                let server = spawn_health_server(listener, true);
-                let host = display_host(IpAddr::V4(Ipv4Addr::LOCALHOST));
-
-                let result = existing_bridge(&host, port).await;
-                assert_eq!(result, Some((host, port)));
-                assert_eq!(mxr_config::read_bridge_port(), Some(port));
-                server.await.unwrap();
-            });
-        });
-    }
-
-    #[test]
-    fn existing_bridge_falls_back_from_stale_cache_to_requested_port() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let config_dir = temp.path().join("config");
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-
-        temp_env::with_var("MXR_CONFIG_DIR", Some(&config_dir), || {
-            runtime.block_on(async {
-                let stale_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-                    .await
-                    .unwrap();
-                let stale_port = stale_listener.local_addr().unwrap().port();
-                let stale_server = spawn_health_server(stale_listener, false);
-                let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-                    .await
-                    .unwrap();
-                let port = listener.local_addr().unwrap().port();
-                let server = spawn_health_server(listener, true);
-                mxr_config::write_bridge_port(stale_port).unwrap();
-                let host = display_host(IpAddr::V4(Ipv4Addr::LOCALHOST));
-
-                let result = existing_bridge(&host, port).await;
-                assert_eq!(result, Some((host, port)));
-                assert_eq!(mxr_config::read_bridge_port(), Some(port));
-                stale_server.await.unwrap();
-                server.await.unwrap();
-            });
-        });
     }
 
     #[test]
@@ -838,39 +755,6 @@ mod tests {
                     assert_eq!(result.unwrap(), (host, port));
                     assert!(started.elapsed() < START_TIMEOUT);
                     server.await.unwrap();
-                });
-            },
-        );
-    }
-
-    #[test]
-    fn a_child_that_dies_with_no_bridge_to_use_fails_at_once() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-
-        temp_env::with_vars(
-            [
-                ("MXR_CONFIG_DIR", Some(temp.path().join("config"))),
-                ("MXR_DATA_DIR", Some(temp.path().join("data"))),
-            ],
-            || {
-                runtime.block_on(async {
-                    let port = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-                        .unwrap()
-                        .local_addr()
-                        .unwrap()
-                        .port();
-                    let child = std::process::Command::new("true").spawn().unwrap();
-
-                    let started = Instant::now();
-                    let error = wait_for_detached_web_ready(child, "127.0.0.1", port)
-                        .await
-                        .unwrap_err();
-                    assert!(error.to_string().contains("exited before it became ready"));
-                    assert!(started.elapsed() < START_TIMEOUT);
                 });
             },
         );

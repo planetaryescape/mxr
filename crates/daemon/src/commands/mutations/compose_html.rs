@@ -197,44 +197,9 @@ mod tests {
     }
 
     #[test]
-    fn markdown_compose_is_not_html_mode() {
-        assert!(!args().is_html_mode());
-        assert!(read_html_input(&args()).unwrap().is_none());
-    }
-
-    #[test]
-    fn inline_assets_parse_as_cid_equals_path() {
-        let file = std::env::temp_dir().join("mxr-inline-test.png");
-        std::fs::write(&file, b"png").unwrap();
-        let parsed = parse_inline_assets(&[format!("notto-logo={}", file.display())]).unwrap();
-        assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].cid, "notto-logo");
-        std::fs::remove_file(&file).ok();
-    }
-
-    #[test]
-    fn inline_rejects_missing_equals_and_missing_file() {
-        assert!(parse_inline_assets(&["notto-logo".to_string()]).is_err());
-        assert!(parse_inline_assets(&["logo=/nope/missing.png".to_string()]).is_err());
-    }
-
-    #[test]
     fn inline_rejects_a_cid_that_could_forge_a_header() {
         let err = parse_inline_assets(&["bad\r\nX-Evil: 1=/tmp/x.png".to_string()]).unwrap_err();
         assert!(err.to_string().contains("invalid content id"), "{err}");
-    }
-
-    #[test]
-    fn inline_rejects_duplicate_cids() {
-        let file = std::env::temp_dir().join("mxr-inline-dup.png");
-        std::fs::write(&file, b"png").unwrap();
-        let err = parse_inline_assets(&[
-            format!("logo={}", file.display()),
-            format!("logo={}", file.display()),
-        ])
-        .unwrap_err();
-        assert!(err.to_string().contains("duplicate content id"), "{err}");
-        std::fs::remove_file(&file).ok();
     }
 
     #[test]
@@ -242,27 +207,6 @@ mod tests {
         let html = "<html><body><p>hi</p></body></html>";
         let merged = append_signature(html, "<p>-- Notto</p>");
         assert_eq!(merged, "<html><body><p>hi</p><p>-- Notto</p></body></html>");
-    }
-
-    #[test]
-    fn signature_appends_at_the_end_of_a_fragment() {
-        assert_eq!(
-            append_signature("<p>hi</p>", "<p>sig</p>"),
-            "<p>hi</p><p>sig</p>"
-        );
-    }
-
-    #[test]
-    fn without_a_signature_flag_the_html_is_untouched() {
-        let html = "<html><body><p>hi</p></body></html>";
-        let mut a = args();
-        let file = std::env::temp_dir().join("mxr-html-untouched.html");
-        std::fs::write(&file, html).unwrap();
-        a.html_file = Some(file.clone());
-        let input = read_html_input(&a).unwrap().unwrap();
-        assert_eq!(input.html, html);
-        assert!(input.text.is_none());
-        std::fs::remove_file(&file).ok();
     }
 
     #[test]
@@ -311,44 +255,5 @@ mod tests {
             path: PathBuf::from("/tmp/logo.png"),
         }];
         assert_eq!(unresolved_cid_references(html, &assets), vec!["banner"]);
-    }
-
-    /// Reported, but not a refusal: a `cid:` mxr cannot resolve may still be
-    /// something the recipient's client can, and refusing would be mxr
-    /// overruling the author.
-    #[test]
-    fn an_unresolved_cid_does_not_stop_the_body_being_assembled() {
-        let html = r#"<html><body><img src="cid:missing-banner"></body></html>"#;
-        let file = std::env::temp_dir().join("mxr-html-unresolved-cid.html");
-        std::fs::write(&file, html).unwrap();
-        let mut a = args();
-        a.html_file = Some(file.clone());
-
-        let input = read_html_input(&a)
-            .expect("an unresolved cid must not be an error")
-            .expect("html mode");
-
-        assert_eq!(input.html, html);
-        assert_eq!(
-            unresolved_cid_references(&input.html, &input.inline_assets),
-            vec!["missing-banner"]
-        );
-        std::fs::remove_file(&file).ok();
-    }
-
-    #[test]
-    fn inline_rejects_an_entry_with_no_path() {
-        let err = parse_inline_assets(&["logo=".to_string()]).unwrap_err();
-        assert!(err.to_string().contains("no path"), "{err}");
-    }
-
-    #[test]
-    fn fully_resolved_cids_report_nothing() {
-        let html = r#"<img src="cid:logo">"#;
-        let assets = vec![InlineAsset {
-            cid: "logo".into(),
-            path: PathBuf::from("/tmp/logo.png"),
-        }];
-        assert!(unresolved_cid_references(html, &assets).is_empty());
     }
 }

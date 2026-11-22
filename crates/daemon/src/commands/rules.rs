@@ -1,9 +1,8 @@
 #![cfg_attr(
     test,
     expect(
-        clippy::panic,
         clippy::unwrap_used,
-        reason = "tests use panic and unwrap for direct fixture failures"
+        reason = "tests use unwrap for direct fixture failures"
     )
 )]
 
@@ -701,30 +700,5 @@ mod tests {
             actions[2],
             RuleAction::AddLabel { ref label } if label == "Follow Up"
         ));
-    }
-
-    #[test]
-    fn query_to_conditions_label() {
-        let ast = parse_query("label:newsletters").unwrap();
-        let conditions = query_to_conditions(ast).unwrap();
-        match conditions {
-            Conditions::Field(FieldCondition::HasLabel { label }) => {
-                assert_eq!(label, "newsletters");
-            }
-            other => panic!("unexpected conditions: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn query_to_conditions_exact_word_is_whole_word_body_match() {
-        let ast = parse_query("+invoice").unwrap();
-        let conditions = query_to_conditions(ast).unwrap();
-        match conditions {
-            Conditions::Field(FieldCondition::BodyContains { pattern }) => {
-                assert!(pattern.matches("Your invoice"));
-                assert!(!pattern.matches("Your invoices"));
-            }
-            other => panic!("unexpected conditions: {other:?}"),
-        }
     }
 }

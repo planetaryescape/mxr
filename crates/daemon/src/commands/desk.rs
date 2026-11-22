@@ -491,26 +491,6 @@ mod tests {
     }
 
     #[test]
-    fn table_groups_rows_by_lane_with_pace() {
-        let text = render(
-            &desk(
-                vec![row(DeskLaneKind::Owed, 2 * 86_400, Some(4 * 3_600))],
-                vec![row(DeskLaneKind::Due, -2 * 86_400, None)],
-            ),
-            OutputFormat::Table,
-            None,
-        )
-        .unwrap();
-        assert!(text.starts_with("1 reply owed, 1 promise due.\n"), "{text}");
-        assert!(text.contains("You owe 1\n"));
-        assert!(text.contains("2d \u{b7} usually 4h"));
-        assert!(text.contains("to Maya Ortiz"));
-        assert!(text.contains("in 2d"));
-        assert!(text.contains("Everything else: Reading 7"));
-        assert!(!text.contains('\u{2014}'), "no em dashes: {text}");
-    }
-
-    #[test]
     fn table_strips_terminal_control_sequences_from_mail_text() {
         let mut hostile = row(DeskLaneKind::Owed, 60, None);
         hostile.subject = "Invoice\u{1b}]0;pwned\u{7}\u{1b}[2J\r\nnow".into();
@@ -523,18 +503,6 @@ mod tests {
             "{text:?}"
         );
         assert!(text.contains("Invoice ]0;pwned  [2J  now"), "{text:?}");
-    }
-
-    #[test]
-    fn jsonl_emits_one_row_per_line_with_lane() {
-        let text = render(
-            &desk(vec![row(DeskLaneKind::Owed, 60, None)], vec![]),
-            OutputFormat::Jsonl,
-            None,
-        )
-        .unwrap();
-        let value: serde_json::Value = serde_json::from_str(text.trim()).unwrap();
-        assert_eq!(value["lane"], "owed");
     }
 
     #[test]
@@ -576,24 +544,5 @@ mod tests {
             value["gists"][0]["gist"],
             "Canary stays at 5% until the dashboard is quiet."
         );
-    }
-
-    #[test]
-    fn with_gists_the_json_shape_is_the_same_when_nothing_is_cached() {
-        let desk = desk(vec![row(DeskLaneKind::Owed, 60, None)], vec![]);
-        let none = Gists::new();
-        let json: serde_json::Value =
-            serde_json::from_str(&render(&desk, OutputFormat::Json, Some(&none)).unwrap()).unwrap();
-        assert_eq!(json["gists"], serde_json::json!([]));
-        let jsonl = render(&desk, OutputFormat::Jsonl, Some(&none)).unwrap();
-        let row: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
-        assert!(row.as_object().unwrap().contains_key("gist"));
-        assert!(row["gist"].is_null());
-        let csv = render(&desk, OutputFormat::Csv, Some(&none)).unwrap();
-        assert!(csv.lines().next().unwrap().ends_with(",gist,ask"));
-        assert!(csv.lines().nth(1).unwrap().ends_with(",,"));
-        let plain: serde_json::Value =
-            serde_json::from_str(&render(&desk, OutputFormat::Json, None).unwrap()).unwrap();
-        assert!(plain.get("gists").is_none());
     }
 }

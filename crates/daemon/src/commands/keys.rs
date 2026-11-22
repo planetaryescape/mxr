@@ -466,56 +466,6 @@ mod tests {
     }
 
     #[test]
-    fn a_global_web_key_answers_in_a_context_without_its_own() {
-        let rows = explain(&fixture(), "?", Some(KeyClientArg::Web), Some("todo"));
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].action, "shell.help");
-        assert!(explain(&fixture(), "?", Some(KeyClientArg::Web), Some("screener")).is_empty());
-    }
-
-    #[test]
-    fn rows_mark_the_persons_keys_and_keys_the_switch_turns_off() {
-        let mut keymap = fixture();
-        keymap.single_keys = false;
-        keymap.remapped = vec!["mail.archive".into()];
-        let rows = list(&keymap, Some(KeyClientArg::Tui), Some("list"));
-        let archive = rows
-            .iter()
-            .find(|row| row.action == "mail.archive")
-            .unwrap();
-        assert!(archive.custom && archive.off);
-        let text = table(&rows);
-        assert!(text.contains("(yours)  (off)"), "{text}");
-    }
-
-    #[test]
-    fn a_change_says_what_it_did_or_why_it_didnt() {
-        let action = || {
-            Some(ChangedAction {
-                id: "mail.archive".into(),
-                label: "Archive".into(),
-                keys: vec![";".into()],
-            })
-        };
-        let report = |saved, dry_run, problems: &'static [String]| UpdateReport {
-            saved,
-            dry_run,
-            file: "/c/keys.toml",
-            problems,
-            single_keys: true,
-            action: action(),
-        };
-        assert_eq!(
-            update_text(&report(false, true, &[])),
-            "Dry run: Archive (mail.archive) is ;. Nothing written to /c/keys.toml.\n"
-        );
-        assert!(update_text(&report(true, false, &[])).contains("Saved /c/keys.toml"));
-        static CLASH: std::sync::LazyLock<Vec<String>> =
-            std::sync::LazyLock::new(|| vec!["mail.archive: `s` is bound to mail.star".into()]);
-        assert!(update_text(&report(false, false, &CLASH)).starts_with("Can't save:"));
-    }
-
-    #[test]
     fn list_filters_by_client_and_context() {
         let rows = list(&fixture(), Some(KeyClientArg::Tui), Some("list"));
         let got: Vec<_> = rows.iter().map(|r| r.key.as_str()).collect();

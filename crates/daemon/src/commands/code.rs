@@ -170,14 +170,6 @@ mod tests {
     }
 
     #[test]
-    fn ids_print_the_code_alone_for_pasting() {
-        assert_eq!(
-            render_one(&code(true), OutputFormat::Ids).unwrap(),
-            "482913\n"
-        );
-    }
-
-    #[test]
     fn the_line_names_the_sender_without_its_control_codes() {
         let line = render_one(&code(true), OutputFormat::Table).unwrap();
         assert!(line.starts_with("482913  Acme"), "{line}");

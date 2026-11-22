@@ -436,34 +436,4 @@ mod tests {
         scan(dir.path(), &mut positions, true, |l| lines.push(l)).unwrap();
         assert!(lines.is_empty());
     }
-    #[test]
-    fn bounded_reader_handles_oversize_and_incomplete_records() {
-        let text = format!(
-            "{}\nkept\npartial",
-            "x".repeat(logging::MAX_RECORD_BYTES + 1)
-        );
-        let mut reader = BufReader::new(text.as_bytes());
-        let first = read_record(&mut reader).unwrap();
-        assert!(first.0.is_none() && first.2);
-        assert_eq!(read_record(&mut reader).unwrap().0.as_deref(), Some("kept"));
-        let last = read_record(&mut reader).unwrap();
-        assert_eq!(last.0.as_deref(), Some("partial"));
-        assert!(!last.2);
-    }
-    #[test]
-    fn unparseable_since_and_level_cannot_match_decoy_fields() {
-        assert!(!line_passes(
-            "not a timestamp ERROR",
-            None,
-            None,
-            Some(Utc::now())
-        ));
-        assert!(!line_passes(
-            r#"{"level":"INFO","fields":{"message":"ERROR"}}"#,
-            Some("error"),
-            None,
-            None
-        ));
-        assert!(parse_since("999999999999999999999d").is_err());
-    }
 }

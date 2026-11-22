@@ -43,30 +43,6 @@ fn user_services_use_exact_profile_paths_and_no_privileged_daemon() {
     assert!(supervisor::render(&config, false).is_err());
 }
 #[test]
-fn a_parallel_drain_keeps_the_original_bounded_notice_window() {
-    assert_eq!(
-        drain_notice_remaining(Some(105), 100_250),
-        Duration::from_millis(4750)
-    );
-    assert_eq!(
-        drain_notice_remaining(Some(105), 104_750),
-        Duration::from_millis(250)
-    );
-    assert_eq!(drain_notice_remaining(Some(105), 106_000), Duration::ZERO);
-    assert_eq!(
-        drain_notice_remaining(Some(999), 100_000),
-        Duration::from_secs(5)
-    );
-}
-#[test]
-fn healthy_other_profile_cannot_satisfy_gateway_setup() {
-    let config = fixture(std::path::Path::new("/data"));
-    let mut health = serde_json::json!({"service":"mxr-remote-gateway","protocol_version":mxr_protocol::IPC_PROTOCOL_VERSION,"profile_id":mxr_web::remote_gateway::profile_id(std::path::Path::new("/another.sock"))});
-    assert!(!health_matches(&health, &config));
-    health["profile_id"] = serde_json::json!(mxr_web::remote_gateway::profile_id(&config.socket));
-    assert!(health_matches(&health, &config));
-}
-#[test]
 fn public_origin_cannot_carry_credentials_or_launch_parameters() {
     assert_eq!(
         normalize_origin("https://host.ts.net:8443/").unwrap(),

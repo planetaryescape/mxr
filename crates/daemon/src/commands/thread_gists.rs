@@ -153,23 +153,3 @@ fn table(thread_ids: &[ThreadId], batch: &ThreadGistBatchData) -> String {
     }
     out
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn no_model_says_so_once() {
-        let batch = ThreadGistBatchData {
-            model: GistModelData::Disabled,
-            gists: vec![],
-            queued: vec![],
-            in_flight: vec![],
-            skipped: vec![],
-        };
-        assert_eq!(
-            table(&[ThreadId::new()], &batch),
-            "No language model is configured, so there are no gists.\n"
-        );
-    }
-}

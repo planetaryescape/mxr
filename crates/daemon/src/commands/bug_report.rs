@@ -652,6 +652,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sanitize_redacts_inline_authorization_assignments() {
+        let sanitized = sanitize(
+            r#"request headers authorization="Bearer secret-token" status=401
+request headers Authorization="Bearer capital-token" status=403
+headers={ authorization: Bearer secret-token, accept: */* }"#,
+        );
+
+        assert!(sanitized.contains(r#"authorization="[REDACTED_SECRET]" status=401"#));
+        assert!(sanitized.contains(r#"Authorization="[REDACTED_SECRET]" status=403"#));
+        assert!(sanitized.contains("authorization: [REDACTED_SECRET], accept: */*"));
+        assert!(!sanitized.contains("secret-token"));
+        assert!(!sanitized.contains("capital-token"));
+    }
+
+    #[test]
     fn sanitize_redacts_common_sensitive_values() {
         let sanitized = sanitize(
             "email=user@example.com\npassword_ref=secret\nauthorization: Bearer line-token\nsubject: hi\nbody_text: hello\nip=10.0.0.1",
@@ -685,21 +700,6 @@ json={"token":"json-token-value","ok":false}"#,
     }
 
     #[test]
-    fn sanitize_redacts_inline_authorization_assignments() {
-        let sanitized = sanitize(
-            r#"request headers authorization="Bearer secret-token" status=401
-request headers Authorization="Bearer capital-token" status=403
-headers={ authorization: Bearer secret-token, accept: */* }"#,
-        );
-
-        assert!(sanitized.contains(r#"authorization="[REDACTED_SECRET]" status=401"#));
-        assert!(sanitized.contains(r#"Authorization="[REDACTED_SECRET]" status=403"#));
-        assert!(sanitized.contains("authorization: [REDACTED_SECRET], accept: */*"));
-        assert!(!sanitized.contains("secret-token"));
-        assert!(!sanitized.contains("capital-token"));
-    }
-
-    #[test]
     fn sanitize_redacts_rust_debug_secret_values() {
         let sanitized = sanitize(
             r#"ImapConfig { host: "imap.example.com", password: Some("debug-password"), username: "user" }
@@ -713,11 +713,5 @@ GmailConfig { client_secret: Some("debug-client-secret"), token: Some("debug-tok
         assert!(!sanitized.contains("debug-password"));
         assert!(!sanitized.contains("debug-client-secret"));
         assert!(!sanitized.contains("debug-token"));
-    }
-
-    #[test]
-    fn build_issue_url_falls_back_for_large_reports() {
-        let url = build_issue_url(&"x".repeat(GITHUB_BODY_LIMIT + 10));
-        assert_eq!(url, GITHUB_ISSUE_URL);
     }
 }

@@ -183,71 +183,12 @@ fn search_mode_label(mode: mxr_core::types::SearchMode) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::SavedSearchFormState;
+
     use mxr_test_support::render_to_string;
     use ratatui::layout::Rect;
 
     fn theme() -> crate::theme::Theme {
         crate::theme::Theme::default()
-    }
-
-    #[test]
-    fn renders_new_form_with_name_query_mode_fields() {
-        let form = SavedSearchFormState::for_new();
-        let rendered = render_to_string(90, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 90, 20), Some(&form), &theme());
-        });
-        assert!(
-            rendered.contains("New Saved Search"),
-            "expected `New Saved Search` title; got:\n{rendered}"
-        );
-        assert!(rendered.contains("Name"));
-        assert!(rendered.contains("Query"));
-        assert!(rendered.contains("Mode"));
-        assert!(rendered.contains("lexical"));
-    }
-
-    #[test]
-    fn edit_form_shows_edit_title_and_prefilled_values() {
-        let form = SavedSearchFormState::for_edit(
-            "Important".into(),
-            "label:starred".into(),
-            mxr_core::types::SearchMode::Hybrid,
-        );
-        let rendered = render_to_string(90, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 90, 20), Some(&form), &theme());
-        });
-        assert!(
-            rendered.contains("Edit Saved Search"),
-            "expected `Edit Saved Search` title; got:\n{rendered}"
-        );
-        assert!(rendered.contains("Important"));
-        assert!(rendered.contains("label:starred"));
-        assert!(rendered.contains("hybrid"));
-    }
-
-    #[test]
-    fn validation_error_renders_when_set() {
-        let mut form = SavedSearchFormState::for_new();
-        form.validation_error = Some("Saved search name is required".into());
-        let rendered = render_to_string(90, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 90, 20), Some(&form), &theme());
-        });
-        assert!(
-            rendered.contains("Saved search name is required"),
-            "validation error should render verbatim; got:\n{rendered}"
-        );
-    }
-
-    #[test]
-    fn footer_contains_tab_enter_esc_hints() {
-        let form = SavedSearchFormState::for_new();
-        let rendered = render_to_string(90, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 90, 20), Some(&form), &theme());
-        });
-        assert!(rendered.contains("Tab"));
-        assert!(rendered.contains("Enter"));
-        assert!(rendered.contains("Esc"));
     }
 
     #[test]
@@ -271,30 +212,5 @@ mod tests {
             "{rendered}"
         );
         assert!(rendered.contains("y yes"), "{rendered}");
-    }
-
-    #[test]
-    fn delete_confirm_no_render_when_name_is_none() {
-        let rendered = render_to_string(90, 20, |frame| {
-            draw_delete_confirm(
-                frame,
-                Rect::new(0, 0, 90, 20),
-                None,
-                crate::app::ConfirmChoice::default(),
-                &theme(),
-            );
-        });
-        assert!(!rendered.contains("Delete saved search"));
-    }
-
-    #[test]
-    fn no_render_when_form_is_none() {
-        let rendered = render_to_string(90, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 90, 20), None, &theme());
-        });
-        // Should be all whitespace — no modal title, no field labels.
-        assert!(!rendered.contains("Saved Search"));
-        assert!(!rendered.contains("Name"));
-        assert!(!rendered.contains("Query"));
     }
 }

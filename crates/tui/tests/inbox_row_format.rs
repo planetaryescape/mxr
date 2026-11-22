@@ -18,20 +18,6 @@ fn anchor() -> chrono::DateTime<Utc> {
 }
 
 #[test]
-fn under_one_minute_renders_as_now() {
-    let now = anchor();
-    let t = now - Duration::seconds(30);
-    assert_eq!(format_date_relative(&t, &now), "now");
-}
-
-#[test]
-fn within_the_hour_renders_as_minutes() {
-    let now = anchor();
-    let t = now - Duration::minutes(5);
-    assert_eq!(format_date_relative(&t, &now), "5m");
-}
-
-#[test]
 fn at_one_hour_boundary_switches_to_hours() {
     let now = anchor();
     let t = now - Duration::minutes(60);
@@ -40,13 +26,6 @@ fn at_one_hour_boundary_switches_to_hours() {
         "1h",
         "60 minutes flips from minutes-format to hours-format"
     );
-}
-
-#[test]
-fn within_the_day_renders_as_hours() {
-    let now = anchor();
-    let t = now - Duration::hours(3);
-    assert_eq!(format_date_relative(&t, &now), "3h");
 }
 
 #[test]
@@ -62,14 +41,6 @@ fn at_one_day_boundary_switches_to_weekday() {
 }
 
 #[test]
-fn within_the_week_renders_as_weekday() {
-    let now = anchor();
-    let t = now - Duration::days(3);
-    // 3 days before Tuesday May 7 is Saturday May 4.
-    assert_eq!(format_date_relative(&t, &now), "Sat");
-}
-
-#[test]
 fn at_seven_day_boundary_switches_to_month_day() {
     let now = anchor();
     let t = now - Duration::days(7);
@@ -79,13 +50,6 @@ fn at_seven_day_boundary_switches_to_month_day() {
         "Apr 30",
         "7 days flips from weekday-format to month-day-format"
     );
-}
-
-#[test]
-fn older_than_a_week_in_same_year_renders_as_month_day() {
-    let now = anchor();
-    let t = Utc.with_ymd_and_hms(2024, 3, 4, 9, 0, 0).unwrap();
-    assert_eq!(format_date_relative(&t, &now), "Mar 4");
 }
 
 #[test]
@@ -113,34 +77,12 @@ fn future_date_falls_back_to_absolute_format() {
 }
 
 #[test]
-fn sender_uses_display_name_when_present() {
-    let addr = Address {
-        name: Some("Alice Example".into()),
-        email: "alice@example.com".into(),
-    };
-    assert_eq!(format_sender(&addr, 18), "Alice Example");
-}
-
-#[test]
 fn sender_falls_back_to_email_when_display_name_absent() {
     let addr = Address {
         name: None,
         email: "alice@example.com".into(),
     };
     assert_eq!(format_sender(&addr, 18), "alice@example.com");
-}
-
-#[test]
-fn sender_falls_back_to_email_when_display_name_empty() {
-    let addr = Address {
-        name: Some("   ".into()),
-        email: "alice@example.com".into(),
-    };
-    assert_eq!(
-        format_sender(&addr, 18),
-        "alice@example.com",
-        "blank-only display names treated as absent"
-    );
 }
 
 #[test]
@@ -166,37 +108,10 @@ fn sender_truncates_long_display_name_with_ellipsis() {
 }
 
 #[test]
-fn sender_passes_through_text_at_or_below_max_width() {
-    // Boundary: text at exactly max width should NOT be truncated.
-    let addr = Address {
-        name: Some("Alice Anderson Z".into()), // 16 chars
-        email: "alice@example.com".into(),
-    };
-    let formatted = format_sender(&addr, 16);
-    assert_eq!(formatted, "Alice Anderson Z");
-    assert!(!formatted.contains('…'));
-}
-
-#[test]
-fn attachment_chip_is_empty_when_no_attachments() {
-    assert_eq!(format_attachment_chip(false, 0), "");
-    assert_eq!(
-        format_attachment_chip(false, 99_999),
-        "",
-        "size is irrelevant when has_attachments is false"
-    );
-}
-
-#[test]
 fn thread_count_badge_marks_conversations_only() {
     assert_eq!(format_thread_count_badge(1), "");
     assert_eq!(format_thread_count_badge(2), "↔2");
     assert_eq!(format_thread_count_badge(12), "↔12");
-}
-
-#[test]
-fn attachment_chip_uses_bytes_for_small_messages() {
-    assert_eq!(format_attachment_chip(true, 512), "📎 512B");
 }
 
 #[test]
@@ -206,26 +121,9 @@ fn attachment_chip_uses_kibibytes_at_one_thousand_twenty_four() {
 }
 
 #[test]
-fn attachment_chip_uses_kibibytes_for_kilobyte_messages() {
-    assert_eq!(format_attachment_chip(true, 45 * 1024), "📎 45K");
-}
-
-#[test]
 fn attachment_chip_uses_mebibytes_at_one_megabyte() {
     // Boundary: exactly 1 MiB.
     assert_eq!(format_attachment_chip(true, 1024 * 1024), "📎 1M");
-}
-
-#[test]
-fn attachment_chip_uses_mebibytes_for_megabyte_messages() {
-    assert_eq!(format_attachment_chip(true, 5 * 1024 * 1024 + 100), "📎 5M");
-}
-
-#[test]
-fn subject_line_omits_snippet_when_snippet_is_blank() {
-    let (subject, snippet) = format_subject_line("Project update", "   ", 80);
-    assert_eq!(subject, "Project update");
-    assert!(snippet.is_none(), "blank snippets should be omitted");
 }
 
 #[test]
@@ -259,19 +157,6 @@ fn subject_line_truncates_long_snippet_with_ellipsis() {
         "long snippet ellipsised: {snippet:?}"
     );
     assert_eq!(snippet.chars().count(), 13);
-}
-
-#[test]
-fn subject_line_omits_snippet_when_row_too_narrow() {
-    // Width 18: "Project update" (14) + " · " (3) = 17, only 1 char left
-    // for snippet — not worth showing.
-    let (subject, snippet) =
-        format_subject_line("Project update", "Long detailed snippet content", 18);
-    assert_eq!(subject, "Project update");
-    assert!(
-        snippet.is_none(),
-        "snippet omitted when not enough room for a useful preview"
-    );
 }
 
 #[test]

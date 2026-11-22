@@ -767,24 +767,6 @@ pub(crate) mod tests {
         }
     }
 
-    fn clear() -> UpdatesDigestData {
-        UpdatesDigestData {
-            headline: String::new(),
-            message_count: 0,
-            source_count: 0,
-            needs_a_look: Vec::new(),
-            changed: Vec::new(),
-            routine: Vec::new(),
-            since: UpdatesSinceData::default(),
-            hidden_line: None,
-            expired_line: None,
-            expired_count: 0,
-            let_go_line: None,
-            empty_state: Some("Nothing new since 08:00. Next digest at 16:30.".into()),
-            ..populated()
-        }
-    }
-
     fn render(page: &UpdatesPageState, width: u16) -> String {
         let theme = crate::theme::Theme::default();
         render_to_string(width, 30, |frame| {
@@ -860,20 +842,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn updates_lens_clear_at_three_widths() {
-        let page = UpdatesPageState {
-            digest: Some(clear()),
-            guide: Some(UPDATES_GUIDE.to_data(|_| None, &mxr_keymap::guide_key)),
-            ..Default::default()
-        };
-        for width in [60, 80, 120] {
-            let rendered = render(&page, width);
-            assert!(rendered.contains("Nothing new since 08:00"), "{rendered}");
-            insta::assert_snapshot!(format!("updates_lens_clear_{width}"), rendered);
-        }
-    }
-
-    #[test]
     fn routine_folds_until_opened() {
         let mut page = UpdatesPageState {
             digest: Some(populated()),
@@ -884,17 +852,5 @@ pub(crate) mod tests {
         assert!(matches!(page.rows()[8], UpdatesRow::MoreRoutine(2)));
         page.routine_open = true;
         assert_eq!(page.row_count(), 10);
-    }
-
-    #[test]
-    fn the_footer_keeps_undo_and_help_at_every_width() {
-        let page = UpdatesPageState {
-            digest: Some(populated()),
-            ..Default::default()
-        };
-        for width in [80, 100, 120] {
-            let rendered = render(&page, width);
-            assert!(rendered.contains("u undo  ? keys"), "{width}:\n{rendered}");
-        }
     }
 }

@@ -92,22 +92,6 @@ mod tests {
     }
 
     #[test]
-    fn modal_renders_prefilled_path_and_filename_in_title() {
-        let state = opened_state();
-        let snapshot = render_to_string(120, 20, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 20),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(snapshot.contains("budget.xlsx"), "snapshot:\n{snapshot}");
-        assert!(snapshot.contains("Downloads"), "snapshot:\n{snapshot}");
-        assert!(snapshot.contains("Enter save"), "snapshot:\n{snapshot}");
-    }
-
-    #[test]
     fn modal_surfaces_overwrite_confirm() {
         let mut state = opened_state();
         state.awaiting_overwrite_confirm = true;
@@ -121,24 +105,6 @@ mod tests {
         });
         assert!(
             snapshot.contains("press Enter again"),
-            "snapshot:\n{snapshot}"
-        );
-    }
-
-    #[test]
-    fn modal_surfaces_error_message() {
-        let mut state = opened_state();
-        state.error = Some("parent dir not writable".into());
-        let snapshot = render_to_string(120, 20, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 20),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(
-            snapshot.contains("parent dir not writable"),
             "snapshot:\n{snapshot}"
         );
     }

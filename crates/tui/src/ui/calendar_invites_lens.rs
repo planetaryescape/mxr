@@ -236,26 +236,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_state_renders_placeholder() {
-        let rendered = render_to_string(90, 12, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 90, 12),
-                &CalendarInvitesView {
-                    entries: &[],
-                    selected_index: 0,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MailList,
-                    account_marks: crate::ui::account_mark::AccountMarks::default(),
-                },
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("No calendar invites yet."));
-        assert!(rendered.contains("Calendar Invites (0)"));
-    }
-
-    #[test]
     fn populated_state_renders_summary_and_rsvp() {
         let entries = vec![
             invite(

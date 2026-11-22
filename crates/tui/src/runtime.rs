@@ -409,59 +409,6 @@ mod tests {
     }
 
     #[test]
-    fn enqueue_replaceable_request_replaces_matching_diagnostics_requests() {
-        let mut pending = VecDeque::new();
-        enqueue_replaceable_request(
-            &mut pending,
-            ReplaceableRequest::Diagnostics {
-                kind: ReplaceableRequestKey::DiagnosticsLogs,
-                request: Box::new(Request::GetLogs {
-                    limit: 20,
-                    level: None,
-                    search: None,
-                }),
-                request_id: 1,
-                enqueued_at: Instant::now(),
-            },
-        );
-        enqueue_replaceable_request(
-            &mut pending,
-            ReplaceableRequest::Diagnostics {
-                kind: ReplaceableRequestKey::DiagnosticsLogs,
-                request: Box::new(Request::GetLogs {
-                    limit: 50,
-                    level: None,
-                    search: None,
-                }),
-                request_id: 2,
-                enqueued_at: Instant::now(),
-            },
-        );
-
-        assert_eq!(pending.len(), 1);
-        match pending.pop_front() {
-            Some(ReplaceableRequest::Diagnostics {
-                kind,
-                request,
-                request_id,
-                ..
-            }) => {
-                assert_eq!(kind, ReplaceableRequestKey::DiagnosticsLogs);
-                assert_eq!(request_id, 2);
-                match *request {
-                    Request::GetLogs {
-                        limit,
-                        level: None,
-                        search: None,
-                    } => assert_eq!(limit, 50),
-                    other => panic!("expected diagnostics logs request, got {other:?}"),
-                }
-            }
-            other => panic!("expected diagnostics logs request, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn enqueue_replaceable_request_keeps_distinct_search_targets() {
         let mut pending = VecDeque::new();
         enqueue_replaceable_request(

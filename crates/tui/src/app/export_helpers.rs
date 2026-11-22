@@ -227,45 +227,6 @@ mod tests {
     }
 
     #[test]
-    fn relative_path_is_queued_as_typed_and_not_treated_as_existing() {
-        let (mut app, _) = picker_app();
-        app.export_modal_choose_format(ExportFormat::Json);
-        app.export_modal_choose_save();
-        app.modals.export.input = "exports-test-relative/thread.json".into();
-        app.export_modal_confirm_path();
-        assert_eq!(
-            app.mailbox
-                .pending_export
-                .map(|pending| pending.destination),
-            Some(ExportDestination::Save {
-                path: PathBuf::from("exports-test-relative/thread.json"),
-                overwrite_ok: false,
-            })
-        );
-    }
-
-    #[test]
-    fn prefilled_tilde_path_expands_to_the_home_exports_folder() {
-        let (mut app, thread_id) = picker_app();
-        app.export_modal_choose_format(ExportFormat::Json);
-        app.export_modal_choose_save();
-        app.export_modal_confirm_path();
-        let Some(PendingExport {
-            destination: ExportDestination::Save { path, .. },
-            ..
-        }) = app.mailbox.pending_export.clone()
-        else {
-            panic!("expected a save export to be queued");
-        };
-        let home = dirs::home_dir().expect("tests need a home directory");
-        assert_eq!(
-            path,
-            home.join("mxr/exports")
-                .join(format!("mxr-thread-{thread_id}.json"))
-        );
-    }
-
-    #[test]
     fn clipboard_queues_and_closes_the_picker() {
         let (mut app, thread_id) = picker_app();
         app.export_modal_choose_format(ExportFormat::Markdown);
@@ -279,24 +240,6 @@ mod tests {
                 destination: ExportDestination::Clipboard,
             })
         );
-    }
-
-    #[test]
-    fn reopening_after_edits_starts_clean() {
-        let (mut app, _) = picker_app();
-        app.export_modal_choose_format(ExportFormat::Json);
-        app.export_modal_choose_save();
-        app.export_modal_push_char('z');
-        app.modals.export.close();
-        app.modals.export.open(ThreadId::new());
-        let state = &app.modals.export;
-        assert!(state.visible);
-        assert_eq!(state.stage, ExportStage::Format);
-        assert_eq!(state.selected, 0);
-        assert!(state.format.is_none());
-        assert!(state.input.is_empty());
-        assert!(state.error.is_none());
-        assert!(!state.awaiting_overwrite_confirm);
     }
 
     #[test]

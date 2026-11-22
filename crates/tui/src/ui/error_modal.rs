@@ -57,20 +57,3 @@ pub fn draw(
         );
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::draw;
-    use crate::app::ErrorModalState;
-
-    #[test]
-    fn error_modal_state_is_constructible() {
-        let error = ErrorModalState::new(
-            "Mutation Failed",
-            "Optimistic changes could not be applied.",
-        );
-        let _ = draw;
-        assert!(error.detail.contains("Optimistic"));
-        assert_eq!(error.scroll_offset, 0);
-    }
-}

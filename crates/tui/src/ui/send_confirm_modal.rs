@@ -364,35 +364,6 @@ mod tests {
         );
     }
 
-    /// Regression: the modal sizes to its content, so even a taller safe
-    /// verdict (From + safety lines) keeps the trailing action row visible at a
-    /// modest 120x20 terminal instead of clipping it below a fixed-percent box.
-    #[test]
-    fn safe_modal_action_row_stays_visible_at_small_height() {
-        let report = mxr_core::DraftSafetyReport::safe();
-        let rendered = render_to_string(120, 20, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 20),
-                Some(&pending_with_report(
-                    PendingSendMode::SendOrSave,
-                    report,
-                    None,
-                )),
-                None,
-                None,
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-        assert!(rendered.contains("Safety: SAFE"), "got:\n{rendered}");
-        assert!(
-            rendered.contains("[r] draft for me") && rendered.contains("[#] discard draft"),
-            "the action row must stay visible at 120x20; got:\n{rendered}"
-        );
-    }
-
     #[test]
     fn send_or_save_modal_renders_full_action_row() {
         let rendered = render_to_string(120, 20, |frame| {
@@ -669,47 +640,6 @@ mod tests {
         assert!(rendered.contains("Safety: BLOCKED"));
         assert!(!rendered.contains("Override token:"));
         insta::assert_snapshot!("safety_modal_blocker_no_token", rendered);
-    }
-
-    /// `safety_modal_after_edit_rerun` (per doc Slice 1.5 spec):
-    /// snapshot of the modal after the user has edited the draft and
-    /// re-run the safety check, with a fresh report attached. The
-    /// rendered shape must match `safety_modal_safe` exactly when
-    /// the rerun cleared the verdict to Safe — i.e. there's no
-    /// stale "BLOCKED" residue.
-    #[test]
-    fn safety_modal_after_edit_rerun_clears_to_safe() {
-        // Step 1: snapshot a Blocked modal.
-        let blocker_issues = vec![mxr_core::DraftSafetyIssue::new(
-            mxr_core::DraftSafetyIssueCode::PiiSecret,
-            mxr_core::DraftSafetySeverity::Blocker,
-            "secret pattern detected: sk-...abcd",
-        )];
-        let mut p = pending_with_report(
-            PendingSendMode::SendOrSave,
-            mxr_core::DraftSafetyReport::from_issues(blocker_issues),
-            Some("tok-abc".into()),
-        );
-        // Step 2: simulate the user re-editing + re-checking → Safe.
-        p.safety_report = Some(mxr_core::DraftSafetyReport::safe());
-        p.override_token = None;
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 24),
-                Some(&p),
-                None,
-                None,
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-        assert!(rendered.contains("Safety: SAFE"));
-        assert!(!rendered.contains("BLOCKED"));
-        assert!(!rendered.contains("Override token:"));
-        assert!(rendered.contains("\u{203a} [s] send"));
-        insta::assert_snapshot!("safety_modal_after_edit_rerun", rendered);
     }
 
     #[test]

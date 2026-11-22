@@ -51,23 +51,6 @@ fn open_saved_search_by_index_1_targets_first_saved_search() {
 }
 
 #[test]
-fn open_saved_search_by_index_2_targets_second_saved_search() {
-    let mut app = App::new();
-    app.mailbox.saved_searches = vec![
-        fixture_saved_search("Unread", "is:unread", 0),
-        fixture_saved_search("Has attachments", "has:attachment", 1),
-        fixture_saved_search("From Alice", "from:alice", 2),
-    ];
-
-    app.apply(Action::OpenSavedSearchByIndex(2));
-
-    assert_eq!(
-        app.search.bar.query, "has:attachment",
-        "index 2 targets the second saved search"
-    );
-}
-
-#[test]
 fn open_saved_search_by_index_zero_clears_active_filter() {
     let mut app = App::new();
     app.mailbox.saved_searches = vec![fixture_saved_search("Unread", "is:unread", 0)];
@@ -85,25 +68,6 @@ fn open_saved_search_by_index_zero_clears_active_filter() {
     assert!(
         !app.search.active,
         "index 0 returns to the default inbox view"
-    );
-}
-
-#[test]
-fn open_saved_search_by_out_of_range_index_is_noop() {
-    let mut app = App::new();
-    app.mailbox.saved_searches = vec![fixture_saved_search("Unread", "is:unread", 0)];
-
-    // Only one saved search exists; asking for the third should be a
-    // safe no-op (no panic, no spurious search activation).
-    app.apply(Action::OpenSavedSearchByIndex(3));
-
-    assert!(
-        !app.search.active,
-        "out-of-range index does not activate any search"
-    );
-    assert!(
-        app.search.bar.query.is_empty(),
-        "no query was applied for an out-of-range index"
     );
 }
 

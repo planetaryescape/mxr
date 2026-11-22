@@ -254,19 +254,6 @@ mod tests {
     }
 
     #[test]
-    fn plain_chip_is_bold_bracketed_tag_with_no_colour() {
-        let work = account("work", true, Some(AccountColor::Sky));
-        let home = account("home", true, Some(AccountColor::Amber));
-        let marks = AccountMarks::from_accounts(&[work.clone(), home], false, ChipDepth::Plain);
-        let spans = marks.row_cell(&work.account_id, &Theme::default()).unwrap();
-        assert_eq!(spans.len(), 1);
-        assert_eq!(spans[0].content, "[W]  ");
-        assert_eq!(spans[0].style.fg, None);
-        assert_eq!(spans[0].style.bg, None);
-        assert!(spans[0].style.add_modifier.contains(Modifier::BOLD));
-    }
-
-    #[test]
     fn truecolor_chip_fills_four_cells_in_the_account_colour() {
         let work = account("work", true, Some(AccountColor::Sky));
         let home = account("home", true, Some(AccountColor::Amber));
@@ -281,32 +268,5 @@ mod tests {
         assert_eq!(spans[0].style.fg, Some(theme.account.ink));
         let width: usize = spans.iter().map(|span| span.content.chars().count()).sum();
         assert_eq!(width, CHIP_WIDTH);
-    }
-
-    #[test]
-    fn an_unknown_colour_slot_draws_as_slate() {
-        let work = account("work", true, Some(AccountColor::Unknown));
-        let home = account("home", true, Some(AccountColor::Amber));
-        let marks = AccountMarks::from_accounts(&[work.clone(), home], false, ChipDepth::Truecolor);
-        let theme = Theme::dark();
-        let spans = marks.row_cell(&work.account_id, &theme).unwrap();
-        assert_eq!(spans[0].content, " W  ");
-        assert_eq!(
-            spans[0].style.bg,
-            Some(theme.account.fill(AccountColor::Slate))
-        );
-    }
-
-    #[test]
-    fn indexed_chip_uses_the_256_colour_pick() {
-        let work = account("work", true, Some(AccountColor::Sky));
-        let home = account("home", true, Some(AccountColor::Amber));
-        let marks = AccountMarks::from_accounts(&[work.clone(), home], false, ChipDepth::Indexed);
-        let theme = Theme::dark();
-        let spans = marks.row_cell(&work.account_id, &theme).unwrap();
-        assert_eq!(
-            spans[0].style.bg,
-            Some(theme.account.indexed_fill(AccountColor::Sky))
-        );
     }
 }

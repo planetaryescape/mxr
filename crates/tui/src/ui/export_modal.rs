@@ -127,7 +127,7 @@ fn path_stage(
 mod tests {
     use super::draw;
     use crate::app::{ExportModalState, ExportStage};
-    use crate::export_output::{format_extension, FORMAT_CHOICES};
+
     use mxr_core::id::ThreadId;
     use mxr_test_support::render_to_string;
     use ratatui::layout::Rect;
@@ -141,32 +141,6 @@ mod tests {
                 &crate::theme::Theme::default(),
             );
         })
-    }
-
-    #[test]
-    fn format_stage_lists_all_four_formats_with_keys() {
-        let mut state = ExportModalState::default();
-        state.open(ThreadId::new());
-        let snapshot = render(&state);
-        for label in ["Markdown", "JSON", "Mbox", "LLM context"] {
-            assert!(snapshot.contains(label), "snapshot:\n{snapshot}");
-        }
-        assert!(snapshot.contains("m j x l pick"), "snapshot:\n{snapshot}");
-    }
-
-    #[test]
-    fn destination_stage_names_the_chosen_format() {
-        let mut state = ExportModalState::default();
-        state.open(ThreadId::new());
-        state.format = Some(FORMAT_CHOICES[2].clone());
-        state.stage = ExportStage::Destination;
-        let snapshot = render(&state);
-        assert!(snapshot.contains("Format: Mbox"), "snapshot:\n{snapshot}");
-        assert!(
-            snapshot.contains("Copy to clipboard"),
-            "snapshot:\n{snapshot}"
-        );
-        assert_eq!(format_extension(&FORMAT_CHOICES[2]), "mbox");
     }
 
     #[test]

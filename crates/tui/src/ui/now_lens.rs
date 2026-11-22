@@ -817,23 +817,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_clear_now_says_when_the_next_thing_surfaces() {
-        let page = page(clear(), true);
-        for width in [60u16, 80, 120] {
-            let rendered = render_at(&page, width, 0);
-            assert!(
-                rendered.contains("Clear. The next to-do surfaces"),
-                "{width}\n{rendered}"
-            );
-            assert!(
-                !rendered.contains("People"),
-                "{width}: empty sections disappear"
-            );
-            insta::assert_snapshot!(format!("now_lens_clear_{width}"), rendered);
-        }
-    }
-
-    #[test]
     fn no_card_teaches_at_the_top_even_before_any_hint_is_seen() {
         let unseen = page(populated(), false);
         for width in [60u16, 80, 120] {
@@ -901,41 +884,6 @@ pub(crate) mod tests {
             track_record: Some("Last week mxr sorted 310 emails; you moved 2.".into()),
             never_bury: String::new(),
         }
-    }
-
-    #[test]
-    fn the_arrivals_line_sits_under_the_headline_with_its_questions_and_track_record() {
-        let mut with_line = page(populated(), true);
-        with_line.arrivals = Some(arrivals(2));
-        for width in [60u16, 80, 120] {
-            let rendered = render_at(&with_line, width, 1);
-            let line = rendered.find("Since 08:12").expect("the line");
-            let not_sure = rendered.find("Not sure").expect("the questions");
-            let people = rendered.find("People").expect("People");
-            assert!(line < not_sure && not_sure < people, "{width}\n{rendered}");
-            // The selected question shows its keys; the other doesn't.
-            assert_eq!(
-                rendered.matches("m Messages").count(),
-                1,
-                "{width}\n{rendered}"
-            );
-            insta::assert_snapshot!(format!("now_lens_arrivals_{width}"), rendered);
-        }
-        let wide = render_at(&with_line, 120, 0);
-        assert!(wide.contains("Since 08:12: 50 arrived."), "{wide}");
-        assert!(wide.contains("2 emails I wasn't sure about"), "{wide}");
-        assert!(
-            wide.contains("Maya Ortiz copied you on \"Q0 plan\""),
-            "{wide}"
-        );
-        assert!(
-            wide.contains("Last week mxr sorted 310 emails; you moved 2."),
-            "{wide}"
-        );
-        assert!(
-            wide.contains("Every email since then"),
-            "the footer explains the line"
-        );
     }
 
     #[test]

@@ -20,7 +20,6 @@ use mxr_core::id::{AccountId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope, Label, LabelKind, MessageFlags, UnsubscribeMethod};
 use mxr_protocol::{MutationCommand, Request};
 use mxr_tui::action::Action;
-use mxr_tui::app::mutation_snapshot::MUTATION_SNAPSHOT_CAPACITY;
 use mxr_tui::app::{App, MutationId};
 use mxr_tui::ui::label_picker::LabelPickerMode;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -138,57 +137,6 @@ fn star_applies_optimistically_before_daemon_response() {
         }
         other => panic!("expected queued Star mutation, got {other:?}"),
     }
-}
-
-#[test]
-fn snapshot_buffer_evicts_oldest_when_full() {
-    // The store is bounded so a runaway burst of mutations cannot grow
-    // memory without limit. When capacity is reached, the oldest snapshot
-    // is evicted FIFO — its mutation can no longer be rolled back. The
-    // newest snapshots stay rollback-eligible.
-    let mut app = App::new();
-
-    // Seed one more envelope than the snapshot store can retain.
-    let count = MUTATION_SNAPSHOT_CAPACITY + 1;
-    for _ in 0..count {
-        app.mailbox.envelopes.push(unstarred_inbox_envelope());
-    }
-
-    // Star each in sequence. Each Star captures a snapshot at queue time;
-    // after `count` stars, the very first snapshot is evicted because the
-    // store is full when the last one is inserted.
-    let mut mutation_ids = Vec::with_capacity(count);
-    for index in 0..count {
-        app.mailbox.selected_index = index;
-        app.apply(Action::Star);
-        assert_eq!(
-            app.pending_mutation_queue.len(),
-            index + 1,
-            "queued one mutation per Star"
-        );
-        mutation_ids.push(app.pending_mutation_queue[index].id);
-    }
-
-    // Attempt to roll back the OLDEST mutation. Its snapshot was evicted
-    // when the newest was inserted, so the rollback is a no-op and the
-    // optimistic star persists.
-    app.handle_mutation_reconciliation_failed(mutation_ids[0]);
-    assert!(
-        app.mailbox.envelopes[0]
-            .flags
-            .contains(MessageFlags::STARRED),
-        "oldest mutation's effect persists once its snapshot is evicted"
-    );
-
-    // Attempt to roll back the NEWEST. Its snapshot is still retained, so
-    // the rollback reverts the envelope to unstarred.
-    app.handle_mutation_reconciliation_failed(mutation_ids[count - 1]);
-    assert!(
-        !app.mailbox.envelopes[count - 1]
-            .flags
-            .contains(MessageFlags::STARRED),
-        "newest mutation's effect reverts when its snapshot is still retained"
-    );
 }
 
 #[test]

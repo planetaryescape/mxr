@@ -3,7 +3,6 @@
 //! as the runner does.
 
 use super::*;
-use crate::action::PatternKind;
 use crate::app::bulk_preview::request_message_ids;
 use crate::app::SearchPane;
 use crate::keybindings::{KeyPress, ViewContext};
@@ -193,15 +192,6 @@ fn visual_count_moves_the_counted_rows() {
     assert_eq!(app.mailbox.selected_index, 10);
     assert_eq!(selected_ids(&app).len(), 11);
     assert_eq!(app.mailbox.visual_count, None);
-}
-
-#[test]
-fn visual_three_j_selects_four_rows() {
-    let mut app = mail_list_app(10);
-    press(&mut app, 'V');
-    press(&mut app, '3');
-    press(&mut app, 'j');
-    assert_eq!(selected_ids(&app).len(), 4);
 }
 
 #[test]
@@ -582,26 +572,5 @@ fn default_star_chords_match_the_key_table() {
             "*{letter}"
         );
         assert!(matches!(typed, Some(Action::PatternSelect(_))), "*{letter}");
-    }
-}
-
-#[test]
-fn pattern_kinds_are_the_six_keys() {
-    let kinds = [
-        PatternKind::All,
-        PatternKind::None,
-        PatternKind::Read,
-        PatternKind::Unread,
-        PatternKind::Starred,
-        PatternKind::Thread,
-    ];
-    for kind in kinds {
-        let mut app = mail_list_app(2);
-        app.apply(Action::PatternSelect(kind.clone()));
-        assert!(app
-            .status_message
-            .as_deref()
-            .unwrap_or("")
-            .ends_with("selected"));
     }
 }

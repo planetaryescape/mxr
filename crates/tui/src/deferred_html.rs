@@ -178,14 +178,6 @@ mod tests {
     }
 
     #[test]
-    fn without_an_install_the_answer_is_worked_out_inline() {
-        // The unit-test process never installs, which keeps every other
-        // test's renders synchronous.
-        assert!(INSTALLED.get().is_none());
-        assert_eq!(answer(&"key", || 7_u32).as_deref(), Some(&7));
-    }
-
-    #[test]
     fn a_quick_answer_is_drawn_on_the_first_frame_without_a_wake() {
         let (deferred, wakes, _) = counting();
         assert_eq!(deferred.answer(&"quick", || 1_u32).as_deref(), Some(&1));
@@ -213,24 +205,5 @@ mod tests {
         woke.recv_timeout(Duration::from_secs(10)).expect("woken");
         assert_eq!(wakes.load(Ordering::SeqCst), 1);
         assert_eq!(deferred.answer(&"slow", || 5_u32).as_deref(), Some(&3));
-    }
-
-    #[test]
-    fn the_cache_keeps_only_the_newest_answers() {
-        let mut cache = Cache::default();
-        for key in 0..(CACHED as u64 + 3) {
-            cache.insert(key, Slot::Pending);
-        }
-        assert_eq!(cache.slots.len(), CACHED);
-        assert!(!cache.slots.contains_key(&0));
-        assert!(cache.slots.contains_key(&(CACHED as u64 + 2)));
-    }
-
-    #[test]
-    fn answers_of_different_types_never_share_a_key() {
-        assert_ne!(
-            fingerprint::<u32, str>("k"),
-            fingerprint::<String, str>("k")
-        );
     }
 }

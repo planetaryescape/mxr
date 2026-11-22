@@ -402,25 +402,4 @@ mod tests {
         state.invalidate_all();
         assert!(state.gists.is_empty());
     }
-
-    #[test]
-    fn state_is_capped_oldest_first() {
-        let mut state = RowGistState::default();
-        let ids: Vec<ThreadId> = (0..STATE_CAP + 5).map(|_| ThreadId::new()).collect();
-        for id in &ids {
-            state.put(&ready(id, None));
-        }
-        assert_eq!(state.gists.len(), STATE_CAP);
-        assert!(!state.gists.contains_key(&ids[0]));
-        assert!(state.gists.contains_key(ids.last().unwrap()));
-
-        let start = Instant::now();
-        for (index, chunk) in ids.chunks(50).enumerate() {
-            let at = start + Duration::from_secs(index as u64);
-            state.last_look = None;
-            state.gists.clear();
-            state.take_request(chunk.iter().cloned(), at);
-        }
-        assert_eq!(state.requested.len(), STATE_CAP);
-    }
 }

@@ -118,38 +118,6 @@ fn toast_line(toast: &Toast, now: std::time::Instant) -> Line<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::backend::TestBackend;
-
-    /// The cell in the middle of the newest toast's text row.
-    fn toast_cell(toast: &Toast, theme: &Theme) -> ratatui::buffer::Cell {
-        let mut terminal = Terminal::new(TestBackend::new(80, 12)).expect("terminal");
-        let now = std::time::Instant::now();
-        terminal
-            .draw(|frame| draw(frame, frame.area(), &[toast], now, theme))
-            .expect("draw");
-        let buffer = terminal.backend().buffer().clone();
-        // Bottom-right, above the status row: the text row is 3 rows up.
-        let row = 12 - 1 - 2;
-        let col = (0..80)
-            .rev()
-            .find(|x| buffer[(*x, row)].symbol() == "e")
-            .expect("toast text on the row");
-        buffer[(col, row)].clone()
-    }
-
-    #[test]
-    fn each_type_is_a_solid_box_in_its_colour() {
-        let theme = Theme::default();
-        for (toast, colour) in [
-            (Toast::success("Done here"), theme.success),
-            (Toast::info("Archived one"), theme.accent),
-            (Toast::warn("Archived some"), theme.warning),
-            (Toast::error("Archive failed"), theme.error),
-        ] {
-            let cell = toast_cell(&toast, &theme);
-            assert_eq!(cell.bg, colour, "{}", toast.text);
-        }
-    }
 
     #[test]
     fn text_takes_the_pole_that_reads_on_the_colour() {

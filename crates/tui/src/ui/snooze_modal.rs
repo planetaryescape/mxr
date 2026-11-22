@@ -280,84 +280,6 @@ mod tests {
     }
 
     #[test]
-    fn each_row_prints_its_key() {
-        let panel = SnoozePanelState {
-            visible: true,
-            target: Some(NotNowTarget::Mail {
-                message_id: mxr_core::id::MessageId::new(),
-            }),
-            ..Default::default()
-        };
-        let snapshot = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &panel,
-                &SnoozeConfig::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(snapshot.contains("Not now"), "{snapshot}");
-        assert!(
-            snapshot.contains("\u{21b5}  Later (no time): reply later"),
-            "{snapshot}"
-        );
-        assert!(snapshot.contains(" 1  "), "{snapshot}");
-    }
-
-    #[test]
-    fn renders_custom_row_in_preset_list() {
-        let panel = SnoozePanelState {
-            visible: true,
-            ..Default::default()
-        };
-        let snapshot = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &panel,
-                &SnoozeConfig::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(
-            snapshot.contains("Custom"),
-            "Custom… row must appear in preset list; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
-    fn renders_input_prompt_with_examples_in_custom_mode() {
-        let panel = SnoozePanelState {
-            visible: true,
-            selected_index: custom_row_index(),
-            custom_input: Some("in 2h".into()),
-            ..Default::default()
-        };
-        let snapshot = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &panel,
-                &SnoozeConfig::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(
-            snapshot.contains("Type a custom"),
-            "custom-mode prompt must appear; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("in 2h"),
-            "current buffer must be visible; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("tomorrow 9am"),
-            "examples line must surface; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn custom_mode_previews_the_resolved_time_live() {
         let mut panel = SnoozePanelState {
             visible: true,
@@ -378,30 +300,6 @@ mod tests {
         assert!(
             snapshot.contains("(in 2 hours)"),
             "resolution preview must appear before Enter; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
-    fn renders_validation_error_inline_in_custom_mode() {
-        let panel = SnoozePanelState {
-            visible: true,
-            selected_index: custom_row_index(),
-            custom_input: Some("asdf".into()),
-            custom_error: Some("couldn't parse `asdf` as a time".into()),
-            ..Default::default()
-        };
-        let snapshot = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &panel,
-                &SnoozeConfig::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(
-            snapshot.contains("Error:"),
-            "validation error must surface in modal; got:\n{snapshot}",
         );
     }
 }

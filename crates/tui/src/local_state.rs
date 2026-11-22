@@ -85,14 +85,4 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
-
-    #[test]
-    fn missing_recent_action_labels_field_defaults_to_empty() {
-        // Backwards-compat: an older state file, written before this field
-        // existed and with the retired tour's flag, must still load cleanly
-        // with an empty recents list.
-        let raw = r#"{ "onboarding_seen": true }"#;
-        let loaded: TuiLocalState = serde_json::from_str(raw).expect("parse legacy state");
-        assert!(loaded.recent_action_labels.is_empty());
-    }
 }

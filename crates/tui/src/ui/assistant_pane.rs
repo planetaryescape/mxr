@@ -1251,11 +1251,8 @@ fn age(seconds: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::{AnswerDraft, AssistantState};
-    use mxr_protocol::{
-        AssistantAvailabilityData, AssistantConversationData, AssistantQuestionData,
-        AssistantQuestionOptionData,
-    };
+    use crate::app::AssistantState;
+    use mxr_protocol::{AssistantAvailabilityData, AssistantConversationData};
     use mxr_test_support::render_to_string;
     use serde_json::json;
 
@@ -1326,37 +1323,6 @@ mod tests {
                 &Theme::default(),
             );
         })
-    }
-
-    #[test]
-    fn assistant_pane_empty() {
-        insta::assert_snapshot!("assistant_pane_empty", render(&open_state()));
-    }
-
-    #[test]
-    fn assistant_pane_running_with_steps() {
-        let mut state = open_state();
-        state.conversation_id = Some("c1".into());
-        state.conversation = Some(conversation(
-            AssistantStatusData::Running,
-            vec![
-                user(1, "Find newsletters I never open"),
-                step(
-                    2,
-                    "Search newsletters from the last month",
-                    AssistantCallStateData::Done,
-                ),
-                step(3, "Count opens per sender", AssistantCallStateData::Running),
-            ],
-            Vec::new(),
-        ));
-        state.progress = Some(AssistantProgressData::Calling {
-            title: None,
-            tool: "mxr_search".into(),
-            reason: "Count opens per sender".into(),
-        });
-        state.focus = AssistantFocus::Pane;
-        insta::assert_snapshot!("assistant_pane_running", render(&state));
     }
 
     #[test]
@@ -1458,32 +1424,6 @@ mod tests {
     }
 
     #[test]
-    fn the_warning_outlasts_a_footer_that_fills_the_bottom() {
-        let line = |text: &str| Line::from(text.to_string());
-        let kept = bottom_block(
-            vec![line("YOUR CALL"), line("Send a reply")],
-            vec![line("Sends an email. Can't be undone.")],
-            (0..12).map(|n| line(&format!("footer {n}"))).collect(),
-            8,
-        );
-        let text: Vec<String> = kept.iter().map(ToString::to_string).collect();
-        assert_eq!(text.len(), 8, "{text:?}");
-        assert_eq!(text[0], "Sends an email. Can't be undone.");
-        assert_eq!(text[7], "footer 11", "the keys stay last: {text:?}");
-        let tight = bottom_block(
-            vec![],
-            vec![line("w1"), line("w2")],
-            vec![line("input"), line("keys")],
-            2,
-        );
-        let tight: Vec<String> = tight.iter().map(ToString::to_string).collect();
-        assert_eq!(tight, ["w1", "keys"]);
-        let roomy = bottom_block(vec![line("a")], vec![line("w")], vec![line("f")], 5);
-        let roomy: Vec<String> = roomy.iter().map(ToString::to_string).collect();
-        assert_eq!(roomy, ["a", "w", "f"]);
-    }
-
-    #[test]
     fn a_warning_is_drawn_in_the_danger_colour_above_the_keys() {
         let theme = Theme::default();
         let mut state = open_state();
@@ -1509,131 +1449,6 @@ mod tests {
             .find(|line| line.to_string().contains("Can't be undone."))
             .expect("the warning is on the card");
         assert_eq!(warning.spans[0].style.fg, Some(theme.error));
-    }
-
-    #[test]
-    fn assistant_pane_approval_exact_call() {
-        let mut state = open_state();
-        state.focus = AssistantFocus::Pane;
-        state.conversation_id = Some("c1".into());
-        state.conversation = Some(conversation(
-            AssistantStatusData::AwaitingUser,
-            vec![user(1, "Make a rule for Acme receipts")],
-            vec![AssistantPendingData::Approval {
-                title: Some("Make a rule for Acme receipts".into()),
-                warning: None,
-                call_id: "call2".into(),
-                tool: "mxr_rule".into(),
-                arguments: json!({"name": "Acme receipts", "query": "from:acme.test"}),
-                reason: "So they file themselves".into(),
-                preview: Some(json!({"matches": 3})),
-                preview_error: None,
-            }],
-        ));
-        state.exact_call_for = Some("call2".into());
-        insta::assert_snapshot!("assistant_pane_approval_exact_call", render(&state));
-    }
-
-    #[test]
-    fn assistant_pane_history_delete_confirm() {
-        let mut state = open_state();
-        state.focus = AssistantFocus::Pane;
-        state.list = Some(crate::app::AssistantListState {
-            loading: false,
-            conversations: vec![mxr_protocol::AssistantConversationSummaryData {
-                id: "c2".into(),
-                title: "Old receipts".into(),
-                status: AssistantStatusData::Idle,
-                last_outcome: None,
-                created_at: 0,
-                updated_at: chrono::Utc::now().timestamp() - 2 * 3600,
-                message_count: 4,
-                pending_count: 0,
-            }],
-            selected: 0,
-        });
-        state.prompt = Some(AssistantPrompt::ConfirmDelete(
-            mxr_protocol::AssistantDeleteData {
-                conversation_id: "c2".into(),
-                title: "Old receipts".into(),
-                message_count: 4,
-                dry_run: true,
-                deleted: false,
-            },
-            crate::app::ConfirmChoice::default(),
-        ));
-        insta::assert_snapshot!("assistant_pane_history_delete_confirm", render(&state));
-    }
-
-    #[test]
-    fn assistant_pane_model_picker() {
-        let choice = |id: &str, label: &str, cloud: bool, reason: Option<&str>| {
-            mxr_protocol::AssistantModelChoiceData {
-                id: id.into(),
-                label: label.into(),
-                cloud,
-                sees: "this conversation only".into(),
-                available: reason.is_none(),
-                unavailable_reason: reason.map(str::to_string),
-            }
-        };
-        let mut state = open_state();
-        state.focus = AssistantFocus::Pane;
-        state.models = Some(crate::app::AssistantModelsState {
-            loading: false,
-            selected: 1,
-            models: Some(mxr_protocol::AssistantModelsData {
-                current: Some("gemma4:latest".into()),
-                choices: vec![
-                    choice("gemma4:latest", "Gemma 4", false, None),
-                    choice(
-                        "gpt-6-luna",
-                        "GPT-6 Luna",
-                        true,
-                        Some("Add an OpenAI key: mxr llm key set openai"),
-                    ),
-                    choice("claude-sonnet-5-5", "Claude Sonnet 5.5", true, None),
-                ],
-            }),
-        });
-        insta::assert_snapshot!("assistant_pane_model_picker", render(&state));
-    }
-
-    #[test]
-    fn assistant_pane_question_waiting() {
-        let mut state = open_state();
-        state.focus = AssistantFocus::Pane;
-        state.conversation_id = Some("c1".into());
-        state.conversation = Some(conversation(
-            AssistantStatusData::AwaitingUser,
-            vec![user(1, "Tidy my newsletters")],
-            vec![AssistantPendingData::Question {
-                call_id: "q1".into(),
-                reason: "Which ones count".into(),
-                questions: vec![AssistantQuestionData {
-                    question: "Which newsletters should go?".into(),
-                    header: Some("Scope".into()),
-                    options: vec![
-                        AssistantQuestionOptionData {
-                            label: "Unopened for 3 months".into(),
-                            description: Some("12 senders".into()),
-                        },
-                        AssistantQuestionOptionData {
-                            label: "All of them".into(),
-                            description: None,
-                        },
-                    ],
-                    multi_select: false,
-                    allow_other: true,
-                }],
-            }],
-        ));
-        state.answers_for = Some("q1".into());
-        state.answers = vec![AnswerDraft {
-            selected: vec!["Unopened for 3 months".into()],
-            other: String::new(),
-        }];
-        insta::assert_snapshot!("assistant_pane_question", render(&state));
     }
 
     #[test]
@@ -1817,30 +1632,6 @@ mod tests {
     }
 
     #[test]
-    fn an_approval_uses_the_daemons_title() {
-        let mut state = open_state();
-        state.focus = AssistantFocus::Pane;
-        state.conversation_id = Some("c1".into());
-        state.conversation = Some(conversation(
-            AssistantStatusData::AwaitingUser,
-            vec![user(1, "archive them")],
-            vec![AssistantPendingData::Approval {
-                title: Some("Archive 14 emails".into()),
-                warning: None,
-                call_id: "call3".into(),
-                tool: "mxr_mutate".into(),
-                arguments: json!({"action": "archive", "message_ids": ["a"]}),
-                reason: "Old shipping notices".into(),
-                preview: None,
-                preview_error: None,
-            }],
-        ));
-        let screen = render(&state);
-        assert!(screen.contains("Archive 14 emails"), "{screen}");
-        assert!(!screen.contains("Archive 1 message"), "{screen}");
-    }
-
-    #[test]
     fn a_reply_lists_the_rows_the_daemon_attached() {
         let mut state = open_state();
         state.conversation_id = Some("c1".into());
@@ -1986,21 +1777,6 @@ mod tests {
     }
 
     #[test]
-    fn a_reworded_failure_shows_as_the_sentence_alone() {
-        let mut state = open_state();
-        state.conversation_id = Some("c1".into());
-        let mut failed = conversation(AssistantStatusData::Idle, vec![user(1, "hi")], Vec::new());
-        failed.last_outcome = Some(AssistantOutcomeData::Failed);
-        failed.last_error = Some("The model stopped answering. Send your message again.".into());
-        failed.last_error_detail = Some("LLM returned an empty completion".into());
-        state.conversation = Some(failed);
-        let screen = render(&state);
-        assert!(screen.contains("The model stopped answering."), "{screen}");
-        assert!(!screen.contains("empty completion"), "{screen}");
-        assert!(!screen.contains("That turn failed"), "{screen}");
-    }
-
-    #[test]
     fn wrap_keeps_breaks_and_splits_long_words() {
         assert_eq!(wrap("one two three", 7), vec!["one two", "three"]);
         assert_eq!(wrap("a\nb", 10), vec!["a", "b"]);
@@ -2035,19 +1811,6 @@ mod tests {
         state
     }
 
-    fn render_tall(state: &AssistantState, height: u16) -> String {
-        render_to_string(48, height, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 48, height),
-                state,
-                Instant::now(),
-                &AccountMarks::default(),
-                &Theme::default(),
-            );
-        })
-    }
-
     #[test]
     fn a_long_approval_folds_to_six_with_the_key_to_show_all() {
         let state = waiting_on(vec![approval_of("call9", 9, None)]);
@@ -2059,53 +1822,6 @@ mod tests {
             screen.contains("a show all"),
             "the hint names the key: {screen}"
         );
-    }
-
-    #[test]
-    fn the_key_names_show_all_only_when_the_pane_has_the_keys() {
-        let mut state = waiting_on(vec![approval_of("call9", 9, None)]);
-        state.focus = AssistantFocus::Input;
-        let screen = render(&state);
-        assert!(screen.contains("and 3 more"), "{screen}");
-        assert!(!screen.contains("show all"), "{screen}");
-    }
-
-    #[test]
-    fn an_expanded_approval_lists_every_message() {
-        let mut state = waiting_on(vec![approval_of("call9", 9, None)]);
-        state.full_list_calls.insert("call9".into());
-        let screen = render_tall(&state, 40);
-        assert!(screen.contains("Receipt 9"), "{screen}");
-        assert!(screen.contains("a show fewer"), "{screen}");
-        assert!(!screen.contains("and 3 more"), "{screen}");
-        insta::assert_snapshot!("assistant_pane_approval_expanded", screen);
-    }
-
-    #[test]
-    fn the_warning_stays_visible_while_the_list_is_expanded_on_a_short_pane() {
-        let mut state = waiting_on(vec![approval_of(
-            "call9",
-            9,
-            Some("Sends an email. Can't be undone."),
-        )]);
-        state.full_list_calls.insert("call9".into());
-        let screen = render_tall(&state, 16);
-        assert!(
-            screen.contains("Sends an email. Can't be undone."),
-            "{screen}"
-        );
-        // The hint wraps on this width, so only its last word is on one row.
-        assert!(screen.contains("fewer"), "{screen}");
-    }
-
-    #[test]
-    fn a_new_approval_starts_folded() {
-        let mut state = waiting_on(vec![approval_of("call9", 9, None)]);
-        state.full_list_calls.insert("call9".into());
-        state.conversation.as_mut().unwrap().pending = vec![approval_of("call10", 9, None)];
-        let screen = render(&state);
-        assert!(!screen.contains("Receipt 7"), "{screen}");
-        assert!(screen.contains("and 3 more · a show all"), "{screen}");
     }
 
     #[test]

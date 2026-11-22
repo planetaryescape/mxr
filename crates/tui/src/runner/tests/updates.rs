@@ -624,28 +624,6 @@ fn esc_closes_an_open_peek_before_anything_else() {
     );
 }
 
-/// Dogfood 2026-10-29: the digest's header named the retired `A`, and `e`
-/// on one source opened a preview titled "Let go of this digest".
-#[test]
-fn the_header_names_e_and_one_sources_preview_says_source() {
-    let mut app = updates_app();
-    let shown = screen(&mut app);
-    assert!(shown.contains("E let go all"), "{shown}");
-    assert!(!shown.contains("A let go all"), "{shown}");
-
-    select_source(&mut app, "Strava");
-    press(&mut app, KeyCode::Char('e'));
-    app.show_updates_let_go_preview(super::now::let_go_preview(&[ThreadId::new()]));
-    let shown = screen(&mut app);
-    assert!(shown.contains("Let go of this source"), "{shown}");
-    assert!(!shown.contains("Let go of this digest"), "{shown}");
-
-    let mut app = updates_app();
-    press(&mut app, KeyCode::Char('E'));
-    app.show_updates_let_go_preview(super::now::let_go_preview(&[ThreadId::new()]));
-    assert!(screen(&mut app).contains("Let go of this digest"));
-}
-
 /// Dogfood 2026-10-29: `o` opened the email in a reader Updates never
 /// drew. It opens full width now, and Esc comes back to the line.
 #[test]

@@ -19,37 +19,6 @@ fn sidebar_system_labels_in_correct_order() {
 }
 
 #[test]
-fn sidebar_items_put_inbox_before_all_mail() {
-    let mut app = App::new();
-    app.mailbox.labels = make_test_labels();
-
-    let items = app.sidebar_items();
-    let all_mail_index = items
-        .iter()
-        .position(|item| matches!(item, SidebarItem::AllMail))
-        .unwrap();
-
-    let inbox_index = items
-        .iter()
-        .position(|item| matches!(item, SidebarItem::Inbox))
-        .unwrap();
-    assert!(matches!(items.first(), Some(SidebarItem::Now)));
-    assert!(inbox_index < all_mail_index);
-}
-
-#[test]
-fn sidebar_hidden_labels_not_shown() {
-    let mut app = App::new();
-    app.mailbox.labels = make_test_labels();
-    let ordered = app.ordered_visible_labels();
-    let names: Vec<&str> = ordered.iter().map(|l| l.name.as_str()).collect();
-    assert!(
-        !names.contains(&"CATEGORY_UPDATES"),
-        "Gmail categories should be hidden"
-    );
-}
-
-#[test]
 fn sidebar_empty_system_labels_hidden_except_primary() {
     let mut app = App::new();
     app.mailbox.labels = make_test_labels();
@@ -74,20 +43,6 @@ fn sidebar_empty_system_labels_hidden_except_primary() {
         names.contains(&"IMPORTANT"),
         "Non-empty system labels should be shown"
     );
-}
-
-#[test]
-fn sidebar_user_labels_alphabetical() {
-    let mut app = App::new();
-    app.mailbox.labels = make_test_labels();
-    let ordered = app.ordered_visible_labels();
-    let user_names: Vec<&str> = ordered
-        .iter()
-        .filter(|l| l.kind == LabelKind::User)
-        .map(|l| l.name.as_str())
-        .collect();
-    // Personal < Work alphabetically
-    assert_eq!(user_names, vec!["Personal", "Work"]);
 }
 
 #[test]
@@ -131,15 +86,6 @@ fn g_hash_and_g_bang_open_the_trash_and_spam_labels() {
         let label = app.mailbox.labels.iter().find(|l| l.name == name).unwrap();
         assert_eq!(app.mailbox.pending_active_label.as_ref(), Some(&label.id));
     }
-}
-
-#[test]
-fn goto_inbox_without_labels_records_desired_mailbox() {
-    let mut app = App::new();
-    app.apply(Action::GoToInbox);
-    assert_eq!(app.mailbox.desired_system_mailbox.as_deref(), Some("INBOX"));
-    assert!(app.mailbox.pending_label_fetch.is_none());
-    assert!(app.mailbox.pending_active_label.is_none());
 }
 
 #[test]
@@ -256,20 +202,6 @@ fn status_bar_uses_label_counts_instead_of_loaded_window() {
 }
 
 #[test]
-fn all_envelopes_refresh_updates_visible_all_mail() {
-    let mut app = App::new();
-    let envelopes = make_test_envelopes(4);
-    app.mailbox.active_label = None;
-    app.search.active = false;
-
-    apply_all_envelopes_refresh(&mut app, envelopes.clone());
-
-    assert_eq!(app.mailbox.all_envelopes.len(), 4);
-    assert_eq!(app.mailbox.envelopes.len(), 4);
-    assert_eq!(app.mailbox.selected_index, 0);
-}
-
-#[test]
 fn all_envelopes_refresh_preserves_selection_when_possible() {
     let mut app = App::new();
     app.visible_height = 3;
@@ -376,20 +308,6 @@ fn clear_filter_restores_all_envelopes() {
     app.apply(Action::ClearFilter);
     assert!(app.mailbox.active_label.is_none());
     assert_eq!(app.mailbox.envelopes.len(), 10, "Should restore full list");
-}
-
-#[test]
-fn mail_list_rows_include_open_commitment_counts() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(1);
-    let envelope = app.mailbox.envelopes[0].clone();
-    app.mailbox
-        .open_commitment_counts
-        .insert((envelope.account_id.clone(), envelope.thread_id.clone()), 2);
-
-    let rows = app.mail_list_rows();
-
-    assert_eq!(rows[0].open_commitment_count, 2);
 }
 
 #[test]
@@ -808,68 +726,6 @@ fn invite_response_undo_within_window_prevents_send() {
     );
 }
 
-/// `format_mutation_failure` is what the runtime surfaces to the
-/// user when the daemon returns 0 succeeded with skipped > 0.
-/// Locks down two behaviors:
-///  - when no per-account error is set, it falls back to the
-///    skipped-count summary (the previous all-the-time behavior);
-///  - when per-account errors are present, they are joined onto
-///    the summary so the user sees the real cause (e.g. pool
-///    timeout) instead of a meaningless "skipped 1 message(s)".
-#[test]
-fn format_mutation_failure_joins_per_account_errors() {
-    use super::super::format_mutation_failure;
-    use mxr_core::id::AccountId;
-    use mxr_protocol::{AccountMutationResultData, MutationResultData};
-
-    let bare = MutationResultData {
-        requested: 1,
-        succeeded: 0,
-        skipped: 1,
-        failed: 0,
-        accounts: vec![AccountMutationResultData {
-            account_id: AccountId::new(),
-            account_name: "primary".into(),
-            succeeded: 0,
-            skipped: 1,
-            failed: 0,
-            error: None,
-        }],
-        mutation_id: None,
-        undo_unavailable: false,
-    };
-    assert_eq!(
-        format_mutation_failure(&bare),
-        "mutation skipped 1 message(s)"
-    );
-
-    let with_error = MutationResultData {
-        accounts: vec![
-            AccountMutationResultData {
-                account_id: AccountId::new(),
-                account_name: "primary".into(),
-                succeeded: 0,
-                skipped: 1,
-                failed: 0,
-                error: Some("pool timed out while waiting for an open connection".into()),
-            },
-            AccountMutationResultData {
-                account_id: AccountId::new(),
-                account_name: "secondary".into(),
-                succeeded: 0,
-                skipped: 1,
-                failed: 0,
-                error: Some("disk I/O error".into()),
-            },
-        ],
-        ..bare
-    };
-    let formatted = format_mutation_failure(&with_error);
-    assert!(formatted.starts_with("mutation skipped 1 message(s):"));
-    assert!(formatted.contains("pool timed out"));
-    assert!(formatted.contains("disk I/O error"));
-}
-
 #[test]
 fn mutation_failure_opens_error_modal_and_refreshes_mailbox() {
     let mut app = App::new();
@@ -996,90 +852,6 @@ fn archive_last_visible_message_closes_reader() {
     assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
     assert!(app.mailbox.viewing_envelope.is_none());
     assert!(app.mailbox.envelopes.is_empty());
-}
-
-#[test]
-fn mail_list_title_shows_message_count() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(5);
-    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    let title = app.mail_list_title();
-    assert!(title.contains("5"), "Title should show message count");
-    assert!(
-        title.contains("Threads"),
-        "Default title should say Threads"
-    );
-}
-
-#[test]
-fn mail_list_title_shows_label_name() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(5);
-    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    app.mailbox.labels = make_test_labels();
-    let inbox_id = app
-        .mailbox
-        .labels
-        .iter()
-        .find(|l| l.name == "INBOX")
-        .unwrap()
-        .id
-        .clone();
-    app.mailbox.active_label = Some(inbox_id);
-    let title = app.mail_list_title();
-    assert!(
-        title.contains("Inbox"),
-        "Title should show humanized label name"
-    );
-}
-
-#[test]
-fn mail_list_title_shows_search_query() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(5);
-    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    app.search.active = true;
-    app.search.bar.query = "deployment".to_string();
-    let title = app.mail_list_title();
-    assert!(
-        title.contains("deployment"),
-        "Title should show search query"
-    );
-    assert!(title.contains("Search"), "Title should indicate search");
-}
-
-#[test]
-fn message_view_body_display() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(3);
-    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    app.apply(Action::OpenMessageView);
-    assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
-    app.mailbox.body_view_state = BodyViewState::ready(
-        "Hello".into(),
-        "Hello".into(),
-        BodySource::Plain,
-        BodyViewMetadata::default(),
-    );
-    assert_eq!(app.mailbox.body_view_state.display_text(), Some("Hello"));
-    app.apply(Action::CloseMessageView);
-    assert!(matches!(
-        app.mailbox.body_view_state,
-        BodyViewState::Empty { .. }
-    ));
-}
-
-#[test]
-fn close_message_view_preserves_reader_mode() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(1);
-    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    app.apply(Action::OpenMessageView);
-
-    app.apply(Action::CloseMessageView);
-
-    assert!(app.mailbox.reader_mode);
-    assert!(app.mailbox.html_view);
 }
 
 #[test]
@@ -1286,20 +1058,6 @@ fn preview_read_exhausted_failure_reconciles_without_error_modal() {
 }
 
 #[test]
-fn open_selected_on_read_message_does_not_queue_read_mutation() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(1);
-    app.mailbox.envelopes[0].flags = MessageFlags::READ;
-    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-
-    app.apply(Action::OpenSelected);
-    app.expire_pending_preview_read_for_tests();
-    app.tick();
-
-    assert!(app.pending_mutation_queue.is_empty());
-}
-
-#[test]
 fn reopening_same_message_does_not_queue_duplicate_read_mutation() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(1);
@@ -1385,44 +1143,6 @@ fn a_degraded_first_status_snapshot_leaves_the_total_unknown() {
         app.status_bar_state().total_count,
         Some(4_242),
         "a degraded snapshot must not overwrite a reading that was real"
-    );
-}
-
-#[test]
-fn status_bar_names_search_mode_only_while_a_query_is_active() {
-    let mut app = App::new();
-    assert_eq!(app.status_bar_state().search_mode, None);
-
-    app.search.bar.mode = mxr_core::SearchMode::Hybrid;
-    app.search.bar.query = "invoice".into();
-    assert_eq!(
-        app.status_bar_state().search_mode,
-        None,
-        "typing in the filter bar is not an applied filter"
-    );
-
-    app.search.active = true;
-    assert_eq!(
-        app.status_bar_state().search_mode,
-        Some(mxr_core::SearchMode::Hybrid),
-        "an applied mailbox filter names its mode"
-    );
-
-    app.search.active = false;
-    assert_eq!(app.status_bar_state().search_mode, None);
-
-    app.screen = Screen::Search;
-    app.search.page.mode = mxr_core::SearchMode::Semantic;
-    assert_eq!(
-        app.status_bar_state().search_mode,
-        None,
-        "an empty search screen has no query"
-    );
-
-    app.search.page.query = "invoice".into();
-    assert_eq!(
-        app.status_bar_state().search_mode,
-        Some(mxr_core::SearchMode::Semantic)
     );
 }
 

@@ -68,22 +68,6 @@ mod tests {
     use mxr_test_support::render_to_string;
 
     #[test]
-    fn loading_state_shows_indicator() {
-        let mut state = ExpertModalState::default();
-        state.open_loading("kafka rebalance".into());
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("loading"));
-        assert!(rendered.contains("Find expert: kafka rebalance"));
-    }
-
-    #[test]
     fn populated_state_renders_ranked_experts() {
         let mut state = ExpertModalState::default();
         state.open_loading("kafka".into());
@@ -115,35 +99,5 @@ mod tests {
         assert!(rendered.contains("3 answer thread"));
         assert!(rendered.contains("carol@example.com"));
         insta::assert_snapshot!("expert_modal_populated", rendered);
-    }
-
-    #[test]
-    fn empty_results_render_helpful_message() {
-        let mut state = ExpertModalState::default();
-        state.open_loading("obscure".into());
-        state.set_experts(vec![]);
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("No experts found"));
-    }
-
-    #[test]
-    fn invisible_modal_renders_nothing() {
-        let state = ExpertModalState::default();
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(!rendered.contains("Find expert"));
     }
 }

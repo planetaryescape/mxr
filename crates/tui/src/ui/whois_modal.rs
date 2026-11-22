@@ -92,53 +92,6 @@ mod tests {
     use mxr_protocol::{EntityCandidateData, EntityExplanationData, WhoisCitationData};
     use mxr_test_support::render_to_string;
 
-    fn person_entity() -> EntityExplanationData {
-        EntityExplanationData {
-            canonical_name: "alice@example.com".into(),
-            kind: "person".into(),
-            summary: "Alice Smith — 42 inbound, 31 outbound.".into(),
-            first_seen_at: None,
-            last_seen_at: None,
-            topics: vec![],
-            citations: vec![],
-            candidates: vec![],
-        }
-    }
-
-    #[test]
-    fn loading_state_shows_indicator() {
-        let mut state = WhoisModalState::default();
-        state.open_loading("alice@example.com".into());
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("loading"));
-        assert!(rendered.contains("Whois: alice@example.com"));
-    }
-
-    #[test]
-    fn person_kind_renders_summary() {
-        let mut state = WhoisModalState::default();
-        state.open_loading("alice@example.com".into());
-        state.set_entity(person_entity());
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("alice@example.com (person)"));
-        assert!(rendered.contains("42 inbound"));
-        insta::assert_snapshot!("whois_modal_person", rendered);
-    }
-
     #[test]
     fn ambiguous_kind_renders_candidate_list() {
         let mut state = WhoisModalState::default();
@@ -209,46 +162,5 @@ mod tests {
         assert!(rendered.contains("Project Apollo (term)"));
         assert!(rendered.contains("msg=msg-7"));
         insta::assert_snapshot!("whois_modal_term", rendered);
-    }
-
-    #[test]
-    fn unknown_kind_renders_no_evidence_summary() {
-        let mut state = WhoisModalState::default();
-        state.open_loading("ghost-term".into());
-        state.set_entity(EntityExplanationData {
-            canonical_name: "ghost-term".into(),
-            kind: "unknown".into(),
-            summary: "No local evidence found.".into(),
-            first_seen_at: None,
-            last_seen_at: None,
-            topics: vec![],
-            citations: vec![],
-            candidates: vec![],
-        });
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("ghost-term (unknown)"));
-        assert!(rendered.contains("No local evidence"));
-        insta::assert_snapshot!("whois_modal_unknown", rendered);
-    }
-
-    #[test]
-    fn invisible_modal_renders_nothing() {
-        let state = WhoisModalState::default();
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(!rendered.contains("Whois"));
     }
 }

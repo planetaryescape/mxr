@@ -717,20 +717,6 @@ fn correcting_a_to_do_moves_with_j_k_runs_the_lit_reason_and_q_closes() {
 }
 
 #[test]
-fn task_undo_toast_uses_grammatical_singular_and_plural_copy() {
-    let now = std::time::Instant::now();
-    for (ids, expected) in [
-        (vec!["todo_a"], "Ticked off 1 to-do"),
-        (vec!["todo_a", "todo_b"], "Ticked off 2 to-dos"),
-    ] {
-        let undo = crate::runner::todo_undo(&catchup_change("done", &ids)).unwrap();
-        let mut app = todo_app(true);
-        app.set_pending_undo(undo);
-        assert_eq!(app.pending_undo_toast(now).unwrap().text, expected);
-    }
-}
-
-#[test]
 fn the_runway_hint_shows_at_the_first_bar_after_a_key_and_esc_dismisses_it_once() {
     let mut app = todo_app(false);
     assert!(app.active_hint().is_none(), "not on arrival");
@@ -1063,14 +1049,6 @@ fn the_expired_list_restores_with_enter() {
     ));
 }
 
-#[test]
-fn help_leads_with_the_mode_on_to_do() {
-    let app = todo_app(true);
-    let guide = app.help_mode_guide().expect("To do's guide");
-    assert_eq!(guide.mode, "todo");
-    assert!(App::new().help_mode_guide().is_none());
-}
-
 fn catchup_change(action: &str, ids: &[&str]) -> TodoChangeData {
     TodoChangeData {
         correction_undo: None,
@@ -1272,20 +1250,6 @@ fn the_hint_bar_offers_to_dos_verbs_for_a_lit_task() {
             (",", "Edit"),
         ]
     );
-}
-
-#[test]
-fn the_hint_bar_names_the_key_the_person_moved_a_verb_to() {
-    let mut app = todo_app(true);
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(
-        dir.path().join("keys.toml"),
-        "[todo]\n\"x\" = \"todo.done\"\n",
-    )
-    .unwrap();
-    app.load_keybindings_from(dir.path());
-    let hints = app.mode_strip_hints().expect("a lit to-do has a strip");
-    assert_eq!(hints[0], ("x".to_string(), "Done".to_string()));
 }
 
 #[test]

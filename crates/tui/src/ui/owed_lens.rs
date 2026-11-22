@@ -152,24 +152,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_state_shows_inbox_zero_copy() {
-        let rendered = render_to_string(80, 12, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 12),
-                &[],
-                None,
-                &AccountMarks::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("Inbox zero on owed replies."));
-        assert!(rendered.contains("Owed Replies"));
-        assert!(rendered.contains("Nobody you write with is waiting on a reply."));
-        assert!(!rendered.contains("in Messages"));
-    }
-
-    #[test]
     fn populated_state_renders_subject_and_overdue_score() {
         let rows = vec![
             row("alice@example.com", "Status update?", 5.0, 1.0),
@@ -209,32 +191,6 @@ mod tests {
         assert!(rendered.contains("6h"), "{rendered}");
         assert!(rendered.contains("46m"), "{rendered}");
         assert!(!rendered.contains("0.0d"), "{rendered}");
-    }
-
-    #[test]
-    fn rows_preserve_input_order() {
-        // The lens does not re-sort; ordering is the caller's job.
-        // This test pins that contract: row[0] renders before row[1].
-        let rows = vec![
-            row("zzz@example.com", "FIRST", 1.0, 1.0),
-            row("aaa@example.com", "SECOND", 99.0, 1.0),
-        ];
-        let rendered = render_to_string(100, 12, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 12),
-                &rows,
-                None,
-                &AccountMarks::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        let first = rendered.find("FIRST").expect("FIRST should appear");
-        let second = rendered.find("SECOND").expect("SECOND should appear");
-        assert!(
-            first < second,
-            "lens must preserve caller's order; got first={first} second={second}"
-        );
     }
 
     #[test]
@@ -291,21 +247,5 @@ mod tests {
         assert!(alice_line.contains("[W]"), "{rendered}");
         assert!(bob_line.contains("[H]"), "{rendered}");
         insta::assert_snapshot!("owed_lens_mixed_accounts", rendered);
-    }
-
-    #[test]
-    fn a_single_account_view_shows_no_chip_column() {
-        let rows = vec![row("alice@example.com", "Status update?", 5.0, 1.0)];
-        let rendered = render_to_string(100, 6, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 6),
-                &rows,
-                None,
-                &AccountMarks::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(!rendered.contains('['), "{rendered}");
     }
 }

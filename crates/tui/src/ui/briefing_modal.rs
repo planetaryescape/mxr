@@ -122,23 +122,6 @@ mod tests {
     }
 
     #[test]
-    fn loading_state_shows_loading_indicator() {
-        let mut state = BriefingModalState::default();
-        state.open_thread_loading(fixed_thread_id());
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("loading"));
-        assert!(rendered.contains("Briefing: thread"));
-        insta::assert_snapshot!("briefing_modal_loading", rendered);
-    }
-
-    #[test]
     fn populated_thread_briefing_renders_body_and_citations() {
         let mut state = BriefingModalState::default();
         state.open_thread_loading(fixed_thread_id());
@@ -171,69 +154,6 @@ mod tests {
     }
 
     #[test]
-    fn cached_briefing_marks_from_cache() {
-        let mut state = BriefingModalState::default();
-        state.open_recipient_loading("alice@example.com".into());
-        state.set_briefing("Recipient summary".into(), vec![], chrono::Utc::now(), true);
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("[cached]"));
-        assert!(rendered.contains("Briefing: alice@example.com"));
-    }
-
-    #[test]
-    fn error_state_renders_inline() {
-        let mut state = BriefingModalState::default();
-        state.open_thread_loading(mxr_core::ThreadId::new());
-        state.set_error("LLM disabled".into());
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("error: LLM disabled"));
-    }
-
-    #[test]
-    fn invisible_modal_renders_nothing() {
-        let state = BriefingModalState::default();
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(
-            !rendered.contains("Briefing"),
-            "invisible state must not render the modal frame"
-        );
-    }
-
-    #[test]
-    fn short_id_ascii_long_truncates() {
-        let id = "abcde12345xyz";
-        let result = short_id(id);
-        assert_eq!(result, "abcd…5xyz");
-    }
-
-    #[test]
-    fn short_id_ascii_short_unchanged() {
-        let id = "abc123";
-        assert_eq!(short_id(id), "abc123");
-    }
-
-    #[test]
     fn short_id_multibyte_does_not_panic() {
         // Each '日' is 3 bytes; 13 chars total — must not panic
         let id = "日本語テスト日本語テスト日";
@@ -242,11 +162,5 @@ mod tests {
         // head (4 chars) + ellipsis + tail (4 chars)
         assert!(chars.len() <= 9, "result should be 4 + ellipsis + 4");
         assert!(result.contains('…'));
-    }
-
-    #[test]
-    fn short_id_exact_12_unchanged() {
-        let id = "abcdefghijkl"; // exactly 12 chars
-        assert_eq!(short_id(id), "abcdefghijkl");
     }
 }

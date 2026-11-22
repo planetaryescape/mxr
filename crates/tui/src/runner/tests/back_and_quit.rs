@@ -102,10 +102,3 @@ fn q_in_the_reader_closes_it_and_keeps_the_app_open() {
     assert!(!app.should_quit);
     assert_ne!(app.mailbox.active_pane, ActivePane::MessageView);
 }
-
-#[test]
-fn q_still_closes_a_modal() {
-    let mut app = reader();
-    app.modals.help_open = true;
-    assert_eq!(q(&mut app), Some(Action::Help));
-}

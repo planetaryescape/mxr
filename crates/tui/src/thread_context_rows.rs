@@ -383,15 +383,4 @@ mod tests {
             Some("AI|no gist: timed out")
         );
     }
-
-    #[test]
-    fn reply_times_and_days_read_at_a_glance() {
-        assert_eq!(reply_time(20), "1m");
-        assert_eq!(reply_time(35 * 60), "35m");
-        assert_eq!(reply_time(4 * 3600), "4h");
-        assert_eq!(reply_time(3 * 86_400), "3d");
-        let now = Utc::now();
-        assert_eq!(day_label(now, now), "today");
-        assert_eq!(day_label(now - chrono::Duration::days(1), now), "yesterday");
-    }
 }

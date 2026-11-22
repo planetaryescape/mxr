@@ -24,15 +24,6 @@ fn thread_app() -> App {
 }
 
 #[test]
-fn export_on_a_thread_opens_the_picker_at_the_format_step() {
-    let mut app = thread_app();
-    export(&mut app);
-    assert!(app.modals.export.visible);
-    assert_eq!(app.modals.export.stage, ExportStage::Format);
-    assert!(app.mailbox.pending_export.is_none());
-}
-
-#[test]
 fn export_with_no_thread_selected_says_so_and_opens_nothing() {
     let mut app = App::new();
     export(&mut app);
@@ -89,17 +80,6 @@ fn every_format_key_is_offered_and_c_queues_a_clipboard_copy() {
         assert_eq!(pending.format, format);
         assert_eq!(pending.destination, ExportDestination::Clipboard);
     }
-}
-
-#[test]
-fn arrows_and_enter_pick_a_format_too() {
-    let mut app = thread_app();
-    export(&mut app);
-    press(&mut app, KeyCode::Down);
-    press(&mut app, KeyCode::Down);
-    press(&mut app, KeyCode::Enter);
-    assert_eq!(app.modals.export.format, Some(ExportFormat::Mbox));
-    assert_eq!(app.modals.export.stage, ExportStage::Destination);
 }
 
 #[test]

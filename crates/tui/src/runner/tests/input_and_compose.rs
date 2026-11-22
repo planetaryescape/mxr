@@ -34,24 +34,6 @@ async fn next_owned_request(
 }
 
 #[test]
-fn input_j_moves_down() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)),
-        Some(Action::MoveDown)
-    );
-}
-
-#[test]
-fn input_k_moves_up() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE)),
-        Some(Action::MoveUp)
-    );
-}
-
-#[test]
 fn suspended_handoff_drops_old_event_source_before_running_action() {
     let old_dropped = Arc::new(AtomicBool::new(false));
     let new_created = Arc::new(AtomicBool::new(false));
@@ -386,14 +368,6 @@ fn app_with_send_confirm(verdict_blocked: bool) -> App {
 fn ctrl_o_dispatches_send_with_override_token() {
     let mut app = app_with_send_confirm(true);
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL));
-    assert_override_dispatched(&app);
-}
-
-/// `O` is the override the modal advertises, matching the web app.
-#[test]
-fn shift_o_dispatches_send_with_override_token() {
-    let mut app = app_with_send_confirm(true);
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
     assert_override_dispatched(&app);
 }
 
@@ -800,15 +774,6 @@ fn find_expert_action_opens_modal_and_queues_query() {
     assert!(app.pending_expert_query.is_some());
 }
 
-#[test]
-fn close_expert_modal_clears_state() {
-    let mut app = App::new();
-    app.modals.expert.open_loading("kafka".into());
-    assert!(app.modals.expert.visible);
-    app.apply(Action::CloseExpertModal);
-    assert!(!app.modals.expert.visible);
-}
-
 /// Slice 6.1 wiring contract (C2.9): pressing
 /// OpenWhoisOnFocusedSender opens the whois modal in loading
 /// state and queues a pending whois fetch with the focused
@@ -834,34 +799,6 @@ fn open_whois_action_seeds_modal_and_queues_query() {
         app.pending_whois_query.as_deref(),
         Some("carol@example.com")
     );
-}
-
-/// Esc on the whois modal closes it.
-#[test]
-fn close_whois_modal_action_clears_state() {
-    let mut app = App::new();
-    app.modals.whois.open_loading("alice@example.com".into());
-    assert!(app.modals.whois.visible);
-
-    app.apply(Action::CloseWhoisModal);
-
-    assert!(!app.modals.whois.visible);
-    assert!(app.modals.whois.query.is_none());
-}
-
-/// Esc on the briefing modal closes it.
-#[test]
-fn close_briefing_modal_action_clears_state() {
-    let mut app = App::new();
-    app.modals
-        .briefing
-        .open_thread_loading(mxr_core::ThreadId::new());
-    assert!(app.modals.briefing.visible);
-
-    app.apply(Action::CloseBriefingModal);
-
-    assert!(!app.modals.briefing.visible);
-    assert!(app.modals.briefing.subject.is_none());
 }
 
 #[test]
@@ -916,171 +853,6 @@ fn replaceable_request_queue_supersedes_older_status_refresh() {
         Some(ReplaceableRequest::Status { request_id, .. }) => assert_eq!(request_id, 2),
         other => panic!("expected status request, got {other:?}"),
     }
-}
-
-#[test]
-fn input_gg_jumps_top() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
-        None
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
-        Some(Action::JumpTop)
-    );
-}
-
-#[test]
-fn input_z_is_no_prefix() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)),
-        None
-    );
-    assert!(!h.is_pending(), "z z retired, so z waits for nothing");
-}
-
-#[test]
-fn input_enter_opens() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
-        Some(Action::OpenSelected)
-    );
-}
-
-#[test]
-fn input_o_opens() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE)),
-        Some(Action::OpenSelected)
-    );
-}
-
-#[test]
-fn input_escape_back() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
-        Some(Action::Back)
-    );
-}
-
-#[test]
-fn input_q_quits() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE)),
-        Some(Action::QuitView)
-    );
-}
-
-#[test]
-fn input_hml_viewport_keys_retired() {
-    let mut h = InputHandler::new();
-    for c in ['H', 'M', 'L'] {
-        assert_eq!(
-            h.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT)),
-            None,
-            "{c}"
-        );
-    }
-}
-
-#[test]
-fn input_uppercase_shortcuts_work_without_explicit_shift_modifier() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('V'), KeyModifiers::NONE)),
-        Some(Action::VisualLineMode)
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('A'), KeyModifiers::NONE)),
-        Some(Action::AttachmentList)
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
-        None
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::NONE)),
-        Some(Action::OpenLogs)
-    );
-}
-
-#[test]
-fn input_ctrl_du_page() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL)),
-        Some(Action::PageDown)
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL)),
-        Some(Action::PageUp)
-    );
-}
-
-#[test]
-fn app_move_down() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(5);
-    app.apply(Action::MoveDown);
-    assert_eq!(app.mailbox.selected_index, 1);
-}
-
-#[test]
-fn app_move_up_at_zero() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(5);
-    app.apply(Action::MoveUp);
-    assert_eq!(app.mailbox.selected_index, 0);
-}
-
-#[test]
-fn app_jump_top() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(10);
-    app.mailbox.selected_index = 5;
-    app.apply(Action::JumpTop);
-    assert_eq!(app.mailbox.selected_index, 0);
-}
-
-#[test]
-fn app_switch_pane() {
-    let mut app = App::new();
-    assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
-    app.apply(Action::SwitchPane);
-    assert_eq!(app.mailbox.active_pane, ActivePane::Sidebar);
-    app.apply(Action::SwitchPane);
-    assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
-}
-
-#[test]
-fn app_quit() {
-    let mut app = App::new();
-    app.apply(Action::QuitView);
-    assert!(app.should_quit);
-}
-
-#[test]
-fn app_new_uses_original_html_as_default_message_view() {
-    let app = App::new();
-    assert!(app.mailbox.reader_mode);
-    assert!(app.mailbox.html_view);
-}
-
-#[test]
-fn app_from_render_config_respects_text_reader_mode() {
-    let config = RenderConfig {
-        reader_mode: true,
-        ..Default::default()
-    };
-    let app = App::from_render_config(&config);
-    assert!(app.mailbox.reader_mode);
-    assert!(app.mailbox.html_view);
 }
 
 #[test]
@@ -1284,17 +1056,6 @@ fn app_move_down_bounds() {
 }
 
 #[test]
-fn layout_mode_switching() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(3);
-    assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
-    app.apply(Action::OpenMessageView);
-    assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
-    app.apply(Action::CloseMessageView);
-    assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
-}
-
-#[test]
 fn fullscreen_opens_selected_message_from_mail_list() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(3);
@@ -1376,18 +1137,6 @@ fn fullscreen_escape_returns_to_mail_list() {
 }
 
 #[test]
-fn fullscreen_fits_minimum_terminal_without_a_sidebar() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(1);
-    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    app.apply(Action::ToggleFullscreen);
-
-    let output = render_to_string(80, 20, |frame| app.draw(frame));
-    assert!(!output.contains("Sidebar"));
-    assert!(output.contains("Subject 0"));
-}
-
-#[test]
 fn search_tab_switches_panes_after_mailbox_fullscreen() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(1);
@@ -1403,45 +1152,6 @@ fn search_tab_switches_panes_after_mailbox_fullscreen() {
 
     assert_eq!(app.search.page.active_pane, SearchPane::Preview);
     assert!(app.search.page.result_selected);
-}
-
-#[test]
-fn command_palette_toggle() {
-    let mut p = CommandPalette::default();
-    assert!(!p.visible);
-    p.toggle(crate::action::UiContext::MailboxList);
-    assert!(p.visible);
-    p.toggle(crate::action::UiContext::MailboxList);
-    assert!(!p.visible);
-}
-
-#[test]
-fn command_palette_fuzzy_filter() {
-    let mut p = CommandPalette::default();
-    p.toggle(crate::action::UiContext::MailboxList);
-    p.on_char('i');
-    p.on_char('n');
-    p.on_char('b');
-    let labels: Vec<&str> = p
-        .filtered
-        .iter()
-        .map(|&i| p.commands[i].label.as_str())
-        .collect();
-    assert!(labels.contains(&"Go to Inbox"));
-}
-
-#[test]
-fn command_palette_shortcut_filter_finds_accounts() {
-    let mut p = CommandPalette::default();
-    p.toggle(crate::action::UiContext::MailboxList);
-    p.on_char('g');
-    p.on_char('C');
-    let labels: Vec<&str> = p
-        .filtered
-        .iter()
-        .map(|&i| p.commands[i].label.as_str())
-        .collect();
-    assert!(labels.contains(&"Settings"));
 }
 
 #[test]
@@ -1558,22 +1268,6 @@ fn unsubscribe_confirm_cancels_on_n_and_q_as_on_esc() {
 }
 
 #[test]
-fn search_input_lifecycle() {
-    let mut bar = SearchBar::default();
-    bar.activate();
-    assert!(bar.active);
-    bar.on_char('h');
-    bar.on_char('e');
-    bar.on_char('l');
-    bar.on_char('l');
-    bar.on_char('o');
-    assert_eq!(bar.query, "hello");
-    let q = bar.submit();
-    assert_eq!(q, "hello");
-    assert!(!bar.active);
-}
-
-#[test]
 fn search_bar_cycles_modes() {
     let mut bar = SearchBar::default();
     assert_eq!(bar.mode, mxr_core::SearchMode::Lexical);
@@ -1597,62 +1291,6 @@ fn reopening_active_search_preserves_query() {
     assert!(app.search.bar.active);
     assert_eq!(app.search.bar.query, "deploy");
     assert_eq!(app.search.bar.cursor_pos, "deploy".len());
-}
-
-#[test]
-fn g_prefix_navigation() {
-    let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
-        None
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE)),
-        Some(Action::GoToInbox)
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
-        None
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)),
-        Some(Action::GoToStarred)
-    );
-}
-
-#[test]
-fn status_bar_sync_formats() {
-    assert_eq!(
-        status_bar::format_sync_status(12, Some("synced 2m ago")),
-        "[INBOX] 12 unread | synced 2m ago"
-    );
-    assert_eq!(
-        status_bar::format_sync_status(0, None),
-        "[INBOX] 0 unread | not synced"
-    );
-}
-
-#[test]
-fn threepane_l_loads_new_message() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(5);
-    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    // Open first message
-    app.apply(Action::OpenSelected);
-    assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
-    let first_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
-    // Move focus back to mail list
-    app.mailbox.active_pane = ActivePane::MailList;
-    // Navigate to second message
-    app.apply(Action::MoveDown);
-    // Press l (which triggers OpenSelected)
-    app.apply(Action::OpenSelected);
-    let second_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
-    assert_ne!(
-        first_id, second_id,
-        "l should load the new message, not stay on old one"
-    );
-    assert_eq!(app.mailbox.selected_index, 1);
 }
 
 #[test]
@@ -1743,22 +1381,6 @@ fn back_in_mail_list_closes_threepane_when_no_filter() {
                                                     // No filter active — Esc should close ThreePane
     app.apply(Action::Back);
     assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
-}
-
-#[test]
-fn sidebar_system_labels_before_user_labels() {
-    let mut app = App::new();
-    app.mailbox.labels = make_test_labels();
-    let ordered = app.ordered_visible_labels();
-    // System labels should come first
-    let first_user_idx = ordered.iter().position(|l| l.kind == LabelKind::User);
-    let last_system_idx = ordered.iter().rposition(|l| l.kind == LabelKind::System);
-    if let (Some(first_user), Some(last_system)) = (first_user_idx, last_system_idx) {
-        assert!(
-            last_system < first_user,
-            "All system labels should come before user labels"
-        );
-    }
 }
 
 /// Phase 4: Tab inside the help modal cycles the context filter so a

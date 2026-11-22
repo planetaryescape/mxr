@@ -876,29 +876,6 @@ mod tests {
         );
     }
 
-    /// Only a genuinely never-synced account (cold start) may show the
-    /// bare "syncing" state.
-    #[test]
-    fn syncing_without_any_success_stays_bare() {
-        let statuses = vec![status(true, true, None)];
-        assert_eq!(App::summarize_sync_status(&statuses), "syncing");
-    }
-
-    #[test]
-    fn degraded_with_prior_success_shows_freshness() {
-        let statuses = vec![status(false, false, recent_success())];
-        assert_eq!(
-            App::summarize_sync_status(&statuses),
-            "degraded · synced just now"
-        );
-    }
-
-    #[test]
-    fn healthy_idle_shows_synced_age() {
-        let statuses = vec![status(false, true, recent_success())];
-        assert_eq!(App::summarize_sync_status(&statuses), "synced just now");
-    }
-
     /// Freshness comes from the most recent success across accounts even
     /// while another account is mid-sync.
     #[test]

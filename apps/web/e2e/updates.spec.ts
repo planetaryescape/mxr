@@ -82,6 +82,8 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
   await expect(
     page.locator(`[data-testid="update-line"][data-line-id="${rowId}"]`),
   ).not.toHaveAttribute("data-unread", "true");
+  await expect(page.getByTestId("updates-let-go-all")).toBeVisible();
+  await expect(page.locator('html[data-keys-ready="true"]')).toBeAttached();
   await page.keyboard.press("E");
   const dialog = page.getByTestId("updates-let-go-dialog");
   await expect(dialog).toContainText(

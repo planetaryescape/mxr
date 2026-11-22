@@ -1,8 +1,3 @@
-//! The thread's context above the messages, from the daemon's
-//! `GetThreadContext` and `GetThreadGist`. The words come from
-//! `crate::thread_context_rows`, shared with `mxr briefing context`; this
-//! only styles them.
-
 use crate::theme::Theme;
 use crate::thread_context_rows::{context_rows, ContextRowKind};
 use chrono::{DateTime, Utc};
@@ -10,7 +5,6 @@ use mxr_protocol::{ThreadContextData, ThreadGistData};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
-/// Label column width, so the values line up like `mxr briefing context`.
 const LABEL_WIDTH: usize = 10;
 
 pub fn context_lines(

@@ -1,8 +1,3 @@
-//! Focus & reply in the TUI: `g F` opens the web's queue (the desk's You
-//! owe lane, then the reply-later queue), `j` skips, `e` is the desk's Done
-//! with undo, `b` puts it off, `r` writes the reply and its own send moves
-//! on, and Esc or `q` goes back to where it was opened.
-
 use super::*;
 use crate::app::{FocusSource, PendingUndo, UndoAction};
 use mxr_protocol::{DeskDoneItemData, DeskLaneData, DeskLaneKind, DeskRowData, PeopleSplitData};
@@ -52,8 +47,6 @@ fn owed_row(name: &str) -> DeskRowData {
     }
 }
 
-/// Focus & reply open from Now on two owed conversations and two
-/// reply-later messages, one of them a conversation already owed.
 fn focus_app() -> (App, Vec<DeskRowData>, Vec<Envelope>) {
     let mut app = App::new();
     app.apply(Action::OpenNow);
@@ -115,7 +108,6 @@ fn g_capital_f_opens_the_webs_queue_in_its_order() {
         .reason
         .starts_with("Replied to your message \u{b7} 2d"));
     assert_eq!(page.others, 1);
-    // Its newest message is fetched to show.
     assert!(app
         .mailbox
         .queued_body_fetches
@@ -134,7 +126,6 @@ fn j_skips_to_the_end_and_e_puts_it_away_with_undo() {
     );
 
     press(&mut app, KeyCode::Char('e'));
-    // The desk's Done, with the web's lane.
     assert!(matches!(
         queued(&app).as_slice(),
         [Request::ResolveDeskItems { items, dry_run: false }]
@@ -147,7 +138,6 @@ fn j_skips_to_the_end_and_e_puts_it_away_with_undo() {
     assert_eq!(current_thread(&app), Some(later[0].thread_id.clone()));
     assert_eq!(app.mailbox.focus_page.progress().done, 1);
 
-    // `u` once the daemon offers the undo: back in front after it lands.
     app.pending_mutation_queue.clear();
     app.pending_undo = Some(PendingUndo {
         action: UndoAction::Mutations(vec!["done-1".into()]),
@@ -202,10 +192,8 @@ fn send_and_next_moves_on_only_for_the_reply_written_here() {
             preloaded: None,
         })
     );
-    // While the reply opens, j and e wait.
     press(&mut app, KeyCode::Char('j'));
     assert_eq!(current_thread(&app), Some(owed[0].thread_id.clone()));
-    // The runner opens the editor when ComposeReady arrives.
     app.compose.pending_compose = None;
     app.note_focus_compose(DraftIntent::Reply, std::path::Path::new("/tmp/focus-1.md"));
 
@@ -215,7 +203,6 @@ fn send_and_next_moves_on_only_for_the_reply_written_here() {
         sent_message_id: Some(MessageId::new()),
         draft_path: path.map(std::path::PathBuf::from),
     };
-    // Another send, and one with no compose file, leave it on screen.
     app.apply_mutation_completion(sent(Some("/tmp/other.md")), true);
     app.apply_mutation_completion(sent(None), true);
     assert_eq!(current_thread(&app), Some(owed[0].thread_id.clone()));
@@ -232,7 +219,6 @@ fn send_and_next_moves_on_only_for_the_reply_written_here() {
 #[test]
 fn remind_and_d_open_the_reply_with_the_reminder_or_the_writing_model_after() {
     let (mut app, owed, _later) = focus_app();
-    // w is Wake now: it says where Send, remind went and runs nothing.
     let before = app.status_message.clone();
     press(&mut app, KeyCode::Char('w'));
     assert!(!app.compose.remind_after_editor);
@@ -268,7 +254,6 @@ fn b_puts_off_the_conversation_on_screen() {
             message_id: owed[0].message_id.clone()
         })
     );
-    // Enter on Later, the first row: reply later, and the next one is up.
     press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),

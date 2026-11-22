@@ -1,10 +1,3 @@
-//! Behavior tests for the type-ahead search debounce.
-//!
-//! Each keystroke should defer the actual search by a short window so a
-//! burst of typing produces ONE query, not one per keystroke. When the
-//! window elapses, `tick()` flushes the pending debounce into a real
-//! search request.
-
 use std::time::{Duration, Instant};
 
 use chrono::{TimeZone, Utc};
@@ -21,8 +14,6 @@ fn schedule_debounce(app: &mut App, query: &str, due_at: Instant) {
         session_id,
         due_at,
     });
-    // The debouncer also ticks the page query so the rendered search
-    // bar mirrors the in-flight intent.
     app.search.page.query = query.to_string();
 }
 
@@ -136,17 +127,10 @@ fn search_result_envelope(slug: &str) -> Envelope {
     }
 }
 
-/// Phase 1.4 regression: clearing the search input (or executing search
-/// against an empty query) must wipe the workspace so the previous
-/// query's results cannot linger as stale UI. The user's contract is
-/// "empty input = no results" — anything else lies about what's being
-/// shown.
 #[test]
 fn empty_query_clears_results() {
     let mut app = App::new();
 
-    // Simulate a prior search session: one stored result, a non-trivial
-    // status, and a leftover debounce timer.
     app.search.page.query.clear();
     app.search
         .page

@@ -1,10 +1,3 @@
-//! Slice 2.3 of docs/reference/ai-email.md
-//!
-//! Renders a list of `OwedReplyRowData` rows ordered by overdue
-//! score. The view is a pure render function; the surrounding
-//! sidebar/keybinding hook-up is incremental TUI plumbing that
-//! lives in `app/` once the lens state is wired through.
-
 use super::account_mark::AccountMarks;
 use super::desk_lens::short_duration;
 use mxr_protocol::{OwedReplyRowData, PeopleSplitData};
@@ -19,7 +12,6 @@ pub fn draw(
     account_marks: &AccountMarks,
     theme: &crate::theme::Theme,
 ) {
-    // Where the people who wrote to you but you don't write with are.
     let others = people.filter(|people| people.others > 0).map(|people| {
         let n = people.others;
         format!(
@@ -84,8 +76,6 @@ pub fn draw(
             Span::raw(format!("{:>7}  ", days_label(row.waiting_days))),
             Span::raw(format!("{:>7}  ", days_label(row.expected_days))),
         ];
-        // Rows without an account (an older daemon) keep the chip column's
-        // width, so the subjects still line up.
         match row
             .account_id
             .as_ref()
@@ -113,7 +103,6 @@ pub fn draw(
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-/// The desk's "47m", "5h", "3d": paces are often under a day.
 fn days_label(days: f64) -> String {
     short_duration((days * 86_400.0).round() as i64)
 }
@@ -171,7 +160,6 @@ mod tests {
         assert!(rendered.contains("Quick question"));
         assert!(rendered.contains("alice@example.com"));
         assert!(rendered.contains("bob@example.com"));
-        // Alice's overdue score is 5.0 (very overdue); Bob's ~0.29.
         assert!(rendered.contains("5.00") || rendered.contains("5.0"));
     }
 

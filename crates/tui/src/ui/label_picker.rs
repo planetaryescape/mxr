@@ -77,7 +77,6 @@ impl LabelPicker {
         }
     }
 
-    /// Returns the selected label's name, or None.
     pub fn confirm(&mut self) -> Option<String> {
         if let Some(&idx) = self.filtered.get(self.selected) {
             let name = self.labels[idx].name.clone();
@@ -185,13 +184,11 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker, theme: &crate::
         return;
     }
 
-    // Input line
     let input_area = Rect::new(inner.x, inner.y, inner.width, 1);
     let input_line = Paragraph::new(format!("> {}", picker.input))
         .style(Style::default().fg(theme.text_primary));
     frame.render_widget(input_line, input_area);
 
-    // Label list
     let list_area = Rect::new(
         inner.x,
         inner.y + 1,

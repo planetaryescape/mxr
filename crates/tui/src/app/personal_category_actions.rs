@@ -371,7 +371,6 @@ impl App {
             }
             return true;
         }
-        // It opens on Keep, so a bare Enter deletes nothing.
         if state.delete_preview.is_some() {
             match state.delete_choice.key(key.code) {
                 crate::app::ConfirmKey::Keep => state.delete_preview = None,
@@ -497,7 +496,6 @@ impl App {
                 state.input.clear();
                 state.filtering = true;
             }
-            // c creates what this place holds: a category.
             (KeyCode::Char('c'), KeyModifiers::NONE)
                 if matches!(
                     state.surface,
@@ -520,7 +518,6 @@ impl App {
                     state.error = None;
                 }
             }
-            // `#` deletes, after the daemon's preview.
             (KeyCode::Char('#'), _) if state.surface == Some(CategorySurface::Catalog) => {
                 if let Some(category) = state.selected_category() {
                     self.pending_category_requests.push((

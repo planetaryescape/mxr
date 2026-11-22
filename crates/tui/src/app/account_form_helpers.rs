@@ -5,12 +5,6 @@ impl App {
         self.selected_account().and_then(account_summary_to_config)
     }
 
-    /// Phase 2.3: returns the account-level sync health captured by the
-    /// most recent `GetDoctorReport` / `GetStatus` snapshot. Used by the
-    /// accounts page renderer to mark unhealthy rows and by the input
-    /// handler to context-route the `r` keybinding to repair vs.
-    /// refresh. Health data flows in via `apply_status_snapshot`, so
-    /// the TUI doesn't need an extra IPC call.
     pub fn account_sync_status(
         &self,
         account: &mxr_protocol::AccountSummaryData,

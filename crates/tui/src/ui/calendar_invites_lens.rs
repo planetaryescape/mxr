@@ -1,11 +1,3 @@
-//! Calendar-invites lens: a dedicated list of every detected calendar
-//! invite across accounts, with inline RSVP. Entries are loaded via
-//! `Request::ListInvites` (the dedicated `calendar_invites` store table),
-//! so rows are event-centric — summary, when, organizer, and the viewer's
-//! RSVP status — rather than plain message envelopes.
-//!
-//! This is the groundwork surface for future calendar/event features.
-
 use mxr_core::types::CalendarPartstat;
 use mxr_protocol::CalendarInviteData;
 use ratatui::prelude::*;
@@ -52,7 +44,6 @@ pub fn draw(
         return;
     }
 
-    // Reserve the last row for the keybinding hint footer.
     let footer_height = 1u16;
     let list_height = inner.height.saturating_sub(footer_height) as usize;
 
@@ -71,7 +62,6 @@ pub fn draw(
         Span::styled("RSVP", Style::default().fg(theme.text_muted)),
     ])];
 
-    // Window the rows around the selection (header consumes one line).
     let visible_rows = list_height.saturating_sub(1).max(1);
     let start = view.scroll_offset.min(view.entries.len().saturating_sub(1));
     let end = (start + visible_rows).min(view.entries.len());
@@ -170,8 +160,6 @@ fn rsvp_label(invite: &CalendarInviteData, theme: &crate::theme::Theme) -> (Stri
     }
 }
 
-/// Best-effort friendly rendering of an iCalendar DTSTART value. Falls back
-/// to the raw string (truncated) when the value isn't a recognized form.
 fn format_when(starts_at: Option<&str>) -> String {
     let Some(raw) = starts_at.map(str::trim).filter(|s| !s.is_empty()) else {
         return "—".to_string();
@@ -263,7 +251,6 @@ mod tests {
         assert!(rendered.contains("1:1 w/ Bob"));
         assert!(rendered.contains("Accepted"));
         assert!(rendered.contains("Alice"));
-        // DTSTART formatted to a friendly form.
         assert!(rendered.contains("14:00"));
     }
 

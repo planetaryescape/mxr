@@ -1,14 +1,3 @@
-//! Focus & reply's queue: everyone you owe a reply, one conversation per
-//! entry, in the web app's order and with its rules
-//! (`apps/web/src/features/focus/focusQueue.ts`). The desk's You owe lane
-//! comes first, then the reply-later queue, skipping conversations already
-//! listed.
-//!
-//! The order is fixed when the page opens, so a refetch never reshuffles
-//! what's next; new arrivals join the end; handled conversations never come
-//! back unless their Done is undone; the one on screen stays put even if a
-//! refetch drops it (you may be halfway through the reply).
-
 use crate::app::MutationId;
 use mxr_core::{AccountId, MessageId, ThreadId};
 use std::collections::HashMap;
@@ -16,37 +5,27 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusSource {
-    /// The desk's You owe lane.
     Owed,
-    /// The reply-later queue.
     ReplyLater,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FocusItem {
     pub thread_id: ThreadId,
-    /// The message a reply answers: the newest from them.
     pub message_id: MessageId,
     pub account_id: AccountId,
     pub sender: String,
     pub subject: String,
-    /// Why it is here, in the daemon's words.
     pub reason: String,
     pub source: FocusSource,
 }
 
-/// The reply the page opened, so only its own send moves the queue on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FocusReply {
     pub thread_id: ThreadId,
-    /// Its compose file, once the editor opens. A source message without a
-    /// Message-ID header gives nothing else to match the send on.
     pub draft: Option<PathBuf>,
 }
 
-/// Where `Esc` goes back to: the view Focus & reply was opened from, as
-/// it was. Opening Focus & reply leaves the list's label and rows alone, so
-/// putting these back is enough.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FocusReturn {
     pub view: super::MailboxView,
@@ -58,42 +37,24 @@ pub struct FocusReturn {
 
 #[derive(Debug, Default)]
 pub struct FocusPageState {
-    /// Every conversation seen this session, by thread.
     pub items: HashMap<ThreadId, FocusItem>,
-    /// Still to do, in order; the first is on screen.
     pub queue: Vec<ThreadId>,
-    /// Sent or put away, in the order handled.
     pub handled: Vec<ThreadId>,
-    /// Skipped when nothing else was left: set aside until you come back.
     pub deferred: Vec<ThreadId>,
-    /// The sources have answered at least once.
     pub loaded: bool,
-    /// Opened from the desk: its You owe lane only, as the web's desk
-    /// opens it.
     pub owed_only: bool,
-    /// Owed conversations beyond what the lane returned.
     pub more: u32,
-    /// People who wrote to you and wait in Messages, not here.
     pub others: u32,
-    /// A source that failed. Nothing is ever called finished on it.
     pub error: Option<String>,
     pub pending_refresh: bool,
-    /// The conversation to put on screen once it is in the queue (the reply
-    /// queue's `F` names one).
     pub start_at: Option<ThreadId>,
     pub reply: Option<FocusReply>,
-    /// The newest message's text for the one on screen, reader-cleaned
-    /// once when it arrives (cleaning HTML can run an external command).
     pub body: Option<(MessageId, String)>,
-    /// Done requests in flight, so a failure puts the conversation back.
     pub pending_done: HashMap<MutationId, ThreadId>,
-    /// The last conversation put away with Done, while `u` can undo it.
     pub undoable_done: Option<ThreadId>,
     pub return_to: Option<FocusReturn>,
 }
 
-/// "2 of 5": the position of the one on screen, the session's size, and how
-/// many are handled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FocusProgress {
     pub position: usize,
@@ -102,7 +63,6 @@ pub struct FocusProgress {
 }
 
 impl FocusPageState {
-    /// A fresh session: what an earlier visit handled can come back.
     pub fn start(
         start_at: Option<ThreadId>,
         owed_only: bool,
@@ -131,8 +91,6 @@ impl FocusPageState {
         }
     }
 
-    /// The sources answered: keep the order, add arrivals at the end, and
-    /// drop what left the sources except the one on screen.
     pub fn sync(&mut self, items: Vec<FocusItem>) {
         let current = self.queue.first().cloned();
         let in_source: std::collections::HashSet<ThreadId> =
@@ -154,8 +112,6 @@ impl FocusPageState {
         }
     }
 
-    /// The one on screen goes to the end. The last one left is set aside
-    /// rather than shown again.
     pub fn skip(&mut self) {
         if self.queue.is_empty() {
             return;
@@ -168,7 +124,6 @@ impl FocusPageState {
         }
     }
 
-    /// Bring the set-aside conversations back into the queue.
     pub fn revisit(&mut self) {
         self.queue.append(&mut self.deferred);
     }
@@ -180,7 +135,6 @@ impl FocusPageState {
         }
     }
 
-    /// Back in front: its Done was undone or failed.
     pub fn restore(&mut self, thread_id: &ThreadId) {
         if let Some(index) = self.handled.iter().position(|id| id == thread_id) {
             let id = self.handled.remove(index);
@@ -188,7 +142,6 @@ impl FocusPageState {
         }
     }
 
-    /// Put a queued conversation on screen.
     pub fn front(&mut self, thread_id: &ThreadId) {
         if let Some(index) = self.queue.iter().position(|id| id == thread_id) {
             let id = self.queue.remove(index);
@@ -239,8 +192,6 @@ mod tests {
         let mut page = loaded(&items);
         page.handled(&items[0].thread_id);
         let arrival = item(4);
-        // The source still lists the handled one (it hasn't caught up) and
-        // no longer lists the one on screen.
         page.sync(vec![items[0].clone(), items[2].clone(), arrival.clone()]);
         assert_eq!(
             page.queue,

@@ -1,12 +1,3 @@
-//! Sorting shows its work in the TUI (D119): `X` takes an email out of its
-//! mode through one picker (a lowercase letter moves the email, a capital
-//! its sender), `P` opens the sender's half of it, Now's Not-sure questions
-//! and new senders answer through the same picker, "Always for this
-//! sender?" follows a move, and Enter on the arrivals line lists the emails
-//! behind it. Every move is `MoveMessage`, so the daemon stores the
-//! correction and `u` undoes it exactly (`UndoMove`); a new sender's answer
-//! is `SetSenderKind`, as its digits used to send.
-
 use super::input::plain_or_shift;
 use super::*;
 use crate::app::state::{
@@ -17,8 +8,6 @@ use mxr_protocol::{
     MoveOutcomeData, SenderKindData,
 };
 
-/// A new sender's answer in the move menu: the capital of the mode's `g`
-/// letter, and `D` for Block (chapter 22's screen-out letter).
 pub(crate) const fn new_sender_key(kind: SenderKindData) -> char {
     match kind {
         SenderKindData::People => 'M',
@@ -28,8 +17,6 @@ pub(crate) const fn new_sender_key(kind: SenderKindData) -> char {
     }
 }
 
-/// The move menu's keys: the mode's `g` letter. Shift on m, u and r sets
-/// the sender's mode instead.
 pub(crate) const MOVE_CHOICES: [(char, ModeKindData); 5] = [
     ('m', ModeKindData::Messages),
     ('x', ModeKindData::Todo),
@@ -38,8 +25,6 @@ pub(crate) const MOVE_CHOICES: [(char, ModeKindData); 5] = [
     ('e', ModeKindData::Archive),
 ];
 
-/// A sender's mail can only go to Messages, Updates or Reading; To do and
-/// Archive add one email there.
 pub(crate) const fn sender_mode(mode: ModeKindData) -> bool {
     matches!(
         mode,
@@ -47,7 +32,6 @@ pub(crate) const fn sender_mode(mode: ModeKindData) -> bool {
     )
 }
 
-/// The toast after a move: the daemon's copy, then its sender question.
 pub(crate) fn move_status(outcome: &MoveOutcomeData, not_sure: bool) -> String {
     let copy = crate::ui::sanitize::one_line(&outcome.copy);
     if not_sure && !outcome.sender && sender_mode(outcome.to) {
@@ -59,7 +43,6 @@ pub(crate) fn move_status(outcome: &MoveOutcomeData, not_sure: bool) -> String {
     }
 }
 
-/// Inbox's quiet mode word for a row: "Reading", "Spam".
 pub(crate) fn chip_label(item: &ArrivalItemData) -> &'static str {
     match item.bucket.mode() {
         Some(mode) => mode.name(),
@@ -97,7 +80,6 @@ impl App {
         }
     }
 
-    /// The email a move acts on, and who sent it, wherever the cursor is.
     fn move_target(&self) -> Option<(MessageId, String)> {
         let name = |name: Option<&String>, email: &str| {
             name.filter(|name| !name.trim().is_empty())
@@ -146,7 +128,6 @@ impl App {
             };
         }
         if self.updates_list_focused() {
-            // A source line stands for its newest email.
             let UpdatesRow::Line(line) = self.selected_updates_row()? else {
                 return None;
             };
@@ -188,8 +169,6 @@ impl App {
         })
     }
 
-    /// The mode the email `X` moves is in now, as the place it was opened
-    /// from shows it: the menu marks that option, as the web's does.
     fn move_here(&self) -> Option<ModeKindData> {
         if self.now_list_focused() {
             return match self.selected_now_row()? {
@@ -244,7 +223,6 @@ impl App {
             new_sender,
             selected: 0,
         };
-        // Keeping a Not-sure email where it is answers too: start there.
         if let Some(current) = not_sure {
             menu.selected = menu
                 .options()
@@ -255,8 +233,6 @@ impl App {
         self.mailbox.trust.move_menu = Some(menu);
     }
 
-    /// `P`: answers a move's "Always for this sender?" while it shows,
-    /// else opens the menu for the sender's mode.
     fn open_sender_move_menu(&mut self) {
         if let Some(ask) = self.mailbox.trust.sender_ask.take() {
             self.queue_move(ask.message_id, ask.mode, true, false);
@@ -285,8 +261,6 @@ impl App {
         self.queue_move(menu.message_id, mode, sender, menu.not_sure);
     }
 
-    /// A new sender's answer from the menu: the sender's kind, remembered
-    /// for their future mail (what keys 1 to 4 sent).
     fn answer_new_sender_from_menu(&mut self, kind: SenderKindData) {
         let Some(menu) = self.mailbox.trust.move_menu.take() else {
             return;
@@ -313,7 +287,6 @@ impl App {
         );
     }
 
-    /// Asked once, in the status line, after a Not-sure answer.
     fn ask_always_for_sender(&mut self, message_id: MessageId, mode: ModeKindData) {
         self.mailbox.trust.sender_ask = Some(SenderAsk {
             message_id,
@@ -345,7 +318,6 @@ impl App {
         } else {
             format!("Moving to {}...", mode.name())
         };
-        // The runner replaces the effect's words with the daemon's copy.
         self.queue_mutation(
             Request::MoveMessage {
                 message_id,
@@ -368,8 +340,6 @@ impl App {
         }
     }
 
-    /// A move landed: remember its sender question while it shows, and
-    /// teach `X` and `P` on the first one.
     pub(crate) fn after_move(&mut self, outcome: &MoveOutcomeData, not_sure: bool) {
         if outcome.ask_sender.is_some() && !not_sure {
             self.mailbox.trust.sender_ask = Some(SenderAsk {
@@ -388,14 +358,12 @@ impl App {
         self.refetch_arrivals_list();
     }
 
-    /// The runtime fetched the arrivals line.
     pub(crate) fn set_arrivals(&mut self, arrivals: ArrivalsData) {
         let before = self.mailbox.now_page.arrivals_rows().len();
         let first_question = !arrivals.not_sure.is_empty();
         let hint = arrivals.not_sure_hint.clone();
         self.mailbox.now_page.arrivals = Some(arrivals);
         let after = self.mailbox.now_page.arrivals_rows().len();
-        // Keep the cursor on the row it was on as the line's rows come and go.
         if self.mailbox.mailbox_view == MailboxView::Now && self.mailbox.selected_index >= before {
             self.mailbox.selected_index =
                 (self.mailbox.selected_index + after).saturating_sub(before);
@@ -409,7 +377,6 @@ impl App {
         }
     }
 
-    /// The open arrivals list asks again, for the bucket it shows.
     fn refetch_arrivals_list(&mut self) {
         let bucket = self
             .mailbox
@@ -422,7 +389,6 @@ impl App {
         }
     }
 
-    /// The emails behind the line, one bucket at a time.
     fn open_arrivals_list(&mut self, bucket: Option<ArrivalBucketData>) {
         let Some(arrivals) = self.mailbox.now_page.arrivals.as_ref() else {
             return;
@@ -452,7 +418,6 @@ impl App {
         });
     }
 
-    /// A list came back; one for a bucket no longer shown is dropped.
     pub(crate) fn set_arrivals_list(&mut self, fetch: &ArrivalsListFetch, list: ArrivalListData) {
         let Some(state) = self.mailbox.trust.arrivals_list.as_mut() else {
             return;
@@ -464,8 +429,6 @@ impl App {
         state.list = Some(list);
     }
 
-    /// Ask for the chips of the mail list rows on screen. Cheap when
-    /// nothing changed: the window is only re-read when it moves.
     pub(crate) fn request_visible_chips(&mut self) {
         if self.screen != Screen::Mailbox
             || self.search.active
@@ -498,7 +461,6 @@ impl App {
         }
     }
 
-    /// The full chip of the selected Inbox row, for the list's title.
     pub(crate) fn selected_mode_chip(&self) -> Option<&str> {
         if self.mailbox.mailbox_view != MailboxView::Messages {
             return None;
@@ -511,7 +473,6 @@ impl App {
             .map(|item| item.chip.as_str())
     }
 
-    /// Where mail sits changed in some client: refetch what shows it.
     pub(crate) fn modes_changed(&mut self) {
         self.mailbox.trust.clear_chips();
         self.refresh_now();
@@ -526,9 +487,6 @@ impl App {
         self.refetch_arrivals_list();
     }
 
-    /// Keys while the move menu is open (D168): each option's letter picks
-    /// it, `j`/`k` move the highlight and Enter runs it, Esc or `q` closes.
-    /// Everything else is swallowed.
     pub(super) fn move_menu_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let menu = self.mailbox.trust.move_menu.as_mut()?;
         let options = menu.options();
@@ -550,7 +508,6 @@ impl App {
             }
             KeyCode::Enter => *options.get(menu.selected)?,
             KeyCode::Char(c) if plain_or_shift(key.modifiers) => {
-                // The sender's menu takes its letters in either case.
                 let c = if menu.sender_only {
                     c.to_ascii_uppercase()
                 } else {
@@ -570,7 +527,6 @@ impl App {
         })
     }
 
-    /// Keys while the arrivals list is open over Now.
     pub(super) fn arrivals_list_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let plain = key.modifiers == KeyModifiers::NONE;
         let shifted = plain_or_shift(key.modifiers);
@@ -601,9 +557,6 @@ impl App {
         }
     }
 
-    /// y or n while "Always for this sender? y/n" waits; Enter is y and Esc
-    /// is n (D168). Any other key drops the question and does what it
-    /// always does.
     pub(super) fn sender_ask_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let asking = self
             .mailbox

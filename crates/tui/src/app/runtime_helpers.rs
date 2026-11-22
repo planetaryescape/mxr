@@ -42,7 +42,6 @@ impl App {
                 freshness,
             });
         }
-        // Queue body prefetch for first visible window
         self.queue_body_window();
         Ok(())
     }
@@ -104,13 +103,6 @@ impl App {
         }
     }
 
-    /// Take a `GetStatus` reading into the diagnostics page.
-    ///
-    /// A degraded snapshot is not a reading: the daemon answered without
-    /// having read its database, so the counts and sync statuses in it are
-    /// blank rather than zero. Keep whatever was last known and record that
-    /// the daemon is too busy to say, instead of overwriting a real reading
-    /// with emptiness.
     pub(crate) fn apply_status_snapshot(&mut self, snapshot: StatusSnapshot) {
         if let Some(freshness) = snapshot.freshness {
             self.freshness = Some(freshness);
@@ -129,8 +121,6 @@ impl App {
         ));
     }
 
-    /// Keep the last recovery snapshot when status omits this optional field,
-    /// but invalidate previews whose owner can no longer be verified.
     pub(crate) fn apply_recovery_status_snapshot(
         &mut self,
         recovery: Option<mxr_core::RecoveryStatusData>,
@@ -187,8 +177,6 @@ impl App {
         if self.search_is_pending() {
             timeout = timeout.min(SEARCH_SPINNER_TICK);
         }
-        // A waiting prefix redraws when its guide is due, then once it has
-        // timed out so the guide and the "g …" hint go away.
         if let (Some(waited), Some(left)) =
             (self.input.prefix_waited(now), self.input.prefix_left(now))
         {
@@ -198,7 +186,6 @@ impl App {
                 .map_or(left, |wait| wait.min(left));
             timeout = timeout.min(wake + Duration::from_millis(1));
         }
-        // The assistant's running line counts the seconds.
         if self.assistant.open && self.assistant.running() {
             timeout = timeout.min(Duration::from_secs(1));
         }

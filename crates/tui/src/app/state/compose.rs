@@ -5,55 +5,27 @@ use mxr_core::{DraftIntent, MessageId};
 use mxr_protocol::{CalendarInviteActionData, ReplyContext};
 use std::collections::HashMap;
 
-/// Draft waiting for user confirmation after editor closes.
 #[derive(Debug, Clone)]
 pub struct PendingSend {
     pub account_id: AccountId,
-    /// Canonical draft revision this editor session was based on.
     pub draft_revision: Option<i64>,
     pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
     pub body: String,
     pub draft_path: std::path::PathBuf,
     pub intent: DraftIntent,
     pub mode: PendingSendMode,
-    /// Latest safety report, if a pre-send check has run.
     pub safety_report: Option<mxr_core::DraftSafetyReport>,
-    /// Why the pre-send safety check produced no report (daemon error,
-    /// dropped IPC worker, unexpected response). Rendered in the send
-    /// modal as "Safety check unavailable: …" so the failure isn't
-    /// silently indistinguishable from a clean run.
     pub safety_check_failed: Option<String>,
-    /// Single-use override token minted when the latest check
-    /// returned a Blocked verdict; consumed when the user confirms.
     pub override_token: Option<String>,
-    /// Slice 5.3 (C2.7 cont): "maybe include" suggestions returned
-    /// by `Request::SuggestCollaborators`. Rendered in the modal as
-    /// a discoverable list; the user can press [Ctrl-A] to add the
-    /// first one to Cc.
     pub suggested_collaborators: Vec<mxr_protocol::SuggestedRecipientData>,
-    /// Populated for the invite-reply-with-comment compose path. When set,
-    /// the resulting `Draft` carries the inline iCal REPLY payload so the
-    /// outbound builder emits the proper `multipart/alternative` MIME layout
-    /// and the daemon's post-send hook updates the local PARTSTAT.
     pub invite_reply: Option<InlineCalendarReply>,
-    /// The effective From resolved by the daemon (`Request::ResolveSendFrom`)
-    /// before the modal opens: the owned override, or the account primary when
-    /// `from:` was cleared. Shown in the confirm modal so the user sees exactly
-    /// which identity the message will send from. `None` only when the resolve
-    /// couldn't run (daemon unreachable), in which case the modal falls back to
-    /// the raw `from:` text.
     pub resolved_from: Option<mxr_core::types::Address>,
-    /// Set when the review is for a draft already in the daemon's store (a
-    /// resumed reply, or an edit from Drafts): the edits were saved to it
-    /// before the review opened, so sending, scheduling and saving act on
-    /// exactly this draft and revision, and editing again reopens it.
     pub stored_draft: Option<Box<mxr_core::Draft>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ComposeAssistReview {
     pub pending: PendingSend,
-    /// Proposals for this unchanged draft baseline, oldest first.
     pub proposals: Vec<mxr_protocol::ComposeProposalData>,
     pub proposal_models: Vec<Option<String>>,
     pub current_index: usize,
@@ -116,9 +88,6 @@ impl PendingSend {
         mxr_core::DraftId::from_provider_id("compose-file", &self.draft_path.to_string_lossy())
     }
 
-    /// True iff the latest safety check verdict is Blocked. Drives
-    /// the `[s] send` gate and the visibility of the `[O]
-    /// override` affordance in the modal.
     pub fn is_blocked(&self) -> bool {
         matches!(
             self.safety_report.as_ref().map(|r| r.verdict),
@@ -126,10 +95,6 @@ impl PendingSend {
         )
     }
 
-    /// The send review's lit option, which a bare Enter runs: Send, unless
-    /// the draft can't go as it is or the safety check found something (or
-    /// couldn't run), where it is Edit again. The web's send confirm opens
-    /// only in that second case, and on "Back to draft".
     pub fn opens_on_send(&self) -> bool {
         self.mode == PendingSendMode::SendOrSave
             && self.safety_check_failed.is_none()
@@ -147,9 +112,6 @@ pub enum PendingSendMode {
     Unchanged,
 }
 
-/// `r` or `a` in Messages on a conversation whose row names an unsent reply:
-/// the runtime asks the daemon for that conversation's reply draft
-/// (`EnsureReplyDraft`, the rule the web uses) and opens it for editing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplyDraftResume {
     pub message_id: mxr_core::MessageId,
@@ -169,10 +131,6 @@ pub enum ComposeAction {
     Reply {
         message_id: mxr_core::MessageId,
         account_id: AccountId,
-        /// Prewarmed reply context. When `Some`, `handle_compose_action`
-        /// skips the daemon `PrepareReply` IPC and uses this directly —
-        /// the "blazingly fast" path. Populated from `reply_context_cache`
-        /// at action-apply time when a prewarm has completed.
         preloaded: Option<ReplyContext>,
     },
     ReplyAll {
@@ -184,11 +142,6 @@ pub enum ComposeAction {
         message_id: mxr_core::MessageId,
         account_id: AccountId,
     },
-    /// Compose a comment on an iCal invite REPLY. `handle_compose_action`
-    /// dispatches `Request::PrepareInviteResponse`, gets the daemon-built
-    /// preview, and pre-fills To, Subject, and the inline
-    /// `text/calendar; method=REPLY` part. The user types a free-text comment
-    /// which becomes the `text/plain` alternative.
     InviteReplyWithComment {
         message_id: mxr_core::MessageId,
         account_id: AccountId,
@@ -196,20 +149,12 @@ pub enum ComposeAction {
     },
 }
 
-/// Cached reply contexts for a single message. Filled by the prewarm
-/// task that fires when a message becomes the viewing envelope.
 #[derive(Debug, Clone)]
 pub struct ReplyContextPair {
     pub reply: Option<ReplyContext>,
     pub reply_all: Option<ReplyContext>,
 }
 
-/// A compose action that the user invoked while a prewarm IPC for the
-/// same message was still in flight. We park it here instead of firing
-/// a duplicate `PrepareReply` IPC — the worker is serial and a duplicate
-/// would queue *behind* the in-flight prewarm, doubling the wait. When
-/// `ReplyContextWarmed` lands, we drain this into `pending_compose` with
-/// the freshly-cached context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeferredCompose {
     pub message_id: MessageId,
@@ -235,45 +180,25 @@ pub struct ComposeState {
     pub voice_source_request_id: u64,
     pub assist_request_id: u64,
     pub assist_after_editor: bool,
-    /// Open the send review on "remind me if nobody replies" once the
-    /// editor closes (Focus & reply's `w`).
     pub remind_after_editor: bool,
     pub model_picker: Option<ComposeModelPicker>,
     pub pending_send_at_input: Option<String>,
     pub pending_remind_at_input: Option<String>,
-    /// The send-at / remind prompt's previewed time and selected reading.
     pub pending_time: crate::ui::time_preview::TimePreview,
     pub compose_picker: ComposePicker,
-    /// Reply contexts prewarmed when the user opens a message, so
-    /// pressing `r`/`a` opens the editor without waiting on the daemon.
-    /// Dropped when the owner's addresses change (`invalidate_reply_contexts`);
-    /// the recipients a reply offers depend on them.
     pub reply_context_cache: HashMap<MessageId, ReplyContextPair>,
-    /// Bumped when the owned addresses change. A prewarm carries the generation
-    /// it started under, and its result is dropped when that generation is old.
     pub reply_context_generation: u64,
-    /// The message we last kicked off a prewarm for. Prevents firing
-    /// duplicate prewarm tasks every tick while the viewing envelope
-    /// stays the same.
     pub last_prewarmed_message_id: Option<MessageId>,
-    /// Reply/reply-all the user invoked while a prewarm was mid-flight
-    /// for the same message. The `ReplyContextWarmed` handler drains
-    /// this into `pending_compose` once the cache fills.
     pub deferred_compose: Option<DeferredCompose>,
 }
 
 impl ComposeState {
-    /// The owner's addresses changed, so every cached reply context may
-    /// name the wrong recipients. Prewarms still in flight are invalidated by
-    /// the generation bump.
     pub fn invalidate_reply_contexts(&mut self) {
         self.reply_context_cache.clear();
         self.last_prewarmed_message_id = None;
         self.reply_context_generation = self.reply_context_generation.wrapping_add(1);
     }
 
-    /// Cache a prewarm result, unless it started under an older generation.
-    /// Returns whether it was cached.
     pub fn cache_warmed_reply_context(
         &mut self,
         generation: u64,

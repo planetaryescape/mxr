@@ -1,9 +1,3 @@
-//! List-row gists in the TUI: what each conversation is about and what it
-//! asks of you, shown in place of the snippet (mail list) and under the
-//! row (desk). The same daemon request as the web (`GetThreadGists`): the
-//! rows on screen are asked for, cached gists come back at once, and the
-//! rest arrive as `ThreadGistReady` events.
-
 use super::{App, MailboxView};
 use mxr_core::id::ThreadId;
 use mxr_core::types::LabelKind;
@@ -14,24 +8,16 @@ use mxr_protocol::{
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-/// Rows past the cursor whose gists are asked for.
 const LOOKAHEAD: usize = 40;
-/// Rows before the cursor, for scrolling back up.
 const LOOKBEHIND: usize = 10;
-/// A row asked about isn't asked about again until this passes.
 const REQUEST_TTL: Duration = Duration::from_secs(60);
-/// At most one request this often, so holding `j` sends a handful.
 const MIN_INTERVAL: Duration = Duration::from_millis(300);
-/// With no model, stop asking for this long.
 const NO_MODEL_RECHECK: Duration = Duration::from_secs(5 * 60);
 
-/// One row's line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowGist {
     pub about: String,
-    /// The model's summary of the ask, when there is one.
     pub ask: Option<String>,
-    /// The list line, built once: rows are drawn every frame.
     line: String,
 }
 
@@ -60,7 +46,6 @@ impl RowGist {
         Self { about, ask, line }
     }
 
-    /// "asks: confirm the owner · Canary stays at 5%", ask first.
     pub fn line(&self) -> &str {
         &self.line
     }
@@ -68,32 +53,21 @@ impl RowGist {
 
 pub type RowGists = HashMap<ThreadId, RowGist>;
 
-/// Most rows remembered, shown or asked about; the oldest go first.
 const STATE_CAP: usize = 500;
 
 #[derive(Debug, Default)]
 pub struct RowGistState {
     pub gists: RowGists,
-    /// What the daemon last said about its model. The desk reserves a line
-    /// per row only when it is `Available`.
     pub model: Option<GistModelData>,
-    /// When each gist was stored, for dropping the oldest past the cap.
     stored: HashMap<ThreadId, u64>,
     stored_seq: u64,
     requested: HashMap<ThreadId, Instant>,
-    /// Bumped whenever shown gists may no longer hold: a request answered
-    /// from an older epoch is dropped, so it can't put back what an
-    /// invalidation took away.
     epoch: u64,
     off_until: Option<Instant>,
-    /// When rows were last gathered, sent or not: an idle list isn't
-    /// rebuilt on every pass of the event loop.
     last_look: Option<Instant>,
 }
 
 impl RowGistState {
-    /// Whether a request may go out now: not too soon after the last look,
-    /// and not while the daemon has no model. Check before gathering rows.
     pub fn due(&self, now: Instant) -> bool {
         !self.off_until.is_some_and(|until| now < until)
             && !self
@@ -101,18 +75,14 @@ impl RowGistState {
                 .is_some_and(|at| now.duration_since(at) < MIN_INTERVAL)
     }
 
-    /// Reserve a gist line under desk rows: the daemon has a usable model.
     pub fn lines_reserved(&self) -> bool {
         self.model == Some(GistModelData::Available)
     }
 
-    /// The epoch a request sent now belongs to.
     pub fn epoch(&self) -> u64 {
         self.epoch
     }
 
-    /// The ids to ask about now, in order, or `None` when there is nothing
-    /// new or it is too soon. Marks them asked.
     pub fn take_request(
         &mut self,
         candidates: impl IntoIterator<Item = ThreadId>,
@@ -157,8 +127,6 @@ impl RowGistState {
         Some(wanted)
     }
 
-    /// The answer to a request sent in `epoch` for `ids`. One from before
-    /// an invalidation is dropped, and its rows may be asked about again.
     pub fn apply_batch(
         &mut self,
         ids: &[ThreadId],
@@ -180,15 +148,12 @@ impl RowGistState {
         }
     }
 
-    /// A failed request: let the rows be asked about again.
     pub fn request_failed(&mut self, ids: &[ThreadId]) {
         for id in ids {
             self.requested.remove(id);
         }
     }
 
-    /// A gist from the daemon: an answer or a `ThreadGistReady` event. The
-    /// daemon only hands out gists for a conversation as it is now.
     pub fn put(&mut self, data: &ThreadGistData) {
         let Some(gist) = RowGist::from_data(data) else {
             return;
@@ -210,8 +175,6 @@ impl RowGistState {
         }
     }
 
-    /// New messages changed these conversations: drop their gists and let
-    /// their rows ask again. Answers already on their way are dropped.
     pub fn changed<'a>(&mut self, ids: impl IntoIterator<Item = &'a ThreadId>) {
         self.epoch += 1;
         for id in ids {
@@ -221,8 +184,6 @@ impl RowGistState {
         }
     }
 
-    /// Nothing shown can be trusted (missed or sampled events, a
-    /// reconnect): drop it all; the rows on screen ask again.
     pub fn invalidate_all(&mut self) {
         self.epoch += 1;
         self.gists.clear();
@@ -232,8 +193,6 @@ impl RowGistState {
 }
 
 impl App {
-    /// Thread ids of the rows around the cursor, cursor first, when the
-    /// current screen is a triage list (the desk, the inbox, a label).
     pub(crate) fn row_gist_candidates(&self) -> Vec<ThreadId> {
         let ids: Vec<ThreadId> = match self.mailbox.mailbox_view {
             MailboxView::Desk => self
@@ -265,7 +224,6 @@ impl App {
     }
 }
 
-/// From the cursor down, then just above it.
 fn around(ids: &[ThreadId], cursor: usize) -> Vec<ThreadId> {
     let cursor = cursor.min(ids.len());
     let below = ids.iter().skip(cursor).take(LOOKAHEAD);
@@ -376,7 +334,6 @@ mod tests {
         let start = Instant::now();
         let ids = state.take_request([a.clone(), b.clone()], start).unwrap();
         let epoch = state.epoch();
-        // A new message in `a` lands while the request is out.
         state.changed([&a]);
         let batch = ThreadGistBatchData {
             model: GistModelData::Available,

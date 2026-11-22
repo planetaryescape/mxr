@@ -1,12 +1,3 @@
-//! Focus & reply in the TUI (`g F`): everyone you owe a reply, one
-//! conversation at a time, with the web app's queue, keys and requests.
-//! The queue is the desk's You owe lane (`GetDesk`) then the reply-later
-//! queue (`ListReplyQueue`); Done is the desk's Done (`ResolveDeskItems`),
-//! Not now is the shared picker, and the reply is written in `$EDITOR`.
-//! Sending the reply written for the conversation on screen moves on to
-//! the next one; any other send, a failed one and a discarded one leave
-//! the queue where it is.
-
 use super::*;
 use crate::app::state::{FocusItem, FocusPageState, FocusReply, FocusReturn, FocusSource};
 use mxr_core::types::{DraftIntent, Envelope};
@@ -14,11 +5,8 @@ use mxr_core::ThreadId;
 use mxr_protocol::{DeskLaneData, DeskLaneKind, DeskRowData, PeopleSplitData};
 use std::path::Path;
 
-/// The whole You owe lane, as the web's Focus & reply asks for it.
 const FOCUS_LANE_LIMIT: u32 = 5000;
 
-/// The desk request Focus & reply sends. Shared by the runtime and its
-/// tests so they cannot drift.
 pub(crate) fn focus_desk_request() -> Request {
     Request::GetDesk {
         account_id: None,
@@ -26,19 +14,13 @@ pub(crate) fn focus_desk_request() -> Request {
     }
 }
 
-/// What a Focus & reply key writes after the editor closes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AfterEditor {
-    /// The send review, as for any reply.
     Review,
-    /// The review, asking when to remind you if nobody replies.
     Remind,
-    /// The writing model, to draft the reply in your voice.
     Draft,
 }
 
-/// The queue from both sources: You owe in the desk's order, then the
-/// reply-later queue in its order, each conversation once.
 pub(crate) fn build_focus_queue(owed: &[DeskRowData], reply_later: &[Envelope]) -> Vec<FocusItem> {
     let mut items: Vec<FocusItem> = Vec::new();
     let listed =
@@ -85,7 +67,6 @@ pub(crate) fn build_focus_queue(owed: &[DeskRowData], reply_later: &[Envelope]) 
     items
 }
 
-/// "Replied to your message · 2d · usually 4h", as the desk row reads.
 fn owed_reason(row: &DeskRowData) -> String {
     let mut chars = row.reason.chars();
     let reason: String = chars
@@ -109,27 +90,21 @@ impl App {
         }
     }
 
-    /// Keys on Focus & reply, from the key definition.
     pub(super) fn focus_page_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let defined = self.defined_key("focus", key);
         let action = self.run_defined_key(defined);
-        // A held `j` would spin through the queue faster than anyone reads it.
         if action == Some(Action::FocusSkip) && key.kind == crossterm::event::KeyEventKind::Repeat {
             return None;
         }
         action
     }
 
-    /// Focus & reply owns the keyboard.
     pub(crate) fn focus_page_focused(&self) -> bool {
         self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::Focus
             && self.mailbox.active_pane == ActivePane::MailList
     }
 
-    /// Open Focus & reply, with `start_at` on screen first when it is in
-    /// the queue. Every visit is a new session, as on the web: what an
-    /// earlier one skipped or set aside is back.
     pub(crate) fn open_focus(&mut self, start_at: Option<ThreadId>) {
         if self.focus_page_focused() && start_at.is_none() {
             return;
@@ -144,7 +119,6 @@ impl App {
                 scroll_offset: self.mailbox.scroll_offset,
             })
             .or_else(|| self.mailbox.focus_page.return_to.take());
-        // From the desk it works through the desk's You owe lane alone.
         let owed_only = return_to
             .as_ref()
             .is_some_and(|back| back.view == MailboxView::Desk);
@@ -156,7 +130,6 @@ impl App {
         self.status_message = None;
     }
 
-    /// `F` in the reply queue: Focus & reply, from the selected message.
     pub(super) fn focus_from_reply_queue(&mut self) {
         let queue = &self.modals.reply_queue;
         let start = queue
@@ -167,8 +140,6 @@ impl App {
         self.open_focus(start);
     }
 
-    /// The runtime fetched both sources. A failed one is reported and the
-    /// other still fills the queue; neither can prove nobody is waiting.
     pub(crate) fn set_focus_sources(
         &mut self,
         owed: Result<(DeskLaneData, PeopleSplitData), MxrError>,
@@ -200,7 +171,6 @@ impl App {
         self.focus_load_current();
     }
 
-    /// The conversation on screen shows its newest message from them.
     fn focus_load_current(&mut self) {
         let Some(message_id) = self
             .mailbox
@@ -217,7 +187,6 @@ impl App {
         }
     }
 
-    /// A body arrived: when it is the one on screen, clean it for reading.
     pub(super) fn focus_body_arrived(&mut self, message_id: &MessageId) {
         let wanted = self
             .mailbox
@@ -277,8 +246,6 @@ impl App {
         }
     }
 
-    /// A reply is about to open: a skip now would show one conversation
-    /// while the editor opens on another.
     fn focus_reply_opening(&self) -> bool {
         self.compose.pending_compose.is_some() || self.compose.deferred_compose.is_some()
     }
@@ -288,7 +255,6 @@ impl App {
             return;
         }
         let page = &mut self.mailbox.focus_page;
-        // At the end, `j` brings back the ones set aside.
         if page.queue.is_empty() {
             page.revisit();
         } else {
@@ -297,9 +263,6 @@ impl App {
         self.focus_load_current();
     }
 
-    /// Done, no reply needed: the desk's Done (archived, marked read and
-    /// off the desk until someone writes again). It leaves at once; `u`
-    /// undoes it, and a Done that fails puts it back in front.
     fn focus_done(&mut self) {
         if self.focus_reply_opening() {
             return;
@@ -327,7 +290,6 @@ impl App {
         self.focus_load_current();
     }
 
-    /// A Done that failed: back in front, so `e` retries it.
     pub(crate) fn focus_mutation_failed(&mut self, id: MutationId) {
         let page = &mut self.mailbox.focus_page;
         if let Some(thread_id) = page.pending_done.remove(&id) {
@@ -339,8 +301,6 @@ impl App {
         }
     }
 
-    /// `u` on Focus & reply right after a Done: once the daemon has put it
-    /// back, the conversation is back in front.
     pub(super) fn focus_undo_effect(&mut self, verb_past: &str) -> Option<MutationEffect> {
         if self.mailbox.mailbox_view != MailboxView::Focus || verb_past != "Done" {
             return None;
@@ -354,7 +314,6 @@ impl App {
         self.focus_load_current();
     }
 
-    /// Not now on the conversation on screen went through: it is handled.
     pub(super) fn focus_put_off(&mut self, message_id: &MessageId) {
         if self.mailbox.mailbox_view != MailboxView::Focus {
             return;
@@ -374,7 +333,6 @@ impl App {
         self.focus_load_current();
     }
 
-    /// What `b` acts on in Focus & reply: the newest message from them.
     pub(crate) fn focus_not_now_message(&self) -> Option<MessageId> {
         self.focus_page_focused()
             .then(|| self.mailbox.focus_page.current())
@@ -382,8 +340,6 @@ impl App {
             .map(|item| item.message_id.clone())
     }
 
-    /// Write the reply to the conversation on screen in `$EDITOR`. Only the
-    /// send written in this compose file moves the queue on.
     fn focus_reply(&mut self, after: AfterEditor) {
         if self.focus_reply_opening() {
             return;
@@ -404,8 +360,6 @@ impl App {
         self.status_message = Some(format!("Replying to {}", item.sender));
     }
 
-    /// The reply Focus & reply asked for is ready: remember its compose
-    /// file. Only the first reply to open after the key counts.
     pub(crate) fn note_focus_compose(&mut self, intent: DraftIntent, draft_path: &Path) {
         if let Some(reply) = self.mailbox.focus_page.reply.as_mut() {
             if reply.draft.is_none() && intent == DraftIntent::Reply {
@@ -414,8 +368,6 @@ impl App {
         }
     }
 
-    /// After a successful send: the next conversation is up if what went
-    /// out was written in the reply's compose file.
     pub(crate) fn advance_focus_after_send(&mut self, draft_path: Option<&Path>) {
         let page = &mut self.mailbox.focus_page;
         let Some(reply) = page.reply.as_ref() else {
@@ -431,7 +383,6 @@ impl App {
         self.focus_load_current();
     }
 
-    /// Back to where Focus & reply was opened from, as it was.
     fn leave_focus(&mut self) {
         let page = std::mem::take(&mut self.mailbox.focus_page);
         let Some(back) = page.return_to else {
@@ -443,7 +394,6 @@ impl App {
         self.mailbox.layout_mode = back.layout_mode;
         self.mailbox.selected_index = back.selected_index;
         self.mailbox.scroll_offset = back.scroll_offset;
-        // What was handled here may have left the view behind it.
         match back.view {
             MailboxView::Now => self.refresh_now(),
             MailboxView::People => self.refresh_messages(),

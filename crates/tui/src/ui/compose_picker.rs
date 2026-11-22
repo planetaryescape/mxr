@@ -8,7 +8,6 @@ pub enum ComposePickerMode {
     Subject,
 }
 
-/// A contact entry for autocomplete.
 #[derive(Debug, Clone)]
 pub struct Contact {
     pub name: String,
@@ -33,7 +32,6 @@ pub struct ComposePicker {
     pub contacts: Vec<Contact>,
     pub filtered: Vec<usize>,
     pub selected: usize,
-    /// Already-chosen recipients.
     pub recipients: Vec<String>,
     pub pending_to: String,
 }
@@ -81,7 +79,6 @@ impl ComposePicker {
 
     pub fn on_backspace(&mut self) {
         if self.mode == ComposePickerMode::To && self.input.is_empty() {
-            // Remove last recipient on backspace with empty input
             self.recipients.pop();
         } else {
             self.input.pop();
@@ -107,8 +104,6 @@ impl ComposePicker {
         }
     }
 
-    /// Add the selected contact (or raw input) to recipients.
-    /// Returns true if added, false if nothing to add.
     pub fn add_recipient(&mut self) -> bool {
         if self.mode != ComposePickerMode::To {
             return false;
@@ -116,7 +111,6 @@ impl ComposePicker {
         let email = if let Some(&idx) = self.filtered.get(self.selected) {
             self.contacts[idx].email.clone()
         } else if !self.input.is_empty() {
-            // Use raw input as email if no match selected
             self.input.clone()
         } else {
             return false;
@@ -131,10 +125,7 @@ impl ComposePicker {
         true
     }
 
-    /// Confirm all recipients. Returns the comma-separated recipient string.
-    /// Returns empty string if no recipients (user will fill in editor).
     pub fn confirm_to(&mut self) -> String {
-        // Add any remaining input as a recipient
         if !self.input.is_empty() {
             self.add_recipient();
         }
@@ -158,7 +149,6 @@ impl ComposePicker {
             .iter()
             .enumerate()
             .filter(|(_, c)| {
-                // Exclude already-selected recipients
                 if self.recipients.contains(&c.email) {
                     return false;
                 }

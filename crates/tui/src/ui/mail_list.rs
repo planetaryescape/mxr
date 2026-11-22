@@ -20,10 +20,7 @@ pub struct MailListView<'a> {
     pub mode: MailListMode,
     pub loading_message: Option<&'a str>,
     pub loading_throbber: Option<&'a throbber_widgets_tui::ThrobberState>,
-    /// Gist lines by conversation; a row with one shows it in place of the
-    /// snippet.
     pub row_gists: &'a RowGists,
-    /// Account chips for rows that mix accounts (blueprint 33).
     pub account_marks: &'a AccountMarks,
 }
 
@@ -70,18 +67,9 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         }
     }
 
-    // Compute the subject column's effective character width so
-    // `format_subject_line` can decide whether there's room for the
-    // snippet preview. Sum of fixed column widths + 9 inter-column
-    // spaces (Table::column_spacing(1) between 10 cells) + 2 border
-    // chars. The attachment chip widened to 8 to fit "📎 99K". The
-    // link chip is 2 chars (a single `🔗` glyph; the heavy tier uses a
-    // brighter color rather than a double glyph to keep the column narrow).
     let show_triage = view.rows.iter().any(|row| row.triage_verdict.is_some());
     let triage_width = if show_triage { 8 } else { 0 };
     let chip_width = view.account_marks.column_width() as u16;
-    // In a narrow list (Search's results beside the preview) a full-width
-    // sender column left the subject four characters; the sender gives way.
     let sender_width: u16 = if area.width < 100 { 14 } else { 22 };
     let fixed_columns_width = 4 + 1 + 2 + 2 + triage_width + sender_width + 8 + 8 + 2 + chip_width;
     let column_count: u16 = if show_triage { 10 } else { 9 } + u16::from(chip_width > 0);
@@ -103,25 +91,25 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         .collect();
 
     let mut widths = vec![
-        Constraint::Length(4), // line number
-        Constraint::Length(1), // unread indicator
-        Constraint::Length(2), // star
-        Constraint::Length(2), // list markers (unsubscribe/reply-later)
+        Constraint::Length(4),
+        Constraint::Length(1),
+        Constraint::Length(2),
+        Constraint::Length(2),
     ];
     if show_triage {
-        widths.push(Constraint::Length(8)); // triage verdict token
+        widths.push(Constraint::Length(8));
     }
     widths.extend([
-        Constraint::Length(sender_width), // sender
-        Constraint::Fill(1),              // subject (+ snippet preview)
+        Constraint::Length(sender_width),
+        Constraint::Fill(1), // subject (+ snippet preview)
     ]);
     if chip_width > 0 {
-        widths.push(Constraint::Length(chip_width)); // account chip, only when rows mix accounts
+        widths.push(Constraint::Length(chip_width));
     }
     widths.extend([
-        Constraint::Length(8), // date
-        Constraint::Length(8), // attachment chip ("📎 99K")
-        Constraint::Length(2), // link chip (`🔗` for Some / Heavy, blank for None)
+        Constraint::Length(8),
+        Constraint::Length(8),
+        Constraint::Length(2),
     ]);
 
     let table = Table::new(table_rows, widths)
@@ -138,10 +126,8 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         )
         .column_spacing(1);
 
-    // We use manual highlight via row styles since we handle scroll_offset ourselves
     frame.render_widget(table, area);
 
-    // Scrollbar
     if view.rows.len() > visible_height {
         let mut scrollbar_state =
             ScrollbarState::new(view.rows.len().saturating_sub(visible_height))
@@ -156,9 +142,6 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
     }
 }
 
-/// In thread aggregate mode with multiple messages, show `+N` beside the
-/// subject where N counts distinct participant addresses (normalized email,
-/// From/To/Cc union) excluding the representative message From address.
 fn thread_participation_chip(row: &MailListRow, mode: MailListMode) -> Option<String> {
     if mode != MailListMode::Threads {
         return None;
@@ -214,19 +197,16 @@ fn build_row<'a>(
         (false, false) => Style::default().fg(row_marker_fg),
     };
 
-    // Line number
     let line_num_cell = Cell::from(Span::styled(
         format!("{selection_marker}{:>3}", index + 1),
         line_number_style,
     ));
 
-    // Unread indicator
     let unread_cell = Cell::from(Span::styled(
         if is_unread { "N" } else { " " },
         Style::default().fg(row_fg).bold(),
     ));
 
-    // Star
     let star_cell = Cell::from(Span::styled(
         if is_starred { "★" } else { " " },
         Style::default().fg(row_fg),
@@ -242,11 +222,7 @@ fn build_row<'a>(
         triage_style(row.triage_verdict.as_deref(), row_fg, theme),
     ));
 
-    // Sanitize mail-controlled display fields at the render boundary.
     let safe_subject = strip_control_chars(&env.subject);
-    // A gist says what the conversation is about and asks; the snippet is
-    // the fallback, in the same place.
-    // In Snoozed the row says when it comes back, as the web's does.
     let wake_line = row
         .wake_at
         .map(|wake_at| format!("Back {}", format_wake_long(&wake_at)));
@@ -259,7 +235,6 @@ fn build_row<'a>(
     };
     let safe_snippet = strip_control_chars(snippet);
 
-    // Sender (with thread count badge)
     let (sender_text_raw, thread_count) = sender_parts(row, view.mode);
     let sender_text = strip_control_chars(&sender_text_raw).into_owned();
     let sender_spans: Vec<Span> = if let Some(count) = thread_count {
@@ -278,14 +253,11 @@ fn build_row<'a>(
     };
     let sender_cell = Cell::from(Line::from(sender_spans));
 
-    // Subject + participation chip (`+N` other participants per delight plan).
     let participation_chip = thread_participation_chip(row, view.mode);
     let chip_budget = participation_chip
         .as_ref()
         .map_or(0, |s| s.chars().count() + 1)
         + row.mode_chip.map_or(0, |mode| mode.chars().count() + 2);
-    // Remaining width goes to trailing snippet after " · "; format_subject_line
-    // allocates subject first, then snippet when there's room.
     let (subject_text, snippet_preview) = format_subject_line(
         safe_subject.as_ref(),
         safe_snippet.as_ref(),
@@ -301,7 +273,6 @@ fn build_row<'a>(
             Style::default().fg(theme.accent_dim),
         ));
     }
-    // Where the email went, quietly: no colour of its own.
     if let Some(mode) = row.mode_chip {
         subject_chunks.push(Span::styled(
             format!("  {mode}"),
@@ -318,14 +289,12 @@ fn build_row<'a>(
         Cell::from(Line::from(subject_chunks))
     };
 
-    // Date
     let date_str = match row.wake_at {
         Some(wake_at) => format_wake(&wake_at, &Utc::now()),
         None => format_date(&env.date),
     };
     let date_cell = Cell::from(Span::styled(date_str, Style::default().fg(row_muted_fg)));
 
-    // Attachment chip: paperclip + size readout when present.
     let attach_text = format_attachment_chip(
         env.has_attachments,
         u32::try_from(env.size_bytes).unwrap_or(u32::MAX),
@@ -336,9 +305,6 @@ fn build_row<'a>(
         Cell::from(Span::styled(attach_text, Style::default().fg(row_fg)))
     };
 
-    // Link chip: tri-state glyph driven by `Envelope::link_density()`.
-    // Heavy uses the accent color so newsletter-shaped mail stands out from
-    // ordinary link-bearing mail without claiming a second column.
     let link_cell = match env.link_density() {
         mxr_core::types::LinkDensity::None => {
             Cell::from(Span::styled("  ", Style::default().fg(row_fg)))
@@ -492,9 +458,6 @@ fn triage_style(verdict: Option<&str>, selected_fg: Color, theme: &Theme) -> Sty
 }
 
 fn sender_parts(row: &MailListRow, mode: MailListMode) -> (String, Option<usize>) {
-    // Reserve trailing chars in the 22-char sender column for the thread
-    // count badge (" ↔99" worst case = 4 chars + leading space). Without
-    // the reservation a long display name would visually collide with the badge.
     let max_width = match mode {
         MailListMode::Threads if row.message_count > 1 => 17,
         _ => 22,
@@ -518,9 +481,6 @@ fn format_date(date: &chrono::DateTime<Utc>) -> String {
     format_date_relative(date, &Utc::now())
 }
 
-/// When a snoozed row wakes, in the date column's eight characters: the
-/// time today, the weekday this week, else the date. A wake time already
-/// past is due on the snooze loop's next pass, so it reads "now".
 pub(crate) fn format_wake(wake_at: &chrono::DateTime<Utc>, now: &chrono::DateTime<Utc>) -> String {
     let ahead = wake_at.signed_duration_since(*now);
     if ahead.num_seconds() <= 0 {
@@ -541,7 +501,6 @@ pub(crate) fn format_wake(wake_at: &chrono::DateTime<Utc>, now: &chrono::DateTim
     }
 }
 
-/// The whole wake time for the row's snippet: "Fri 31 Oct, 09:00".
 pub(crate) fn format_wake_long(wake_at: &chrono::DateTime<Utc>) -> String {
     wake_at
         .with_timezone(&Local)
@@ -549,10 +508,6 @@ pub(crate) fn format_wake_long(wake_at: &chrono::DateTime<Utc>) -> String {
         .to_string()
 }
 
-/// Format a sender address for the inbox row. Prefers the display name
-/// when present and non-empty; otherwise falls back to the email
-/// address. Truncates to `max_width` characters with a trailing ellipsis
-/// when the text is longer.
 pub fn format_sender(address: &mxr_core::types::Address, max_width: usize) -> String {
     let raw = match address.name.as_deref() {
         Some(name) if !name.trim().is_empty() => name,
@@ -577,13 +532,6 @@ fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
     result
 }
 
-/// Format the attachment chip for the inbox row. Returns an empty string
-/// when there are no attachments, otherwise a paperclip glyph followed
-/// by a short size readout (`"📎 45K"`).
-///
-/// The size is the message's total size — a reasonable proxy for the
-/// attachment heft, since envelopes with attachments are dominated by
-/// attachment bytes.
 pub fn format_attachment_chip(has_attachments: bool, size_bytes: u32) -> String {
     if !has_attachments {
         return String::new();
@@ -603,14 +551,6 @@ fn format_byte_size(bytes: u32) -> String {
     }
 }
 
-/// Compose the subject line with an inline snippet preview, fit to
-/// `max_width` characters. Returns `(subject_text, Option<snippet_text>)`
-/// so the renderer can style each part differently (subject prominent,
-/// snippet dim).
-///
-/// The snippet is omitted entirely when the row doesn't have enough
-/// horizontal space to display something useful — preferring "no
-/// snippet" over "·" with one truncated character.
 pub fn format_subject_line(
     subject: &str,
     snippet: &str,
@@ -626,8 +566,6 @@ pub fn format_subject_line(
     if subject_chars >= max_width {
         return (truncate_with_ellipsis(subject, max_width), None);
     }
-    // Reserve room for the " · " separator (3 chars) plus a meaningful
-    // snippet head — at least 4 chars of snippet text.
     const SEPARATOR_WIDTH: usize = 3;
     const MIN_SNIPPET_WIDTH: usize = 4;
     let after_subject = max_width - subject_chars;
@@ -639,22 +577,9 @@ pub fn format_subject_line(
     (subject.to_string(), Some(snippet_text))
 }
 
-/// Format an email date relative to `now`. Used by the inbox row to give
-/// the user a "how long ago?" hint at a glance — a relative time ladder
-/// rather than a wall-clock or locale-formatted timestamp.
-///
-/// Ladder:
-/// - within the last minute: `"now"`
-/// - within the last hour: `"5m"`
-/// - within the last 24 hours: `"3h"`
-/// - within the last 7 days: short weekday name (`"Tue"`)
-/// - same year, older: month + day (`"Mar 4"`)
-/// - different year (or future date): month/day/year (`"03/04/23"`)
 pub fn format_date_relative(date: &chrono::DateTime<Utc>, now: &chrono::DateTime<Utc>) -> String {
     let elapsed = now.signed_duration_since(*date);
     if elapsed.num_seconds() < 0 {
-        // Future date — defer to absolute formatting; relative tense
-        // doesn't apply.
         return date.with_timezone(&Local).format("%m/%d/%y").to_string();
     }
     let seconds = elapsed.num_seconds();
@@ -936,8 +861,6 @@ mod tests {
         );
     }
 
-    /// An enabled or disabled account with the given identity, as the daemon
-    /// sends it.
     fn marked_account(
         key: &str,
         enabled: bool,
@@ -968,7 +891,6 @@ mod tests {
         (account_id, summary)
     }
 
-    /// Two rows, the first from `first` and the second from `second`.
     fn two_account_rows(first: &AccountId, second: &AccountId) -> Vec<MailListRow> {
         let mut first_row = row(1, false);
         first_row.representative.subject = "Quarterly plan".into();
@@ -1050,21 +972,14 @@ mod tests {
         insta::assert_snapshot!("mail_list_account_chips_plain", rendered);
     }
 
-    /// build_row should compose subjects with `format_subject_line`
-    /// (snippet preview after a separator) and attachments with
-    /// `format_attachment_chip` (paperclip + size). Reachable through the
-    /// rendered string of a focused row.
     #[test]
     fn row_renders_snippet_preview_and_attachment_chip() {
         use mxr_test_support::render_to_string;
         use std::collections::HashSet;
 
         let mut row = row(1, true);
-        // Use a short subject so there's room for the snippet preview at
-        // 120-col width.
         row.representative.subject = "Status update".into();
         row.representative.snippet = "Shipping plan ready for review".into();
-        // 2.5 MiB → format_attachment_chip emits "📎 2M".
         row.representative.size_bytes = 2 * 1024 * 1024 + 512 * 1024;
         let rows = vec![row];
 
@@ -1143,9 +1058,6 @@ mod tests {
         assert!(!snapshot.contains("Shipping plan"), "{snapshot}");
     }
 
-    /// Narrow renders should fall back gracefully — no snippet, no panic.
-    /// The subject still appears, attachment chip still renders the
-    /// paperclip but may drop the size depending on column width.
     #[test]
     fn row_omits_snippet_when_terminal_too_narrow() {
         use mxr_test_support::render_to_string;
@@ -1156,8 +1068,6 @@ mod tests {
         row.representative.snippet = "this snippet should not appear".into();
         let rows = vec![row];
 
-        // 60 cols is the narrow case the formatter is designed to drop
-        // the snippet for, leaving the subject alone.
         let snapshot = render_to_string(60, 6, |frame| {
             draw_view(
                 frame,
@@ -1221,16 +1131,12 @@ mod tests {
         assert!(snapshot.contains("+  2"));
     }
 
-    /// Subject containing an ANSI erase-display sequence must be stripped
-    /// before rendering. The literal printable text of the subject must still
-    /// appear in the output; no ESC byte may survive.
     #[test]
     fn subject_escape_sequence_stripped_in_row() {
         use mxr_test_support::render_to_string;
         use std::collections::HashSet;
 
         let mut row = row(1, false);
-        // ANSI erase-display (CSI 2J) embedded in the subject
         row.representative.subject = "Meeting\x1b[2J notes".into();
         row.representative.snippet = String::new();
         let rows = vec![row];

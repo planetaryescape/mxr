@@ -1,42 +1,27 @@
-//! The words for a thread's context, shared by the terminal clients: the TUI
-//! styles these rows and `mxr briefing context` prints them, so both say the
-//! same thing. They live here, not in `mxr-protocol`, because they describe
-//! a screen. (The web reader states the same facts from its own
-//! TypeScript copy, `contextFormat.ts`, laid out for the page.)
-
 use chrono::{DateTime, Local, Utc};
 use mxr_protocol::{
     AiLocalityData, AiProvenanceData, AiSourceData, ThreadContextData, ThreadCounterpartyData,
     ThreadGistData, ThreadGistStatusData,
 };
 
-/// What a row is, so a client can style it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContextRowKind {
     Gist,
     Ask,
-    /// The ask's verified quote, under the ask.
     Quote,
-    /// No ask ("nothing"), or a gist that isn't there.
     Quiet,
     Fact,
     Promise,
-    /// Which model wrote the gist and what it read.
     Source,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextRow {
-    /// "Gist", "Asks you", "With", "You owe", "Promises", "AI", or empty for
-    /// a continuation row.
     pub label: &'static str,
     pub kind: ContextRowKind,
     pub text: String,
 }
 
-/// Rows for a thread's context, gist first. A gist that isn't `ready`
-/// contributes nothing, except a failure or privacy block, which says so on
-/// the `AI` row; no model at all adds nothing.
 pub fn context_rows(
     context: Option<&ThreadContextData>,
     gist: Option<&ThreadGistData>,
@@ -117,8 +102,6 @@ pub fn context_rows(
     rows
 }
 
-/// "Maya (maya@example.com): 41 emails · you usually reply within 4h ·
-/// last spoke 12 Sep".
 fn relationship(person: &ThreadCounterpartyData, now: DateTime<Utc>) -> String {
     let name = first_name(person);
     let who = if name == person.email {
@@ -157,9 +140,6 @@ fn relationship(person: &ThreadCounterpartyData, now: DateTime<Utc>) -> String {
     parts.join(" · ")
 }
 
-/// "local model qwen2.5 · from this thread only".
-/// "local model qwen2.5 · from this thread only": who wrote model text
-/// and what it read.
 pub fn provenance_text(provenance: &AiProvenanceData) -> String {
     let place = match provenance.locality {
         AiLocalityData::Local => "local model",
@@ -176,7 +156,6 @@ pub fn provenance_text(provenance: &AiProvenanceData) -> String {
     format!("{place} {} · {sources}", provenance.model)
 }
 
-/// "Maya" from "Maya Ortiz"; the address when there is no name.
 fn first_name(person: &ThreadCounterpartyData) -> String {
     person
         .display_name
@@ -184,8 +163,6 @@ fn first_name(person: &ThreadCounterpartyData) -> String {
         .map_or_else(|| person.email.clone(), first_word)
 }
 
-/// How a promise's owner reads: "You", "Alice" from "Alice Park", or an
-/// address kept whole. The daemon already resolved who it is.
 fn owner_label(owner: &str) -> String {
     if owner.contains('@') {
         return owner.to_string();
@@ -197,7 +174,6 @@ fn owner_label(owner: &str) -> String {
     })
 }
 
-/// "Maya" from "Maya Ortiz"; an address stays whole.
 fn first_word(name: &str) -> String {
     if name.contains('@') {
         return name.to_string();
@@ -213,7 +189,6 @@ fn plural(count: u32, noun: &str) -> String {
     }
 }
 
-/// A median reply time at a glance: "35m", "4h", "2d".
 fn reply_time(seconds: u32) -> String {
     let minutes = seconds.div_ceil(60).max(1);
     if minutes < 60 {
@@ -225,7 +200,6 @@ fn reply_time(seconds: u32) -> String {
     }
 }
 
-/// "today", "yesterday", "Thu", "12 Sep", "12 Sep 2025", in local time.
 fn day_label(when: DateTime<Utc>, now: DateTime<Utc>) -> String {
     let local = when.with_timezone(&Local);
     let today = now.with_timezone(&Local).date_naive();
@@ -271,8 +245,6 @@ mod tests {
                 message_id: MessageId::new(),
                 since: Utc::now(),
             }),
-            // A group thread: Maya is the main counterparty, but the two
-            // promises are Alice's and Bob's.
             promises: [
                 ("Alice Park", "alice@example.com", "share the dashboard"),
                 ("bob@example.com", "bob@example.com", "send the logs"),

@@ -1,11 +1,5 @@
 use super::*;
 
-/// `OperationProgress` from the daemon must surface in the
-/// status bar with the operation name, current/total, and
-/// message — otherwise the user sees nothing while the daemon is
-/// running long jobs (rebuild-analytics, sync, reindex). Catches
-/// "we forgot to wire the new event variant into the status bar"
-/// regressions.
 #[test]
 fn operation_progress_event_updates_status_bar_with_step_count() {
     use mxr_protocol::DaemonEvent;
@@ -33,11 +27,6 @@ fn operation_progress_event_updates_status_bar_with_step_count() {
     );
 }
 
-/// `OperationCompleted` for `rebuild-analytics` while on the
-/// Analytics screen must arm `refresh_pending` so the active
-/// view re-fetches against the freshly-rebuilt data. Without
-/// this the user runs the rebuild, sees "complete", but their
-/// open Analytics view still shows pre-rebuild numbers.
 #[test]
 fn operation_completed_for_rebuild_analytics_arms_analytics_refresh() {
     use mxr_protocol::DaemonEvent;
@@ -59,10 +48,6 @@ fn operation_completed_for_rebuild_analytics_arms_analytics_refresh() {
     );
 }
 
-/// Slice 6 / B6.6: pressing `u` on a Subscriptions row populates
-/// the existing unsubscribe-confirm modal with the row's
-/// metadata. Reuses the modal/IPC path the mailbox uses, so this
-/// test pins the wiring to that surface (modal becomes Some).
 #[test]
 fn analytics_unsubscribe_action_opens_confirm_modal_for_selected_row() {
     use crate::action::Action;
@@ -107,11 +92,6 @@ fn analytics_unsubscribe_action_opens_confirm_modal_for_selected_row() {
     );
 }
 
-/// Slice 7 / B7.1: Wrapped view defaults to Ytd. The request
-/// builder produces `Request::Wrapped` with a label following the
-/// CLI's exact format (`"<year> year-to-date"`), so the daemon
-/// echoes back identical metadata regardless of which client made
-/// the call.
 #[test]
 fn wrapped_view_default_window_dispatches_ytd_request_with_cli_label() {
     use crate::app::AnalyticsView;
@@ -128,10 +108,6 @@ fn wrapped_view_default_window_dispatches_ytd_request_with_cli_label() {
     }
 }
 
-/// Slice 10 / B10.1: pressing `f` on the analytics screen opens
-/// the filter modal populated for the active view. The modal
-/// must contain at least one field; the active_field starts at
-/// 0 so the user can begin typing immediately.
 #[test]
 fn open_analytics_filter_modal_populates_fields_for_active_view() {
     use crate::action::Action;
@@ -149,11 +125,6 @@ fn open_analytics_filter_modal_populates_fields_for_active_view() {
     assert_eq!(modal.active_field, 0);
 }
 
-/// Slice 10 / B10.3: submitting the filter modal copies the
-/// edited string values back into the typed `AnalyticsState`
-/// fields, sets refresh_pending, and closes the modal. Failure
-/// to write back is the central regression risk for the modal —
-/// it would silently swallow the user's edits.
 #[test]
 fn submit_analytics_filter_modal_writes_back_and_closes() {
     use crate::action::Action;
@@ -161,7 +132,6 @@ fn submit_analytics_filter_modal_writes_back_and_closes() {
     let mut app = App::new();
     app.analytics.view = AnalyticsView::StaleThreads;
     app.apply(Action::OpenAnalyticsFilterModal);
-    // older_than_days is field index 1 in the StaleThreads modal.
     if let Some(modal) = app.modals.analytics_filter.as_mut() {
         modal.fields[1].value = "60".into();
     }
@@ -172,10 +142,6 @@ fn submit_analytics_filter_modal_writes_back_and_closes() {
     assert!(app.analytics.refresh_pending);
 }
 
-/// Slice 11 / B11.1: Enter on a Storage Breakdown sender row
-/// switches to the Search screen with the constructed query
-/// `"from:<sender>"`. This is the most-used drill-down — clicking
-/// "alice@example.com" in the breakdown should land on her mail.
 #[test]
 fn drill_down_storage_sender_jumps_to_search_with_from_query() {
     use crate::action::Action;
@@ -196,12 +162,6 @@ fn drill_down_storage_sender_jumps_to_search_with_from_query() {
     assert_eq!(app.search.page.query, "from:alice@example.com");
 }
 
-/// Stale-thread drill-down jumps to a `from:<counterparty>` search,
-/// matching the Contacts drill pattern. Earlier attempts opened the
-/// envelope directly, but that left the centre mailbox list out of
-/// sync with the preview pane (the list still showed the previous
-/// mailbox while the preview showed an unrelated message). Search
-/// reorients both panes coherently.
 #[test]
 fn drill_down_stale_thread_jumps_to_counterparty_search() {
     use crate::action::Action;
@@ -233,11 +193,6 @@ fn drill_down_stale_thread_jumps_to_counterparty_search() {
     );
 }
 
-/// Slice 2 / B2.1: forward cycling visits all analytics views
-/// in the documented order (Storage → StaleThreads → Contacts →
-/// ResponseTime → Subscriptions → SearchGroups → Wrapped → Storage).
-/// Pins the next() arm so reordering or dropping a variant breaks here
-/// instead of as a "Tab silently skips a tab" bug at runtime.
 #[test]
 fn next_analytics_view_cycles_all_variants_forward() {
     use crate::action::Action;
@@ -260,13 +215,6 @@ fn next_analytics_view_cycles_all_variants_forward() {
     }
 }
 
-/// Opening a message in Mailbox arms a delayed auto-mark-read
-/// timer; switching screens away from Mailbox must cancel it so
-/// the SetRead doesn't fire while the user is on a different
-/// screen. All non-Mailbox screen openers do this; Analytics used
-/// to be the exception, which surfaced as a "Mutation Failed"
-/// modal in Analytics tab 6 whenever the daemon's pool was busy
-/// enough to time out the late SetRead.
 #[test]
 fn opening_analytics_cancels_pending_preview_read() {
     use crate::action::Action;
@@ -294,11 +242,6 @@ fn opening_analytics_cancels_pending_preview_read() {
     }
 }
 
-/// Phase 3.4 / Behavior 1: toggling between HTML and plain-text
-/// views preserves the message scroll offset. Catches a regression
-/// where `ToggleHtmlView` would naively reset to 0 after the
-/// body_view_state mode change, dumping the user back at the top
-/// of long emails every time they switched.
 #[test]
 fn html_view_toggle_preserves_message_scroll_offset() {
     use crate::action::Action;
@@ -328,7 +271,6 @@ fn html_view_toggle_preserves_message_scroll_offset() {
         BodyViewState::Ready { .. }
     ));
 
-    // User scrolls down before toggling.
     app.mailbox.message_scroll_offset = 7;
     app.apply(Action::ToggleHtmlView);
     assert_eq!(
@@ -342,9 +284,6 @@ fn html_view_toggle_preserves_message_scroll_offset() {
     );
 }
 
-/// Phase 3.4 / Behavior 2: labels surface "External content blocked"
-/// instead of the old "remote images blocked" so users actually
-/// notice the placeholder. Locks the user-visible string.
 #[test]
 fn body_status_labels_replace_remote_blocked_with_clear_external_content_string() {
     use crate::app::{body_status_labels_with_loading, BodySource, BodyViewMetadata, BodyViewMode};
@@ -367,11 +306,6 @@ fn body_status_labels_replace_remote_blocked_with_clear_external_content_string(
     );
 }
 
-/// Phase 2.4 / Behavior 1: a rule form filled with a `shell:command`
-/// action submits a `Request::UpsertRuleForm` whose `action`
-/// string round-trips losslessly to the daemon-side parser. Locks
-/// in the contract that the TUI doesn't need to learn the
-/// `RuleAction::ShellHook` shape — the parser owns translation.
 #[test]
 fn rule_form_save_with_shell_hook_action_is_accepted() {
     use crate::action::Action;
@@ -396,11 +330,6 @@ fn rule_form_save_with_shell_hook_action_is_accepted() {
     );
 }
 
-/// Phase 2.4 / Behavior 4: a rule form with `action="shell:"`
-/// (empty command after the prefix) sets a visible
-/// `validation_error` and does NOT enqueue a save. Daemons would
-/// otherwise accept a `ShellHook { command: "" }` rule and fail
-/// silently every time it tries to fire.
 #[test]
 fn rule_form_save_with_empty_shell_command_is_rejected() {
     use crate::action::Action;
@@ -408,7 +337,7 @@ fn rule_form_save_with_empty_shell_command_is_rejected() {
     app.rules.page.form.visible = true;
     app.rules.page.form.name = "Bad shell".into();
     app.rules.page.form.condition = "from:any".into();
-    app.rules.page.form.action = "shell:   ".into(); // trim => empty
+    app.rules.page.form.action = "shell:   ".into();
     app.sync_rule_form_editors();
 
     app.apply(Action::SaveRuleForm);
@@ -430,10 +359,6 @@ fn rule_form_save_with_empty_shell_command_is_rejected() {
     );
 }
 
-/// Phase 2.3 / Behavior 1: when the diagnostics snapshot reports
-/// an account as unhealthy, `account_unhealthy` returns true.
-/// This is the contract the renderer relies on for the
-/// "[unhealthy: r repairs]" indicator.
 #[test]
 fn account_unhealthy_reflects_diagnostics_sync_status() {
     let mut app = App::new();
@@ -456,8 +381,6 @@ fn account_unhealthy_reflects_diagnostics_sync_status() {
         capabilities: Default::default(),
     };
 
-    // No status yet → freshly added accounts don't flicker through
-    // the unhealthy state.
     assert!(!app.account_unhealthy(&summary));
 
     app.diagnostics.page.sync_statuses = vec![mxr_protocol::AccountSyncStatus {
@@ -480,21 +403,14 @@ fn account_unhealthy_reflects_diagnostics_sync_status() {
         "account flagged as unhealthy by sync status"
     );
 
-    // Toggle back: a recovered account is no longer unhealthy.
     app.diagnostics.page.sync_statuses[0].healthy = true;
     assert!(!app.account_unhealthy(&summary));
 }
 
-/// Phase 2.3 / Behavior 2: dispatching `RepairAccount` with a
-/// config-backed selected account queues a `pending_repair` for
-/// the dispatcher and shows an in-flight status. Runtime-only
-/// accounts are rejected with a status hint.
 #[test]
 fn repair_account_action_queues_pending_repair_for_config_account() {
     use crate::action::Action;
     let mut app = App::new();
-    // Insert a config-backed account so selected_account_config
-    // produces a real AccountConfigData.
     app.accounts.page.accounts = vec![mxr_protocol::AccountSummaryData {
         identity: None,
         account_id: mxr_core::AccountId::new(),
@@ -547,8 +463,6 @@ fn repair_account_action_queues_pending_repair_for_config_account() {
     );
 }
 
-/// Phase 2.1 stage B / Behavior 3 (cancel path): pressing `n`/Esc
-/// on the delete confirm clears it without dispatching.
 #[test]
 fn delete_saved_search_cancel_path_does_not_queue_request() {
     let mut app = App::new();
@@ -564,10 +478,6 @@ fn delete_saved_search_cancel_path_does_not_queue_request() {
     );
 }
 
-/// Phase 1.4 / Behavior 6: setting a pending-undo handle exposes a
-/// toast reading "Archived N" with an "u to undo" hint while the
-/// window is fresh, and `take_pending_undo` returns the same id
-/// the input handler will dispatch.
 #[test]
 fn pending_undo_toast_renders_within_window_then_clears() {
     use crate::app::PendingUndo;
@@ -580,7 +490,6 @@ fn pending_undo_toast_renders_within_window_then_clears() {
         applied_at: t0,
     });
 
-    // Fresh: toast is shown with the undo hint and a live countdown.
     let toast = app
         .pending_undo_toast(t0 + std::time::Duration::from_secs(5))
         .expect("toast must be present within window");
@@ -594,7 +503,6 @@ fn pending_undo_toast_renders_within_window_then_clears() {
         "countdown must reflect the remaining 60s undo window"
     );
 
-    // Past 60s: toast gone (and tick clears the handle).
     assert!(
         app.pending_undo_toast(t0 + std::time::Duration::from_secs(61))
             .is_none(),
@@ -604,9 +512,6 @@ fn pending_undo_toast_renders_within_window_then_clears() {
     assert!(app.pending_undo.is_none(), "tick must drop expired handle");
 }
 
-/// Phase 1.4: take_pending_undo returns and clears so the next `u`
-/// press can't accidentally double-undo. The daemon also refuses
-/// replays, but client-side clearing is the primary guard.
 #[test]
 fn take_pending_undo_returns_and_clears() {
     use crate::app::PendingUndo;
@@ -629,9 +534,6 @@ fn take_pending_undo_returns_and_clears() {
     );
 }
 
-/// Phase 1.3 / Behavior 4: an `Error` escalates to `ErrorModalState`
-/// even if the status bar slot is occupied — errors must never be
-/// hidden behind transient status messages.
 #[test]
 fn report_error_opens_modal_even_if_status_occupied() {
     let mut app = App::new();
@@ -662,7 +564,6 @@ fn transition_to_connected_clears_daemon_error_modal() {
         since: std::time::Instant::now(),
         reason: "connection refused".into(),
     });
-    // Simulate the modal that would have been opened after 5s.
     app.modals.error = Some(ErrorModalState::new("Daemon not responding", "..."));
 
     app.set_connection_state(ConnectionState::Connected);
@@ -677,9 +578,6 @@ fn transition_to_connected_clears_daemon_error_modal() {
     );
 }
 
-/// Phase 1.2 / Behavior 2: after 5s of Reconnecting, an error modal
-/// opens explaining the daemon is not responding. Catches "silent hang"
-/// regressions (the original v1 ship blocker).
 #[test]
 fn tick_connection_state_opens_modal_after_5s_reconnecting() {
     use crate::app::ConnectionState;
@@ -690,11 +588,9 @@ fn tick_connection_state_opens_modal_after_5s_reconnecting() {
         reason: "connection refused".into(),
     });
 
-    // 4s in — under the threshold; modal must not have opened yet.
     app.tick_connection_state(t0 + std::time::Duration::from_secs(4));
     assert!(app.modals.error.is_none(), "modal must not open before 5s");
 
-    // 6s in — over the threshold; modal must be open with non-empty detail.
     app.tick_connection_state(t0 + std::time::Duration::from_secs(6));
     let modal = app.modals.error.as_ref().expect("modal must open after 5s");
     assert!(
@@ -708,9 +604,6 @@ fn tick_connection_state_opens_modal_after_5s_reconnecting() {
     );
 }
 
-/// The IPC worker re-emits `Reconnecting` with a fresh `since` on every failed
-/// retry. The watchdog must measure the whole outage, so the modal still opens
-/// once retries have run past the threshold.
 #[test]
 fn tick_connection_state_opens_modal_when_retries_outlast_threshold() {
     use crate::app::ConnectionState;
@@ -732,8 +625,6 @@ fn tick_connection_state_opens_modal_when_retries_outlast_threshold() {
     );
 }
 
-/// A successful reconnect clears the outage. The next outage starts its own
-/// clock, so an old outage must not make a fresh one escalate early.
 #[test]
 fn successful_reconnect_resets_outage_timer() {
     use crate::app::{ConnectionState, ErrorModalState};
@@ -759,11 +650,6 @@ fn successful_reconnect_resets_outage_timer() {
     );
 }
 
-/// Phase 1.1 / Behavior 4: when SendDraft is part of a larger batch
-/// (other mutations still in flight), the per-effect status is
-/// suppressed — matches the existing `show_completion_status` gating
-/// for archive/trash mutations. Regression for "every mutation in
-/// the batch overwriting the status".
 #[test]
 fn sent_success_effect_suppresses_status_when_more_in_flight() {
     let mut app = App::new();
@@ -778,7 +664,7 @@ fn sent_success_effect_suppresses_status_when_more_in_flight() {
             sent_message_id: None,
             draft_path: None,
         },
-        false, // not last in the batch
+        false,
     );
 
     assert_eq!(

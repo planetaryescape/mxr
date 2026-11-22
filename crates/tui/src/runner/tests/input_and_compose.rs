@@ -113,9 +113,6 @@ async fn compose_editor_success_opens_send_confirmation() {
     };
     let mut app = App::new();
     let (bg, mut bg_rx) = mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
-    // Drain the safety-check IPC the new wiring fires; reply with an
-    // error so the modal opens with `safety_report = None` (the
-    // contract under test here is mode/state, not safety).
     let drain = tokio::spawn(async move {
         if let Some(req) = bg_rx.recv().await {
             let _ = req.reply.send(Err(MxrError::Ipc("test fixture".into())));
@@ -157,8 +154,6 @@ async fn compose_editor_cancel_discards_draft() {
         invite_reply: None,
     };
     let mut app = App::new();
-    // Editor exited non-zero, so the safety-check path is never
-    // taken; bg never receives a request.
     let (bg, _bg_rx) = mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
 
     handle_compose_editor_status(&mut app, &data, Ok(exit_status(1)), &bg).await;
@@ -168,9 +163,6 @@ async fn compose_editor_cancel_discards_draft() {
     assert!(!temp.exists());
 }
 
-/// Slice 1.5 wiring contract (C2.1): the editor-finished handler
-/// MUST fire `Request::CheckDraftSafety` before showing the modal,
-/// and MUST stamp the response onto `pending_send_confirm`.
 #[tokio::test]
 async fn compose_editor_finish_stamps_safety_report_onto_pending() {
     let temp = std::env::temp_dir().join(format!(
@@ -192,13 +184,8 @@ async fn compose_editor_finish_stamps_safety_report_onto_pending() {
     };
     let mut app = App::new();
 
-    // Fake daemon: returns a Blocked report with a single PiiSecret
-    // issue carrying override_token = Some("tok-test"). This is the
-    // exact shape the daemon mints for blocker verdicts.
     let (bg, mut bg_rx) = mpsc::unbounded_channel::<crate::ipc::IpcRequest>();
     let fake_daemon = tokio::spawn(async move {
-        // The editor-finished handler first validates the effective From via
-        // ResolveSendFrom (preview parity), then runs CheckDraftSafety.
         let from_req = next_owned_request(&mut bg_rx).await;
         assert!(
             matches!(from_req.request, Request::ResolveSendFrom { .. }),
@@ -215,8 +202,6 @@ async fn compose_editor_finish_stamps_safety_report_onto_pending() {
         }));
 
         let req = next_owned_request(&mut bg_rx).await;
-        // Verify the wiring sent a CheckDraftSafety, not some other
-        // request.
         assert!(
             matches!(req.request, Request::CheckDraftSafety { .. }),
             "expected CheckDraftSafety, got: {:?}",
@@ -254,10 +239,6 @@ async fn compose_editor_finish_stamps_safety_report_onto_pending() {
     let _ = std::fs::remove_file(temp);
 }
 
-/// Slice 1.5 wiring contract (C2.1): pressing `[s] send` while
-/// the safety verdict is Blocked is a no-op — the modal stays
-/// open, no SendDraft mutation is queued. The user must use
-/// `O` to override or edit the draft.
 #[test]
 fn pressing_s_with_blocked_verdict_is_a_noop() {
     let mut app = App::new();
@@ -312,9 +293,6 @@ fn pressing_s_with_blocked_verdict_is_a_noop() {
     );
 }
 
-/// A send confirm whose safety verdict is `verdict_blocked` (Blocked when true,
-/// Safe otherwise). The override token is present either way, so the blocked
-/// verdict alone decides whether `O` applies.
 fn app_with_send_confirm(verdict_blocked: bool) -> App {
     let mut app = App::new();
     let report = if verdict_blocked {
@@ -361,9 +339,6 @@ fn app_with_send_confirm(verdict_blocked: bool) -> App {
     app
 }
 
-/// Slice 1.5 wiring contract (C2.1): Ctrl-O on a Blocked verdict
-/// dispatches SendDraft with override_safety_token = the token
-/// the daemon minted. Ctrl-O stays as an alias of the advertised `O`.
 #[test]
 fn ctrl_o_dispatches_send_with_override_token() {
     let mut app = app_with_send_confirm(true);
@@ -371,8 +346,6 @@ fn ctrl_o_dispatches_send_with_override_token() {
     assert_override_dispatched(&app);
 }
 
-/// The override only applies when a block exists: on a draft that is not
-/// blocked, `O` queues nothing and leaves the confirm open.
 #[test]
 fn shift_o_on_unblocked_draft_is_a_noop() {
     let mut app = app_with_send_confirm(false);
@@ -382,8 +355,6 @@ fn shift_o_on_unblocked_draft_is_a_noop() {
 }
 
 fn assert_override_dispatched(app: &App) {
-    // The mutation queue must contain a SendDraft with the
-    // override token.
     let queued = app.pending_mutation_queue.first().expect("mutation queued");
     match &queued.request {
         Request::SendDraft {
@@ -396,9 +367,6 @@ fn assert_override_dispatched(app: &App) {
     }
 }
 
-/// Slice 2.3 wiring contract (C2.2): selecting the Owed sidebar
-/// entry switches MailboxView to Owed AND requests a fresh
-/// ListOwedReplies fetch.
 #[test]
 fn opening_owed_lens_switches_view_and_queues_refresh() {
     let mut app = App::new();
@@ -414,12 +382,9 @@ fn opening_owed_lens_switches_view_and_queues_refresh() {
     );
 }
 
-/// The desk lens: `OpenDesk` switches the view and queues a GetDesk fetch
-/// for every account.
 #[test]
 fn opening_desk_lens_switches_view_and_queues_refresh() {
     let mut app = App::new();
-    // The startup fetch for the sidebar badge is already queued.
     assert!(app.mailbox.pending_desk_refresh);
     app.mailbox.pending_desk_refresh = false;
 
@@ -484,8 +449,6 @@ fn desk_with(rows: Vec<mxr_protocol::DeskRowData>) -> crate::app::DeskPageState 
     }
 }
 
-/// Clearing the desk earns one calm line; a desk that was already empty
-/// (or never loaded) doesn't.
 #[test]
 fn clearing_the_desk_says_low_tide_once() {
     use mxr_protocol::DeskLaneKind;
@@ -512,8 +475,6 @@ fn clearing_the_desk_says_low_tide_once() {
     assert_eq!(app.status_message, None, "the status line says it once");
 }
 
-/// One cursor walks every lane; Enter opens the row's message and Esc comes
-/// back to the desk on the same row.
 #[test]
 fn desk_cursor_crosses_lanes_and_enter_opens_the_selected_row() {
     use mxr_protocol::DeskLaneKind;
@@ -533,7 +494,6 @@ fn desk_cursor_crosses_lanes_and_enter_opens_the_selected_row() {
         app.selected_desk_row().unwrap().message_id,
         waiting.message_id
     );
-    // j at the last row stays put.
     if let Some(action) = app.handle_key(key(KeyCode::Char('j'))) {
         app.apply(action);
     }
@@ -547,7 +507,6 @@ fn desk_cursor_crosses_lanes_and_enter_opens_the_selected_row() {
         "enter fetches the selected row's message"
     );
 
-    // The runtime resolves the envelope and opens the reader.
     let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
         .thread_id(waiting.thread_id.clone())
         .build();
@@ -562,8 +521,6 @@ fn desk_cursor_crosses_lanes_and_enter_opens_the_selected_row() {
     assert_eq!(app.mailbox.selected_index, 1, "back on the same row");
 }
 
-/// `b` on a Waiting on row opens Not now with no Later row (it needs a
-/// time), and a time sends the row's conversation.
 #[test]
 fn b_on_a_waiting_row_asks_when_to_bring_it_back() {
     use mxr_protocol::DeskLaneKind;
@@ -583,7 +540,6 @@ fn b_on_a_waiting_row_asks_when_to_bring_it_back() {
             waiting: true,
         })
     );
-    // No untimed Later here: the first row is already a time.
     let enter = app.handle_key(key(KeyCode::Enter)).expect("Enter maps");
     app.apply(enter);
     assert!(
@@ -596,7 +552,6 @@ fn b_on_a_waiting_row_asks_when_to_bring_it_back() {
     ));
 }
 
-/// A background desk fetch must not move the cursor of another list.
 #[test]
 fn background_desk_refresh_leaves_other_lists_alone() {
     let mut app = App::new();
@@ -606,18 +561,12 @@ fn background_desk_refresh_leaves_other_lists_alone() {
     assert_eq!(app.mailbox.desk_page.work_count(), 1);
 }
 
-/// Slice 2.3 wiring contract (C2.2): a successful SendDraft
-/// mutation queues a ListOwedReplies refresh so a sent reply
-/// disappears from the lens without manual intervention.
 #[test]
 fn sent_success_effect_triggers_owed_refresh() {
     let mut app = App::new();
-    // Pretend the user is sitting on the owed lens.
     app.mailbox.mailbox_view = MailboxView::Owed;
     app.mailbox.pending_owed_refresh = false;
 
-    // Apply the SentSuccess mutation completion directly. The
-    // contract is: this branch sets pending_owed_refresh = true.
     app.apply_mutation_completion(
         MutationEffect::SentSuccess {
             status: "Sent!".into(),
@@ -634,13 +583,9 @@ fn sent_success_effect_triggers_owed_refresh() {
     );
 }
 
-/// Slice 5.1 wiring contract (C2.6): pressing Action::OpenThreadBriefing
-/// when a thread is focused must open the modal in loading state AND
-/// queue a pending briefing fetch.
 #[test]
 fn open_thread_briefing_action_opens_modal_and_queues_fetch() {
     let mut app = App::new();
-    // Seed an envelope so context_envelope() returns something.
     let env = TestEnvelopeBuilder::new().build();
     app.mailbox.envelopes = vec![env.clone()];
     app.mailbox.all_envelopes = vec![env.clone()];
@@ -663,23 +608,14 @@ fn open_thread_briefing_action_opens_modal_and_queues_fetch() {
     );
 }
 
-/// Slice 5.1 (C2.6 cont): dormant_thread_hint returns Some when
-/// the focused row's representative is >=30 days old AND the
-/// thread has >=3 messages.
 #[test]
 fn dormant_hint_fires_at_30d_3msgs_and_nothing_below() {
     let mut app = App::new();
-    // 31 days old + 3 messages -> dormant.
     let mut old = TestEnvelopeBuilder::new().build();
     old.date = chrono::Utc::now() - chrono::Duration::days(31);
     app.mailbox.envelopes = vec![old.clone()];
     app.mailbox.all_envelopes = vec![old.clone()];
-    // Force the row to think there are 3 messages in the thread.
     app.apply(Action::OpenSelected);
-    // Inject message_count by re-constructing the row via the
-    // helper. The cleanest way is to overwrite the thread row
-    // count through the existing aggregation; instead, we test
-    // via a row count we control. Use 2 messages -> not dormant.
     let mut row = app.mail_list_rows().into_iter().next().unwrap();
     row.message_count = 2;
     assert!(
@@ -692,7 +628,6 @@ fn dormant_hint_fires_at_30d_3msgs_and_nothing_below() {
         "30d-old 3-message thread IS dormant"
     );
     row.message_count = 3;
-    // Just below threshold.
     let mut fresh_row = row.clone();
     fresh_row.representative.date = chrono::Utc::now() - chrono::Duration::days(29);
     assert!(
@@ -701,9 +636,6 @@ fn dormant_hint_fires_at_30d_3msgs_and_nothing_below() {
     );
 }
 
-/// Slice 5.3 (C2.7 cont): `c` on the compose-confirm modal
-/// adds the top "maybe include" suggestion to the draft's Cc
-/// and removes it from the list.
 #[test]
 fn c_adds_top_suggestion_to_cc() {
     let mut app = App::new();
@@ -753,8 +685,6 @@ fn c_adds_top_suggestion_to_cc() {
     );
 }
 
-/// Slice 5.4 (C2.8 cont): FindExpertOnFocusedMessage opens
-/// the expert modal in loading state and queues a query.
 #[test]
 fn find_expert_action_opens_modal_and_queues_query() {
     let mut app = App::new();
@@ -774,10 +704,6 @@ fn find_expert_action_opens_modal_and_queues_query() {
     assert!(app.pending_expert_query.is_some());
 }
 
-/// Slice 6.1 wiring contract (C2.9): pressing
-/// OpenWhoisOnFocusedSender opens the whois modal in loading
-/// state and queues a pending whois fetch with the focused
-/// sender's email as the query.
 #[test]
 fn open_whois_action_seeds_modal_and_queues_query() {
     let mut app = App::new();
@@ -1298,18 +1224,13 @@ fn threepane_jk_auto_preview() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(5);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    // Open first message to enter ThreePane
     app.apply(Action::OpenSelected);
     assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
     let first_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
-    // Move focus back to mail list
     app.mailbox.active_pane = ActivePane::MailList;
-    // Move down — should auto-preview
     app.apply(Action::MoveDown);
     let preview_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
     assert_ne!(first_id, preview_id, "j/k should auto-preview in ThreePane");
-    // Body should be loaded from cache (or None if not cached in test)
-    // No async fetch needed — bodies are inline with envelopes
 }
 
 #[test]
@@ -1317,14 +1238,12 @@ fn twopane_jk_no_auto_preview() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(5);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    // Don't open message — stay in TwoPane
     assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
     app.apply(Action::MoveDown);
     assert!(
         app.mailbox.viewing_envelope.is_none(),
         "j/k should not auto-preview in TwoPane"
     );
-    // No body fetch triggered in TwoPane mode
 }
 
 #[test]
@@ -1355,10 +1274,8 @@ fn back_in_mail_list_clears_label_filter() {
         .unwrap()
         .id
         .clone();
-    // Simulate label filter active
     app.mailbox.active_label = Some(inbox_id);
-    app.mailbox.envelopes = vec![app.mailbox.envelopes[0].clone()]; // Filtered down
-                                                                    // Esc should clear filter
+    app.mailbox.envelopes = vec![app.mailbox.envelopes[0].clone()];
     app.apply(Action::Back);
     assert!(
         app.mailbox.active_label.is_none(),
@@ -1376,17 +1293,12 @@ fn back_in_mail_list_closes_threepane_when_no_filter() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(3);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    app.apply(Action::OpenSelected); // ThreePane
-    app.mailbox.active_pane = ActivePane::MailList; // Move back
-                                                    // No filter active — Esc should close ThreePane
+    app.apply(Action::OpenSelected);
+    app.mailbox.active_pane = ActivePane::MailList;
     app.apply(Action::Back);
     assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
 }
 
-/// Phase 4: Tab inside the help modal cycles the context filter so a
-/// user can browse another view's bindings without leaving the modal.
-/// Cycling all the way around lands back on the focused view, which
-/// clears the override so help tracks focus again.
 #[test]
 fn help_modal_tab_cycles_context_filter_and_wraps_to_focused_view() {
     let mut app = App::new();
@@ -1406,8 +1318,6 @@ fn help_modal_tab_cycles_context_filter_and_wraps_to_focused_view() {
     assert_ne!(first_override, focused, "override must move off focus");
     assert_eq!(app.help_modal_context(), first_override);
 
-    // Cycle through the remaining contexts; the wrap back to the focused
-    // view clears the override instead of storing a redundant Some.
     for _ in 0..16 {
         if app.modals.help_context_filter.is_none() {
             break;
@@ -1420,15 +1330,12 @@ fn help_modal_tab_cycles_context_filter_and_wraps_to_focused_view() {
     );
     assert_eq!(app.help_modal_context(), focused);
 
-    // Closing and reopening help resets any leftover filter.
     let _ = app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
     app.apply(Action::Help);
     app.apply(Action::Help);
     assert!(app.modals.help_context_filter.is_none());
 }
 
-/// Phase 4: while a multi-key chord is pending ("g …"), the input
-/// handler exposes the prefix so the hint bar can render it.
 #[test]
 fn pending_chord_prefix_is_exposed_for_the_hint_bar() {
     let mut app = App::new();
@@ -1443,8 +1350,6 @@ fn pending_chord_prefix_is_exposed_for_the_hint_bar() {
     );
 }
 
-/// What the app asked the daemon for: queued mutations, plus a bulk action
-/// waiting on its confirmation (a multi-message thread confirms first).
 fn requested(app: &App) -> Vec<Request> {
     app.pending_mutation_queue
         .iter()
@@ -1458,10 +1363,6 @@ fn requested(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// `e` on the desk, which backs Messages, is done in Messages for a
-/// person row (`SetModeDone`, with the daemon's handoff copy), and still
-/// the desk's own Done for a promise under Due, which keeps the promise.
-/// The row leaves at once.
 #[test]
 fn e_on_the_desk_is_done_here_for_that_row() {
     use mxr_protocol::{DeskLaneKind, ModeKindData};
@@ -1498,8 +1399,6 @@ fn e_on_the_desk_is_done_here_for_that_row() {
     assert_eq!(app.mailbox.desk_page.row_count(), 0);
 }
 
-/// A deliberate `e`, `e` puts away two rows, however quick; the key coming
-/// back up (reported by Windows consoles) does nothing.
 #[test]
 fn each_press_of_e_puts_away_one_row() {
     use crossterm::event::{KeyEventKind, KeyEventState};
@@ -1532,9 +1431,6 @@ fn each_press_of_e_puts_away_one_row() {
     assert_eq!(app.mailbox.desk_page.row_count(), 2);
 }
 
-/// `s` on a conversation row does what the row shows: a starred row of
-/// several messages unstars them (it used to star them again), and an
-/// unstarred one stars them.
 #[test]
 fn star_on_a_conversation_row_toggles_what_it_shows() {
     let mut app = App::new();
@@ -1579,8 +1475,6 @@ fn star_on_a_conversation_row_toggles_what_it_shows() {
     );
 }
 
-/// The row shows its newest message's star: with an older, unstarred
-/// message focused in the reader, `s` still unstars the starred row.
 #[test]
 fn star_follows_the_row_not_an_older_focused_message() {
     let mut app = App::new();
@@ -1594,7 +1488,6 @@ fn star_follows_the_row_not_an_older_focused_message() {
     envelopes[1].flags.insert(MessageFlags::STARRED);
     app.mailbox.envelopes = envelopes.clone();
     app.mailbox.selected_index = 0;
-    // The reader shows the conversation with the older message focused.
     app.mailbox.viewed_thread_messages = envelopes.clone();
     app.mailbox.thread_selected_index = 0;
     assert_eq!(
@@ -1616,13 +1509,10 @@ fn star_follows_the_row_not_an_older_focused_message() {
     );
 }
 
-/// Trash on a desk row acts on that row's thread, never on mail the
-/// mailbox or reader showed before the desk opened.
 #[test]
 fn trash_on_a_desk_row_targets_that_rows_messages() {
     use mxr_protocol::DeskLaneKind;
     let mut app = App::new();
-    // Something else was open before the desk.
     let unrelated = make_test_envelopes(1).remove(0);
     app.mailbox.envelopes = vec![unrelated.clone()];
     app.mailbox.viewing_envelope = Some(unrelated.clone());
@@ -1642,7 +1532,6 @@ fn trash_on_a_desk_row_targets_that_rows_messages() {
         "{queued:?}"
     );
 
-    // Star toggles the row's thread star.
     app.pending_mutation_queue.clear();
     app.modals.pending_bulk_confirm = None;
     let mut starred = owed.clone();
@@ -1659,11 +1548,9 @@ fn trash_on_a_desk_row_targets_that_rows_messages() {
         requested(&app)
     );
 
-    // Selecting by pattern cannot reach the hidden mailbox from the desk.
     app.apply(Action::PatternSelect(crate::action::PatternKind::All));
     assert!(app.mailbox.selected_set.is_empty());
 
-    // Verbs that need one message ask for the conversation to be opened.
     app.pending_mutation_queue.clear();
     app.modals.pending_bulk_confirm = None;
     app.apply(Action::ApplyLabel);
@@ -2379,8 +2266,6 @@ fn cleanup_submission_failure_releases_file_without_deleting_it() {
     );
 }
 
-/// Ctrl-z suspends like any terminal program (blueprint 35): it asks the
-/// runner to suspend from anywhere, text fields included, and types nothing.
 #[cfg(unix)]
 #[test]
 fn ctrl_z_asks_the_runner_to_suspend_even_from_a_text_field() {
@@ -2396,8 +2281,6 @@ fn ctrl_z_asks_the_runner_to_suspend_even_from_a_text_field() {
     assert_eq!(app.search.bar.query, "");
 }
 
-/// The review a resumed reply (or a draft edited from Drafts) opens on:
-/// the edits were saved as revision 4 of a stored draft.
 fn stored_review() -> (PendingSend, mxr_core::Draft) {
     let stored = mxr_core::Draft {
         revision: Some(4),
@@ -2447,7 +2330,6 @@ fn sending_a_resumed_draft_sends_that_stored_draft_as_saved() {
             send_identity: Some(identity),
             ..
         } => {
-            // Exactly the saved, reviewed draft: the daemon refuses anything else.
             assert_eq!(draft.id, stored.id);
             assert_eq!(draft.revision, Some(4));
             assert_eq!(draft.managed_attachments, Some(vec![]));
@@ -2490,10 +2372,6 @@ fn a_resumed_drafts_review_edits_it_again_and_never_discards_it() {
     assert!(app.compose.pending_compose.is_none());
 }
 
-/// Dogfood 2026-10-29: `r` in Messages, then `d` in the send review, then
-/// `r` again started a second draft, because the row didn't know about the
-/// first. Saving (or sending) a reply refetches Messages, so the row names
-/// the draft and `r` continues it.
 #[test]
 fn a_reply_saved_from_messages_refreshes_the_rows() {
     let directory = tempfile::tempdir().unwrap();
@@ -2508,9 +2386,6 @@ fn a_reply_saved_from_messages_refreshes_the_rows() {
     assert!(app.mailbox.messages_page.pending_refresh);
 }
 
-/// Dogfood 2026-10-29: the send review added a suggested person to Cc on
-/// `Ctrl-a`, GNU screen's prefix, which a TUI default never takes
-/// (blueprint 35). It is `c` now, printed on the review; `Ctrl-a` says so.
 #[test]
 fn c_adds_the_suggested_person_to_cc_and_ctrl_a_says_where_it_went() {
     let directory = tempfile::tempdir().unwrap();

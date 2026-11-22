@@ -1,8 +1,3 @@
-//! Reading and Paper trail in the TUI: open a place, pin exceptions, move a
-//! sender to where it belongs, and sweep a bundle or the whole place after
-//! the daemon's dry-run preview. The daemon owns every rule; this module
-//! only turns keys into requests and keeps the lens honest meanwhile.
-
 use super::*;
 use mxr_protocol::{MailPlaceData, SenderKindData};
 
@@ -39,14 +34,12 @@ impl App {
         self.mailbox.pending_place_refresh = Some(place);
     }
 
-    /// The place lens owns the keyboard (its list, not a reader beside it).
     pub(crate) fn place_list_focused(&self) -> bool {
         self.screen == Screen::Mailbox
             && matches!(self.mailbox.mailbox_view, MailboxView::Place(_))
             && self.mailbox.active_pane == ActivePane::MailList
     }
 
-    /// The bundle and message under the cursor in the place lens.
     pub fn selected_place_row(
         &self,
     ) -> Option<(
@@ -59,8 +52,6 @@ impl App {
             .nth(self.mailbox.selected_index)
     }
 
-    /// Fold a fetched page into the lens. Ignored if the user has moved on
-    /// to another place meanwhile; the cursor is clamped to what is left.
     pub(crate) fn set_place(&mut self, fetch: &PlaceFetch, page: PlacePageState) {
         if page.place.map(MailboxView::Place) != Some(self.mailbox.mailbox_view) {
             return;
@@ -72,8 +63,6 @@ impl App {
             .min(self.mailbox.place_page.row_count().saturating_sub(1));
     }
 
-    /// Refetch the place on screen (after a pin, a correction, a sweep or
-    /// any mutation) and the desk, whose counts the change may move.
     pub(crate) fn refresh_places(&mut self) {
         if let MailboxView::Place(place) = self.mailbox.mailbox_view {
             self.mailbox.pending_place_refresh = Some(place);
@@ -84,9 +73,6 @@ impl App {
         self.mailbox.pending_desk_refresh = true;
     }
 
-    /// `e` on a place row: done in the mode the place backs (Updates for
-    /// Paper trail, Reading for Reading). Returns false when no place row
-    /// is under the cursor, so the verb runs as usual.
     pub(super) fn done_in_place_row(&mut self) -> bool {
         if !self.place_list_focused() {
             return false;
@@ -111,7 +97,6 @@ impl App {
         true
     }
 
-    /// Enter on a place row opens its message in the reader beside it.
     pub(super) fn open_selected_place_row(&mut self) {
         if let Some((_, message)) = self.selected_place_row() {
             self.mailbox.pending_invite_open = Some(message.message_id.clone());
@@ -212,8 +197,6 @@ impl App {
         );
     }
 
-    /// Ask the daemon what a sweep would archive; the answer opens the
-    /// confirmation. `bundle`: only the sender under the cursor.
     fn preview_sweep(&mut self, bundle: bool) {
         let MailboxView::Place(place) = self.mailbox.mailbox_view else {
             self.status_message = Some("Sweep works in Reading and Paper trail".into());
@@ -239,9 +222,6 @@ impl App {
         self.status_message = Some("Checking what a sweep would archive…".into());
     }
 
-    /// The runtime's dry-run answer: show it for a yes, or say there is
-    /// nothing to sweep. Notes how much of it the lens has loaded, since a
-    /// sweep reaches mail not yet shown.
     pub(crate) fn show_sweep_preview(&mut self, mut confirm: PendingSweepConfirm) {
         self.status_message = None;
         if confirm.preview.count == 0 {
@@ -274,7 +254,6 @@ impl App {
         self.mailbox.sweep_confirm = Some(confirm);
     }
 
-    /// `>`: the next page of senders, when there are more.
     fn load_more_senders(&mut self) {
         let MailboxView::Place(place) = self.mailbox.mailbox_view else {
             return;
@@ -289,7 +268,6 @@ impl App {
         });
     }
 
-    /// `+`: the next page of the sender under the cursor.
     fn load_more_from_sender(&mut self) {
         let MailboxView::Place(place) = self.mailbox.mailbox_view else {
             return;
@@ -309,8 +287,6 @@ impl App {
         });
     }
 
-    /// Confirm the preview: run exactly the previewed selection, or cancel
-    /// when Cancel has focus.
     pub(crate) fn confirm_sweep(&mut self) {
         if self
             .mailbox
@@ -328,8 +304,6 @@ impl App {
         }
     }
 
-    /// The sweep's archive job finished: offer undo over every chunk and
-    /// refetch what it changed.
     pub(crate) fn finish_sweep(&mut self, archived: u32, undo_ids: Vec<String>) {
         self.status_message = None;
         if undo_ids.is_empty() {

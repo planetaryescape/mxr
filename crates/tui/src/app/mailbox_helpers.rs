@@ -127,10 +127,6 @@ impl App {
         }
     }
 
-    /// Apply a screener disposition to the currently-focused queue
-    /// entry. Optimistically removes the entry and queues the IPC; the
-    /// runtime fires `Request::SetScreenerDecision` and refreshes the
-    /// queue on success. No-op when the modal is empty.
     pub(super) fn dispatch_screener_disposition(
         &mut self,
         disposition: mxr_protocol::ScreenerDispositionData,
@@ -159,8 +155,6 @@ impl App {
     }
 
     pub(crate) fn context_envelope(&self) -> Option<&Envelope> {
-        // The desk list has no envelope of its own under the cursor; falling
-        // back to the mailbox or reader would act on unrelated mail.
         if self.desk_list_focused()
             || self.place_list_focused()
             || self.todo_list_focused()
@@ -173,9 +167,6 @@ impl App {
             return None;
         }
         if self.screen == Screen::Search {
-            // In the results pane, prefer the selected search result so that
-            // multi-select (ToggleSelect) targets the highlighted row rather
-            // than a stale viewing_envelope left over from the mailbox.
             if self.search.page.active_pane == SearchPane::Results {
                 return self
                     .selected_search_envelope()
@@ -228,8 +219,6 @@ impl App {
                 format!("{list_name} ({list_count})")
             }
         } else {
-            // A mailbox listed by role (Starred with no Starred label) is
-            // named for its role, not All Mail.
             let name = self
                 .mailbox
                 .active_role
@@ -237,14 +226,10 @@ impl App {
                 .unwrap_or("All Mail");
             format!("{name} {list_name} ({list_count})")
         };
-        // Where the selected email went and why (D119): "→ Updates ·
-        // automated sender".
         let base = match self.selected_mode_chip() {
             Some(chip) => format!("{base} · {}", crate::ui::sanitize::one_line(chip)),
             None => base,
         };
-        // Slice 5.1 (C2.6 cont): when the focused thread qualifies as
-        // dormant, append a discoverable hint to the title.
         if let Some(hint) = self.dormant_thread_hint() {
             format!("{base} · {hint}")
         } else {
@@ -252,9 +237,6 @@ impl App {
         }
     }
 
-    /// "Dormant Nd. Press B for briefing" when the focused row's
-    /// representative is older than 30d AND the thread has >=3
-    /// messages. Per Slice 5.1 doc spec.
     pub fn dormant_thread_hint(&self) -> Option<String> {
         const DORMANT_DAYS: i64 = 30;
         const MIN_MESSAGES: usize = 3;
@@ -294,10 +276,6 @@ impl App {
             .find(|label| &label.id == label_id)
     }
 
-    /// True when the active label is the one whose membership the operation
-    /// removes. Used to decide whether removing a message from the current
-    /// list is correct or would just bounce the row when the next sync re-
-    /// fetches the (still-matching) view.
     pub(super) fn active_label_matches(&self, label_name: &str) -> bool {
         self.active_label_record()
             .is_some_and(|label| label.name.eq_ignore_ascii_case(label_name))
@@ -320,8 +298,6 @@ impl App {
             )
     }
 
-    /// Whether the mailbox view draws the reader beside its list in the
-    /// three-pane layout. The modes and lenses fill that pane themselves.
     pub(crate) fn view_draws_reader(&self) -> bool {
         matches!(
             self.mailbox.mailbox_view,
@@ -418,9 +394,6 @@ impl App {
         }
     }
 
-    /// Open the underlying message for the selected calendar invite. Invites
-    /// carry only a `message_id`, so the runtime fetches the envelope via
-    /// `Request::GetEnvelope` and then opens the message view.
     pub(super) fn open_selected_invite_message(&mut self) {
         if let Some(invite) = self.selected_invite() {
             self.mailbox.pending_invite_open = Some(invite.message_id.clone());
@@ -428,13 +401,9 @@ impl App {
         }
     }
 
-    /// Store a freshly fetched desk. The cursor is clamped only while the
-    /// desk is showing: the startup and background fetches must not move
-    /// the cursor of whatever list is on screen.
     pub(crate) fn set_desk(&mut self, mut desk: DeskPageState) {
         let previous = &self.mailbox.desk_page;
         if desk.row_count() == 0 {
-            // Earned only by clearing it, and kept while it stays clear.
             desk.low_tide = previous.low_tide || (previous.loaded && previous.row_count() > 0);
             if desk.low_tide && !previous.low_tide {
                 self.status_message = Some(LOW_TIDE.to_string());
@@ -449,7 +418,6 @@ impl App {
         }
     }
 
-    /// The desk row under the cursor.
     pub fn selected_desk_row(&self) -> Option<&mxr_protocol::DeskRowData> {
         self.mailbox
             .desk_page
@@ -457,15 +425,12 @@ impl App {
             .nth(self.mailbox.selected_index)
     }
 
-    /// The desk lens owns the keyboard (its list, not a reader beside it).
     pub(crate) fn desk_list_focused(&self) -> bool {
         self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::Desk
             && self.mailbox.active_pane == ActivePane::MailList
     }
 
-    /// Every message of the selected desk row's thread (the row's own
-    /// message when the daemon sent no thread list).
     pub(crate) fn selected_desk_row_message_ids(&self) -> Vec<MessageId> {
         self.selected_desk_row()
             .map(|row| {
@@ -478,11 +443,6 @@ impl App {
             .unwrap_or_default()
     }
 
-    /// `e` on the desk is Done: nothing for me to do here, put it away. It
-    /// acts on the row under the cursor, from the list or from the reader
-    /// showing that row's conversation. The row leaves at once; `u` undoes
-    /// it. Returns false when the desk has no row in context, so the verb
-    /// runs as usual.
     pub(super) fn done_on_desk_row(&mut self) -> bool {
         if self.screen != Screen::Mailbox || self.mailbox.mailbox_view != MailboxView::Desk {
             return false;
@@ -499,9 +459,6 @@ impl App {
         if !in_context {
             return false;
         }
-        // Messages, the mode the desk backs, lets a person row go with its
-        // handoff copy. A promise under Due keeps the desk's own Done,
-        // which keeps the promise.
         if row.lane != mxr_protocol::DeskLaneKind::Due {
             let thread_id = row.thread_id.clone();
             self.queue_mode_done(mxr_protocol::ModeKindData::Messages, thread_id);
@@ -524,12 +481,8 @@ impl App {
         true
     }
 
-    /// Take a conversation off the desk at once (the daemon's answer, or a
-    /// refetch on failure, settles it), keeping the cursor in range.
     pub(super) fn remove_desk_thread(&mut self, thread_id: &mxr_core::ThreadId) {
         self.mailbox.desk_page.remove_thread(thread_id);
-        // The cursor is the desk's only on the desk: a done from Now or
-        // Messages clamping to the desk's rows sent their cursor to the top.
         if self.mailbox.mailbox_view == MailboxView::Desk {
             self.mailbox.selected_index = self
                 .mailbox
@@ -538,9 +491,6 @@ impl App {
         }
     }
 
-    /// Enter on a desk row: fetch the row's message by id and open it in
-    /// the reader beside the desk. The desk keeps its cursor, so closing
-    /// the reader lands back on the same row.
     pub(super) fn open_selected_desk_row(&mut self) {
         if let Some(row) = self.selected_desk_row() {
             self.mailbox.pending_invite_open = Some(row.message_id.clone());
@@ -548,12 +498,8 @@ impl App {
         }
     }
 
-    /// Called by the runtime once `Request::GetEnvelope` resolves for an
-    /// invite opened from the calendar-invites lens. Opens the message view.
     pub(crate) fn open_invite_envelope(&mut self, env: Envelope) {
         self.open_envelope(env);
-        // A mode or lens fills the list's pane and draws no reader beside
-        // it, so the email opens full width there; Esc goes back to it.
         self.mailbox.layout_mode = if self.view_draws_reader() {
             LayoutMode::ThreePane
         } else {
@@ -563,10 +509,6 @@ impl App {
         self.status_message = None;
     }
 
-    /// Called by the runtime once `Request::GetThread` resolves for a link
-    /// in the assistant's reply. Opens the thread's latest message in All
-    /// Mail's reader, wherever the email now is, as the web's link does:
-    /// the mode lenses draw full width, with no reader beside them.
     pub(crate) fn open_assistant_thread(&mut self, messages: Vec<Envelope>) {
         let Some(env) = messages.last().cloned() else {
             self.status_message = Some("That email has no messages left".into());
@@ -587,10 +529,6 @@ impl App {
         self.status_message = None;
     }
 
-    /// Called by the runtime once `Request::GetThread` resolves for a delivery
-    /// opened with `o`/Enter on the Deliveries screen. Opens the source
-    /// thread's most recent message inline in a right-hand split pane,
-    /// staying on the Deliveries screen.
     pub(crate) fn open_delivery_thread(&mut self, messages: Vec<Envelope>) {
         let Some(env) = messages.last().cloned() else {
             self.status_message = Some("No messages in this delivery's source thread".into());
@@ -601,7 +539,6 @@ impl App {
         self.status_message = None;
     }
 
-    /// Close the Deliveries split preview and drop the loaded message state.
     pub(super) fn close_delivery_preview(&mut self) {
         self.deliveries.preview_active = false;
         self.clear_message_view_state();
@@ -673,7 +610,6 @@ impl App {
 
     pub(super) fn schedule_preview_read(&mut self, envelope: &Envelope) {
         if self.is_paired_remote_read_only() {
-            // Opening remote mail must not queue this implicit flag write.
             self.mailbox.pending_preview_read = None;
             return;
         }
@@ -775,13 +711,6 @@ impl App {
         }
     }
 
-    /// `j` / `k` scroll the thread body one line, in every thread. The
-    /// reader renders the whole thread as one stacked column, so line
-    /// scrolling is the only way to read a long message; message-to-message
-    /// focus lives on `J` / `K` (`move_thread_focus_down` / `_up`).
-    ///
-    /// Overscroll is corrected by the renderer, which is the only place that
-    /// knows the wrapped content height, and clamps this offset in place.
     pub(super) fn move_message_view_down(&mut self) {
         self.mailbox.message_scroll_offset = self.mailbox.message_scroll_offset.saturating_add(1);
     }
@@ -790,8 +719,6 @@ impl App {
         self.mailbox.message_scroll_offset = self.mailbox.message_scroll_offset.saturating_sub(1);
     }
 
-    /// A deferred HTML parse landed. The open message's body state was built
-    /// from its stand-in, so build it again; a thread view rebuilds every frame.
     pub(crate) fn html_render_landed(&mut self) {
         if self.mailbox.viewing_envelope.is_some() {
             self.ensure_current_body_state();
@@ -908,23 +835,11 @@ impl App {
                 model: summary.model,
             });
             self.mailbox.thread_summary_error = None;
-            // Context facts are cheap local reads: fetch them now. The gist
-            // asks a model, so it waits out the same debounce as the summary.
             self.pending_thread_context = Some(thread_id.clone());
             self.pending_gist_debounce = Some((
                 thread_id.clone(),
                 tokio::time::Instant::now() + std::time::Duration::from_millis(250),
             ));
-            // Lazy summary backfill: if the daemon didn't have a cached
-            // summary for this thread, schedule one — but *debounce* so
-            // holding the down-arrow through the mail list doesn't fire
-            // an LLM request for every row passed. The debounce parks
-            // the thread_id for ~250ms; if the user keeps moving, this
-            // call replaces the pending one with the new thread_id and
-            // resets the timer. When they finally land, the timer
-            // expires and `lib.rs` drains it into a real IPC request.
-            // The request goes on a dedicated IPC connection so it
-            // doesn't block body fetches or other navigation.
             if !summary_was_cached
                 && !self.mailbox.thread_summary_in_flight.contains(&thread_id)
                 && !self
@@ -961,7 +876,6 @@ impl App {
         } else if self.mailbox.selected_index >= self.mailbox.scroll_offset + h {
             self.mailbox.scroll_offset = self.mailbox.selected_index + 1 - h;
         }
-        // Prefetch bodies for messages near the cursor
         self.queue_body_window();
     }
 
@@ -1024,12 +938,8 @@ impl App {
     }
 }
 
-/// Reading speed ≈ 200 wpm; a sub-minute read isn't worth a 30-word LLM
-/// summary plus a "Next steps:" line. The user can still press `y` to force.
 const AUTO_SUMMARY_MIN_WORDS: u32 = 200;
 
-/// Sender local-parts that smell automated. Conservative list — anything
-/// that lands here from a real human will still be summarizable on demand.
 const AUTO_SENDER_PATTERNS: &[&str] = &[
     "noreply",
     "no-reply",
@@ -1044,19 +954,6 @@ const AUTO_SENDER_PATTERNS: &[&str] = &[
     "bounce",
 ];
 
-/// Decide whether a thread is worth auto-summarizing. Returns `false` to
-/// suppress the lazy backfill; the user can always trigger summary
-/// explicitly with `y`.
-///
-/// Skip when:
-/// - Any message carries a calendar `METHOD` (REQUEST/REPLY/CANCEL) — the
-///   invite card already shows the relevant fields and the iCal payload
-///   doesn't summarize meaningfully.
-/// - The thread has no real body text (empty plain + empty html) across
-///   all messages we currently have cached.
-/// - Total body word count is under [`AUTO_SUMMARY_MIN_WORDS`].
-/// - A single-message thread from an automated/notification sender — the
-///   summary is almost guaranteed to be longer than the body.
 pub(crate) fn auto_summary_eligible(
     envelopes: &[Envelope],
     body_cache: &HashMap<MessageId, MessageBody>,
@@ -1084,10 +981,6 @@ pub(crate) fn auto_summary_eligible(
         }
     }
 
-    // If every cached body is empty *and* word counts agree, skip. Word
-    // counts come from sync and are present even when bodies aren't yet
-    // fetched — so we only treat "all bodies empty" as decisive when we
-    // actually have all the bodies in cache.
     let all_bodies_cached = envelopes
         .iter()
         .all(|envelope| body_cache.contains_key(&envelope.id));
@@ -1099,11 +992,6 @@ pub(crate) fn auto_summary_eligible(
         return false;
     }
 
-    // Prefer the sync-computed `body_word_count` column, but fall back
-    // to counting words in cached bodies when it's zero. Messages
-    // synced before the column was added (or where the sync path
-    // didn't compute it) persist as 0 and would otherwise gate out
-    // every thread the user opens, even with full body text available.
     let effective_words = total_words.max(body_text_words);
     effective_words >= AUTO_SUMMARY_MIN_WORDS
 }
@@ -1233,10 +1121,6 @@ mod auto_summary_tests {
 
     #[test]
     fn cached_body_text_overrides_zero_body_word_count() {
-        // Messages synced before `body_word_count` was added (or where
-        // the sync path didn't compute it) persist as 0. If we have a
-        // substantial body in cache, count its words directly instead
-        // of gating out every thread the user opens.
         let env = envelope(0, "alice@example.com");
         let long_text = "word ".repeat(300);
         let mut bodies = HashMap::new();

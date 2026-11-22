@@ -1,6 +1,3 @@
-//! "All accounts" in the TUI: the inbox, label views and All Mail ask the
-//! daemon for a system mailbox by role, so mail from every account lists.
-
 use super::*;
 use crate::client::{unified_role_for, with_unified_system_counts, Client};
 use futures::{SinkExt, StreamExt};
@@ -26,8 +23,6 @@ fn system_label(account_id: &AccountId, name: &str, unread: u32, total: u32) -> 
     }
 }
 
-/// A daemon with two accounts. The default account holds one inbox message;
-/// a request that names the inbox role sees both accounts' messages.
 async fn serve_two_accounts(
     first: Label,
     second: Label,
@@ -41,7 +36,6 @@ async fn serve_two_accounts(
         None,
     );
     tokio::spawn(async move {
-        // A client may reconnect, so serve every connection.
         while let Ok((stream, _)) = listener.accept().await {
             let (first, second) = (first.clone(), second.clone());
             let (envelopes, seen_roles) = (envelopes.clone(), seen_roles.clone());
@@ -79,7 +73,6 @@ async fn serve_two_accounts(
                             seen_roles.lock().unwrap().push(label_role.clone());
                             let listed = match label_role.as_deref() {
                                 Some("inbox" | "all_mail") => envelopes.to_vec(),
-                                // An older daemon: the default account's label only.
                                 _ if label_id.as_ref() == Some(&first.id) => {
                                     vec![envelopes[0].clone()]
                                 }
@@ -89,7 +82,6 @@ async fn serve_two_accounts(
                                 data: ResponseData::Envelopes { envelopes: listed },
                             }
                         }
-                        // An older daemon cannot decode this and drops the connection.
                         Request::SystemMailboxCounts { .. } if close_on_counts => return,
                         _ => Response::error("unexpected request"),
                     };
@@ -140,7 +132,6 @@ async fn app_load_lists_every_accounts_inbox_and_sums_the_counts() {
         .collect::<Vec<_>>();
     assert_eq!(subjects, vec!["first account", "second account"]);
     assert_eq!(app.mailbox.active_label.as_ref(), Some(&first.id));
-    // The sidebar shows the default account's INBOX with both accounts' counts.
     let inbox = app
         .mailbox
         .labels
@@ -152,7 +143,6 @@ async fn app_load_lists_every_accounts_inbox_and_sums_the_counts() {
         .lock()
         .unwrap()
         .contains(&Some("inbox".to_string())));
-    // The all-envelopes list is every account's mail too.
     assert_eq!(app.mailbox.all_envelopes.len(), 2);
 }
 
@@ -195,8 +185,6 @@ fn unified_counts_replace_system_counts_only() {
 
 #[test]
 fn a_mailbox_only_another_account_has_gets_a_sidebar_entry_with_daemon_counts() {
-    // Default account is Gmail-shaped (INBOX, DRAFT); the second account is
-    // IMAP-shaped and alone has SENT, with the folder's own provider id.
     let (gmail, imap) = (AccountId::new(), AccountId::new());
     let mine = vec![
         system_label(&gmail, "INBOX", 3, 10),
@@ -225,7 +213,6 @@ fn a_mailbox_only_another_account_has_gets_a_sidebar_entry_with_daemon_counts() 
     let merged = with_unified_system_counts(mine, &all, &counts);
     let named = |name: &str| merged.iter().find(|l| l.name == name).unwrap();
     assert_eq!(merged.len(), 3, "INBOX, DRAFT and the IMAP SENT");
-    // Daemon counts win over the label sums (7, 30).
     assert_eq!(
         (named("INBOX").unread_count, named("INBOX").total_count),
         (9, 99)
@@ -235,15 +222,10 @@ fn a_mailbox_only_another_account_has_gets_a_sidebar_entry_with_daemon_counts() 
         (named("SENT").unread_count, named("SENT").total_count),
         (2, 30)
     );
-    // DRAFT has no daemon count here, so it is left as the account had it.
     assert_eq!(named("DRAFT").total_count, 2);
-    // Selecting the IMAP entry lists Sent across accounts by role.
     assert_eq!(unified_role_for(&merged, &sent.id).as_deref(), Some("sent"));
 }
 
-/// An older daemon drops the connection on `SystemMailboxCounts`. Loading the
-/// app must still succeed, the sidebar keeps the labels' own counts, and the
-/// requests after the failed one run on a healthy connection.
 #[tokio::test]
 async fn app_load_survives_a_daemon_that_closes_on_system_mailbox_counts() {
     let (first_account, second_account) = (AccountId::new(), AccountId::new());
@@ -266,8 +248,6 @@ async fn app_load_survives_a_daemon_that_closes_on_system_mailbox_counts() {
     let mut app = App::new();
     app.load(&mut client).await.unwrap();
 
-    // Counts fell back to summing the labels (7, 30), and the inbox, listed
-    // after the failure, holds both accounts' mail.
     let inbox = app
         .mailbox
         .labels
@@ -276,6 +256,5 @@ async fn app_load_survives_a_daemon_that_closes_on_system_mailbox_counts() {
         .unwrap();
     assert_eq!((inbox.unread_count, inbox.total_count), (7, 30));
     assert_eq!(app.mailbox.envelopes.len(), 2);
-    // A request on the same client afterwards still works.
     assert_eq!(client.list_envelopes(10, 0).await.unwrap().len(), 2);
 }

@@ -11,11 +11,6 @@ impl App {
         (account.enabled || restored_profile) && account.sync_kind.is_some()
     }
 
-    /// The labels the picker applies, moves or routes by name. The daemon
-    /// resolves a name on each message's own account, so the picker offers
-    /// the user labels of the accounts the action targets (the default
-    /// account's when none is known), one entry per name; an account that
-    /// lacks the picked name is refused when the action is confirmed.
     pub(crate) fn label_picker_labels(&self) -> Vec<Label> {
         let mut target_accounts: Vec<mxr_core::AccountId> = Vec::new();
         for message_id in self.mutation_target_ids() {
@@ -50,9 +45,6 @@ impl App {
             .collect()
     }
 
-    /// Starred is listed by role when no label names it (an IMAP-only set of
-    /// accounts with no \Flagged folder); the sidebar and the renderer both
-    /// use this so their indexes match.
     pub(crate) fn starred_role_item_shown(&self) -> bool {
         !self
             .mailbox
@@ -63,7 +55,6 @@ impl App {
 
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
         let mut items = Vec::new();
-        // Accounts section (only shown when multiple accounts exist)
         let sync_accounts: Vec<_> = self
             .accounts
             .page
@@ -87,7 +78,6 @@ impl App {
         let mut user_labels = Vec::new();
         for label in self.visible_labels() {
             if label.kind == LabelKind::System {
-                // Inbox is on the rail, not among the folders under More.
                 if !crate::ui::sidebar::is_inbox_label(&label.name) {
                     system_labels.push(label.clone());
                 }
@@ -95,7 +85,6 @@ impl App {
                 user_labels.push(label.clone());
             }
         }
-        // The rail: Now, the five modes, then Inbox (blueprint 22).
         items.extend([
             SidebarItem::Now,
             SidebarItem::Messages,
@@ -105,7 +94,6 @@ impl App {
             SidebarItem::ArchiveMode,
             SidebarItem::Inbox,
         ]);
-        // More: the pages that left the rail, then the folders.
         items.push(SidebarItem::Header(SidebarHeader::More));
         if self.mailbox.sidebar_system_expanded {
             items.extend([
@@ -154,8 +142,6 @@ impl App {
         items
     }
 
-    /// Sidebar sync indicator for one account, looked up from the most
-    /// recent daemon sync-status snapshot (refreshed on sync events).
     pub(crate) fn account_sync_indicator(
         &self,
         account_id: &mxr_core::AccountId,
@@ -243,8 +229,6 @@ impl App {
             .find(|entry| entry.id == id)
     }
 
-    /// Rail ids the daemon marks early versions. Before the rail loads,
-    /// the modes built on an existing view are early.
     fn early_modes(&self) -> Vec<String> {
         match &self.mailbox.rail {
             Some(rail) => rail
@@ -354,7 +338,6 @@ impl App {
             .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
             .filter(|l| l.kind != mxr_core::types::LabelKind::System)
             .collect();
-        // Same-name labels of different accounts sit together, in account order.
         user.sort_by(|a, b| {
             a.name
                 .to_lowercase()
@@ -398,7 +381,7 @@ impl App {
                     if !account.is_default {
                         Some(Action::SwitchAccount(key))
                     } else {
-                        None // already active
+                        None
                     }
                 } else {
                     None
@@ -408,7 +391,6 @@ impl App {
             Some(SidebarItem::Starred) => Some(Action::GoToStarred),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
             Some(SidebarItem::Now) => Some(Action::OpenNow),
-            // Waiting on is a lane of the desk, which backs Messages.
             Some(SidebarItem::Messages | SidebarItem::Waiting) => Some(Action::OpenMessages),
             Some(SidebarItem::Todo) => Some(Action::OpenTodo),
             Some(SidebarItem::Reading) => Some(Action::OpenReading),
@@ -466,7 +448,6 @@ impl App {
         }
     }
 
-    /// Fold or unfold a section from its header; the cursor stays on it.
     fn toggle_sidebar_section(&mut self, header: SidebarHeader) {
         let mailbox = &mut self.mailbox;
         let expanded = match header {
@@ -479,10 +460,6 @@ impl App {
         self.sync_sidebar_section();
     }
 
-    /// `}` moves the cursor to the next section's header, `{` to the
-    /// previous one, or to the top of the rail (which has no header).
-    /// First and last (`g g`, `G`, Home, End) move within the sidebar, as
-    /// in the web app, not the list beside it. Any other action passes.
     pub(super) fn sidebar_ends(&mut self, action: Option<Action>) -> Option<Action> {
         self.mailbox.sidebar_selected = match action {
             Some(Action::JumpTop) => 0,

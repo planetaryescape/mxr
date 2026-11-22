@@ -11,13 +11,8 @@ use mxr_protocol::{
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-/// Maximum number of user-visible errors retained in the ring buffer.
-/// Beyond this, oldest entries are dropped — bounded memory under
-/// error storms (e.g. flaky body parser hammering the reporter).
 pub const USER_ERROR_LOG_CAPACITY: usize = 5;
 
-/// Severity of a reported user-visible error. Warns surface in the
-/// status bar (auto-clear after 5s); Errors escalate to a modal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserErrorSeverity {
     Warn,
@@ -32,28 +27,20 @@ pub struct UserError {
     pub since: Instant,
 }
 
-/// How long a warn remains visible in the status bar before clearing.
 pub const WARN_STATUS_TTL: Duration = Duration::from_secs(5);
 
 pub use mxr_config::snooze::{SnoozeOption as SnoozePreset, SNOOZE_PRESETS};
 
-/// What `b` (Not now, D173) acts on, and so what its rows do. The ids are
-/// copied when the picker opens, so a refresh underneath can't retarget it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NotNowTarget {
     /// An email in a mail list, the reader or Now: Later is the untimed
     /// reply later; a time snoozes it.
     Mail { message_id: MessageId },
-    /// A conversation in Messages or on the desk: Later is the untimed
-    /// reply later; a time takes it off until then (`DeferThreads`). On
-    /// Waiting on there is no Later, because it needs a time.
     Conversation {
         thread_id: ThreadId,
         message_id: MessageId,
         waiting: bool,
     },
-    /// A Reading item: Later saves it (or takes it off); a time snoozes
-    /// the issue it came in.
     Reading {
         item_key: String,
         message_id: MessageId,
@@ -66,7 +53,6 @@ pub enum NotNowTarget {
 }
 
 impl NotNowTarget {
-    /// The first row's words, when this target has one.
     pub fn later_label(&self) -> Option<&'static str> {
         match self {
             Self::Mail { .. } => Some("Later (no time): reply later"),
@@ -79,7 +65,6 @@ impl NotNowTarget {
         }
     }
 
-    /// What a time does, for the picker's title.
     pub fn title(&self) -> &'static str {
         match self {
             Self::Todo { .. } => " Not now: schedule ",
@@ -89,40 +74,24 @@ impl NotNowTarget {
     }
 }
 
-/// The `b` picker: Later first (where there is one), then the snooze
-/// presets on digits, then a typed time.
 #[derive(Debug, Clone, Default)]
 pub struct SnoozePanelState {
     pub visible: bool,
-    /// What the picker acts on; `None` only while it is closed.
     pub target: Option<NotNowTarget>,
     pub selected_index: usize,
-    /// `Some(buffer)` while the user is typing a custom-time expression
-    /// in the panel. `None` means the preset list is the active surface.
     pub custom_input: Option<String>,
-    /// Most recent parser error for the custom input, surfaced in the
-    /// modal so the user can correct without leaving the prompt.
     pub custom_error: Option<String>,
-    /// The custom time's previewed resolution and selected reading.
     pub custom_time: crate::ui::time_preview::TimePreview,
-    /// The presets offered when the picker opened, numbered from 1.
-    /// `None` offers every preset.
     pub presets: Option<Vec<crate::app::SnoozePreset>>,
 }
 
-/// `b`: reply later at a typed time, previewed live. On a Waiting on row
-/// the time brings the conversation back if nobody has replied. Enter with
-/// nothing typed is the untimed reply later (the reply queue, now).
 #[derive(Debug, Clone)]
 pub struct ReplyLaterPromptState {
     pub input: String,
     pub time: crate::ui::time_preview::TimePreview,
     pub error: Option<String>,
     pub thread_id: ThreadId,
-    /// The message `b` was pressed on, for the untimed flag.
     pub message_id: MessageId,
-    /// Pressed on a Waiting on row: the copy says so. The daemon decides
-    /// by who wrote last either way.
     pub waiting: bool,
 }
 
@@ -145,9 +114,6 @@ pub struct ModalsState {
     pub help_scroll_offset: u16,
     pub help_query: String,
     pub help_selected: usize,
-    /// Optional context override for the help modal's keybinding
-    /// sections. `None` follows the focused view; Tab cycles through
-    /// the other contexts without leaving the modal.
     pub help_context_filter: Option<crate::action::UiContext>,
     pub label_picker: LabelPicker,
     pub personal_categories: PersonalCategoryPicker,
@@ -159,112 +125,40 @@ pub struct ModalsState {
     pub error: Option<ErrorModalState>,
     pub pending_unsubscribe_confirm: Option<PendingUnsubscribeConfirm>,
     pub pending_unsubscribe_action: Option<PendingUnsubscribeAction>,
-    /// Ring buffer of user-visible warns and errors. Bounded so error
-    /// storms don't leak memory; oldest entries are dropped.
     pub error_log: VecDeque<UserError>,
-    /// Modal state for creating or editing a saved search. Visible
-    /// when `Some`. When `existing_name` is set the save action
-    /// does delete-then-create so the daemon's UNIQUE-name constraint
-    /// doesn't reject the update.
     pub saved_search_form: Option<SavedSearchFormState>,
-    /// Queue of saved-search IPC requests waiting for the dispatcher
-    /// to send. Stored as a Vec so the edit path can enqueue
-    /// `[Delete, Create]` atomically.
     pub pending_saved_search_dispatch: Vec<Request>,
-    /// Set after a saved-search mutation completes so the next
-    /// dispatcher tick refreshes `app.mailbox.saved_searches`.
     pub pending_saved_search_refresh: bool,
-    /// `Some(name)` while a delete confirmation is open. Pressing
-    /// `y`/`Enter` dispatches the delete; `n`/`Esc` cancels.
     pub pending_saved_search_delete_confirm: Option<String>,
-    /// Which of that confirm's two options is lit.
     pub saved_search_delete_choice: super::ConfirmChoice,
-    /// Queue of semantic-runtime IPC requests waiting to be dispatched.
-    /// Populated by palette actions (Enable/Disable/Reindex/Install
-    /// Profile); drained one-at-a-time by the lib.rs dispatcher.
     pub pending_semantic_dispatch: Vec<Request>,
-    /// Queue of one-shot platform/AI requests whose result should be
-    /// shown in a read-only modal (draft suggestions, commitments, voice).
     pub pending_platform_dispatch: Vec<PendingPlatformDispatch>,
     pub platform: PlatformModalState,
-    /// Modal for choosing tone/length before an AI reply draft (the TUI
-    /// equivalent of the web "Adjust" disclosure). Opened from the reader /
-    /// command palette; on Enter it dispatches a `DraftCompose` for the
-    /// stored thread with the chosen overrides.
     pub draft_options: DraftOptionsModalState,
-    /// Modal for editing the active analytics view's filter
-    /// parameters in one form. Populated when the user presses `f`
-    /// inside the Analytics screen; cleared on Esc/Enter.
     pub analytics_filter: Option<AnalyticsFilterModalState>,
-    /// Messages' filter picker (Ctrl-f). Its choices live on the Messages
-    /// page's `filter`; this only holds the cursor.
     pub messages_filter: Option<MessagesFilterPicker>,
-    /// Browser modal listing the user's compose snippets. Read-only:
-    /// add/edit/delete still flow through `mxr snippets` CLI; the modal
-    /// surfaces the list so users discover what's available without
-    /// leaving the TUI.
     pub snippets: SnippetsModalState,
-    /// Browser modal showing per-sender relationship aggregates
-    /// (volume, response cadence, open commitments). Surfaced via the
-    /// command palette so users can drill into a sender without
-    /// leaving the inbox.
     pub sender_profile: SenderProfileModalState,
-    /// Triage queue modal listing senders awaiting a screener
-    /// decision. Supports three-key disposition (allow / deny / feed /
-    /// paper-trail) that fires `SetScreenerDecision`.
     pub screener: ScreenerModalState,
-    /// Reply-later queue modal listing flagged messages so the user
-    /// can walk them. Read-only: actually replying still uses the
-    /// regular reply flow once the user opens the focused message.
     pub reply_queue: ReplyQueueModalState,
-    /// Stored-drafts browser modal listing locally-saved drafts across
-    /// all accounts. `e`/Enter opens the selected draft for
-    /// edit-in-place; the edit round-trips through `Request::UpdateDraft`
-    /// so the same `DraftId` is preserved instead of minting a new draft.
     pub drafts: DraftsModalState,
-    /// Activity-log modal (Phase 5). Read-only browser of recent
-    /// `user_activity` rows fetched via IPC.
     pub activity: ActivityModalState,
-    /// Thread-summary modal showing the LLM-generated 2-3 sentence
-    /// summary of the focused thread. Loading / error / disabled
-    /// states all surface inline.
     pub summary: ThreadSummaryModalState,
-    /// Slice 5.1/5.2 (C2.6): briefing modal for "returning to a
-    /// dormant thread / recipient" context. Holds either a thread
-    /// briefing or a recipient briefing.
     pub briefing: BriefingModalState,
-    /// Slice 6.1 (C2.9): whois modal -- explains an entity (email
-    /// or free-text term) using local evidence.
     pub whois: WhoisModalState,
-    /// Slice 5.4 (C2.8 cont): expert-finder modal -- shows people
-    /// who have answered similar questions before.
     pub expert: ExpertModalState,
-    /// Path-input modal shown when the user presses `d` in the
-    /// attachment list. Lets them choose where to save instead of
-    /// silently saving the file to the client's internal cache.
     pub save_attachment: SaveAttachmentModalState,
-    /// Export picker opened by `E`: format, then destination, then path.
     pub export: ExportModalState,
 }
 
-/// State for the "save attachment as..." modal. Pre-filled with the
-/// user's configured `download_dir` joined to the attachment filename;
-/// `1`/`2`/`3` swap to Downloads/Desktop/cwd presets. Two-step
-/// overwrite confirmation when the target file already exists.
 #[derive(Debug, Clone, Default)]
 pub struct SaveAttachmentModalState {
     pub visible: bool,
     pub message_id: Option<mxr_core::MessageId>,
     pub attachment_id: Option<mxr_core::AttachmentId>,
     pub filename: String,
-    /// The current path text. Edited directly by the user; presets
-    /// replace the whole buffer on `1`/`2`/`3`.
     pub input: String,
-    /// Last validation/IO error to surface in the modal, e.g. "parent
-    /// directory does not exist".
     pub error: Option<String>,
-    /// When true, the input already resolved to an existing file and
-    /// the user must press Enter a second time to confirm overwrite.
     pub awaiting_overwrite_confirm: bool,
 }
 
@@ -345,28 +239,20 @@ impl PlatformModalState {
     }
 }
 
-/// Which field the Draft Options modal cursor is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DraftOptionsField {
-    /// What the reply should say (free text; empty lets the daemon answer
-    /// what the message asks).
     #[default]
     Instruction,
     Register,
     Length,
 }
 
-/// State for the Draft Options modal: pick the tone (register) and length for
-/// an AI reply draft, or leave them on "Auto" to let the daemon infer them.
-/// Index 0 of each axis is "Auto" (no override).
 #[derive(Debug, Clone, Default)]
 pub struct DraftOptionsModalState {
     pub visible: bool,
     pub thread_id: Option<ThreadId>,
     pub active: DraftOptionsField,
-    /// 0=Auto, 1=Casual, 2=Neutral, 3=Formal
     pub register_idx: usize,
-    /// 0=Auto, 1=Short, 2=Medium, 3=Long
     pub length_idx: usize,
     pub instruction: String,
 }
@@ -397,7 +283,6 @@ impl DraftOptionsModalState {
         };
     }
 
-    /// Cycle the active field's selection by `delta` (wraps).
     pub fn cycle(&mut self, delta: isize) {
         let slot = match self.active {
             DraftOptionsField::Instruction => return,
@@ -407,7 +292,6 @@ impl DraftOptionsModalState {
         *slot = (*slot as isize + delta).rem_euclid(4) as usize;
     }
 
-    /// The chosen register override, or `None` for "Auto".
     pub fn register(&self) -> Option<VoiceRegisterData> {
         match self.register_idx {
             1 => Some(VoiceRegisterData::Casual),
@@ -417,7 +301,6 @@ impl DraftOptionsModalState {
         }
     }
 
-    /// The chosen length override, or `None` for "Auto".
     pub fn length(&self) -> Option<DraftLengthHintData> {
         match self.length_idx {
             1 => Some(DraftLengthHintData::Short),
@@ -428,9 +311,6 @@ impl DraftOptionsModalState {
     }
 }
 
-/// Read-only state for the snippets browser modal. `visible=true`
-/// while the modal is open; `loading=true` between dispatch and
-/// response so the UI can show a spinner instead of "no snippets".
 #[derive(Debug, Clone, Default)]
 pub struct SnippetsModalState {
     pub visible: bool,
@@ -489,9 +369,6 @@ impl SnippetsModalState {
     }
 }
 
-/// Read-only state for the sender-profile browser modal. Either holds
-/// a fetched profile, an error, or a "loading" placeholder while the
-/// IPC call is in-flight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SenderProfileTab {
     #[default]
@@ -504,9 +381,6 @@ pub enum SenderProfileTab {
 pub struct SenderProfileModalState {
     pub visible: bool,
     pub loading: bool,
-    /// Email address whose profile is being shown. Kept on the state so
-    /// the title bar can read it back even when the response is still
-    /// pending.
     pub email: Option<String>,
     pub current_thread_id: Option<mxr_core::ThreadId>,
     pub profile: Option<SenderProfileData>,
@@ -592,9 +466,6 @@ impl SenderProfileModalState {
     }
 }
 
-/// State for the screener triage modal. Holds the queue of senders
-/// without a decision yet; key dispositions remove the entry from the
-/// list optimistically and fire the IPC.
 #[derive(Debug, Clone, Default)]
 pub struct ScreenerModalState {
     pub visible: bool,
@@ -656,8 +527,6 @@ impl ScreenerModalState {
         self.entries.get(self.selected_index)
     }
 
-    /// Remove the currently-selected entry (after a disposition has
-    /// been applied) and clamp the cursor so it stays within range.
     pub fn remove_selected(&mut self) -> Option<ScreenerQueueEntryData> {
         if self.entries.is_empty() {
             return None;
@@ -672,10 +541,6 @@ impl ScreenerModalState {
     }
 }
 
-/// State for the local activity-log modal. Read-only listing of recent
-/// rows from `user_activity`. Pause/resume controls available inline;
-/// redaction still goes through the CLI to keep this surface
-/// non-destructive in v1.
 #[derive(Debug, Clone, Default)]
 pub struct ActivityModalState {
     pub visible: bool,
@@ -735,9 +600,6 @@ impl ActivityModalState {
     }
 }
 
-/// State for the reply-later queue modal. Read-only listing of
-/// flagged messages; replying still flows through the regular
-/// compose pipeline once the user opens the focused message.
 #[derive(Debug, Clone, Default)]
 pub struct ReplyQueueModalState {
     pub visible: bool,
@@ -796,9 +658,6 @@ impl ReplyQueueModalState {
     }
 }
 
-/// A stored-draft mutation captured at preview time. The same `Draft` is
-/// carried into commit so changing the list selection cannot change the
-/// mutation target after the user has reviewed it.
 #[derive(Debug, Clone)]
 pub enum StoredDraftOperation {
     Delete {
@@ -808,28 +667,22 @@ pub enum StoredDraftOperation {
         draft: Draft,
         provider: String,
     },
-    /// Stop a scheduled send; the draft itself stays.
     CancelSchedule {
         draft: Draft,
         send_at: chrono::DateTime<chrono::Utc>,
     },
 }
 
-/// State for the stored-drafts browser modal: locally-saved drafts across all
-/// accounts, most recently updated first. Mutations remain in this modal so
-/// their preview and confirmation target the same captured draft.
 #[derive(Debug, Clone, Default)]
 pub struct DraftsModalState {
     pub visible: bool,
     pub loading: bool,
     pub operation_in_flight: bool,
     pub drafts: Vec<Draft>,
-    /// When each scheduled draft will send (drafts not listed aren't scheduled).
     pub scheduled: std::collections::HashMap<mxr_core::DraftId, chrono::DateTime<chrono::Utc>>,
     pub selected_index: usize,
     pub error: Option<String>,
     pub confirmation: Option<StoredDraftOperation>,
-    /// Which of the confirm's two options is lit.
     pub choice: super::ConfirmChoice,
 }
 
@@ -895,8 +748,6 @@ impl DraftsModalState {
         true
     }
 
-    /// Preview cancelling the selected draft's scheduled send. False when
-    /// nothing is selected or it isn't scheduled.
     pub fn preview_cancel_schedule(&mut self) -> bool {
         let Some(draft) = self.selected().cloned() else {
             return false;
@@ -914,7 +765,6 @@ impl DraftsModalState {
             return false;
         };
         self.confirmation = Some(StoredDraftOperation::Push { draft, provider });
-        // Syncing destroys nothing, so Enter is yes.
         self.choice = super::ConfirmChoice::on_action();
         true
     }
@@ -939,15 +789,10 @@ impl DraftsModalState {
     }
 }
 
-/// State for the thread-summary modal. Holds the LLM result while the
-/// modal is visible; `error` carries the daemon-side message verbatim
-/// (e.g. `LlmDisabled`, `ThreadTooShort`).
 #[derive(Debug, Clone, Default)]
 pub struct ThreadSummaryModalState {
     pub visible: bool,
     pub loading: bool,
-    /// Thread identifier currently being summarized. Used to drop late
-    /// responses for a previously-focused thread.
     pub thread_id: Option<mxr_core::ThreadId>,
     pub summary: Option<String>,
     pub model: Option<String>,
@@ -988,9 +833,6 @@ impl ThreadSummaryModalState {
     }
 }
 
-/// Slice 5.1 / 5.2 wiring (C2.6): briefing modal state. Holds
-/// either a thread briefing or a recipient briefing; the kind is
-/// encoded by which Subject was set on opening.
 #[derive(Debug, Clone, Default)]
 pub struct BriefingModalState {
     pub visible: bool,
@@ -1064,8 +906,6 @@ impl BriefingModalState {
     }
 }
 
-/// Slice 5.4 (C2.8 cont): expert-finder modal state. Mirrors the
-/// whois modal shape -- loading, populated, error, hidden.
 #[derive(Debug, Clone, Default)]
 pub struct ExpertModalState {
     pub visible: bool,
@@ -1101,8 +941,6 @@ impl ExpertModalState {
     }
 }
 
-/// Slice 6.1 (C2.9): whois modal state. Holds the in-flight query
-/// + the explanation response.
 #[derive(Debug, Clone, Default)]
 pub struct WhoisModalState {
     pub visible: bool,
@@ -1141,19 +979,12 @@ impl WhoisModalState {
     }
 }
 
-/// Form state for the analytics filter modal. Holds string-form
-/// fields per active view so the user can edit numeric inputs by
-/// typing; on submit, the analytics action handler parses them back
-/// into the typed `AnalyticsState` fields.
-/// The rows of the Messages filter picker, top to bottom: three turn
-/// choices (a radio group), then the two toggles.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MessagesFilterPicker {
     pub cursor: usize,
 }
 
 impl MessagesFilterPicker {
-    /// The last row: Clear filters.
     pub const LAST: usize = 6;
 }
 
@@ -1172,23 +1003,13 @@ pub struct AnalyticsFilterField {
     pub options: Vec<String>,
 }
 
-/// Modal form for creating (or editing via delete+create) a saved
-/// search. Mirrors the shape of `RuleFormState` but kept distinct so
-/// the rule-form's tui-textarea editors aren't carried into a much
-/// simpler two-line form.
 #[derive(Debug, Clone)]
 pub struct SavedSearchFormState {
-    /// `Some(old_name)` when editing — save first deletes the old row.
     pub existing_name: Option<String>,
     pub name: String,
     pub query: String,
-    /// `lexical` / `semantic` / `hybrid` etc., serialised as the daemon
-    /// expects. Stored as the protocol enum so we don't need to
-    /// reparse on submit.
     pub search_mode: mxr_core::types::SearchMode,
     pub active_field: SavedSearchFormField,
-    /// Surfaced to the user when validation rejects a submit (empty
-    /// name etc.). Cleared on the next successful interaction.
     pub validation_error: Option<String>,
 }
 
@@ -1239,15 +1060,12 @@ pub struct PendingBulkConfirm {
     pub optimistic_effect: Option<MutationEffect>,
     pub status_message: String,
     pub preview: BulkPreview,
-    /// First preview row on screen; j/k moves it, the modal clamps it.
     pub preview_scroll: usize,
 }
 
-/// The messages a bulk confirm will act on, in list order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BulkPreview {
     pub rows: Vec<BulkPreviewRow>,
-    /// Ids in the request that the current list does not show.
     pub not_in_view: usize,
 }
 

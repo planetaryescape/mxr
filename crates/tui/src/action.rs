@@ -1,6 +1,5 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    // Navigation (vim-native)
     MoveDown,
     MoveUp,
     JumpTop,
@@ -33,7 +32,6 @@ pub enum Action {
     NextAnalyticsView,
     PrevAnalyticsView,
     RefreshAnalytics,
-    // Analytics filter cycles (Slices 3, 4, 6, 7, 9)
     CycleStorageMode,
     CycleStorageGroupBy,
     ToggleStalePerspective,
@@ -45,10 +43,8 @@ pub enum Action {
     ToggleSubscriptionsRank,
     CycleWrappedWindow,
     StepWrappedYear(i32),
-    // Analytics drill-down + actionable rows (Slice 11, Slice 6)
     AnalyticsRowDrillDown,
     AnalyticsUnsubscribe,
-    // Analytics filter modal (Slice 10)
     OpenAnalyticsFilterModal,
     CloseAnalyticsFilterModal,
     SubmitAnalyticsFilterModal,
@@ -59,7 +55,6 @@ pub enum Action {
     OpenTab5,
     OpenTab6,
     OpenTab7,
-    // Search
     OpenGlobalSearch,
     OpenMailboxFilter,
     SubmitSearch,
@@ -67,421 +62,201 @@ pub enum Action {
     CycleSearchMode,
     NextSearchResult,
     PrevSearchResult,
-    // Gmail go-to navigation (A005)
     GoToInbox,
     GoToStarred,
     GoToSent,
     GoToDrafts,
     GoToAllMail,
-    /// `g #` and `g !`: the Trash and Spam labels, which the web app shows
-    /// as pages.
     GoToTrash,
     GoToSpam,
-    /// `g n`: snoozed mail, waking soonest first (`Request::ListSnoozed`).
     OpenSnoozed,
-    /// `w`: wake it now. In Snoozed the lit conversation comes back to the
-    /// inbox; in the reply queue the lit message leaves the queue. Either
-    /// undoes a Not now (`b`).
     Wake,
     OpenSubscriptions,
     OpenOwedReplies,
     OpenDesk,
-    /// Open Now (`g h`): the front page, at most ten things in four fixed
-    /// sections (`Request::GetNow`).
     OpenNow,
-    /// Open Messages (`g m`): people you talk with, one row each, with the
-    /// selected person's page beside them (`Request::ListMessages`).
     OpenMessages,
-    /// Enter in Messages: open the person's page, or the Quiet band.
     MessagesOpen,
-    /// `.` in Messages: Got it, previewed with a countdown, then sent.
     MessagesAck,
-    /// `u` or Esc while Got it counts down: don't send it.
     MessagesCancelAck,
-    /// `e` in Messages: done here for the selected topic (`SetModeDone`).
     MessagesDone,
-    /// `s` in Messages: pin or unpin the person.
     MessagesPin,
-    /// `c` in Messages: a new topic with the person.
     MessagesNewTopic,
-    /// `[` in Messages: the previous topic with this person.
     MessagesPrevTopic,
-    /// `]` in Messages: the next topic with this person.
     MessagesNextTopic,
-    /// `p` in Messages: focus the person page.
     MessagesPersonPage,
-    /// `o` or `v` in Messages: the selected topic's message as sent.
     MessagesAsSent,
-    /// Esc on Messages' first-encounter card, or back to the list.
     MessagesBack,
-    /// Ctrl-f in Messages: the filter picker (turn, unread, past your pace).
     MessagesFilter,
-    /// `f` in Messages: cycle the view, preserving its toggles.
     MessagesCycleFilter,
-    /// Open Archive (`g e`): an early version that says what backs it.
     OpenArchiveMode,
-    /// Enter on Now: open the row in its own mode.
     NowOpen,
-    /// `e` on Now: done here, in the row's own mode (`SetModeDone`).
     NowDone,
-    /// `o` on Now: open the email itself.
     NowOpenEmail,
-    /// `A` on Now: preview letting go of the Updates card, or confirm it.
     NowLetGoDigest,
-    /// Open Updates (`g u`): the twice-daily briefing by source
-    /// (`Request::GetUpdatesDigest`).
     OpenUpdates,
-    /// Enter on Updates: open the email, or unfold the quieter sources.
     UpdatesOpen,
-    /// `o` on Updates: open the email itself.
     UpdatesOpenEmail,
-    /// `A` on Updates: preview letting go of the digest, or confirm it.
     UpdatesLetGoAll,
-    /// `e` on Updates: let go of this source.
     UpdatesLetGoSource,
-    /// `t` on Updates: this needs me, a to-do from the line.
     UpdatesNeedsMe,
-    /// `K` on Updates: tune this source.
     UpdatesTune,
-    /// Sweep this update's sender from Paper trail after a preview.
     UpdatesSweep,
-    /// A digit in the tune menu: set that setting.
     UpdatesTuneChoice(usize),
-    /// `L` on Updates: open the line's link.
     UpdatesOpenLink,
-    /// `y` on Updates: copy the line's one-time code.
     UpdatesCopyCode,
-    /// Space on Updates: open or close the lit line's details under it.
     UpdatesPeek,
-    /// Esc on Updates: close a menu or retire the first-encounter card.
     UpdatesClose,
-    /// `g F`: Focus & reply, everyone you owe a reply one conversation at
-    /// a time.
     OpenFocus,
-    /// `j` in Focus & reply: this one goes to the end of the queue.
     FocusSkip,
-    /// `e` in Focus & reply: done, no reply needed (the desk's Done).
     FocusDone,
-    /// `r` in Focus & reply: write the reply in `$EDITOR`.
     FocusReply,
-    /// `w` in Focus & reply: write the reply, then send with a reminder if
-    /// nobody replies.
     FocusRemind,
-    /// `d` in Focus & reply: write the reply, then draft it in your voice.
     FocusDraft,
-    /// Esc in Focus & reply: back to where it was opened from.
     FocusLeave,
-    /// `X`: "Move to…" for the selected email: one key per mode
-    /// (`MoveMessage`), Shift for the sender's mode.
     OpenMoveMenu,
-    /// `K` where it is free (the mail list, Now, Messages): the sender's
-    /// mode, for this and all their mail. While a move's "Always for this
-    /// sender?" shows, it answers yes at once.
     OpenSenderMoveMenu,
-    /// A choice in the move menu: this email, or with `sender` the
-    /// sender's mode.
     MoveEmailTo {
         mode: mxr_protocol::ModeKindData,
         sender: bool,
     },
-    /// A capital in the move menu on a new sender's row: answer its one
-    /// question with that kind (`SetSenderKind`).
     AnswerNewSender(mxr_protocol::SenderKindData),
-    /// y or n to "Always for this sender?" after a Not-sure answer.
     AnswerAlwaysForSender(bool),
-    /// Enter on Now's arrivals line: the emails behind it.
     OpenArrivals,
-    /// Tab in the arrivals list: the next count's emails.
     ArrivalsNextBucket,
-    /// Esc in the arrivals list.
     CloseArrivals,
-    /// Open Reading or Paper trail (`Request::ListPlace`).
     OpenPlace(mxr_protocol::MailPlaceData),
-    /// Pin or unpin the message under the cursor in a place.
     TogglePin,
-    /// Open the "move sender to…" menu for the sender under the cursor.
     OpenSenderKindMenu,
-    /// Move that sender to a kind (`None`: back to automatic).
     SetSenderKind(Option<mxr_protocol::SenderKindData>),
-    /// Preview sweeping the bundle under the cursor.
     SweepBundle,
-    /// Preview sweeping the whole place on screen.
     SweepPlace,
-    /// Load the next page of senders in a place.
     MorePlaceSenders,
-    /// Load more of the sender under the cursor.
     MoreFromSender,
-    /// Open the calendar-invites lens (sidebar item). Loads invites via
-    /// `Request::ListInvites` into the dedicated lens view.
     OpenCalendarInvites,
-    /// Open To do (`g x`): things email asked you to do, as a runway
-    /// ordered by when to act (`Request::GetTodoRunway`).
     OpenTodo,
-    /// Enter on a to-do: open its link when the pay-link gate passed,
-    /// otherwise its email.
     TodoPrimary,
-    /// `e`: tick the to-do off, with `u` to undo.
     TodoDone,
-    /// `Z`: show it on a date you type, previewed as you type.
     TodoSchedule,
-    /// `,`: correct a field as `field=value`, or review a later-mail
-    /// resolution first when the to-do has one waiting.
     TodoEdit,
-    /// `X`: not a to-do; kept as a correction.
     TodoDismiss,
-    /// The palette's "Review what might need you": open or close the asks
-    /// mxr wasn't sure were for you.
     TodoMightNeedYou,
-    /// `o`: open the email the to-do came from.
     TodoOpenEmail,
-    /// `Space`: open the lit to-do's details under it (why it is here, its
-    /// email's first lines, where each field came from), or close them.
     TodoPeek,
-    /// Inspect a later-mail resolution, then explicitly accept it (`,` on
-    /// a to-do with one waiting).
     TodoReviewResolution,
-    /// Palette: preview sending the lit to-do to Microsoft To Do; Enter
-    /// in the preview sends it.
     TodoSendToMicrosoft,
-    /// Palette: preview syncing the lit to-do's linked Microsoft To Do
-    /// task; Enter in the preview syncs it.
     TodoSyncMicrosoft,
     TodoConfirmResolution,
     TodoDismissResolution,
     TodoUndoResolution,
-    /// Esc while a hint shows in the status line: dismiss it in every
-    /// client (`SetHintSeen`).
     DismissHint,
-    /// The Expired list, one key from restore.
     TodoOpenExpired,
-    /// The first run's one-time catch-up.
     TodoOpenCatchup,
-    /// Back from the Expired list or the catch-up to the runway.
     TodoShowRunway,
-    /// Put an expired row back on the runway.
     TodoRestore,
-    /// Keep the catch-up row under the cursor.
     CatchupKeep,
-    /// Let go of the catch-up row under the cursor.
     CatchupLetGo,
-    /// Preview letting go of the whole catch-up, or confirm the preview.
     CatchupLetGoAll,
-    /// `t` on a conversation: make a to-do from it.
     CreateTodoFromMessage,
-    /// Archive `/`: type into the answer box.
     RecordsAsk,
-    /// Archive `y`: copy the record's reference.
     RecordsCopyReference,
-    /// Archive `Y`: copy the record's amount.
     RecordsCopyAmount,
-    /// Archive Enter: open the record's PDF, else its card.
     RecordsOpenDocument,
-    /// Archive Right: the record's whole card, every field and source.
     RecordsOpenCard,
-    /// Archive `o` and `e`: open the email the record came from.
     RecordsOpenEmail,
-    /// Archive `p`: every record from this issuer.
     RecordsIssuerPage,
-    /// Archive `[`: the year before.
     RecordsPrevYear,
-    /// Archive `]`: the year after.
     RecordsNextYear,
-    /// Archive `,`: fix a field as `field=value`, previewed first.
     RecordsFix,
-    /// Archive `v`: confirm every unchecked amount and date.
     RecordsMarkChecked,
-    /// Archive `X`: not a record. The email is untouched.
     RecordsDismiss,
-    /// Archive `E`: preview the CSV export, then write it.
     RecordsExport,
-    /// Archive `g f`: the next kind chip.
     RecordsNextKind,
-    /// Archive `t`: make a to-do from the record's email.
     RecordsMakeTodo,
-    /// Archive Esc: close the card, the answer or the issuer page.
     RecordsBack,
-    /// `T` on a conversation: pass it to a mode (Archive, this phase).
     PassToMode,
-    /// Open Reading (`g r`): the edition, with a reader beside it
-    /// (`Request::GetReadingEdition`).
     OpenReading,
-    /// Enter: read the item under the cursor in the reader pane.
     ReadingRead,
-    /// `L`: fetch the item's linked article, naming its site first.
     ReadingArticle,
-    /// `b`: put the item on Later (a link's article is saved too).
     ReadingLater,
-    /// `e`: let go of the item's issue in Reading.
     ReadingLetGo,
-    /// `A`: preview letting go of everything shown, or confirm it.
     ReadingLetGoAll,
-    /// `D`: preview unsubscribing from the item's source, or `a` in that
-    /// preview: unsubscribe and clear the source's issues.
     ReadingUnsubscribe,
-    /// Enter or `u` in the unsubscribe preview: unsubscribe, keep the mail
-    /// already there.
     ReadingUnsubscribeOnly,
-    /// `R`: the source's own text instead of the reader, remembered.
     ReadingOriginal,
-    /// `h`: save the paragraph at the top of the reader as a highlight.
     ReadingHighlight,
-    /// `3`, the Highlights tab: the open item's highlights, to edit a
-    /// note or remove one.
     ReadingHighlights,
-    /// `o`: open the email itself.
     ReadingOpenEmail,
-    /// Esc in the reader: back to the edition.
     ReadingBack,
-    /// `1`, the Edition tab: the edition, from Later or the reader.
     ReadingEdition,
-    /// `2`, the Later tab: what was kept for later.
     ReadingLaterShelf,
-    /// `M`: open the item in Marginalia, sending its text there the first
-    /// time (`Request::SendReadingToMarginalia`).
     ReadingMarginalia,
     GoToLabel,
-    // Command palette
     OpenCommandPalette,
     CloseCommandPalette,
-    /// `@`: open the assistant pane, move the keys into it, or hide it.
     ToggleAssistant,
     NewAssistantConversation,
     OpenAssistantConversations,
-    /// Pick the model the assistant uses.
     OpenAssistantModels,
-    /// Let reversible changes run without asking in this conversation.
     ToggleAssistantTrust,
-    /// Asks the daemon what would go (`dry_run`), then confirms.
     DeleteAssistantConversation,
-    // Sync
     SyncNow,
-    // Message view
     OpenMessageView,
     CloseMessageView,
     ToggleMailListMode,
-    // Label / saved search selection
     SelectLabel(mxr_core::LabelId),
     SelectSavedSearch(String, mxr_core::SearchMode),
-    /// Jump to the Nth saved search (1-indexed) for keyboard-driven
-    /// power users. `0` clears any active saved-search filter and
-    /// returns to the default inbox view. Out-of-range indices are
-    /// no-ops.
     OpenSavedSearchByIndex(usize),
-    /// Reply later: open the time prompt, or confirm it when open. A time
-    /// takes the conversation away until then (`DeferThreads`); no time is
-    /// the untimed local flag. Cleared via the queue view or when the user
-    /// replies.
     FlagReplyLater,
-    /// Cancel a pending follow-up reminder for the current sent message.
     CancelAutoReminder,
-    /// Open the reply-later queue (a saved search for `is:reply-later`
-    /// once the Tantivy operator lands; today opens via CLI).
     OpenReplyQueue,
-    /// Close the reply-later queue modal (Esc).
     CloseReplyQueueModal,
-    /// Move cursor to the next message in the reply queue.
     ReplyQueueModalNext,
-    /// Move cursor to the previous message in the reply queue.
     ReplyQueueModalPrev,
-    /// Start the normal reply compose flow for the selected queued message.
     ReplyQueueModalReply,
-    /// Focus & reply, starting at the selected queued message.
     ReplyQueueModalFocus,
-    /// Open the screener queue — senders waiting for a classification.
     OpenScreenerQueue,
-    /// Close the screener triage modal (Esc).
     CloseScreenerModal,
-    /// Open the local activity log modal (Phase 5).
-    /// Chord: `g Y` (g + a capital opens a tool) ·
-    /// palette: View activity.
     OpenActivityScreen,
-    /// Close the activity log modal (Esc).
     CloseActivityModal,
-    /// Move cursor to the next entry in the activity modal.
     ActivityModalNext,
-    /// Move cursor to the previous entry in the activity modal.
     ActivityModalPrev,
-    /// Toggle paused state from the activity modal.
     ActivityTogglePause,
-    /// Move cursor to the next entry in the screener queue.
     ScreenerModalNext,
-    /// Move cursor to the previous entry in the screener queue.
     ScreenerModalPrev,
-    /// Set the focused sender's disposition to allow.
     ScreenerDisposeAllow,
-    /// Set the focused sender's disposition to deny.
     ScreenerDisposeDeny,
-    /// Set the focused sender's disposition to feed.
     ScreenerDisposeFeed,
-    /// Set the focused sender's disposition to paper-trail.
     ScreenerDisposePaperTrail,
-    /// Show the sender-view full-screen page for the currently focused
-    /// message's `from` address.
     OpenSenderView,
-    /// Close the sender-view modal (Esc).
     CloseSenderViewModal,
-    /// Move cursor to the next recent sender message.
     SenderProfileNextMessage,
-    /// Move cursor to the previous recent sender message.
     SenderProfilePrevMessage,
-    /// Open the selected recent sender message.
     OpenSenderProfileMessage,
-    /// Summarize the current thread via the configured LLM.
     SummarizeCurrentThread,
-    /// Close the thread-summary modal (Esc).
     CloseSummaryModal,
-    /// Slice 5.1 (C2.6): open the briefing modal for the focused
-    /// thread. Fires `Request::GetThreadBriefing`.
     OpenThreadBriefing,
-    /// Slice 5.2 (C2.6): open the briefing modal for the focused
-    /// recipient. Fires `Request::GetRecipientBriefing`.
     OpenRecipientBriefing,
-    /// Close the briefing modal (Esc).
     CloseBriefingModal,
-    /// Slice 6.1 (C2.9): open the whois modal for the focused
-    /// sender's email. Fires `Request::ExplainEntity`.
     OpenWhoisOnFocusedSender,
-    /// Close the whois modal (Esc).
     CloseWhoisModal,
-    /// Slice 5.4 (C2.8 cont): "Find expert" command-palette action.
-    /// Uses the focused message body as the query and fires
-    /// `Request::FindExpert`.
     FindExpertOnFocusedMessage,
-    /// Close the expert-finder modal (Esc).
     CloseExpertModal,
-    /// Open the snippet manager modal.
     OpenSnippets,
-    /// Open the local personal-category catalog.
     OpenPersonalCategories,
-    /// Stage categories on the selected exact message set.
     AssignPersonalCategory,
-    /// Close the snippet manager modal (Esc).
     CloseSnippetsModal,
-    /// Move cursor to the next snippet in the modal list.
     SnippetsModalNext,
-    /// Move cursor to the previous snippet in the modal list.
     SnippetsModalPrev,
-    /// Open the stored-drafts browser modal (locally-saved drafts,
-    /// across all accounts, edit-in-place via `$EDITOR`).
     OpenStoredDrafts,
-    /// Close the stored-drafts modal (Esc).
     CloseStoredDraftsModal,
-    /// Move cursor to the next draft in the modal list.
     StoredDraftsModalNext,
-    /// Move cursor to the previous draft in the modal list.
     StoredDraftsModalPrev,
-    /// Edit the selected stored draft in place via `$EDITOR`. The result
-    /// round-trips through `Request::UpdateDraft`, preserving the
-    /// draft's id instead of minting a new one.
     StoredDraftsModalEdit,
-    /// Preview permanent deletion of the selected local draft.
     StoredDraftsModalPreviewDelete,
     StoredDraftsModalPreviewCancelSchedule,
-    /// Preview a one-way copy of the selected local draft to its provider.
     StoredDraftsModalPreviewPush,
-    /// Cancel the active stored-draft mutation preview.
     StoredDraftsModalCancelConfirmation,
-    /// Commit the exact stored-draft operation shown in the preview.
     StoredDraftsModalConfirm,
     ClearFilter,
     RefreshRules,
@@ -529,7 +304,6 @@ pub enum Action {
     NextRecoveredDraft,
     PreviousRecoveredDraft,
 
-    // --- Phase 2: Email actions (Gmail-native A005) ---
     Compose,
     Reply,
     ReplyAll,
@@ -541,9 +315,6 @@ pub enum Action {
     Star,
     MarkRead,
     MarkUnread,
-    /// Reverse the most recent destructive mutation if its undo window
-    /// is still open. Bound to `u` in the mailbox; falls through to a
-    /// status-bar warning when there's nothing to undo.
     UndoLastMutation,
     ApplyLabel,
     MoveToLabel,
@@ -554,59 +325,39 @@ pub enum Action {
     CancelUnsubscribe,
     Snooze,
     RespondInvite(mxr_protocol::CalendarInviteActionData),
-    /// Respond to a calendar invite with a free-text comment. Opens compose
-    /// pre-seeded with the daemon-built REPLY ICS so the user can type a note
-    /// before sending. Fires from the chord `i` + Shift-A/M/D.
     RespondInviteWithComment(mxr_protocol::CalendarInviteActionData),
     OpenInBrowser,
 
-    // --- Phase 2: Reader mode ---
     ToggleReaderMode,
     ToggleHtmlView,
     ToggleRemoteContent,
     ToggleSignature,
-    /// Show the quoted text the reader folds, or fold it again (`Q`).
     ToggleQuotes,
-    /// Collapse the focused message of the thread to one line, or open it (`o`).
     ToggleMessage,
-    /// Open every message of the thread, or collapse all but the newest and
-    /// unread ones (`;`).
     ToggleAllMessages,
-    /// Archive the open conversation, then open the next one (`]`).
     ArchiveNext,
-    /// Archive the open conversation, then open the previous one (`[`).
     ArchivePrev,
 
-    // --- Phase 2: Batch operations (A007) ---
     ToggleSelect,
     VisualLineMode,
     PatternSelect(PatternKind),
 
-    // --- Phase 2: Attachments ---
     AttachmentList,
 
-    // --- Phase 2: Links ---
     OpenLinks,
 
-    // --- Phase 2: Layout ---
     ToggleFullscreen,
 
-    // --- Phase 2: Export ---
     ExportThread,
 
-    // --- Account switching ---
     SwitchAccount(String),
 
-    // Help
     Help,
-    // Debug-only diagnostics
     #[cfg(debug_assertions)]
     DumpActionTrace,
 
-    // No-op (for unrecognized keys)
     Noop,
 
-    /// Cancel an in-flight Outlook device-code auth session.
     CancelOutlookAuth,
 }
 
@@ -683,8 +434,6 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
 
     match context {
         MailboxSidebar | MailboxList | MailboxMessage => true,
-        // The Deliveries screen handles its row keys directly; global
-        // navigation/tab actions are all permitted.
         Deliveries => true,
         Analytics => matches!(
             action,

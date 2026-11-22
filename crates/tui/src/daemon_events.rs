@@ -2,9 +2,6 @@ use crate::app::{self, App, MutationId, Toast};
 use mxr_core::MxrError;
 use mxr_protocol::{DaemonEvent, Request};
 
-/// Past-tense verb for the status bar text "X 15 — u to undo". Defaults
-/// to "Done" for non-`Mutation` requests so the status bar still reads
-/// sensibly even when an unexpected response carries a mutation_id.
 pub(super) fn mutation_verb_past(req: &Request) -> &'static str {
     use mxr_protocol::MutationCommand;
     if let Request::Mutation { mutation: cmd, .. } = req {
@@ -25,10 +22,6 @@ pub(super) fn mutation_verb_past(req: &Request) -> &'static str {
     }
 }
 
-/// Render a no-success mutation result as something the user can act on.
-/// Joining the per-account error strings is the difference between
-/// "mutation skipped 1 message(s)" (useless) and "pool timed out while
-/// waiting for an open connection" (a real lead).
 pub(super) fn format_mutation_failure(result: &mxr_protocol::MutationResultData) -> String {
     let errors: Vec<&str> = result
         .accounts
@@ -100,10 +93,6 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.restore_sidebar_selection(selected_sidebar);
         }
         DaemonEvent::SyncError { .. } => {
-            // A background retry never takes the keyboard: the status line's
-            // sync health (from the freshness refresh below) says which
-            // account is failing and when it tries again. A sync you asked
-            // for gets one line naming the account.
             app.diagnostics.pending_status_refresh = true;
         }
         DaemonEvent::ReminderTriggered { sent_message_id } => {
@@ -111,7 +100,6 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             if app.modals.reply_queue.visible {
                 app.pending_reply_queue_refresh = true;
             }
-            // Nobody replied by the time set: back on Waiting on.
             app.mailbox.pending_desk_refresh = true;
             app.status_message = Some("Reminder due; added to reply queue".into());
         }
@@ -124,9 +112,6 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.status_message =
                 Some("Back from reply later: in You owe and the reply queue".into());
         }
-        // Surface long-running operation progress (sync, rebuild
-        // analytics, reindex) in the status bar so the user can see
-        // the daemon is actually doing work, not hung.
         DaemonEvent::OperationStarted {
             operation,
             account_id,
@@ -160,8 +145,6 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             if !sync_event_hidden_by_batch_failure(app, &operation, account_id.as_ref()) {
                 app.status_message = Some(format!("{operation}: {message}"));
             }
-            // Contacts-related rebuild may have changed analytics
-            // data; nudge the active analytics view to refresh.
             if operation == "rebuild-analytics" && app.screen == app::Screen::Analytics {
                 app.analytics.refresh_pending = true;
             }
@@ -219,25 +202,15 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             }
         }
         DaemonEvent::ThreadGistReady { gist } => app.row_gists.put(&gist),
-        // An email or sender moved in some client, or new mail was sorted:
-        // Now's line, the mode on screen and Inbox's chips refetch.
         DaemonEvent::ModesChanged { .. } => app.modes_changed(),
-        // An address change moves stored mail between sent and received, so the
-        // mode views refresh as they do for a move. The owner's To/Cc for a
-        // reply may also now differ from what was prewarmed.
         DaemonEvent::AccountAddressesChanged { .. } => {
             app.modes_changed();
             app.compose.invalidate_reply_contexts();
-            // Analytics count the same direction. Forget what was fetched, so
-            // entering the screen refetches, and refresh it if it is open.
             app.analytics.last_refresh_at.clear();
             if app.screen == app::Screen::Analytics {
                 app.analytics.refresh_pending = true;
             }
         }
-        // The contacts table was rebuilt, and analytics read from it. Forget
-        // what was fetched, so entering the screen refetches, and refresh it
-        // if it is open.
         DaemonEvent::ContactsRefreshed => {
             app.analytics.last_refresh_at.clear();
             if app.screen == app::Screen::Analytics {
@@ -250,10 +223,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             progress,
         } => app.assistant_updated(conversation_id, status, progress),
         DaemonEvent::NewMessages { envelopes, total } => {
-            // The status bar's "latest mail" moves with every arrival.
             app.diagnostics.pending_status_refresh = true;
-            // A capped event is only a sample: any conversation may have
-            // changed.
             if total > envelopes.len() {
                 app.row_gists.invalidate_all();
             } else {
@@ -265,16 +235,12 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             refresh_after_event_gap(app);
             tracing::debug!(skipped, "event stream lagged; resyncing TUI views");
         }
-        // Added by a newer daemon than this build knows; nothing to do.
         DaemonEvent::Unknown => {}
         _ => {}
     }
 }
 
-/// Reconnect and reported event loss need the same authoritative reads. Private
-/// compose state remains under its original workspace owner.
 pub(crate) fn refresh_after_event_gap(app: &mut App) {
-    // The missed events may have included an address change.
     app.compose.invalidate_reply_contexts();
     app.row_gists.invalidate_all();
     app.assistant.refetch();
@@ -290,8 +256,6 @@ pub(crate) fn refresh_after_event_gap(app: &mut App) {
     queue_active_list_fetch(app);
 }
 
-/// Refetch the list on screen: its label, or the role view of a system
-/// mailbox no label names (Starred on an account set with no Starred label).
 pub(crate) fn queue_active_list_fetch(app: &mut App) {
     if let Some(label_id) = app.mailbox.active_label.clone() {
         app.mailbox.pending_label_fetch = Some(label_id);
@@ -428,8 +392,6 @@ fn settle_user_sync_pending(app: &mut App) {
     }
 }
 
-/// Keep a thread's context facts when that thread is still open. A failed
-/// read leaves the reader as it was: the facts are extra, not required.
 pub(super) fn apply_thread_context_loaded(
     app: &mut App,
     thread_id: &mxr_core::ThreadId,
@@ -445,8 +407,6 @@ pub(super) fn apply_thread_context_loaded(
     }
 }
 
-/// Keep a thread's gist when that thread is still open. No model, or a
-/// failed one, simply shows no gist: the reader never nags about it.
 pub(super) fn apply_thread_gist_loaded(
     app: &mut App,
     thread_id: &mxr_core::ThreadId,
@@ -462,13 +422,6 @@ pub(super) fn apply_thread_gist_loaded(
     }
 }
 
-/// Apply a `ThreadSummaryLoaded` async result to the app. Always
-/// clears this thread's in-flight marker — even when the user has
-/// navigated away — so a subsequent `y` press on the same thread isn't
-/// blocked by a stale "already running" guard.
-/// Visible UI updates (summary preview, status, modal) only fire when
-/// the thread is still focused so a stale response can't overwrite
-/// the user's current view.
 pub(super) fn apply_thread_summary_loaded(
     app: &mut App,
     thread_id: mxr_core::ThreadId,
@@ -743,7 +696,6 @@ mod tests {
             app.status_message.as_deref(),
             Some("Sync failed for Work: connection refused")
         );
-        // The next background retry is quiet again.
         app.status_message = None;
         handle_daemon_event(
             &mut app,

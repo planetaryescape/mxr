@@ -3,7 +3,6 @@ use mxr_core::{AccountId, DraftId, MxrError, SendIdentity, SendOutcomeState};
 use mxr_protocol::{Request, Response, ResponseData};
 use tokio::sync::mpsc;
 
-/// A deliberate Send press may start another attempt only after durable rejection.
 pub(crate) async fn reviewed_send_identity(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     account_id: &AccountId,
@@ -59,7 +58,6 @@ pub(crate) async fn reviewed_send_identity(
     }
 }
 
-/// Persist the reviewed file through a conditional edit before submitting it.
 pub(crate) async fn prepare_reviewed_send(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     draft: mxr_core::Draft,
@@ -83,9 +81,6 @@ pub(crate) async fn prepare_reviewed_send(
                 ));
             }
             if stored.revision != draft.revision {
-                // A previous conditional save may have committed before its reply or
-                // retained identity was lost. Only the exact reviewed command can
-                // recover that revision; another writer's content stays stale.
                 if stored.revision > draft.revision && same_reviewed_content(&stored, &draft)? {
                     let revision = stored.revision.ok_or_else(|| {
                         MxrError::Ipc("Saved draft has no reviewed revision".into())
@@ -430,7 +425,6 @@ mod tests {
                     };
                     draft.revision = Some(2);
                     stored = draft;
-                    // Commit happened; only the reply was lost.
                     update
                         .reply
                         .send(Err(MxrError::Ipc("connection closed after update".into())))

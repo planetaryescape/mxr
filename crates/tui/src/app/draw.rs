@@ -24,16 +24,11 @@ fn selected_tab(screen: Screen) -> usize {
     }
 }
 
-/// Minimum terminal geometry the full layout stays readable at. Below
-/// this, `draw` renders a placeholder instead of squeezed panes.
 const MIN_TERMINAL_WIDTH: u16 = 80;
 const MIN_TERMINAL_HEIGHT: u16 = 20;
 
-/// From this width the assistant pane is a third column; below it, it
-/// covers the right of the screen so the content keeps a usable width.
 const ASSISTANT_COLUMN_MIN_WIDTH: u16 = 110;
 
-/// The content and the assistant pane's areas.
 fn assistant_layout(area: Rect) -> (Rect, Rect) {
     if area.width >= ASSISTANT_COLUMN_MIN_WIDTH {
         let width = (area.width * 34 / 100).clamp(44, 64);
@@ -133,7 +128,6 @@ impl App {
         }
     }
 
-    /// The open thread's context lines, empty until the daemon answers.
     fn thread_context_lines(&self) -> Vec<ratatui::text::Line<'static>> {
         let Some(thread_id) = self.context_envelope().map(|env| env.thread_id.clone()) else {
             return Vec::new();
@@ -181,8 +175,6 @@ impl App {
 
     pub fn draw(&mut self, frame: &mut Frame) {
         self.draw_frame(frame);
-        // `o` and `;` land the reader on the folded message for one frame;
-        // after that the scroll is the person's again.
         self.mailbox.scroll_to_focused_message = false;
     }
 
@@ -194,24 +186,20 @@ impl App {
             .set(false);
         let theme = &self.theme;
         let area = frame.area();
-        // Before the frame borrows the html image cache mutably below.
         let account_marks = self.account_marks();
 
-        // Below the minimum usable geometry the layout collapses into
-        // unreadable slivers — show a plain placeholder instead.
         if area.width < MIN_TERMINAL_WIDTH || area.height < MIN_TERMINAL_HEIGHT {
             draw_terminal_too_small(frame, area, theme);
             return;
         }
 
-        // Layout: tabs (1 line) | hint bar (2 lines) | content | status bar (1 line)
         let outer_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // tab bar
-                Constraint::Length(2), // hint bar
-                Constraint::Min(0),    // content
-                Constraint::Length(1), // status bar
+                Constraint::Length(1),
+                Constraint::Length(2),
+                Constraint::Min(0),
+                Constraint::Length(1),
             ])
             .split(area);
 
@@ -219,8 +207,6 @@ impl App {
         let hint_bar_area = outer_chunks[1];
         let content_area = outer_chunks[2];
         let ui_context = self.current_ui_context();
-        // Search results sit below a fixed 4-line query box, and the list itself has borders,
-        // so the usable result viewport is shorter than the main content area.
         self.visible_height = match self.screen {
             Screen::Search => content_area.height.saturating_sub(6) as usize,
             _ => content_area.height.saturating_sub(2) as usize,
@@ -233,7 +219,6 @@ impl App {
             (content_area, None)
         };
 
-        // Tab bar
         let tabs = ratatui::widgets::Tabs::new(tab_titles())
             .select(selected_tab(self.screen))
             .style(Style::default().fg(theme.text_muted))
@@ -241,7 +226,6 @@ impl App {
             .divider(Span::styled(" | ", Style::default().fg(theme.text_muted)));
         frame.render_widget(tabs, tab_bar_area);
 
-        // Hint bar
         let viewing_invite = self
             .focused_thread_envelope()
             .and_then(|env| self.mailbox.body_cache.get(&env.id))
@@ -719,8 +703,6 @@ impl App {
                     },
                     theme,
                 );
-                // Kept, as the mailbox reader keeps its own, so `o` and `;`
-                // landing on a folded message holds after this frame.
                 if let Some(scroll) = preview_scroll {
                     self.mailbox.message_scroll_offset = scroll;
                 }
@@ -753,8 +735,6 @@ impl App {
             }
             Screen::Deliveries => {
                 if self.deliveries.preview_active && self.mailbox.viewing_envelope.is_some() {
-                    // Split: deliveries list on the left, the source email on
-                    // the right — mirrors how the mailbox opens a message.
                     let cols = Layout::default()
                         .direction(Direction::Horizontal)
                         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -810,31 +790,22 @@ impl App {
             ui::search_bar::draw(frame, area, &self.search.bar, theme);
         }
 
-        // Command palette overlay
         ui::command_palette::draw(frame, area, &self.command_palette.palette, theme);
 
-        // Label picker overlay
         ui::label_picker::draw(frame, area, &self.modals.label_picker, theme);
 
         ui::personal_category_picker::draw(frame, area, &self.modals.personal_categories, theme);
 
-        // Compose picker overlay
         ui::compose_picker::draw(frame, area, &self.compose.compose_picker, theme);
 
-        // Attachment overlay
         ui::attachment_modal::draw(frame, area, &self.mailbox.attachment_panel, theme);
 
-        // Save-attachment "where to?" modal — drawn after the attachment
-        // modal so it appears on top.
         ui::save_attachment_modal::draw(frame, area, &self.modals.save_attachment, theme);
 
-        // Export picker, drawn over everything else it can open above.
         ui::export_modal::draw(frame, area, &self.modals.export, theme);
 
-        // URL picker overlay
         ui::url_modal::draw(frame, area, self.mailbox.url_modal.as_ref(), theme);
 
-        // Snooze overlay
         ui::snooze_modal::draw(
             frame,
             area,
@@ -854,7 +825,6 @@ impl App {
             crate::ui::received_label::DisplayZone::Local,
         );
 
-        // Send confirmation overlay
         let time_preview = self.compose.pending_time.lines();
         ui::send_confirm_modal::draw(
             frame,
@@ -895,7 +865,6 @@ impl App {
             );
         }
 
-        // Bulk confirmation overlay
         ui::bulk_confirm_modal::draw(
             frame,
             area,
@@ -903,7 +872,6 @@ impl App {
             theme,
         );
 
-        // Place overlays: the sweep preview and the "move sender to…" menu.
         ui::place_lens::draw_sweep_confirm(
             frame,
             area,
@@ -917,7 +885,6 @@ impl App {
             self.mailbox.sender_kind_menu.as_ref(),
             theme,
         );
-        // Moves (D119): the arrivals list, and the menu above it.
         ui::move_menu::draw_arrivals_list(
             frame,
             area,
@@ -926,10 +893,8 @@ impl App {
         );
         ui::move_menu::draw_move_menu(frame, area, self.mailbox.trust.move_menu.as_ref(), theme);
 
-        // Saved-search form overlay (above sidebar/mail list, below modals)
         ui::saved_search_form::draw(frame, area, self.modals.saved_search_form.as_ref(), theme);
 
-        // Saved-search delete confirm overlay
         ui::saved_search_form::draw_delete_confirm(
             frame,
             area,
@@ -938,7 +903,6 @@ impl App {
             theme,
         );
 
-        // Analytics filter modal overlay
         ui::analytics_filter_modal::draw(frame, area, self.modals.analytics_filter.as_ref(), theme);
         ui::messages_filter_modal::draw(
             frame,
@@ -948,13 +912,10 @@ impl App {
             theme,
         );
 
-        // Draft options (tone/length) modal overlay
         ui::draft_options_modal::draw(frame, area, &self.modals.draft_options, theme);
 
-        // Error overlay
         ui::error_modal::draw(frame, area, self.modals.error.as_ref(), theme);
 
-        // Unsubscribe confirmation overlay
         ui::unsubscribe_modal::draw(
             frame,
             area,
@@ -962,7 +923,6 @@ impl App {
             theme,
         );
 
-        // Help overlay
         ui::help_modal::draw(
             frame,
             area,
@@ -983,48 +943,32 @@ impl App {
             theme,
         );
 
-        // Snippets browser modal — shown above mailbox/search and below
-        // the connection error / global onboarding modal.
         ui::snippets_modal::draw(frame, area, &self.modals.snippets, theme);
 
-        // Sender profile modal — same render layer as snippets.
         ui::sender_profile_modal::draw(frame, area, &self.modals.sender_profile, theme);
 
-        // Screener triage modal — same layer as the others.
         ui::screener_modal::draw(frame, area, &self.modals.screener, theme);
 
-        // Reply-later queue modal.
         ui::reply_queue_modal::draw(frame, area, &self.modals.reply_queue, theme);
 
-        // Stored-drafts modal — local drafts, edit-in-place.
         ui::drafts_modal::draw(frame, area, &self.modals.drafts, theme);
 
-        // Activity log modal (Phase 5).
         ui::activity_modal::draw(frame, area, &self.modals.activity, theme);
 
-        // Thread summary modal (LLM result).
         ui::summary_modal::draw(frame, area, &self.modals.summary, theme);
 
-        // Slice 5.1/5.2 (C2.6): briefing modal (returning to a
-        // dormant thread or recipient).
         ui::briefing_modal::draw(frame, area, &self.modals.briefing, theme);
 
-        // Slice 6.1 (C2.9): whois modal (entity explanation).
         ui::whois_modal::draw(frame, area, &self.modals.whois, theme);
 
-        // Slice 5.4 (C2.8 cont): expert-finder modal.
         ui::expert_modal::draw(frame, area, &self.modals.expert, theme);
 
-        // Generic platform/AI result modal (voice, commitments, draft suggestions).
         ui::platform_modal::draw(frame, area, &self.modals.platform, theme);
 
-        // Account setup onboarding (shown on any page when no accounts configured)
         if self.accounts.page.onboarding_modal_open {
             ui::accounts_page::draw_account_setup_onboarding(frame, area, theme);
         }
 
-        // Toast notifications — stacked bottom-right above the status bar,
-        // drawn last so operation outcomes stay visible over any overlay.
         let now = std::time::Instant::now();
         let undo_toast = self.pending_undo_toast(now);
         let promise_toast = self.pending_promise_toast(now);
@@ -1036,14 +980,10 @@ impl App {
             visible_toasts.insert(0, pinned);
         }
         visible_toasts.truncate(crate::app::TOAST_MAX_VISIBLE);
-        // The assistant pane keeps its key hints at its bottom, where toasts
-        // would stack, so they stack left of the pane while it is open.
         let toast_area = assistant_area.map_or(area, |pane| Rect {
             width: pane.x.saturating_sub(area.x),
             ..area
         });
-        // The prefix guide sits where toasts stack; a toast that arrives
-        // while it is open draws over it.
         if let Some((prefix, choices)) = self.prefix_guide() {
             ui::prefix_guide::draw(frame, toast_area, prefix, &choices, theme);
         }
@@ -1058,10 +998,6 @@ impl App {
             return area;
         }
 
-        // Height of 2 = 1 row for the labels + 1 row for the bottom
-        // border drawn by saved_search_tabs::draw (Borders::BOTTOM).
-        // Earlier this was Length(1), which produced an invisible strip
-        // because the border consumed the only row.
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(2), Constraint::Min(0)])
@@ -1102,14 +1038,6 @@ mod tests {
         );
     }
 
-    /// Slice 1 / B1.3: the screen → tab-index map is what the renderer
-    /// hands to ratatui's `Tabs::select`. Each top-level screen owns
-    /// exactly one tab index, and Analytics owns the new 6th slot.
-    /// Before this slice, `Screen::Analytics` mapped to index 0 so the
-    /// Mailbox tab lit up while the user was on Analytics — confusing
-    /// enough that the screen had to stay hidden behind the command
-    /// palette. This test pins the new mapping so a future `_ => 0`
-    /// fallback can't silently re-introduce the bug.
     #[test]
     fn selected_tab_maps_each_screen_to_its_tab_index() {
         assert_eq!(selected_tab(Screen::Mailbox), 0);

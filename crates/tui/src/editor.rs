@@ -80,7 +80,6 @@ pub(crate) fn open_temp_text_buffer(name: &str, content: &str) -> Result<String,
         .status()
         .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")));
 
-    // Always delete the file — diagnostics content is regenerable.
     let _ = std::fs::remove_file(&path);
 
     let status = status?;
@@ -116,20 +115,13 @@ pub(crate) fn open_diagnostics_pane_details(
 mod tests {
     use super::*;
 
-    /// Plan 005: `open_temp_text_buffer` deletes the temp file after the
-    /// editor exits (whether successful or not). Uses `false` as the editor
-    /// so it exits non-zero without opening anything.
     #[test]
     fn open_temp_text_buffer_deletes_file_after_cancelled_editor() {
-        // Use temp-env to set EDITOR=false without racing other tests.
         temp_env::with_var("EDITOR", Some("false"), || {
-            // Also unset VISUAL so resolve_editor falls through to EDITOR.
             let result = temp_env::with_var("VISUAL", None::<&str>, || {
                 open_temp_text_buffer("test-diag", "diagnostics content")
             });
-            // The function should succeed (returning a cancelled message).
             assert!(result.is_ok(), "expected Ok, got: {result:?}");
-            // The returned message should indicate cancellation.
             let msg = result.unwrap();
             assert!(
                 msg.contains("cancelled") || msg.contains("Opened"),
@@ -137,7 +129,6 @@ mod tests {
             );
         });
 
-        // Verify no leftover file in the scratch dir.
         let scratch = mxr_compose::private_tmp::private_scratch_dir().expect("private scratch dir");
         let leftover: Vec<_> = std::fs::read_dir(&scratch)
             .into_iter()

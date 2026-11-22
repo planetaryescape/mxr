@@ -3,19 +3,13 @@ use crate::keybindings::{format_keybinding, KeyBinding, KeyPress, KeybindingConf
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
 
-/// How long a prefix waits for its next key. Four seconds, as the web app
-/// waits, so the prefix guide that opens after [`PREFIX_GUIDE_DELAY`] can be
-/// read (blueprint 35, 26 October); a fast sequence never waits on it.
 pub(crate) const MULTI_KEY_TIMEOUT: Duration = Duration::from_millis(4000);
-/// How long a prefix waits before the guide lists the keys that can follow.
 pub(crate) const PREFIX_GUIDE_DELAY: Duration = Duration::from_millis(300);
 
 fn plain_or_shift(modifiers: KeyModifiers) -> bool {
     modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
 }
 
-/// `*` + letter: pattern select (A007). The same letters are in the key
-/// table, so `keys.toml` can remap them.
 fn pattern_select_chord(second: char) -> Option<Action> {
     let kind = match second {
         'a' => PatternKind::All,
@@ -29,35 +23,26 @@ fn pattern_select_chord(second: char) -> Option<Action> {
     Some(Action::PatternSelect(kind))
 }
 
-/// `g` + letter views that are sidebar lenses or modals in the TUI and
-/// pages in the web app. Same letters in both clients.
 fn g_view_chord(second: char) -> Option<Action> {
     match second {
         'q' => Some(Action::OpenReplyQueue),
         'o' => Some(Action::OpenOwedReplies),
         'v' => Some(Action::OpenCalendarInvites),
-        // Updates, the briefing. Subscriptions moved under More with no
-        // chord.
         'u' => Some(Action::OpenUpdates),
         'S' => Some(Action::OpenScreenerQueue),
         'F' => Some(Action::OpenFocus),
         'x' => Some(Action::OpenTodo),
         'm' => Some(Action::OpenMessages),
         'e' => Some(Action::OpenArchiveMode),
-        // Labels here; the web app shows them as pages.
         '#' => Some(Action::GoToTrash),
         '!' => Some(Action::GoToSpam),
         'n' => Some(Action::OpenSnoozed),
-        // Waiting on lives in Messages here, as the sidebar's item does.
         'w' => Some(Action::OpenMessages),
-        // Filter this list, as the web app does (Ctrl-f works too).
         'f' => Some(Action::OpenMailboxFilter),
         _ => None,
     }
 }
 
-/// `g` + capital: the tools (blueprint 35, D166), in place of the digit
-/// tabs. Each opens the same screen its tab does.
 fn g_tool_chord(second: char) -> Option<Action> {
     match second {
         'R' => Some(Action::OpenTab3),
@@ -79,10 +64,7 @@ pub struct InputHandler {
     state: KeyState,
     configured: Option<ConfiguredChord>,
     used_this_turn: bool,
-    /// A sequence that completed nothing, spelled for the status line.
     dead_end: Option<String>,
-    /// Test-only: the time the handler reads instead of the wall clock, so
-    /// timing tests move it by hand and cannot race a loaded machine.
     #[cfg(test)]
     frozen_now: Option<Instant>,
 }
@@ -111,7 +93,6 @@ impl InputHandler {
         }
     }
 
-    /// The time every deadline is set and checked against.
     pub(crate) fn now(&self) -> Instant {
         #[cfg(test)]
         if let Some(now) = self.frozen_now {
@@ -120,15 +101,10 @@ impl InputHandler {
         Instant::now()
     }
 
-    /// The last sequence that completed nothing, spelled as typed
-    /// (`g z`), taking it.
     pub(crate) fn take_dead_end(&mut self) -> Option<String> {
         self.dead_end.take()
     }
 
-    /// A key after a prefix completed nothing: the prefix is cancelled
-    /// and nothing runs (blueprint 35), so a mistyped `g U` cannot mark
-    /// mail unread. Esc is the way to cancel on purpose, so it says nothing.
     pub(crate) fn cancel_prefix(&mut self, first: char, key: KeyEvent) {
         self.note_dead_end(&[
             KeyPress::from_event(KeyEvent::new(KeyCode::Char(first), KeyModifiers::NONE)),
@@ -153,7 +129,6 @@ impl InputHandler {
         self.dead_end = Some(spelled.join(" "));
     }
 
-    /// A chord prefix is waiting and has not timed out.
     pub fn is_pending(&self) -> bool {
         self.configured
             .as_ref()
@@ -161,8 +136,6 @@ impl InputHandler {
             || matches!(self.state, KeyState::WaitingForSecond { deadline, .. } if self.now() <= deadline)
     }
 
-    /// First key of an in-progress multi-key chord, if any. Lets the
-    /// hint bar surface "g …" while the handler waits for the second key.
     pub fn pending_prefix(&self) -> Option<char> {
         if let Some(chord) = &self.configured {
             if self.now() <= chord.deadline {
@@ -178,7 +151,6 @@ impl InputHandler {
         }
     }
 
-    /// How long the waiting prefix has waited, if one has not timed out.
     pub(crate) fn prefix_waited(&self, now: Instant) -> Option<Duration> {
         let deadline = match (&self.configured, &self.state) {
             (Some(chord), _) => chord.deadline,
@@ -188,20 +160,16 @@ impl InputHandler {
         (now <= deadline).then(|| MULTI_KEY_TIMEOUT.saturating_sub(deadline - now))
     }
 
-    /// How long the waiting prefix has left before it times out.
     pub(crate) fn prefix_left(&self, now: Instant) -> Option<Duration> {
         self.prefix_waited(now)
             .map(|waited| MULTI_KEY_TIMEOUT.saturating_sub(waited))
     }
 
-    /// Test-only: stop the handler's clock; it moves only by
-    /// [`Self::advance_clock_for_tests`].
     #[cfg(test)]
     pub(crate) fn freeze_clock_for_tests(&mut self) {
         self.frozen_now = Some(Instant::now());
     }
 
-    /// Test-only: move the frozen clock forward by `by`.
     #[cfg(test)]
     pub(crate) fn advance_clock_for_tests(&mut self, by: Duration) {
         let now = self
@@ -210,8 +178,6 @@ impl InputHandler {
         self.frozen_now = Some(now + by);
     }
 
-    /// Wait for the second key of a sequence the key definition knows
-    /// (`g`, `*`, `i`), as the built-in chords do.
     pub(crate) fn wait_for_second(&mut self, first: char) {
         self.used_this_turn = true;
         self.configured = None;
@@ -221,7 +187,6 @@ impl InputHandler {
         };
     }
 
-    /// The first key of a sequence still waiting for its second, taking it.
     pub(crate) fn take_waiting_first(&mut self) -> Option<char> {
         self.check_timeout();
         self.used_this_turn = true;
@@ -231,7 +196,6 @@ impl InputHandler {
         }
     }
 
-    /// Drop a waiting chord prefix: a lens took its second key.
     pub fn reset(&mut self) {
         self.state = KeyState::Normal;
         self.configured = None;
@@ -242,15 +206,11 @@ impl InputHandler {
     }
 
     pub(crate) fn end_turn(&mut self) {
-        // A modal, input field or pane-local handler claimed this turn.
-        // Its keys must never complete an earlier mail chord later.
         if !self.used_this_turn {
             self.reset();
         }
     }
 
-    /// `None`: leave the established mode-specific defaults alone.
-    /// `Some(None)`: consume a prefix or retired key, without falling back.
     pub(crate) fn handle_configured_key(
         &mut self,
         config: &KeybindingConfig,
@@ -276,15 +236,11 @@ impl InputHandler {
         }
         if self.configured.is_none() {
             if let KeyState::WaitingForSecond { first, .. } = self.state {
-                // A remapped suffix must not steal a valid, unrelated default
-                // chord (e.g. retiring `a` must not break `ga` or `ia`).
                 let mut probe = Self::new();
                 probe.handle_key(KeyEvent::new(KeyCode::Char(first), KeyModifiers::NONE));
                 if probe.handle_key(key).is_some() {
                     return None;
                 }
-                // The configured key completes no chord after the waiting
-                // prefix: cancel it, as the default chords do.
                 self.used_this_turn = true;
                 self.cancel_prefix(first, key);
                 return Some(None);
@@ -292,8 +248,6 @@ impl InputHandler {
         }
         let pending = self.configured.take();
         if pending.is_none() && !config.overrides_prefix(context, &press) {
-            // Several legacy branches ignore modifiers (notably # and !).
-            // They must not resurrect a retired destructive shortcut.
             if overrides_alias {
                 self.used_this_turn = true;
                 return Some(None);
@@ -323,15 +277,10 @@ impl InputHandler {
             self.state = KeyState::Normal;
             return Some(None);
         }
-        // A retired chord can leave a prefix with no live continuation. It
-        // owns this press, but must not retry itself as a fresh prefix.
         if !had_pending_chord {
             self.state = KeyState::Normal;
             return Some(None);
         }
-        // Preserve default chords outside the registry (saved-search digits,
-        // invite comments). Replay only into the pure legacy key resolver,
-        // which completes the chord or cancels it.
         self.state = KeyState::Normal;
         for previous in sequence.iter().take(sequence.len().saturating_sub(1)) {
             self.handle_key(KeyEvent::new(previous.code, previous.modifiers));
@@ -339,7 +288,6 @@ impl InputHandler {
         if matches!(self.state, KeyState::WaitingForSecond { .. }) {
             return None;
         }
-        // Nothing can complete the sequence: cancel it and run nothing.
         self.note_dead_end(&sequence);
         Some(None)
     }
@@ -366,7 +314,6 @@ impl InputHandler {
         self.check_timeout();
 
         match (&self.state, key.code, key.modifiers) {
-            // Multi-key: g prefix
             (KeyState::Normal, KeyCode::Char('g'), KeyModifiers::NONE) => {
                 self.state = KeyState::WaitingForSecond {
                     first: 'g',
@@ -430,8 +377,6 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::GoToLabel)
             }
-            // g + a capital opens a tool (blueprint 35, D166). The TUI's
-            // settings live on its Accounts screen, so g C opens that.
             (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char(c), modifiers)
                 if plain_or_shift(modifiers) && g_tool_chord(c).is_some() =>
             {
@@ -458,7 +403,6 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::OpenReading)
             }
-            // g h: Now, the front page. `g d` stays Drafts.
             (
                 KeyState::WaitingForSecond { first: 'g', .. },
                 KeyCode::Char('h'),
@@ -467,16 +411,12 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::OpenNow)
             }
-            // The same views the web app opens with these chords.
             (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char(c), modifiers)
                 if plain_or_shift(modifiers) && g_view_chord(c).is_some() =>
             {
                 self.state = KeyState::Normal;
                 g_view_chord(c)
             }
-            // g <0-9>: jump to a saved-search tab by index. `g 0` returns
-            // to the default inbox view; `g N` (1..=9) targets the Nth
-            // saved search. Out-of-range indices are no-ops.
             (
                 KeyState::WaitingForSecond { first: 'g', .. },
                 KeyCode::Char(c),
@@ -487,13 +427,6 @@ impl InputHandler {
                 Some(Action::OpenSavedSearchByIndex(index))
             }
 
-            // Multi-key: i-prefix for iCal invite responses.
-            //
-            // Plain-suffix arms (`ia`/`im`/`id`) fire the auto-confirm + 1s
-            // undo flow; SHIFT-suffix arms (`iA`/`iM`/`iD`) route to the
-            // compose-with-comment path. The card hint text in
-            // `message_view.rs` references these chords — keep in sync if
-            // either side moves.
             (KeyState::Normal, KeyCode::Char('i'), KeyModifiers::NONE) => {
                 self.state = KeyState::WaitingForSecond {
                     first: 'i',
@@ -578,8 +511,6 @@ impl InputHandler {
                 None
             }
 
-            // Command palette: `:` and Ctrl-k, as in the web app; Ctrl-p
-            // stays as an alias. Before `k`, which ignores modifiers.
             (KeyState::Normal, KeyCode::Char(':'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenCommandPalette)
             }
@@ -589,7 +520,6 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('@'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ToggleAssistant)
             }
-            // Single keys
             (KeyState::Normal, KeyCode::Char('j') | KeyCode::Down, _) => Some(Action::MoveDown),
             (KeyState::Normal, KeyCode::Char('k') | KeyCode::Up, _) => Some(Action::MoveUp),
             (KeyState::Normal, KeyCode::Char('G'), modifiers) if plain_or_shift(modifiers) => {
@@ -597,7 +527,6 @@ impl InputHandler {
             }
             (KeyState::Normal, KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(Action::PageDown),
             (KeyState::Normal, KeyCode::Char('u'), KeyModifiers::CONTROL) => Some(Action::PageUp),
-            // The keyboard's own motion keys, as in the web app.
             (KeyState::Normal, KeyCode::Home, KeyModifiers::NONE) => Some(Action::JumpTop),
             (KeyState::Normal, KeyCode::End, KeyModifiers::NONE) => Some(Action::JumpBottom),
             (KeyState::Normal, KeyCode::PageDown, KeyModifiers::NONE) => Some(Action::PageDown),
@@ -609,9 +538,7 @@ impl InputHandler {
             }
             (KeyState::Normal, KeyCode::Esc, _) => Some(Action::Back),
             (KeyState::Normal, KeyCode::Char('q'), _) => Some(Action::QuitView),
-            // Not now (D173): Later with no time, or a time.
             (KeyState::Normal, KeyCode::Char('b'), KeyModifiers::NONE) => Some(Action::Snooze),
-            // Search navigation
             (KeyState::Normal, KeyCode::Char('n'), KeyModifiers::NONE) => {
                 Some(Action::NextSearchResult)
             }
@@ -619,7 +546,6 @@ impl InputHandler {
                 Some(Action::PrevSearchResult)
             }
 
-            // Shared selection / layout
             (KeyState::Normal, KeyCode::Char('x'), KeyModifiers::NONE) => {
                 Some(Action::ToggleSelect)
             }
@@ -713,8 +639,6 @@ mod tests {
         assert!(!input.is_pending());
     }
 
-    /// A second key that completes nothing cancels the prefix and runs
-    /// nothing (blueprint 35): `g j` must not move the cursor.
     #[test]
     fn a_second_key_that_completes_nothing_cancels_the_prefix() {
         let mut input = InputHandler::new();
@@ -727,15 +651,12 @@ mod tests {
             Some(Action::MoveDown)
         );
 
-        // Esc cancels on purpose, so it is not reported.
         assert_eq!(input.handle_key(key(KeyCode::Char('*'))), None);
         assert_eq!(input.handle_key(key(KeyCode::Esc)), None);
         assert_eq!(input.take_dead_end(), None);
         assert!(!input.is_pending());
     }
 
-    /// Tools open with `g` + a capital (blueprint 35, D166), each to the
-    /// screen its old digit tab opened.
     #[test]
     fn chord_g_then_a_capital_opens_a_tool() {
         for (second, expected) in [
@@ -792,9 +713,6 @@ mod tests {
         }
     }
 
-    /// `g <digit>` jumps to the corresponding saved-search tab. `g 1`
-    /// targets the first saved search, `g 9` the ninth. The action is
-    /// 1-indexed; `g 0` is reserved for "return to default inbox".
     #[test]
     fn chord_g_then_digit_one_through_nine_jumps_to_saved_search() {
         for digit in 1..=9 {
@@ -838,9 +756,6 @@ mod tests {
         }
     }
 
-    /// `i` followed by `a`/`m`/`d` fires the auto-confirm invite RSVP path.
-    /// The chord-prefix wiring is the load-bearing fix for the original bug
-    /// where `ia` fell through to ReplyAll. See `calendar-email` docs.
     #[test]
     fn chord_i_then_a_responds_invite_accept() {
         let mut input = InputHandler::new();
@@ -855,9 +770,6 @@ mod tests {
         );
     }
 
-    /// Shift-suffix routes to the compose-with-comment path. Crossterm
-    /// distinguishes `Char('a'), NONE` from `Char('A'), SHIFT` so the same
-    /// `i` prefix can dispatch two different actions cleanly.
     #[test]
     fn chord_i_then_shift_a_responds_invite_with_comment_accept() {
         let mut input = InputHandler::new();

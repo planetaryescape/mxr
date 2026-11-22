@@ -1,8 +1,3 @@
-//! The command palette (`:`, `Ctrl-k`). Its commands come from the key
-//! definition (`crates/keymap/keymap.toml`, blueprint 35): every TUI action
-//! live where the keys are going, with all of its keys there after the
-//! person's remaps, and every palette-only action. Nothing here names a key.
-
 use crate::action::{action_allowed_in_context, Action, UiContext};
 use crate::keybindings::{KeybindingConfig, ViewContext};
 use crate::keymap_names::action_named;
@@ -10,17 +5,12 @@ use mxr_keymap::{Client, KeyAction, TuiBinding, MODE_SECTIONS};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-/// Maximum number of recently-used commands the palette tracks for
-/// adaptive ranking. Older entries are evicted FIFO.
 pub const RECENT_COMMAND_CAPACITY: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct PaletteCommand {
-    /// The definition's action id; `None` for archive recovery commands,
-    /// which come from the local journal.
     pub id: Option<&'static str>,
     pub label: String,
-    /// Every key that runs it here, `" / "` between them; empty for none.
     pub shortcut: String,
     pub action: Action,
     pub category: String,
@@ -29,8 +19,6 @@ pub struct PaletteCommand {
 pub struct CommandPalette {
     pub(crate) keybindings: KeybindingConfig,
     pub(crate) binding_context: Option<ViewContext>,
-    /// Where keys are going (`App::key_place`): a mode, the list, the
-    /// reader, the sidebar; `None` off the mailbox.
     pub(crate) key_place: Option<&'static str>,
     pub visible: bool,
     pub input: String,
@@ -38,11 +26,7 @@ pub struct CommandPalette {
     pub filtered: Vec<usize>,
     pub selected: usize,
     pub context: UiContext,
-    /// Most-recent-first list of actions the user has confirmed. Used to
-    /// bias filtered results toward muscle-memory commands.
     pub recent_actions: Vec<Action>,
-    /// Rebuild the commands from the definition on each open. False for a
-    /// palette given its own commands (`with_commands`).
     pub(crate) from_definition: bool,
 }
 
@@ -92,8 +76,6 @@ impl CommandPalette {
         self.visible = !self.visible;
         if self.visible {
             self.context = context;
-            // Rebuilt on each open, so each row shows the keys that work
-            // where the palette was opened, with the person's remaps.
             if self.from_definition {
                 let place = self.key_place.or_else(|| place_for(context));
                 let view = self
@@ -139,7 +121,6 @@ impl CommandPalette {
         self.confirm_command().map(|command| command.action)
     }
 
-    /// Close the palette on the highlighted command and return it.
     pub fn confirm_command(&mut self) -> Option<PaletteCommand> {
         let &idx = self.filtered.get(self.selected)?;
         self.visible = false;
@@ -148,9 +129,6 @@ impl CommandPalette {
         Some(command)
     }
 
-    /// Record a confirmed action as most-recent. Existing occurrences are
-    /// removed first so the same action can't appear twice; the list is
-    /// then capped at [`RECENT_COMMAND_CAPACITY`].
     fn record_recent(&mut self, action: Action) {
         self.recent_actions.retain(|existing| existing != &action);
         self.recent_actions.insert(0, action);
@@ -165,10 +143,6 @@ impl CommandPalette {
             .filter_map(|&index| self.commands.get(index))
     }
 
-    /// Re-hydrate the recents list from persisted labels. Labels that
-    /// don't match a current command (renamed/removed) are silently
-    /// skipped. Capped at [`RECENT_COMMAND_CAPACITY`] so a corrupted
-    /// state file can't grow the in-memory list unbounded.
     pub fn restore_recents_from_labels(&mut self, labels: &[String]) {
         self.recent_actions.clear();
         for label in labels.iter().take(RECENT_COMMAND_CAPACITY) {
@@ -184,8 +158,6 @@ impl CommandPalette {
         self.update_filtered(None);
     }
 
-    /// Snapshot the current recents list as labels for persistence.
-    /// Labels are stable across versions; the `Action` enum is not.
     pub fn recent_labels_snapshot(&self) -> Vec<String> {
         self.recent_actions
             .iter()
@@ -226,7 +198,6 @@ impl CommandPalette {
     }
 }
 
-/// The commands help lists for `context`, with the default keys.
 pub fn commands_for_context(context: UiContext) -> Vec<PaletteCommand> {
     commands_with_keybindings(
         context,
@@ -235,7 +206,6 @@ pub fn commands_for_context(context: UiContext) -> Vec<PaletteCommand> {
     )
 }
 
-/// The commands help lists for `context`, with the person's keys.
 pub(crate) fn commands_with_keybindings(
     context: UiContext,
     config: &KeybindingConfig,
@@ -247,12 +217,7 @@ pub(crate) fn commands_with_keybindings(
         .collect()
 }
 
-/// Every command the definition offers, wherever it is live, with its
-/// default keys: what recents are restored against before the palette
-/// first opens.
 pub fn default_commands() -> Vec<PaletteCommand> {
-    // Built once: every `App` starts with this palette, and walking the
-    // whole key definition for it was half the cost of `App::new`.
     static DEFAULT: std::sync::LazyLock<Vec<PaletteCommand>> = std::sync::LazyLock::new(|| {
         let mut commands = defined_commands(
             None,
@@ -265,7 +230,6 @@ pub fn default_commands() -> Vec<PaletteCommand> {
     DEFAULT.clone()
 }
 
-/// The definition's context for a mailbox pane, when the app didn't say.
 fn place_for(context: UiContext) -> Option<&'static str> {
     match context {
         UiContext::MailboxList => Some("list"),
@@ -275,9 +239,6 @@ fn place_for(context: UiContext) -> Option<&'static str> {
     }
 }
 
-/// Keybinding view map that governs which chord fires for `context`.
-/// Message/preview panes resolve through the thread-view map (matching
-/// the help modal's mapping); everything else uses the mail-list map.
 fn view_context_for(context: UiContext) -> ViewContext {
     match context {
         UiContext::MailboxMessage | UiContext::SearchPreview => ViewContext::ThreadView,
@@ -285,9 +246,6 @@ fn view_context_for(context: UiContext) -> ViewContext {
     }
 }
 
-/// One command per TUI action the definition lists in `place` (every TUI
-/// action off the mailbox, where `action_allowed_in_context` filters), in
-/// the definition's order. Motion keys stay out, as in the web palette.
 pub(crate) fn defined_commands(
     place: Option<&str>,
     config: &KeybindingConfig,
@@ -296,11 +254,9 @@ pub(crate) fn defined_commands(
     let keymap = mxr_keymap::defaults();
     let mut commands: Vec<PaletteCommand> = Vec::new();
     for action in &keymap.actions {
-        // An overlay's keys act only while it is open.
         if !action.is_for(Client::Tui) || action.hide_in_palette || action.is_overlay() {
             continue;
         }
-        // The bindings live here; off the mailbox, the list's (or any).
         let live: Vec<&TuiBinding> = match place {
             Some(place) => action
                 .tui
@@ -320,13 +276,9 @@ pub(crate) fn defined_commands(
                 }
             }
         };
-        // The first binding's action is what the palette runs; the others
-        // only add keys (`g 0` is Inbox too).
         let Some(tui_action) = live.first().and_then(|b| action_named(&b.name)) else {
             continue;
         };
-        // Two definition actions can run one TUI action in one place (Reply
-        // in the list and in Now); the first names it.
         if commands.iter().any(|command| command.action == tui_action) {
             continue;
         }
@@ -357,8 +309,6 @@ pub(crate) fn defined_commands(
     commands
 }
 
-/// The keys that run `action` in `place`: a mode section's remaps, or the
-/// list and reader maps' remaps from `keys.toml`, else the definition's.
 fn effective_keys(
     action: &KeyAction,
     binding: &TuiBinding,
@@ -381,7 +331,6 @@ fn effective_keys(
                 .map(|key| shown_key(key))
                 .collect()
         }
-        // The list and reader maps also govern search and the other screens.
         Some("list" | "reader") | None if config.has_action_override(view, tui_action) => {
             config.key_displays(view, tui_action)
         }
@@ -389,8 +338,6 @@ fn effective_keys(
     }
 }
 
-/// A definition key as the TUI spells keys elsewhere (help, the hint bar):
-/// `g R` → `gR`, `Ctrl+d` → `Ctrl-d`, `Escape` → `Esc`.
 pub(crate) fn shown_key(key: &str) -> String {
     key.split(' ')
         .map(|chord| match chord {
@@ -427,15 +374,10 @@ fn filtered_indices(
                 .map(|score| (index, score, recent_position(&command.action)))
         })
         .collect();
-    // Sort by (match score, recency, registration order). Match strength
-    // dominates, so a strong query match still wins over a recent
-    // command that doesn't match the query well.
     scored.sort_by_key(|(index, score, recency)| (*score, *recency, *index));
     scored.into_iter().map(|(index, _, _)| index).collect()
 }
 
-/// Score a command against a query. Lower scores rank higher. `None`
-/// means no match. Empty query matches every command at the same score.
 fn match_score(command: &PaletteCommand, query: &str) -> Option<u8> {
     if query.is_empty() {
         return Some(0);
@@ -714,7 +656,6 @@ fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str,
         "Diagnostics" => ("!", theme.warning),
         "Accounts" => ("=", theme.accent_dim),
         "Sync" => ("*", theme.success),
-        // Not `?`: in a list of keys it reads as the help key.
         _ => ("\u{b7}", theme.text_muted),
     }
 }
@@ -729,9 +670,6 @@ mod tests {
     use crate::keymap_names::action_named;
     use mxr_keymap::{Client, TUI_CONTEXTS};
 
-    /// Every key the TUI binds in a mail context is findable in the palette
-    /// opened there, with every key the action has there. Motion the
-    /// definition keeps out of palettes (`hide_in_palette`) is the exception.
     #[test]
     fn every_bound_key_is_findable_in_the_palette_where_it_works() {
         let keymap = mxr_keymap::defaults();
@@ -755,7 +693,6 @@ mod tests {
                         missing.push(format!("{place}: {} ({})", action.id, binding.name));
                         continue;
                     };
-                    // The command another id names may carry other keys.
                     if command.id != Some(action.id.as_str()) {
                         continue;
                     }
@@ -771,8 +708,6 @@ mod tests {
         assert!(missing.is_empty(), "{}", missing.join("\n"));
     }
 
-    /// The commands that had no key keep a palette entry: they are in the
-    /// definition as palette-only actions now.
     #[test]
     fn palette_only_commands_stay_findable() {
         let labels: Vec<String> =
@@ -800,8 +735,6 @@ mod tests {
         }
     }
 
-    /// Opened in To do, the palette offers To do's verbs with To do's keys,
-    /// the tabs included, and a person's `[todo]` remap.
     #[test]
     fn a_modes_palette_shows_its_keys_and_remaps() {
         let dir = tempfile::tempdir().unwrap();
@@ -842,14 +775,12 @@ mod tests {
                 .map(|cmd| cmd.shortcut.clone())
         };
 
-        // The reader's keys, from the definition's reader context.
         palette.toggle_with_archive_operations(UiContext::MailboxMessage, &[]);
         assert_eq!(shortcut_of(&palette, "mail.links").as_deref(), Some("L"));
         assert_eq!(shortcut_of(&palette, "shell.compose").as_deref(), Some("c"));
 
-        // Back in the mailbox list, the list's keys.
-        palette.toggle_with_archive_operations(UiContext::MailboxMessage, &[]); // close
-        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]); // reopen
+        palette.toggle_with_archive_operations(UiContext::MailboxMessage, &[]);
+        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
         assert_eq!(shortcut_of(&palette, "shell.compose").as_deref(), Some("c"));
         assert_eq!(shortcut_of(&palette, "mail.archive").as_deref(), Some("e"));
         assert_eq!(
@@ -873,7 +804,6 @@ mod tests {
     #[test]
     fn restore_recents_round_trip_preserves_order_and_skips_unknown_labels() {
         let mut palette = CommandPalette::default();
-        // Confirm three real commands so we have known recents to snapshot.
         palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
         palette.input = "archive".to_string();
         palette.update_filtered(None);
@@ -888,7 +818,6 @@ mod tests {
         palette.confirm().expect("star command should exist");
 
         let snapshot = palette.recent_labels_snapshot();
-        // Most-recent-first: Star, Reply All, Archive
         assert_eq!(
             snapshot,
             vec![
@@ -899,9 +828,6 @@ mod tests {
             "snapshot order must match record_recent semantics"
         );
 
-        // Restore on a fresh palette, with a label that no longer exists
-        // in the middle. The unknown label must be dropped silently while
-        // the surrounding entries survive in order.
         let persisted = vec![
             "Star or unstar".to_string(),
             "RemovedInThisVersion".to_string(),

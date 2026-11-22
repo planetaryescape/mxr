@@ -25,18 +25,10 @@ pub struct ThreadMessageBlock {
     pub bulk_selected: bool,
     pub has_unsubscribe: bool,
     pub signature_expanded: bool,
-    /// `Q`: quoted text in full instead of folded.
     pub quotes_expanded: bool,
-    /// `o` and `;`: only the message's header line shows.
     pub collapsed: bool,
-    /// Scroll so this message's header is the reader's top line, this
-    /// frame only; set after folding moved it.
     pub scroll_here: bool,
-    /// A To do row's link, marked where it appears in this message.
     pub highlight_link: Option<String>,
-    /// Phase 3.4: true while remote HTML assets for this message are
-    /// being fetched. Drives the "Loading external assets…" chip in
-    /// `body_metadata_lines`.
     pub assets_loading: bool,
 }
 
@@ -62,24 +54,17 @@ struct HtmlImageBlock {
 }
 
 pub struct DrawOptions<'a> {
-    /// The thread's context (gist, ask, facts, promises), shown first.
     pub context: Vec<Line<'static>>,
     pub summary: Option<ThreadSummaryBlock>,
     pub scroll_offset: u16,
     pub active_pane: &'a ActivePane,
     pub theme: &'a Theme,
     pub html_images: &'a mut HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
-    /// "Now" for the "2h ago" on today's mail, passed in so the render
-    /// doesn't read the clock.
     pub now: DateTime<Utc>,
-    /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
-    /// Names the account each message came to (blueprint 33).
     pub account_marks: &'a crate::ui::account_mark::AccountMarks,
 }
 
-/// "In Work · work@example.com", led by the account's chip. The chip shows
-/// whatever the view, so a reader always says which account the mail came to.
 fn account_line(
     account_id: &mxr_core::AccountId,
     account_marks: &crate::ui::account_mark::AccountMarks,
@@ -98,9 +83,6 @@ fn account_line(
     Some(Line::from(spans))
 }
 
-/// Draws the thread/message reader. Returns the scroll offset actually used,
-/// clamped to the content height — store it so the next keypress starts from
-/// a real position rather than an unreachable one.
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
@@ -148,7 +130,6 @@ pub fn draw(
 
     let mut anchor_block = None;
     for (index, message) in messages.iter().enumerate() {
-        // Folded messages stack as a list of header lines.
         let after_folded = index > 0 && messages[index - 1].collapsed && message.collapsed;
         if index > 0 && !after_folded {
             blocks.push(RenderBlock::Text(vec![
@@ -186,8 +167,7 @@ pub fn draw(
         }
         let mut text_lines: Vec<Line<'static>> = Vec::new();
 
-        // Aligned headers with consistent label width
-        let label_width = 10; // "Subject: " padded
+        let label_width = 10;
         text_lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "From:"), label_style),
             Span::styled(format!("{} <{}>", from, env.from.email), value_style),
@@ -220,7 +200,6 @@ pub fn draw(
             text_lines.push(line);
         }
 
-        // Selection + label chips
         if message.bulk_selected || !message.labels.is_empty() {
             let mut chips: Vec<Span> = Vec::new();
             if message.bulk_selected {
@@ -258,7 +237,6 @@ pub fn draw(
             ]));
         }
 
-        // Attachments
         if !message.attachments.is_empty() {
             text_lines.push(Line::from(vec![Span::styled(
                 format!("{:<label_width$}", "Attach:"),
@@ -300,8 +278,6 @@ pub fn draw(
                 ));
                 if metadata.mode == BodyViewMode::Html && *source == BodySource::Html {
                     blocks.push(RenderBlock::Text(text_lines));
-                    // As the web reader's formatted view: the quoted
-                    // conversation stays folded until `Q`.
                     blocks.extend(html_body_blocks(
                         &message.envelope.id,
                         raw,
@@ -372,12 +348,6 @@ pub fn draw(
         ))]));
     }
 
-    // Clamp to the real wrapped content height. Callers advance the offset
-    // blind (`j`, `Ctrl-d`, and `G` which asks for `u16::MAX`); only here do
-    // we know how tall the content actually is. Without this, an offset past
-    // the end makes `render_blocks` skip every block and the pane renders
-    // blank. The clamped value is returned so the caller can store it and
-    // scrolling back up responds on the first keypress.
     let mut content_height: u16 = 0;
     for block in &blocks {
         content_height = content_height.saturating_add(render_block_height(
@@ -689,8 +659,6 @@ fn process_body_lines(
     reader_applied: bool,
     quotes_expanded: bool,
 ) -> Vec<Line<'static>> {
-    // Sanitize at the render boundary: strip C0/DEL/C1 control characters
-    // before any line is turned into a ratatui Span. Keeps \n and \t.
     let raw = strip_control_chars(raw);
     let raw = raw.as_ref();
     if !reader_applied {
@@ -713,14 +681,12 @@ fn process_body_lines(
     let mut consecutive_blanks: u32 = 0;
 
     for line in raw.lines() {
-        // Signature detection
         if line == "-- " || line == "--" {
             flush_quotes(&mut quote_buffer, &mut lines, theme, quotes_expanded);
             in_signature = true;
             continue;
         }
 
-        // Blank line collapsing
         if line.trim().is_empty() {
             if in_signature {
                 signature_lines.push(String::new());
@@ -740,13 +706,11 @@ fn process_body_lines(
             continue;
         }
 
-        // Quote detection
         if line.starts_with('>') {
             quote_buffer.push(line.to_string());
             continue;
         }
 
-        // Regular line — flush any pending quotes first
         flush_quotes(&mut quote_buffer, &mut lines, theme, quotes_expanded);
         if is_folded_quote_label(line) {
             lines.push(Line::from(Span::styled(
@@ -760,7 +724,6 @@ fn process_body_lines(
         lines.push(style_line_with_links(line, theme));
     }
 
-    // Flush remaining
     flush_quotes(&mut quote_buffer, &mut lines, theme, quotes_expanded);
 
     if !signature_lines.is_empty() {
@@ -966,10 +929,7 @@ fn max_image_height(viewport_height: u16) -> u16 {
     viewport_height.saturating_sub(4).clamp(6, 18)
 }
 
-/// What an HTML body draws from: its quote split and styled render, both
-/// parsed in the HTML helper off the event loop (see `deferred_html`).
 struct HtmlBody {
-    /// The part shown: the whole body, or what is above a folded quote.
     main: String,
     has_folded_quote: bool,
     rendered: RichRender,
@@ -983,8 +943,6 @@ impl HtmlBody {
         let main = parts
             .as_ref()
             .map_or_else(|| html.to_string(), |parts| parts.main.clone());
-        // Over the size cap, on a panic, or with the HTML helper lost (timed
-        // out, crashed), the tag strip stands in.
         let rendered = RICH_LINES
             .call(&main, &html_width(width))
             .unwrap_or(RichRender::Strip);
@@ -1000,7 +958,6 @@ fn html_width(width: u16) -> usize {
     usize::from(width.max(20))
 }
 
-/// The blocks for an HTML body; the tag strip while its parse is on its way.
 fn html_body_blocks(
     message_id: &MessageId,
     html: &str,
@@ -1063,7 +1020,6 @@ fn rendered_html_blocks(
                 html, theme, false, false, false,
             ))];
         }
-        // Show the tag-stripped text rather than raw markup.
         RichRender::Strip => {
             return vec![RenderBlock::Text(process_body_lines(
                 &mxr_reader::strip_html_tags(html),
@@ -1334,13 +1290,10 @@ fn human_size(size_bytes: u64) -> String {
     }
 }
 
-/// The line `mxr_reader` leaves where it folded a quoted reply:
-/// `[previous message]` or `[previous message from …]`.
 fn is_folded_quote_label(line: &str) -> bool {
     line.starts_with("[previous message") && line.ends_with(']')
 }
 
-/// Where the HTML view folded the quoted conversation away.
 fn folded_quote_line(theme: &Theme) -> Line<'static> {
     Line::from(Span::styled(
         "  ┆ quoted text folded (Q shows it)",
@@ -1350,8 +1303,6 @@ fn folded_quote_line(theme: &Theme) -> Line<'static> {
     ))
 }
 
-/// A message folded by `o` or `;`: who, when and the start of what they
-/// wrote, cut to one line so the folded messages read as a list.
 fn collapsed_message_line(
     message: &ThreadMessageBlock,
     from: &str,
@@ -1433,7 +1384,6 @@ fn flush_quotes(
     }
 }
 
-/// The same link, ignoring a trailing slash and the case of scheme and host.
 fn same_link(a: &str, b: &str) -> bool {
     let normal = |value: &str| {
         let value = value.trim().trim_end_matches('/');
@@ -1452,8 +1402,6 @@ fn same_link(a: &str, b: &str) -> bool {
     normal(a) == normal(b)
 }
 
-/// Mark the To do row's link where it appears: reversed and bold, so it
-/// stands out before anyone follows it. Nothing here opens it.
 fn mark_link(mut line: Line<'static>, link: &str, theme: &Theme) -> Line<'static> {
     for span in &mut line.spans {
         if same_link(&span.content, link) {
@@ -1465,7 +1413,6 @@ fn mark_link(mut line: Line<'static>, link: &str, theme: &Theme) -> Line<'static
     line
 }
 
-/// Split a line into spans, highlighting URLs in link_fg with underline.
 fn style_line_with_links(line: &str, theme: &Theme) -> Line<'static> {
     let link_style = Style::default()
         .fg(theme.link_fg)
@@ -1475,25 +1422,21 @@ fn style_line_with_links(line: &str, theme: &Theme) -> Line<'static> {
     let mut rest = line;
 
     while let Some(start) = rest.find("http://").or_else(|| rest.find("https://")) {
-        // Text before the URL
         if start > 0 {
             spans.push(Span::raw(rest[..start].to_string()));
         }
 
-        // Find end of URL (whitespace, angle bracket, or end of string)
         let url_rest = &rest[start..];
         let end = url_rest
             .find(|c: char| c.is_whitespace() || c == '>' || c == ')' || c == ']' || c == '"')
             .unwrap_or(url_rest.len());
 
         let url = &url_rest[..end];
-        // Strip trailing punctuation that's probably not part of the URL
         let url_trimmed = url.trim_end_matches(['.', ',', ';', ':', '!', '?']);
         let trimmed_len = url_trimmed.len();
 
         spans.push(Span::styled(url_trimmed.to_string(), link_style));
 
-        // Any trailing punctuation goes back as plain text
         if trimmed_len < end {
             spans.push(Span::raw(url_rest[trimmed_len..end].to_string()));
         }
@@ -1501,7 +1444,6 @@ fn style_line_with_links(line: &str, theme: &Theme) -> Line<'static> {
         rest = &rest[start + end..];
     }
 
-    // Remaining text after last URL
     if !rest.is_empty() {
         spans.push(Span::raw(rest.to_string()));
     }
@@ -1640,8 +1582,6 @@ mod tests {
         assert!(!text.contains("<p>"), "markup leaked into the view");
     }
 
-    /// The reader names the account a message came to, led by its chip, even
-    /// when the view shows no row marks (blueprint 33).
     #[test]
     fn reader_header_names_the_account_with_its_chip() {
         use crate::ui::account_mark::{AccountMarks, ChipDepth};
@@ -1666,7 +1606,6 @@ mod tests {
                 tag: "W".into(),
             }),
         };
-        // One account: no row marks, but the reader still names it.
         let marks = AccountMarks::from_accounts(&[work], false, ChipDepth::Plain);
         let line = account_line(&account_id, &marks, &Theme::default(), 10)
             .expect("a known account has a header line");
@@ -1764,10 +1703,6 @@ mod tests {
         assert!(snapshot.contains("Selected"));
     }
 
-    /// Regression: scroll offsets were never clamped to the content height,
-    /// so `G` (which asks for u16::MAX) or enough Ctrl-d made render_blocks
-    /// skip every block and paint an empty pane. draw now clamps and hands
-    /// back the offset it used.
     #[test]
     fn overscroll_clamps_instead_of_blanking_the_pane() {
         let block = ThreadMessageBlock {
@@ -1997,8 +1932,6 @@ mod tests {
         assert!(rendered.contains("Badge"));
         assert!(rendered.contains("Hero"));
         assert!(rendered.contains("View: Original HTML"));
-        // Phase 3.4: chip label changed from "remote images blocked"
-        // to a clearer "External content blocked" with affordance hint.
         assert!(rendered.contains("External content blocked"));
     }
 
@@ -2116,8 +2049,6 @@ mod tests {
             );
         });
 
-        // Card title comes from the locale provider ("Calendar invite") and
-        // replaces the older "Invite:" label.
         assert!(rendered.contains("Calendar invite"));
         assert!(rendered.contains("Planning session"));
         assert!(rendered.contains("When:"));
@@ -2128,12 +2059,6 @@ mod tests {
         assert!(rendered.contains("organizer changed"));
     }
 
-    /// Step 1: verify ratatui neutralizes raw ESC bytes from mail content.
-    ///
-    /// Renders a body containing ANSI CSI, OSC-BEL, and OSC-ST sequences.
-    /// The rendered buffer must contain no ESC (\x1b) byte — either because
-    /// ratatui strips it (fast path) or because our sanitizer does (after
-    /// Steps 2-3).
     #[test]
     fn body_escape_sequences_do_not_survive_render() {
         let poisoned_body =
@@ -2184,13 +2109,11 @@ mod tests {
             );
         });
 
-        // No raw ESC byte must appear in the rendered buffer.
         assert!(
             !rendered.contains('\x1b'),
             "ESC byte survived render — terminal injection possible. Buffer: {:?}",
             &rendered[..rendered.len().min(200)]
         );
-        // Sanity check: the surrounding plain text is visible.
         assert!(
             rendered.contains("before"),
             "expected 'before' in rendered output"

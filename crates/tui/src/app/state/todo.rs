@@ -1,45 +1,31 @@
-//! To do in the TUI: the runway the daemon serves (`GetTodoRunway`), the
-//! mode's teaching copy (`GetModeGuide`), the Expired list and the
-//! one-time catch-up. The daemon owns every band, label and why line; this
-//! state only holds what came back and what the user is doing with it.
-
 use mxr_core::id::MessageId;
 use mxr_protocol::{
     ModeGuideData, TodoCatchupData, TodoChangeData, TodoData, TodoResolutionActionData,
     TodoRunwayData,
 };
 
-/// Which list the lens shows under its header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TodoPanel {
-    /// Now, Coming up, Later and Whenever.
     #[default]
     Runway,
-    /// Rows past their window or let go, one key from restore.
     Expired,
-    /// The first run's one-time batch: keep or let go of each row.
     Catchup,
 }
 
-/// The email a row is about, to open with its link marked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TodoOpen {
     pub message_id: MessageId,
-    /// The link the row is about; marked in the message, never opened.
     pub link: Option<String>,
 }
 
-/// A list the runtime should fetch for the lens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoListFetch {
     Expired,
     Catchup,
 }
 
-/// What the prompt under the lens is collecting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TodoPromptKind {
-    /// `,`: `field=value`, such as `due=fri 9 oct` or `title=Pay rent`.
     Edit {
         todo_id: String,
     },
@@ -58,7 +44,6 @@ pub struct TodoPromptState {
     pub kind: TodoPromptKind,
     pub input: String,
     pub error: Option<String>,
-    /// The highlighted reason while correcting, from 0.
     pub selected: usize,
 }
 
@@ -83,45 +68,29 @@ pub struct TodoPageState {
     pub panel: TodoPanel,
     pub expired: Vec<TodoData>,
     pub catchup: Option<TodoCatchupData>,
-    /// "Let go of all" previewed by the daemon, waiting for Enter or Esc.
-    /// Enter lets go of exactly these ids.
     pub catchup_preview: Option<TodoChangeData>,
     pub prompt: Option<TodoPromptState>,
-    /// Ask the runtime for the runway and the guide.
     pub pending_refresh: bool,
-    /// Ask the runtime for the source message of the row under the cursor.
     pub pending_open: Option<TodoOpen>,
-    /// The next refresh records that To do was opened. Only opening the
-    /// lens does: a refresh after a change must not reset the count.
     pub pending_mark_seen: bool,
-    /// "N expired since you last looked", as counted when the lens opened.
     pub expired_on_open: u32,
     pub pending_list: Option<TodoListFetch>,
-    /// Ask the daemon what "let go of all" would let go of.
     pub pending_catchup_preview: bool,
-    /// A resolution request for the runner to send over daemon IPC.
     pub pending_resolution: Option<(String, String, TodoResolutionActionData)>,
-    /// The exact previewed suggestion, held until explicit accept/dismiss.
     pub resolution_preview: Option<(String, String, TodoChangeData)>,
     pub microsoft_status: Option<mxr_protocol::MicrosoftTodoStatusData>,
     pub microsoft_preview: Option<mxr_protocol::MicrosoftTodoSendData>,
     pub microsoft_sync_preview: Option<mxr_protocol::MicrosoftTodoSyncData>,
     pub pending_microsoft: Option<mxr_protocol::Request>,
     pub microsoft_busy: bool,
-    /// Geometry feedback only: confirmation is disabled until the review was drawn.
     pub microsoft_review_visible: std::cell::Cell<bool>,
     pub microsoft_sync_review_visible: std::cell::Cell<bool>,
     pub microsoft_scroll_max: std::cell::Cell<u16>,
     pub microsoft_scroll: u16,
-    /// The to-do whose details Space opened under it, by id. It stays with
-    /// that row as the cursor moves, as Updates' peek does.
     pub peek: Option<String>,
 }
 
 impl TodoPageState {
-    /// The peeked to-do's source email as plain text, once the reader's
-    /// fetch has it. Takes the body cache, not the app, so drawing can
-    /// borrow the page and the cache side by side.
     pub fn peek_body<'a>(
         &self,
         bodies: &'a std::collections::HashMap<MessageId, mxr_core::MessageBody>,
@@ -134,8 +103,6 @@ impl TodoPageState {
             .as_deref()
     }
 
-    /// The runway's selectable rows in display order: Now, Coming up by
-    /// week, Later, then Whenever.
     pub fn runway_rows(&self) -> Vec<&TodoData> {
         let Some(runway) = &self.runway else {
             return Vec::new();
@@ -149,7 +116,6 @@ impl TodoPageState {
             .collect()
     }
 
-    /// The rows the cursor moves over in the panel on screen.
     pub fn rows(&self) -> Vec<&TodoData> {
         match self.panel {
             TodoPanel::Runway => self.runway_rows(),

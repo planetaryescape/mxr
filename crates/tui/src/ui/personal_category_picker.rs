@@ -37,7 +37,6 @@ pub struct PersonalCategoryPicker {
     pub membership_failed: bool,
     pub membership_preview: Option<mxr_protocol::CategoryMembershipPreview>,
     pub delete_preview: Option<mxr_protocol::CategoryDeletePreview>,
-    /// Which of the delete confirm's two options is lit.
     pub delete_choice: crate::app::ConfirmChoice,
     pub name_action: Option<CategoryNameAction>,
     pub name_preview_pending: bool,

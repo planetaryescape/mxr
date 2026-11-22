@@ -1,19 +1,3 @@
-//! Tracks the message-id state of in-flight optimistic mutations so a
-//! stale envelope refresh from the daemon can't undo the local change
-//! before the mutation acks.
-//!
-//! Concrete bug this fixes: user archives a message in INBOX, the row
-//! disappears optimistically, then a `LabelEnvelopes` response from a
-//! sync- or mutation-triggered refresh lands with the still-present
-//! envelope (because the daemon hasn't processed the archive yet) and
-//! overwrites the local list — the archived message "pops back in"
-//! until the mutation finally acks. The fix is to filter daemon-sourced
-//! envelope responses against the pending optimistic state for as long
-//! as the corresponding mutation is in flight.
-//!
-//! Mirrors the Linear-style mutation gate: server responses can't
-//! clobber a pending optimistic change.
-
 use std::collections::{HashMap, HashSet};
 
 use mxr_core::id::MessageId;
@@ -23,23 +7,15 @@ use mxr_core::Envelope;
 use super::MutationEffect;
 use super::MutationId;
 
-/// In-flight optimistic state keyed by the mutation that produced it.
-/// On mutation ack / rollback the entries for that id are dropped.
 #[derive(Debug, Default)]
 pub struct PendingOptimisticState {
-    /// Per-mutation list of message IDs removed from visible lists.
     removed: HashMap<MutationId, Vec<MessageId>>,
-    /// Per-mutation list of optimistic flag overrides.
     flag_overrides: HashMap<MutationId, Vec<(MessageId, MessageFlags)>>,
-    /// Cached union of `removed` values — fast O(1) membership check.
     removed_lookup: HashSet<MessageId>,
-    /// Cached latest-write flags per message — masking value for refresh.
     flag_lookup: HashMap<MessageId, MessageFlags>,
 }
 
 impl PendingOptimisticState {
-    /// Record the optimistic effect tied to a mutation. Idempotent if
-    /// called twice for the same id (last write wins).
     pub fn record(&mut self, id: MutationId, effect: &MutationEffect) {
         match effect {
             MutationEffect::RemoveFromList(mid) => {
@@ -71,19 +47,10 @@ impl PendingOptimisticState {
                     self.flag_lookup.insert(mid.clone(), *flags);
                 }
             }
-            // ModifyLabels, ReplyLater, RefreshList, StatusOnly,
-            // SentSuccess: label and reply-later overrides reconcile
-            // cleanly on next refresh because the daemon writes them
-            // before responding, and the rollback path covers the
-            // failure case. No need to mask refresh responses.
             _ => {}
         }
     }
 
-    /// Drop everything recorded for this mutation id. Call from both
-    /// the ack path (mutation succeeded, optimistic state is now
-    /// authoritative locally and on the daemon) and the failure path
-    /// (snapshot rollback already restored the pre-mutation state).
     pub fn clear(&mut self, id: MutationId) {
         if let Some(ids) = self.removed.remove(&id) {
             for mid in &ids {
@@ -124,10 +91,6 @@ impl PendingOptimisticState {
         self.flag_lookup.get(message_id).copied()
     }
 
-    /// Apply the pending state to a daemon-sourced envelope list:
-    /// drop optimistically-removed ids, then mask flag fields for any
-    /// remaining envelope with a pending flag override. Use this at
-    /// every list-replacement site that consumes a refresh response.
     pub fn apply(&self, envelopes: &mut Vec<Envelope>) {
         if self.removed_lookup.is_empty() && self.flag_lookup.is_empty() {
             return;

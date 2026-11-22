@@ -1,7 +1,3 @@
-//! Messages' filter picker (Ctrl-f): the turn as a radio group, then Unread
-//! and Past your pace as toggles. Each choice applies at once, so the modal
-//! only shows what the page holds and where the cursor sits.
-
 use super::centered_rect;
 use crate::app::MessagesFilterPicker;
 use crate::theme::Theme;

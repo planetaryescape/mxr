@@ -4,16 +4,10 @@ use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-/// Widest a toast box may grow. Long messages are truncated rather than
-/// wrapped — toasts are glanceable notifications, not reading material.
 const TOAST_MAX_WIDTH: u16 = 48;
 const TOAST_MIN_WIDTH: u16 = 20;
-/// Each toast renders as a single content line inside a border.
 const TOAST_HEIGHT: u16 = 3;
 
-/// Draw stacked toast boxes anchored bottom-right, directly above the
-/// status bar. `toasts` is expected newest-first (see
-/// `ToastQueue::visible`); the newest renders closest to the status bar.
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
@@ -25,7 +19,6 @@ pub fn draw(
         return;
     }
 
-    // Reserve the bottom status-bar row; stack upward from just above it.
     let mut bottom = area.bottom().saturating_sub(1);
     for toast in toasts {
         if bottom < area.y + TOAST_HEIGHT {
@@ -41,8 +34,6 @@ pub fn draw(
             height: TOAST_HEIGHT,
         };
 
-        // A solid box in the type's colour, as the web app's toasts are,
-        // with whichever text pole reads best on it.
         let color = severity_color(toast.severity, theme);
         let text = readable_on(color, theme);
         frame.render_widget(Clear, rect);

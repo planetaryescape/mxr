@@ -65,8 +65,6 @@ impl App {
         self.mailbox.pending_attachment_action = None;
     }
 
-    /// Open the "save attachment as..." modal with a user-chosen destination.
-    /// Triggered by `d` in the attachment list.
     pub fn open_save_attachment_modal(&mut self) {
         let Some(message_id) = self.mailbox.attachment_panel.message_id.clone() else {
             return;
@@ -81,9 +79,6 @@ impl App {
             .open(message_id, attachment.id, filename, prefilled);
     }
 
-    /// Apply a numbered preset (1=Downloads, 2=Desktop, 3=cwd) to the
-    /// save modal's input, preserving the current filename so users
-    /// just swap the directory.
     pub fn save_attachment_apply_preset(&mut self, preset: SavePathPreset) {
         let filename = self.modals.save_attachment.filename.clone();
         if filename.is_empty() {
@@ -131,7 +126,6 @@ impl App {
             self.modals.save_attachment.error = None;
             return;
         }
-        // Path resolved; queue the download with the user's chosen destination.
         let message_id = match self.modals.save_attachment.message_id.clone() {
             Some(id) => id,
             None => {
@@ -146,7 +140,6 @@ impl App {
                 return;
             }
         };
-        // Re-select the attachment in the panel so queue_attachment_action_to picks it up.
         if let Some(idx) = self
             .mailbox
             .attachment_panel
@@ -156,7 +149,6 @@ impl App {
         {
             self.mailbox.attachment_panel.selected_index = idx;
         }
-        // Ensure the panel knows which message we're acting on.
         self.mailbox.attachment_panel.message_id = Some(message_id);
         self.queue_attachment_action_to(
             AttachmentOperation::Download,
@@ -170,10 +162,6 @@ impl App {
         self.queue_attachment_action_to(operation, None, false);
     }
 
-    /// Queue an attachment Open/Download with an explicit destination
-    /// path. Pass `Some(path)` when the user has chosen where to save
-    /// (the save-attachment modal flow); pass `None` for the TUI client's
-    /// local cache (used by Open).
     pub fn queue_attachment_action_to(
         &mut self,
         operation: AttachmentOperation,
@@ -278,11 +266,6 @@ impl App {
                     .as_ref()
                     .filter(|(id, _)| *id == message.id)
                     .map(|(_, link)| link.clone()),
-                // Phase 3.4: true while a remote-asset fetch is queued
-                // or in-flight for this message. Drives the
-                // "Loading external assets…" chip in the message
-                // header so users see *something* while the network
-                // round-trip resolves.
                 assets_loading: self.queued_html_image_asset_fetches.contains(&message.id)
                     || self
                         .in_flight_html_image_asset_requests

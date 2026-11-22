@@ -1,22 +1,12 @@
-//! Now in the TUI: open the front page, act on a row in its own mode,
-//! done here through `SetModeDone` with the daemon's handoff copy, let go
-//! of the Updates card after a preview, and answer a new sender's one
-//! question. The daemon owns every cap, count and line.
-
 use super::*;
 use crate::app::state::NowRow;
 use mxr_core::id::ThreadId;
 use mxr_protocol::{ModeDoneOutcomeData, ModeKindData, NowData};
 
-/// The mode id `GetModeGuide` takes for Now.
 pub(crate) const NOW_MODE: &str = mxr_protocol::NOW_GUIDE.mode;
 
-/// What a row on Now refers to, copied out so the page can be changed.
 enum NowTarget {
-    /// The arrivals line: Enter lists the emails behind it.
     Arrivals,
-    /// A Not-sure question: Enter opens the email, `X` answers it, and
-    /// Now's own keys act on its email as on any row.
     NotSure {
         thread_id: ThreadId,
         message_id: MessageId,
@@ -65,8 +55,6 @@ impl From<NowRow<'_>> for NowTarget {
     }
 }
 
-/// The toast for a done-here answer: the daemon's handoff copy for one
-/// thread, a count for several.
 pub(crate) fn mode_done_copy(items: &[ModeDoneOutcomeData], mode: ModeKindData) -> String {
     let done: Vec<&ModeDoneOutcomeData> =
         items.iter().filter(|item| item.error.is_none()).collect();
@@ -119,12 +107,10 @@ impl App {
         let page = &mut self.mailbox.now_page;
         page.digest_preview = None;
         page.pending_refresh = true;
-        // Opening Now is a visit: the arrivals line counts from the last.
         page.pending_mark_seen = true;
         self.mailbox.pending_rail_refresh = true;
     }
 
-    /// The Now lens owns the keyboard (its list, not a reader beside it).
     pub(crate) fn now_list_focused(&self) -> bool {
         self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::Now
@@ -139,7 +125,6 @@ impl App {
             .copied()
     }
 
-    /// The runtime fetched Now and its guide.
     pub(crate) fn set_now(&mut self, now: NowData, guide: Option<mxr_protocol::ModeGuideData>) {
         let page = &mut self.mailbox.now_page;
         page.now = Some(now);
@@ -154,7 +139,6 @@ impl App {
         }
     }
 
-    /// The Updates card's cut in local time, for its section rule.
     pub(crate) fn now_updates_since(&self) -> Option<String> {
         self.mailbox
             .now_page
@@ -173,21 +157,17 @@ impl App {
             })
     }
 
-    /// Refetch Now and the rail after anything that can move them.
     pub(crate) fn refresh_now(&mut self) {
         self.mailbox.now_page.pending_refresh = true;
         self.mailbox.pending_rail_refresh = true;
     }
 
-    /// Enter opens the row in its own mode; `o` opens the email itself.
     fn now_open(&mut self, email: bool) {
         let Some(target) = self.selected_now_row().map(NowTarget::from) else {
             return;
         };
         match target {
             NowTarget::Arrivals => self.apply(Action::OpenArrivals),
-            // A person opens in Messages, on this conversation; `o` opens
-            // the email itself.
             NowTarget::Person { thread_id, .. } if !email => self.open_messages_thread(thread_id),
             NowTarget::Person { message_id, .. }
             | NowTarget::Reading { message_id, .. }
@@ -210,17 +190,12 @@ impl App {
         }
     }
 
-    /// `e`: done here, in the row's own mode. The row leaves at once; the
-    /// toast is the daemon's handoff copy and `u` undoes it.
     fn now_done(&mut self) {
         let Some(target) = self.selected_now_row().map(NowTarget::from) else {
             return;
         };
         match target {
-            // Nothing to be done with the line.
             NowTarget::Arrivals => {}
-            // One verb per key: done with the email where it is for now.
-            // Only `X` answers the question, so it stays asked.
             NowTarget::NotSure {
                 mode: ModeKindData::Archive,
                 ..
@@ -234,13 +209,11 @@ impl App {
             }
             NowTarget::Person { thread_id, .. } => {
                 self.queue_mode_done(ModeKindData::Messages, thread_id);
-                // After queueing, which sets its own progress line.
                 self.explain_done_here_once();
             }
             NowTarget::Reading { thread_id, .. } => {
                 self.queue_mode_done(ModeKindData::Reading, thread_id);
             }
-            // Only this to-do: another one on the same email stays open.
             NowTarget::Todo {
                 thread_id: Some(thread_id),
                 todo_id,
@@ -248,9 +221,7 @@ impl App {
             } => {
                 self.queue_done(ModeKindData::Todo, thread_id, vec![todo_id]);
             }
-            // A to-do you made with no email behind it: tick it off.
             NowTarget::Todo { todo_id, .. } => {
-                // It leaves at once, so the next row takes the cursor.
                 self.mailbox.now_page.remove_todo(&todo_id);
                 self.mailbox.selected_index = self
                     .mailbox
@@ -271,8 +242,6 @@ impl App {
         }
     }
 
-    /// Done in `mode` for one thread, taking it off Now and the desk at
-    /// once.
     pub(crate) fn queue_mode_done(
         &mut self,
         mode: ModeKindData,
@@ -281,7 +250,6 @@ impl App {
         self.queue_done(mode, thread_id, Vec::new())
     }
 
-    /// `queue_mode_done`, naming the to-dos to tick off in To do.
     fn queue_done(
         &mut self,
         mode: ModeKindData,
@@ -309,9 +277,6 @@ impl App {
         )
     }
 
-    /// `A`: ask the daemon what letting go of the card's digest would do;
-    /// with that preview on screen, Enter lets go of exactly that
-    /// selection, and refuses if the cut changed in between.
     fn now_let_go_digest(&mut self) {
         let page = &mut self.mailbox.now_page;
         if let Some(preview) = page.digest_preview.take() {
@@ -351,7 +316,6 @@ impl App {
         self.status_message = Some("Checking what letting go would change…".into());
     }
 
-    /// The daemon's dry run of letting go of the card's digest.
     pub(crate) fn show_now_digest_preview(&mut self, preview: mxr_protocol::UpdatesLetGoData) {
         self.status_message = None;
         if preview.message_ids.is_empty() {
@@ -361,8 +325,6 @@ impl App {
         self.mailbox.now_page.digest_preview = Some(preview);
     }
 
-    /// Key handling for the Now lens: its verbs and navigation. Mail verbs
-    /// need an email, so they open the row first.
     pub(super) fn now_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if self.mailbox.now_page.digest_preview.is_some() {
             return match key.code {
@@ -375,8 +337,6 @@ impl App {
                 _ => None,
             };
         }
-        // A question's one-key answer must not steal the suffix of a global
-        // navigation chord (g m opens Messages; it does not move this mail).
         if self.input.is_pending() {
             let defined = self.defined_key("now", key);
             return self.run_defined_key(defined);

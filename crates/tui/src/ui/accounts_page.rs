@@ -47,8 +47,6 @@ pub fn draw(
             .flatten()
             .collect::<Vec<_>>()
             .join(" | ");
-            // Phase 2.3: surface an unhealthy indicator inline so users
-            // can spot a broken account without opening Diagnostics.
             let unhealthy = sync_statuses
                 .iter()
                 .find(|s| s.account_id == account.account_id)
@@ -240,7 +238,6 @@ pub fn draw(
     }
 }
 
-/// The colour and tag editor (blueprint 33). Enter previews, Enter again saves.
 fn draw_identity_editor(
     frame: &mut Frame,
     area: Rect,
@@ -1087,10 +1084,6 @@ mod tests {
         }
     }
 
-    /// Phase 2.3 / Behavior 1: an account whose sync status reports
-    /// `healthy=false` renders an "[unhealthy: r repairs]" inline
-    /// indicator that the user can spot at a glance. Catches "no
-    /// indicator at all" regressions.
     #[test]
     fn unhealthy_account_renders_repair_indicator() {
         let account = fake_account("Work");
@@ -1120,9 +1113,6 @@ mod tests {
         );
     }
 
-    /// Phase 2.3: a healthy account does NOT render the indicator —
-    /// otherwise users would see false-positive alarms on every
-    /// account.
     #[test]
     fn healthy_account_does_not_render_repair_indicator() {
         let account = fake_account("Work");

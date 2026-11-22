@@ -1,8 +1,5 @@
-//! State for the Deliveries screen (tab 7).
-
 use mxr_protocol::DeliveryData;
 
-/// Which slice of deliveries the screen is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DeliveryFilter {
     #[default]
@@ -12,7 +9,6 @@ pub enum DeliveryFilter {
 }
 
 impl DeliveryFilter {
-    /// Wire value for `Request::ListDeliveries { filter }`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Active => "active",
@@ -29,7 +25,6 @@ impl DeliveryFilter {
         }
     }
 
-    /// Cycle Active -> Delivered -> All -> Active.
     pub fn next(self) -> Self {
         match self {
             Self::Active => Self::Delivered,
@@ -46,9 +41,6 @@ pub struct DeliveriesState {
     pub loading: bool,
     pub error: Option<String>,
     pub filter: DeliveryFilter,
-    /// When true, a delivery's source email is open in a right-hand split
-    /// pane (driven by `o`/Enter). The message itself lives in the shared
-    /// mailbox view state; this just gates the split layout on the screen.
     pub preview_active: bool,
 }
 

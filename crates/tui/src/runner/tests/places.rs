@@ -1,6 +1,3 @@
-//! Reading and Paper trail in the TUI: the lens, pins, the sender-kind
-//! menu, and sweeps that confirm the daemon's preview and undo as a whole.
-
 use super::*;
 use mxr_protocol::{
     KindRuleData, MailKindData, MailPlaceData, PlaceBundleData, PlaceMessageData, SenderKindData,
@@ -87,13 +84,11 @@ fn queued(app: &App) -> Vec<Request> {
 #[test]
 fn a_stale_fetch_for_another_place_is_ignored() {
     let mut app = App::new();
-    // `g r` opens Reading's own lens now; the place view is still reachable.
     app.apply(Action::OpenPlace(MailPlaceData::Reading));
     assert_eq!(
         app.mailbox.mailbox_view,
         MailboxView::Place(MailPlaceData::Reading)
     );
-    // A Paper trail answer arriving late must not replace Reading.
     app.set_place(
         &refresh(MailPlaceData::PaperTrail),
         crate::app::PlacePageState {
@@ -140,7 +135,6 @@ fn capital_p_moves_the_sender_and_the_menu_says_where_it_goes() {
             .map(|menu| menu.sender_email.as_str()),
         Some("receipts@shop.example")
     );
-    // The menu's letters are the `g` letters: People feed Messages (`m`).
     press(&mut app, KeyCode::Char('m'));
     assert!(app.mailbox.sender_kind_menu.is_none());
     assert!(matches!(
@@ -149,7 +143,6 @@ fn capital_p_moves_the_sender_and_the_menu_says_where_it_goes() {
             if account_id == &shop.account_id && sender_email == "receipts@shop.example"
     ));
 
-    // `a` hands the sender back to the automatic rules.
     app.pending_mutation_queue.clear();
     press_shifted(&mut app, 'P');
     press(&mut app, KeyCode::Char('a'));
@@ -166,7 +159,6 @@ fn the_bundle_sweep_previews_and_enter_runs_exactly_that_preview() {
         vec![message("Receipt 1", true), message("Receipt 0", false)],
     );
     let mut app = paper_trail(vec![shop.clone()]);
-    // `S` swept the bundle until K3; it is in the palette now.
     press_shifted(&mut app, 'S');
     assert!(app.mailbox.pending_sweep_preview.is_none());
     app.apply(Action::SweepBundle);
@@ -210,7 +202,6 @@ fn the_bundle_sweep_previews_and_enter_runs_exactly_that_preview() {
         Some(1),
         "the unpinned message the lens shows for that sender"
     );
-    // Keys go to the preview, not the list, while it is open.
     press(&mut app, KeyCode::Char('p'));
     assert!(queued(&app).is_empty());
     press(&mut app, KeyCode::Enter);
@@ -272,7 +263,6 @@ fn verbs_in_a_place_act_on_the_message_under_the_cursor_only() {
             loaded: true,
         },
     );
-    // `e` is done here in Updates for that message's thread.
     app.apply(Action::Archive);
     assert!(matches!(
         queued(&app).as_slice(),
@@ -288,7 +278,6 @@ fn more_senders_and_more_from_a_sender_page_in_without_losing_the_cursor() {
     app.mailbox.place_page.total_bundles = 2;
     app.mailbox.place_page.bundles[0].message_count = 2;
 
-    // `>` and `+` loaded more until K3; they are in the palette now.
     press(&mut app, KeyCode::Char('>'));
     assert!(app.mailbox.pending_place_more.is_none());
     app.apply(Action::MorePlaceSenders);
@@ -344,7 +333,6 @@ fn more_senders_and_more_from_a_sender_page_in_without_losing_the_cursor() {
     assert_eq!(app.mailbox.place_page.bundles[0].messages.len(), 2);
     assert_eq!(app.mailbox.selected_index, 0);
 
-    // A refresh asks for everything loaded, not just the first page.
     assert!(matches!(
         crate::runner::place_request(
             &app.mailbox
@@ -388,7 +376,6 @@ fn u_moves_a_sender_back_where_it_was() {
     );
 }
 
-/// Open the whole-place preview the way `E` and the daemon's dry run do.
 pub(super) fn whole_place_preview() -> App {
     let mut app = paper_trail(vec![bundle(
         "receipts@shop.example",

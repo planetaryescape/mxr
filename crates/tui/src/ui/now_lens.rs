@@ -1,12 +1,3 @@
-//! The Now lens: the front page, at most ten things in four fixed
-//! sections (People, Due soon, the Updates card, the evening Reading
-//! pick), each capped by the daemon with its "and N more" line.
-//!
-//! Renders `Request::GetNow` as served: the caps, counts, why lines, the
-//! overload line and the clear state all come from the daemon, and the
-//! header line from Now's mode guide. Hints show in the status line
-//! (`app/hints.rs`). Pure render; wiring lives in `app/now_actions.rs`.
-
 use mxr_protocol::{ArrivalsData, NowData, NowPersonData, NowTodoData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -16,23 +7,17 @@ use crate::ui::key_footer::FooterKey;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
-/// Shown while the first run sorts history (blueprint 22, first run).
 const SORTING_LINE: &str = "Sorting your mail, newest first. Now fills in within a few minutes.";
 
 pub struct NowView<'a> {
     pub page: &'a NowPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
-    /// The Updates card's start in local time ("08:00"), formatted by the
-    /// caller so the render stays independent of the machine's zone.
     pub updates_since: Option<String>,
-    /// "Now" for relative and absolute arrival times, passed in so the render
-    /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
     pub account_marks: crate::ui::account_mark::AccountMarks,
 }
 
-/// "22h", "3d", "40m": how long a person has waited.
 fn age_label(seconds: i64) -> String {
     let minutes = seconds.max(60) / 60;
     if minutes < 60 {
@@ -44,7 +29,6 @@ fn age_label(seconds: i64) -> String {
     }
 }
 
-/// A section rule: "── People ───────────── and 8 more in Messages".
 pub(crate) fn section(
     title: &str,
     right: Option<&str>,
@@ -75,7 +59,6 @@ pub(crate) struct Body {
 }
 
 impl Body {
-    /// Track the cursor for scrolling when the row already owns its styling.
     pub(crate) fn select_styled(&mut self, line: Line<'static>, selected: bool) {
         if selected {
             self.selected_line = self.lines.len();
@@ -229,8 +212,6 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
     }
     if clear {
         if let Some(empty) = &now.empty_state {
-            // The arrivals line already said "Clear."; keep only when the
-            // next to-do surfaces.
             let empty = one_line(empty);
             let empty = match arrivals.and_then(|a| a.clear_line.as_ref()) {
                 Some(_) => empty
@@ -270,7 +251,6 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
                 selected,
             );
             if let Some(question) = &person.new_sender {
-                // Answered through `X`: a capital per answer (blueprint 35).
                 let choices = question
                     .choices
                     .iter()
@@ -384,9 +364,6 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
     body
 }
 
-/// The arrivals line under the headline, muted and with no count of its
-/// own to chase, then the day's Not-sure questions. Selectable: Enter on
-/// the line lists the emails behind it; a mode key answers a question.
 fn arrivals_lines(
     body: &mut Body,
     view: &NowView<'_>,
@@ -446,7 +423,6 @@ fn arrivals_lines(
     if let Some(ask) = &arrivals.not_sure_line {
         body.text(one_line(ask), Style::default().fg(theme.text_secondary));
     }
-    // Answered through `X` (blueprint 35): its letters, after the X.
     let choices = crate::app::MOVE_CHOICES
         .iter()
         .map(|(key, mode)| format!("{key} {}", mode.name()))
@@ -474,8 +450,6 @@ fn arrivals_lines(
     }
 }
 
-/// The footer's keys in `width`: Enter, undo and help always; the rest in
-/// the guide's order, the last ones dropped first when space runs short.
 fn keys_line(page: &NowPageState, width: usize) -> String {
     let rest: Vec<(String, String)> = match &page.guide {
         Some(guide) => guide
@@ -483,8 +457,6 @@ fn keys_line(page: &NowPageState, width: usize) -> String {
             .iter()
             .map(|key| (key.key.clone(), key.verb.clone()))
             .collect(),
-        // Before the daemon's guide arrives, the compiled-in copy names
-        // actions by id; show their keys, as the guide would.
         None => mxr_protocol::NOW_GUIDE
             .keys
             .iter()
@@ -557,7 +529,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::th
         Paragraph::new(body.lines).scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0)),
         body_area,
     );
-    // The daemon's reasons read after "Here because:", as on the web status bar.
     let why = selected
         .map(|row| match row {
             NowRow::Person(_) | NowRow::Todo(_) | NowRow::Reading(_) => {
@@ -602,9 +573,6 @@ pub(crate) mod tests {
     };
     use mxr_test_support::render_to_string;
 
-    /// The clock the views render against. The fixtures' mail is from
-    /// October 2026, and the snapshots show it as earlier this year; on the
-    /// wall clock they change on 1 January.
     fn fixture_now() -> chrono::DateTime<Utc> {
         use chrono::TimeZone;
         Utc.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap()
@@ -918,7 +886,6 @@ pub(crate) mod tests {
             let rendered = render_at(&page, width, 0);
             assert!(rendered.contains("u undo  ? keys"), "{width}:\n{rendered}");
         }
-        // The last verbs in the guide's order give way first.
         assert!(!render_at(&page, 80, 0).contains("f forward"));
     }
 }

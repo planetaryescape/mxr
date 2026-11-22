@@ -1,14 +1,3 @@
-//! The Messages lens: people you talk with on the left, in the daemon's
-//! four bands, and the selected person's page on the right, with the topic
-//! strip, the selected conversation as new text and the composer line.
-//!
-//! Renders `ListMessages` and `GetPerson` as served: the bands, order,
-//! previews, new text and "trimmed" markers come from the daemon, and the
-//! header and empty states from the selected view; hints show in the status
-//! line (`app/hints.rs`). A
-//! narrow terminal shows one pane at a time, the focused one. Pure render;
-//! wiring lives in `app/messages_actions.rs`.
-
 use crate::ui::account_mark::AccountMarks;
 use crate::ui::key_footer::FooterKey;
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
@@ -24,23 +13,18 @@ use crate::ui::received_label::{received_label, DisplayZone};
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
-/// Below this width the lens shows one pane at a time.
 const TWO_PANE_MIN_WIDTH: u16 = 90;
 
 pub struct MessagesView<'a> {
     pub page: &'a MessagesPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
-    /// "Now" for ages and day labels, and the zone to show times in, so the
-    /// render stays independent of the machine's clock and zone.
     pub now: DateTime<Utc>,
     pub offset: FixedOffset,
-    /// Seconds left on a Got it countdown, when one runs.
     pub ack_seconds_left: Option<u64>,
     pub account_marks: AccountMarks,
 }
 
-/// "16h", "3d", "40m".
 fn age_label(seconds: i64) -> String {
     let minutes = seconds.max(60) / 60;
     if minutes < 60 {
@@ -52,7 +36,6 @@ fn age_label(seconds: i64) -> String {
     }
 }
 
-/// The list's short day: "15:00", "Yesterday", "Tue", "12 Mar".
 fn list_day(at: DateTime<Utc>, view: &MessagesView<'_>) -> String {
     let local = at.with_timezone(&view.offset);
     let today = view.now.with_timezone(&view.offset).date_naive();
@@ -124,8 +107,6 @@ impl Body {
     }
 }
 
-/// A row's name line: name on the left, the age and a dot when it's your
-/// turn on the right.
 fn row_line(
     row: &MessagesRowData,
     selected: bool,
@@ -172,8 +153,6 @@ fn preview_line(
     theme: &crate::theme::Theme,
 ) -> Option<Line<'static>> {
     let room = width.saturating_sub(4);
-    // Your unsent reply takes the preview's place, its label in the accent
-    // and in words, so the mark doesn't rest on colour.
     if let Some(draft) = row.draft.as_ref() {
         const LABEL: &str = "Draft: ";
         return Some(Line::from(vec![
@@ -185,7 +164,6 @@ fn preview_line(
             ),
         ]));
     }
-    // No preview (a thread of nothing but quotes has none): the subject.
     let text = match row.preview.as_ref() {
         Some(preview) if preview.kind == MessagesPreviewKindData::Ask => {
             format!("\u{201c}{}\u{201d}", one_line(&preview.text))
@@ -286,7 +264,6 @@ fn list_body(view: &MessagesView<'_>, width: usize, theme: &crate::theme::Theme)
     body
 }
 
-/// A topic's name on a person's page: "with Ruth: Pricing copy" for a group.
 pub(crate) fn topic_label(topic: &MessagesTopicData) -> String {
     if topic.with.is_empty() {
         one_line(&topic.subject)
@@ -299,8 +276,6 @@ pub(crate) fn topic_label(topic: &MessagesTopicData) -> String {
     }
 }
 
-/// The topic strip: "Topics: [Contract renewal *] Launch checklist ·
-/// with Ruth: Pricing copy", wrapped.
 fn topic_strip(
     page: &PersonPageData,
     width: usize,
@@ -396,8 +371,6 @@ fn message_lines(
     } else {
         width.saturating_sub(2)
     };
-    // A closed letter shows its first paragraph, and the ask when it is
-    // further down, so the eye lands on what they asked.
     let shown: Vec<&str> = if compact
         || expanded
         || message.has_preserved_context
@@ -538,8 +511,6 @@ fn person_body(
     body
 }
 
-/// The footer keys, with their verbs, from the guide, in `width`: help
-/// always shows, and the last keys go first when space runs short.
 fn keys_line(page: &MessagesPageState, width: usize) -> String {
     let wanted = ["f", "r", ".", "e", "t", "b", "c"];
     let verb = |key: &str| -> Option<String> {
@@ -560,7 +531,6 @@ fn keys_line(page: &MessagesPageState, width: usize) -> String {
         .iter()
         .filter_map(|key| verb(key).map(|v| FooterKey::optional(format!("{key} {v}"))))
         .collect();
-    // `[` and `]` stepped topics until K3; the definition says which keys do now.
     let topic = |id: &str| mxr_keymap::guide_key(id).unwrap_or_default();
     parts.push(FooterKey::optional(format!(
         "{} {} topic",
@@ -651,7 +621,6 @@ fn draw_person(
             body
         }
     };
-    // The newest message sits at the bottom, above the composer.
     let overflow = body.lines.len().saturating_sub(body_area.height as usize);
     frame.render_widget(
         Paragraph::new(body.lines).scroll((u16::try_from(overflow).unwrap_or(u16::MAX), 0)),

@@ -11,9 +11,7 @@ use mxr_protocol::{
 use ratatui_image::thread::ResizeResponse;
 
 pub(crate) enum AsyncResult {
-    /// An HTML parse the loop stopped waiting for has landed: draw again.
     HtmlRendered,
-    /// An answer to one of the assistant pane's requests.
     Assistant {
         call: crate::app::AssistantCall,
         result: Box<Result<mxr_protocol::ResponseData, MxrError>>,
@@ -77,7 +75,6 @@ pub(crate) enum AsyncResult {
     Labels(Result<Vec<Label>, MxrError>),
     AllEnvelopes(Result<Vec<Envelope>, MxrError>),
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
-    /// Snoozed (`ListSnoozed`) and the envelopes of what it lists.
     Snoozed(Result<(Vec<mxr_core::types::Snoozed>, Vec<Envelope>), MxrError>),
     OwedReplies(
         Result<
@@ -89,28 +86,19 @@ pub(crate) enum AsyncResult {
         >,
     ),
     Desk(Result<crate::app::DeskPageState, MxrError>),
-    /// Focus & reply's sources: the desk's You owe lane with the people
-    /// split, and the reply-later queue.
     FocusQueue {
         owed: Result<(mxr_protocol::DeskLaneData, mxr_protocol::PeopleSplitData), MxrError>,
         reply_later: Result<Vec<Envelope>, MxrError>,
     },
-    /// Now and, when the daemon served it, its guide.
-    /// Boxed: Now is large next to the other variants.
     Now(Result<Box<(mxr_protocol::NowData, Option<mxr_protocol::ModeGuideData>)>, MxrError>),
     Rail(Result<mxr_protocol::RailData, MxrError>),
-    /// Now's arrivals line, Not-sure questions and track record.
     Arrivals(Result<Box<mxr_protocol::ArrivalsData>, MxrError>),
-    /// The emails behind one count of the line.
     ArrivalsList(
         crate::app::ArrivalsListFetch,
         Result<Box<mxr_protocol::ArrivalListData>, MxrError>,
     ),
-    /// Inbox's mode chips for the rows asked about.
     ArrivalModes(Result<Vec<mxr_protocol::ArrivalItemData>, MxrError>),
-    /// A move landed; whether it answered a Not-sure question.
     Moved(Box<mxr_protocol::MoveOutcomeData>, bool),
-    /// Messages' bands and, when the daemon served it, its guide.
     Messages(
         Result<
             Box<(
@@ -120,20 +108,13 @@ pub(crate) enum AsyncResult {
             MxrError,
         >,
     ),
-    /// A person's page, for this row id.
-    /// A row's page, with the topic it was asked for, so a late answer for
-    /// an earlier request can be told apart and dropped.
     PersonPage(
         String,
         Option<mxr_core::id::ThreadId>,
         Result<Box<mxr_protocol::PersonPageData>, MxrError>,
     ),
-    /// Got it's dry run: the exact text and its countdown.
     MessagesAck(Result<Box<mxr_protocol::AckPlanData>, MxrError>),
-    /// The dry run of letting go of Now's Updates card.
     NowDigestPreview(Result<mxr_protocol::UpdatesLetGoData, MxrError>),
-    /// The Updates digest and, when the daemon served it, its guide.
-    /// Boxed: the digest is large next to the other variants.
     Updates(
         Result<
             Box<(
@@ -143,8 +124,6 @@ pub(crate) enum AsyncResult {
             MxrError,
         >,
     ),
-    /// Reading's edition and, when the daemon served it, its guide.
-    /// Boxed: the edition is large next to the other variants.
     ReadingEdition(
         Result<
             Box<(
@@ -154,30 +133,22 @@ pub(crate) enum AsyncResult {
             MxrError,
         >,
     ),
-    /// One item for the reader, by key.
     ReadingItem(
         String,
         Result<Box<mxr_protocol::ReadingItemDetailData>, MxrError>,
     ),
-    /// The article fetched for an item, by key.
     ReadingArticle(String, Result<mxr_protocol::ReadingFetchData, MxrError>),
-    /// The dry run of letting go of everything shown.
     ReadingLetGoPreview(
         Vec<mxr_core::id::ThreadId>,
         Result<Vec<mxr_protocol::ModeDoneOutcomeData>, MxrError>,
     ),
-    /// The dry run of unsubscribing from a source.
     ReadingUnsubscribePreview(
         crate::app::ReadingUnsubscribeTarget,
         Result<Box<mxr_protocol::UnsubscribePurgeResultData>, MxrError>,
     ),
-    /// An email's own text, cleaned, for `R`.
     ReadingOriginal(Result<String, MxrError>),
-    /// The dry run of letting go of the Updates digest.
     UpdatesLetGoPreview(Result<mxr_protocol::UpdatesLetGoData, MxrError>),
-    /// `y` on an Updates line without a code: the recent codes, newest first.
     LatestCodes(Result<Vec<mxr_protocol::OneTimeCodeData>, MxrError>),
-    /// To do's runway and, when the daemon served it, its guide.
     TodoRunway(
         Result<
             (
@@ -190,7 +161,6 @@ pub(crate) enum AsyncResult {
     TodoExpired(Result<Vec<mxr_protocol::TodoData>, MxrError>),
     MicrosoftTodo(Result<Box<mxr_protocol::ResponseData>, MxrError>),
     TodoCatchup(Result<mxr_protocol::TodoCatchupData, MxrError>),
-    /// The dry run of letting go of the whole catch-up.
     TodoCatchupPreview(Result<mxr_protocol::TodoChangeData, MxrError>),
     TodoResolutionPreview(
         String,
@@ -201,17 +171,11 @@ pub(crate) enum AsyncResult {
         crate::app::PlaceFetch,
         Result<crate::app::PlacePageState, MxrError>,
     ),
-    /// The daemon's dry run for a sweep, ready for the user's yes.
     SweepPreview(Result<crate::app::PendingSweepConfirm, MxrError>),
-    /// A sweep's archive job finished: how many were archived, and one undo
-    /// id per job chunk.
     PlaceSwept(Result<(u32, Vec<String>), MxrError>),
     CalendarInvites(Result<Vec<mxr_protocol::CalendarInviteData>, MxrError>),
-    /// Envelope fetched for an invite opened from the calendar-invites lens.
     VoiceSourceOpened(u64, Result<Envelope, MxrError>),
     InviteEnvelopeOpened(Result<Envelope, MxrError>),
-    /// Archive's ledger and, when the daemon served it, its guide. Boxed:
-    /// a ledger is large next to the other variants.
     RecordsLedger(
         Result<
             Box<(
@@ -222,18 +186,12 @@ pub(crate) enum AsyncResult {
         >,
     ),
     RecordsAnswer(Result<Box<mxr_protocol::RecordAnswerData>, MxrError>),
-    /// Archive's subscriptions, while their chip is on.
     RecordSubscriptions(Result<Box<mxr_protocol::RecordSubscriptionsData>, MxrError>),
     RecordCard(Result<Box<mxr_protocol::RecordData>, MxrError>),
-    /// The export's dry run, or the CSV it wrote.
     RecordsExport(Result<Box<mxr_protocol::RecordExportData>, MxrError>),
-    /// The dry run of a `,` fix.
     RecordFixPreview(Result<Box<mxr_protocol::RecordChangeData>, MxrError>),
-    /// The dry run of filing a message from the `T` menu.
     RecordFilePreview(Result<Box<mxr_protocol::RecordChangeData>, MxrError>),
-    /// A record's email, to open in the reader.
     RecordEnvelopeOpened(Result<Envelope, MxrError>),
-    /// A To do row's email, with the link to mark in it.
     TodoEnvelopeOpened(Result<Envelope, MxrError>, Option<String>),
     Briefing(Result<mxr_protocol::ThreadBriefingData, MxrError>),
     Whois(Result<mxr_protocol::EntityExplanationData, MxrError>),
@@ -279,13 +237,8 @@ pub(crate) enum AsyncResult {
         outcome: Box<Result<app::MutationEffect, MxrError>>,
     },
     ComposeReady(Result<ComposeReadyData, MxrError>),
-    /// Result of a fire-and-forget prewarm task that runs when the
-    /// user opens a message. Populates `reply_context_cache` so that
-    /// pressing `r`/`a` skips the IPC round-trip. Failures are
-    /// silently dropped — the cold path still works.
     ReplyContextWarmed {
         message_id: MessageId,
-        /// `ComposeState::reply_context_generation` when the prewarm started.
         generation: u64,
         reply: Box<Result<ReplyContext, MxrError>>,
         reply_all: Box<Result<ReplyContext, MxrError>>,
@@ -299,38 +252,19 @@ pub(crate) enum AsyncResult {
     LocalStateSaved(Result<(), String>),
     DaemonEvent(DaemonEvent),
     SyncBatch(Vec<mxr_protocol::SyncAccountResult>),
-    /// Emitted by the IPC worker when the daemon connection state changes.
-    /// Replaces the old "silent return on initial connect failure" behavior.
     WorkspaceOwner(mxr_protocol::ArchiveWorkspaceData),
     ConnectionState(app::ConnectionState),
-    /// A user-visible error/warn raised by a background task. Preferred
-    /// over `let _ = ...` silent drops on async paths that affect what
-    /// the user sees (HTML asset fetch, body parse, attachment fetch,
-    /// search streaming).
     #[expect(
         dead_code,
         reason = "background producers can report through this path"
     )]
     ReportedError(app::UserError),
-    /// Captured by the dispatch site when a mutation response carries a
-    /// `mutation_id`. Drives the "u to undo" status-bar affordance.
     UndoCaptured(app::PendingUndo),
-    /// One CreateSavedSearch / DeleteSavedSearch response. The dispatcher
-    /// queues these one-shot per request; the success path triggers a
-    /// follow-up `SavedSearchListRefreshed` to update the sidebar.
     SavedSearchMutation(Result<(), MxrError>),
-    /// Refreshed sidebar list after a saved-search create/delete.
     SavedSearchListRefreshed(Result<Vec<mxr_core::types::SavedSearch>, MxrError>),
-    /// Per-saved-search unread counts. Issued as a follow-up after a
-    /// `SavedSearchListRefreshed` so the tab-strip badges can show
-    /// `(N)` next to each label.
     SavedSearchUnreadCountsRefreshed(
         Result<std::collections::HashMap<mxr_core::id::SavedSearchId, u32>, MxrError>,
     ),
-    /// One semantic-runtime operation response (Enable / Disable /
-    /// Reindex / InstallProfile). Errors route through `report_error`
-    /// so a missing `semantic-local` feature is visible to the user
-    /// rather than silently swallowed.
     SemanticOperationResult(Result<(), MxrError>),
     PlatformModalLoaded {
         send_recovery_preview: Option<(mxr_core::AccountId, String, String)>,
@@ -361,102 +295,65 @@ pub(crate) enum AsyncResult {
             MxrError,
         >,
     },
-    /// Result of one of the four analytics list requests. The
-    /// dispatcher keys the response to the active view at the time
-    /// the request was sent — late responses for a switched-away
-    /// view are dropped by the handler.
     AnalyticsResult {
         view: app::AnalyticsView,
         result: Box<Result<AnalyticsResultPayload, MxrError>>,
     },
-    /// Snapshot of the user's compose snippets, surfaced by the
-    /// snippets browser modal.
     SnippetsList(Result<Vec<SnippetData>, MxrError>),
-    /// Snapshot of the messages flagged for reply-later.
     ReplyQueueList(Result<Vec<Envelope>, MxrError>),
-    /// Snapshot of tracked deliveries for the Deliveries screen.
     DeliveriesList(Result<Vec<DeliveryData>, MxrError>),
-    /// Messages of a delivery's source thread, opened via `o`/Enter on the
-    /// Deliveries screen.
     DeliveryThreadOpened(Result<Vec<Envelope>, MxrError>),
-    /// Messages of a thread a link in the assistant's reply opened.
     AssistantThreadOpened(Result<Vec<Envelope>, MxrError>),
-    /// Snapshot of recent activity log rows.
     ActivityList(Result<Vec<mxr_protocol::ActivityEntry>, MxrError>),
-    /// Confirmation that a pause/resume toggle reached the daemon.
     ActivityPauseToggled(Result<bool, MxrError>),
-    /// Per-sender relationship aggregates for the sender-view modal.
-    /// `Ok(None)` when the sender is unknown to the contacts table.
     SenderProfileLoaded {
         email: String,
         result: Box<Result<Option<SenderProfileData>, MxrError>>,
     },
-    /// Snapshot of senders awaiting a screener decision.
     ScreenerQueueLoaded {
         account_id: mxr_core::AccountId,
         result: Result<Vec<ScreenerQueueEntryData>, MxrError>,
     },
-    /// Result of one `SetScreenerDecision` IPC. On success the modal
-    /// has already optimistically removed the entry; on failure we
-    /// re-fetch to recover the queue.
     ScreenerDecisionApplied {
         account_id: mxr_core::AccountId,
         sender_email: String,
         result: Result<(), MxrError>,
     },
-    /// LLM summary for a thread. The tuple carries `(text, model)`.
-    /// Late responses for a previously-focused thread are filtered at
-    /// the dispatcher.
     ThreadSummaryLoaded {
         thread_id: mxr_core::ThreadId,
         result: Result<(String, String), MxrError>,
     },
-    /// Context facts for a thread (`GetThreadContext`).
     ThreadContextLoaded {
         thread_id: mxr_core::ThreadId,
         result: Result<Box<mxr_protocol::ThreadContextData>, MxrError>,
     },
-    /// Promises found in a message just sent (`DetectPromises`).
     PromisesDetected {
         message_id: mxr_core::MessageId,
         result: Result<Box<mxr_protocol::PromiseDetectionData>, MxrError>,
     },
-    /// List-row gists (`GetThreadGists`) for the rows around the cursor.
     RowGistsLoaded {
         thread_ids: Vec<mxr_core::ThreadId>,
-        /// `RowGistState::epoch` when the request went out.
         epoch: u64,
         result: Result<Box<mxr_protocol::ThreadGistBatchData>, MxrError>,
     },
-    /// The model's gist and ask for a thread (`GetThreadGist`).
     ThreadGistLoaded {
         thread_id: mxr_core::ThreadId,
         result: Result<Box<mxr_protocol::ThreadGistData>, MxrError>,
     },
-    /// Snapshot of the user's locally-stored drafts (all accounts, most
-    /// recently updated first), surfaced by the stored-drafts modal.
-    /// With when each scheduled draft will send.
     StoredDraftsLoaded(Result<(Vec<Draft>, Vec<mxr_protocol::ScheduledSendData>), MxrError>),
-    /// Completion of a confirmed scheduled-send cancellation.
     StoredDraftUnscheduled {
         draft_id: mxr_core::DraftId,
         result: Result<(), MxrError>,
     },
-    /// Completion of a confirmed local-draft deletion.
     StoredDraftDeleted {
         draft_id: mxr_core::DraftId,
         result: Result<(), MxrError>,
     },
-    /// Completion of a confirmed provider draft create-or-update sync.
     StoredDraftPushed {
         draft_id: mxr_core::DraftId,
         provider: String,
         result: Result<(), MxrError>,
     },
-    /// Editor-ready payload for editing a stored draft in place. Mirrors
-    /// `ComposeReady`, but carries the *existing* `Draft` so the
-    /// post-edit update preserves its id/account_id/created_at instead
-    /// of minting a new draft.
     DraftEditReady(Result<DraftEditReadyData, MxrError>),
 }
 
@@ -482,9 +379,6 @@ pub(crate) struct ComposeReadyData {
     pub(crate) draft_path: std::path::PathBuf,
     pub(crate) cursor_line: usize,
     pub(crate) initial_content: String,
-    /// Set when this compose flow was initiated from the iCal invite
-    /// "respond with comment" path. Carried into `PendingSend.invite_reply`
-    /// so the outgoing builder emits the multipart/alternative MIME layout.
     pub(crate) invite_reply: Option<mxr_core::types::InlineCalendarReply>,
 }
 
@@ -493,7 +387,6 @@ pub(crate) struct SearchResultData {
     pub(crate) scores: std::collections::HashMap<MessageId, f32>,
     pub(crate) triage_verdicts: std::collections::HashMap<MessageId, String>,
     pub(crate) has_more: bool,
-    /// Set when the daemon answered from SQLite because its index was down.
     pub(crate) degraded: Option<mxr_protocol::SearchDegraded>,
 }
 
@@ -503,12 +396,7 @@ pub(crate) struct StatusSnapshot {
     pub(crate) accounts: Vec<String>,
     pub(crate) total_messages: u32,
     pub(crate) sync_statuses: Vec<AccountSyncStatus>,
-    /// The daemon could not read its database in time, so `accounts`,
-    /// `total_messages` and `sync_statuses` carry no reading at all. Showing
-    /// them as fact prints "0 messages" for a store that is merely busy.
     pub(crate) degraded: bool,
-    /// Fetched alongside the status; `None` when that request failed or
-    /// was not made, which keeps the last reading.
     pub(crate) freshness: Option<mxr_protocol::FreshnessData>,
 }
 
@@ -517,9 +405,6 @@ pub(crate) struct UnsubscribeResultData {
     pub(crate) message: String,
 }
 
-/// Payload for [`AsyncResult::DraftEditReady`]: the stored draft being
-/// edited plus the path of the editor-ready compose file rendered from
-/// it. `existing` is boxed to keep the `AsyncResult` enum lean.
 pub(crate) struct DraftEditReadyData {
     pub(crate) existing: Box<Draft>,
     pub(crate) path: std::path::PathBuf,

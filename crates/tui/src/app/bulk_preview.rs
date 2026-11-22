@@ -3,8 +3,6 @@ use crate::ui::sanitize::one_line;
 use mxr_protocol::MutationCommand;
 use std::collections::HashSet;
 
-/// The message ids a request will mutate. The confirm preview reads these,
-/// so the preview and the mutation cannot disagree.
 pub(crate) fn request_message_ids(request: &Request) -> Vec<MessageId> {
     let Request::Mutation { mutation, .. } = request else {
         return Vec::new();
@@ -24,8 +22,6 @@ pub(crate) fn request_message_ids(request: &Request) -> Vec<MessageId> {
 }
 
 impl App {
-    /// Rows come out in the order the list shows them, not the order the
-    /// selection set happens to iterate in.
     pub(crate) fn bulk_preview(&self, request: &Request) -> BulkPreview {
         let wanted: HashSet<MessageId> = request_message_ids(request).into_iter().collect();
         let source: &[Envelope] = if self.screen == Screen::Search {

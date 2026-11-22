@@ -1,7 +1,3 @@
-//! Delivers a rendered thread export to the file the user named or to the
-//! system clipboard. Errors name the path or program, never the content, and
-//! nothing here logs the bytes.
-
 use crate::app::{ExportDestination, PendingExport};
 use crate::ipc::{ipc_call, IpcRequest};
 use mxr_core::id::ThreadId;
@@ -12,7 +8,6 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use tokio::sync::mpsc;
 
-/// Picker order. The keys below match docs/blueprint/11-export.md.
 pub const FORMAT_CHOICES: [ExportFormat; 4] = [
     ExportFormat::Markdown,
     ExportFormat::Json,
@@ -38,7 +33,6 @@ pub fn format_key(format: &ExportFormat) -> char {
     }
 }
 
-/// Follows what the exporter emits. LLM context is plain text, not Markdown.
 pub fn format_extension(format: &ExportFormat) -> &'static str {
     match format {
         ExportFormat::Markdown => "md",
@@ -48,7 +42,6 @@ pub fn format_extension(format: &ExportFormat) -> &'static str {
     }
 }
 
-/// The prefilled save path. `~` is expanded when the user confirms.
 pub fn default_export_path(thread_id: &ThreadId, format: &ExportFormat) -> String {
     format!(
         "~/mxr/exports/mxr-thread-{thread_id}.{}",
@@ -63,8 +56,6 @@ fn export_request(pending: &PendingExport) -> Request {
     }
 }
 
-/// Asks the daemon for the rendered thread and delivers it. The returned
-/// string is the status line; it names the destination, not the content.
 pub(crate) async fn export_thread(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     pending: PendingExport,
@@ -119,8 +110,6 @@ pub fn write_export_file(path: &Path, content: &str, overwrite_ok: bool) -> Resu
         _ => format!("could not write {}: {error}", path.display()),
     })?;
     file.write_all(content.as_bytes()).map_err(|error| {
-        // A file this call created holds only part of the export; leaving it
-        // would make the retry ask to overwrite a file the user never saw.
         if !overwrite_ok {
             let _ = std::fs::remove_file(path);
         }
@@ -128,8 +117,6 @@ pub fn write_export_file(path: &Path, content: &str, overwrite_ok: bool) -> Resu
     })
 }
 
-/// Put `content` on the system clipboard (pbcopy, wl-copy or xclip). Blocks
-/// until the program exits.
 pub fn copy_to_clipboard(content: &str) -> Result<(), String> {
     let (program, args) = clipboard_command()?;
     run_clipboard_command(program, args, content)

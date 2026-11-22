@@ -163,8 +163,6 @@ async fn execute_replaceable_request(
                 pending.sort,
                 pending.limit,
                 pending.offset,
-                // The mailbox filter (Ctrl-f) never pages, so a config page size
-                // would hide matches; it keeps its own limit.
                 pending.target == app::SearchTarget::SearchPage,
             )
             .await;
@@ -327,9 +325,6 @@ async fn execute_replaceable_request(
                             ..
                         },
                 }) => {
-                    // The status bar's freshness rides on the status refresh:
-                    // the same triggers (sync done or failed, new mail) move
-                    // both.
                     let freshness = match ipc_call(bg, crate::app::FRESHNESS_REQUEST).await {
                         Ok(Response::Ok {
                             data: ResponseData::Freshness { freshness },

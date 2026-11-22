@@ -34,7 +34,6 @@ impl App {
                 self.auto_preview();
             }
             Action::JumpTop => {
-                // In the reader `g g` is the top of the message, as `G` is its end.
                 if self.screen == Screen::Mailbox
                     && self.mailbox.active_pane == ActivePane::MessageView
                 {
@@ -134,11 +133,9 @@ impl App {
                 }
                 self.mailbox.active_pane =
                     match (self.mailbox.layout_mode, self.mailbox.active_pane) {
-                        // ThreePane: Sidebar → MailList → MessageView → Sidebar
                         (LayoutMode::ThreePane, ActivePane::Sidebar) => ActivePane::MailList,
                         (LayoutMode::ThreePane, ActivePane::MailList) => ActivePane::MessageView,
                         (LayoutMode::ThreePane, ActivePane::MessageView) => ActivePane::Sidebar,
-                        // TwoPane: Sidebar → MailList → Sidebar
                         (_, ActivePane::Sidebar) => ActivePane::MailList,
                         (_, ActivePane::MailList) => ActivePane::Sidebar,
                         (_, ActivePane::MessageView) => ActivePane::Sidebar,
@@ -204,7 +201,6 @@ impl App {
                 ActivePane::MessageView => {
                     self.apply(Action::CloseMessageView);
                 }
-                // The sidebar's Esc reaches the list beside it, as in the web.
                 ActivePane::MailList | ActivePane::Sidebar => {
                     if !self.mailbox.selected_set.is_empty() {
                         self.apply(Action::ClearSelection);
@@ -224,7 +220,6 @@ impl App {
                 self.clear_selection();
                 self.status_message = Some("Selection cleared".into());
             }
-            // Search
             Action::GoToInbox => {
                 if let Some(label) = self.system_label("INBOX") {
                     self.apply(Action::SelectLabel(label.id.clone()));
@@ -236,7 +231,6 @@ impl App {
                 if let Some(label) = self.system_label("STARRED") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
-                    // No Starred label on any account: list by the starred flag.
                     self.mailbox.mailbox_view = MailboxView::Messages;
                     self.mailbox.active_label = None;
                     self.mailbox.pending_active_label = None;
@@ -445,14 +439,12 @@ impl App {
                     self.apply(Action::ClearFilter);
                     return;
                 }
-                // 1-indexed lookup; out-of-range is a safe no-op.
                 let Some(search) = self.mailbox.saved_searches.get(index - 1).cloned() else {
                     return;
                 };
                 self.apply(Action::SelectSavedSearch(search.query, search.search_mode));
             }
             Action::FlagReplyLater => {
-                // `b` asks when; Enter in the prompt comes back here.
                 if self.modals.reply_later_prompt.is_some() {
                     self.confirm_reply_later_prompt();
                     return;
@@ -521,11 +513,6 @@ impl App {
                 }
             }
             Action::OpenScreenerQueue => {
-                // Reach for an account_id from any visible envelope so
-                // we don't need to plumb a "default account" surface
-                // here. The CLI is the right tool for cross-account
-                // sweeps; the modal scopes to the inbox the user is
-                // already looking at.
                 let Some(account_id) = self
                     .mailbox
                     .envelopes
@@ -687,7 +674,6 @@ impl App {
             Action::CloseBriefingModal => {
                 self.modals.briefing.close();
             }
-            // From the person page (`p` then `W`) or the palette.
             Action::OpenWhoisOnFocusedSender => {
                 let profile = self
                     .modals
@@ -714,10 +700,6 @@ impl App {
                     self.status_message = Some("No message selected".into());
                     return;
                 };
-                // Query is the subject + snippet — the body is the
-                // canonical corpus per the CLI but we don't have it
-                // loaded here. Subject + snippet is enough to seed
-                // the lexical search.
                 let query = format!("{} {}", env.subject, env.snippet);
                 self.modals.expert.open_loading(query.clone());
                 self.pending_expert_query = Some(query);
@@ -759,9 +741,6 @@ impl App {
                     self.status_message = Some("No draft selected".into());
                     return;
                 };
-                // A supplied HTML document has no markdown compose-file form, so
-                // `$EDITOR` has nothing to open. Say why — in the same words the
-                // CLI uses — and leave the list up so the user can pick another.
                 if draft.content.is_html() {
                     self.status_message = Some(
                         mxr_compose::frontmatter::ComposeError::HtmlDraftNotEditable.to_string(),
@@ -861,7 +840,6 @@ impl App {
                 self.mailbox.scroll_offset = 0;
             }
 
-            // Phase 2: Email actions (Gmail-native A005)
             _ => unreachable!("action routed to wrong handler"),
         }
     }

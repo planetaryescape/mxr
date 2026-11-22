@@ -11,8 +11,6 @@ use mxr_protocol::{
 
 use tokio::sync::mpsc;
 
-/// Fetch a reply context via the shared IPC worker. Used by the cold
-/// path in `handle_compose_action` when no prewarm landed.
 pub(crate) async fn fetch_reply_context(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     message_id: MessageId,
@@ -29,10 +27,6 @@ pub(crate) async fn fetch_reply_context(
     extract_reply_context(resp)
 }
 
-/// Fetch a reply context on a short-lived daemon connection. Used by
-/// the prewarm task in `lib.rs` so it never blocks user actions on the
-/// shared IPC worker. Mirrors `ipc_call_dedicated`, which the rest of
-/// the codebase uses for slow LLM work for the same reason.
 pub(crate) async fn fetch_reply_context_dedicated(
     session: &crate::client::DaemonSession,
     message_id: MessageId,
@@ -101,8 +95,6 @@ async fn handle_compose_action_owned(
                 mxr_core::DraftId::from_provider_id("compose-file", &path.to_string_lossy());
             let retained = crate::send_recovery_state::for_draft(&draft_id)
                 .map_err(|error| MxrError::Ipc(format!("Cannot read send recovery: {error}")))?;
-            // Reopening a retained send is an explicit review even without edits.
-            // A later Send press still queries acceptance before updating or sending.
             #[cfg(not(test))]
             crate::send_recovery_state::retain_owner(&draft_id, &owner)
                 .map_err(|error| MxrError::Ipc(error.to_string()))?;
@@ -141,8 +133,6 @@ async fn handle_compose_action_owned(
                 Some(ctx) => ctx,
                 None => fetch_reply_context(bg, message_id, false).await?,
             };
-            // Seed From from the daemon-computed default (delivered-to owned
-            // address), not the account primary — parity with the CLI.
             let from = context.from.clone();
             let kind = mxr_compose::ComposeKind::Reply {
                 reply_all: false,
@@ -228,9 +218,6 @@ async fn handle_compose_action_owned(
         } => {
             let preview =
                 fetch_invite_response_preview(bg, message_id.clone(), invite_action).await?;
-            // RSVP-with-comment must send From the same identity as the
-            // ATTENDEE we respond as (the matched owned alias), so From and
-            // ATTENDEE agree; the daemon validates it as owned on send.
             let from = preview.attendee_email.clone();
             invite_reply = Some(mxr_core::types::InlineCalendarReply {
                 source_message_id: message_id,
@@ -300,18 +287,10 @@ async fn handle_compose_action_owned(
     })
 }
 
-/// Render a locally-stored draft to an editor-ready compose file and
-/// write it to the private scratch dir, ready for `$EDITOR`. Sibling of
-/// `handle_compose_action`: unlike the regular compose flow, the result
-/// carries the *existing* `Draft` so the post-edit save round-trips
-/// through `Request::UpdateDraft` and keeps the same `DraftId` instead
-/// of minting a new one.
 pub(crate) async fn prepare_draft_edit(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     draft: Draft,
 ) -> Result<DraftEditReadyData, MxrError> {
-    // Bail before the account round trip: nothing the daemon returns can give
-    // an HTML document a markdown compose-file representation.
     if draft.content.is_html() {
         return Err(MxrError::Ipc(
             mxr_compose::frontmatter::ComposeError::HtmlDraftNotEditable.to_string(),
@@ -351,10 +330,6 @@ pub(crate) async fn prepare_draft_edit(
     })
 }
 
-/// The conversation's unsent reply, ready for `$EDITOR`. The daemon picks
-/// it by the rule every client resumes with (`EnsureReplyDraft`), so the
-/// TUI continues the reply the Messages row names, with its saved text and
-/// audience, and saves it back in place.
 pub(crate) async fn resume_reply_draft(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     resume: crate::app::ReplyDraftResume,
@@ -382,10 +357,6 @@ pub(crate) async fn resume_reply_draft(
     prepare_draft_edit(bg, draft).await
 }
 
-/// A stored draft's edits are saved: open the same send review a fresh
-/// reply gets (From check, safety check, Send, Send at, Remind, Save), bound
-/// to this draft and its new revision. Collaborator suggestions are left out:
-/// adding a Cc there would change a draft that sends exactly as saved.
 async fn after_stored_draft_saved(
     app: &mut App,
     data: &DraftEditReadyData,
@@ -393,7 +364,6 @@ async fn after_stored_draft_saved(
     bg: &mpsc::UnboundedSender<IpcRequest>,
 ) {
     app.status_message = Some("Draft updated".into());
-    // Messages shows a reply's draft on its row: keep it current.
     if app.mailbox.mailbox_view == crate::app::MailboxView::People {
         app.mailbox.messages_page.pending_refresh = true;
     }
@@ -403,14 +373,12 @@ async fn after_stored_draft_saved(
         intent: saved.intent,
         draft_path: data.path.clone(),
         cursor_line: 1,
-        // Never "unchanged": a saved draft can be sent as it stands.
         initial_content: String::new(),
         invite_reply: saved.inline_calendar_reply.clone(),
     };
     let mut pending = match pending_send_from_edited_draft(&ready).await {
         Ok(pending) => pending,
         Err(error) => {
-            // Saved, but not sendable as written: say why, and keep it in Drafts.
             app.schedule_draft_cleanup(data.path.clone());
             app.report_error(error.modal_title(), error.modal_detail());
             return;
@@ -432,11 +400,6 @@ async fn after_stored_draft_saved(
     app.compose.pending_send_confirm = Some(pending);
 }
 
-/// Handle the `$EDITOR` exit status for an in-place draft edit. Mirrors
-/// `handle_compose_editor_status`, but the edited content is applied
-/// onto the existing draft (preserving id/account_id/created_at) and
-/// saved via `Request::UpdateDraft` rather than entering the
-/// send/save-as-new-draft confirmation flow.
 pub(crate) async fn handle_draft_edit_status(
     app: &mut App,
     data: &DraftEditReadyData,
@@ -462,9 +425,6 @@ pub(crate) async fn handle_draft_edit_status(
             ) {
                 Ok(updated) => updated,
                 Err(error) => {
-                    // Keep the temp file so the user's edits aren't lost —
-                    // there's no in-app retry for this path, so surfacing
-                    // the path lets them recover the content by hand.
                     app.report_error(
                         "Edit Draft Failed",
                         format!(
@@ -634,11 +594,6 @@ async fn resolve_default_signature(
     }
 }
 
-/// Phase 3.2: structured error from compose validation. Carries the
-/// full list of issues (and a category) so the caller can render
-/// each on its own line in an `ErrorModalState` instead of jamming
-/// them into a single status_message string the user can lose by
-/// pressing any key.
 #[derive(Debug, Clone)]
 pub(crate) struct ComposeValidationError {
     pub kind: ComposeValidationKind,
@@ -647,10 +602,7 @@ pub(crate) struct ComposeValidationError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ComposeValidationKind {
-    /// Filesystem / parser error. Single-issue case but kept structured
-    /// so the renderer doesn't need to special-case it.
     System,
-    /// Per-field validation failures (missing To, missing subject, etc).
     DraftIssues,
 }
 
@@ -663,8 +615,6 @@ impl ComposeValidationError {
     }
 
     pub(crate) fn modal_detail(&self) -> String {
-        // One issue per line so the user can scan; ErrorModal's Paragraph
-        // renders newlines as separate lines.
         self.issues
             .iter()
             .map(|issue| format!("• {issue}"))
@@ -757,13 +707,6 @@ pub(crate) async fn handle_compose_editor_status(
     match status {
         Ok(s) if s.success() => match pending_send_from_edited_draft(data).await {
             Ok(mut pending) => {
-                // Validate the effective From through the same daemon choke
-                // point the real send uses, so an unowned From is rejected at
-                // the confirm step, not only when the user hits send. A daemon
-                // *rejection* (or an invalid `from:`) blocks and surfaces; an
-                // IPC failure (daemon down) is non-fatal, mirroring the
-                // safety-check policy below. The resolved address is stashed for
-                // the modal to display the exact identity that will send.
                 match resolve_pending_from(&pending, bg).await {
                     Ok(resolved) => pending.resolved_from = resolved,
                     Err(message) => {
@@ -773,15 +716,8 @@ pub(crate) async fn handle_compose_editor_status(
                         return;
                     }
                 }
-                // Run the pre-send safety check before showing the
-                // modal. A failed IPC (daemon down, worker dropped)
-                // is non-fatal: the modal still opens with
-                // `safety_report = None` so the user is never blocked
-                // from seeing their draft, just from the safety hint.
                 stamp_safety_report(&mut pending, bg).await;
                 stamp_suggestions(&mut pending, bg).await;
-                // The same gate as `n` in the review: only a draft that
-                // can go as it is gets the reminder prompt.
                 let remind = remind_after_editor
                     && pending.mode == PendingSendMode::SendOrSave
                     && !pending.is_blocked();
@@ -840,10 +776,7 @@ async fn resolve_pending_from(
             data: ResponseData::ResolvedSendFrom { from },
         }) => Ok(Some(from)),
         Ok(Response::Error { message, .. }) => Err(message),
-        // An unexpected *successful* response is a protocol mismatch, not a
-        // transient outage — surface it rather than silently proceeding.
         Ok(Response::Ok { .. }) => Err("unexpected response to ResolveSendFrom".to_string()),
-        // Only a genuine IPC failure (daemon unreachable) is non-fatal.
         Err(_) => Ok(None),
     }
 }
@@ -862,27 +795,16 @@ async fn stamp_safety_report(pending: &mut PendingSend, bg: &mpsc::UnboundedSend
         original_message_id: None,
         thread_id: pending.fm.thread_id.as_ref().and_then(|s| s.parse().ok()),
         allow_llm: true,
-        // Compose-flow doesn't pre-schedule; the user can send-now or
-        // send-at via the modal. Pass `now` so the timing check fires
-        // for immediate sends; send-at is handled by the daemon's
-        // schedule path which calls CheckDraftSafety with its own
-        // proposed_send_at.
         proposed_send_at: Some(chrono::Utc::now()),
     };
     match ipc_call(bg, Request::CheckDraftSafety { draft, context }).await {
         Ok(Response::Ok {
             data: ResponseData::DraftSafetyReportResponse { report },
         }) => {
-            // The daemon mints a single-use override token and
-            // stamps it onto each Blocker issue when the verdict is
-            // Blocked. Surface the first one to the modal.
             pending.override_token = report.issues.iter().find_map(|i| i.override_token.clone());
             pending.safety_report = Some(report);
         }
         Ok(Response::Error { message, .. }) => {
-            // Daemon error: non-fatal, but record why so the modal can
-            // say "Safety check unavailable" instead of silently
-            // looking like a clean run.
             pending.safety_check_failed = Some(message);
         }
         Ok(Response::Ok { .. }) => {
@@ -890,16 +812,11 @@ async fn stamp_safety_report(pending: &mut PendingSend, bg: &mpsc::UnboundedSend
                 Some("unexpected daemon response to CheckDraftSafety".into());
         }
         Err(error) => {
-            // IPC worker dropped or daemon unreachable. The user can
-            // still see the modal; they just won't have safety hints.
             pending.safety_check_failed = Some(error.to_string());
         }
     }
 }
 
-/// Slice 5.3 (C2.7 cont): fetch "maybe include" suggestions and
-/// stamp them onto `pending.suggested_collaborators`. Failure is
-/// silent — the modal just renders without the suggestions block.
 async fn stamp_suggestions(pending: &mut PendingSend, bg: &mpsc::UnboundedSender<IpcRequest>) {
     let Ok(draft) = draft_from_pending(pending) else {
         return;
@@ -935,9 +852,6 @@ pub(crate) fn draft_from_pending(
         revision: pending.draft_revision.or(Some(1)),
         id: pending.draft_id(),
         account_id: pending.account_id.clone(),
-        // `fm.from` is already validated by `validate_draft` in
-        // `pending_send_from_edited_draft` before a PendingSend exists, so a
-        // parse error here is unreachable; treat it as "no override".
         from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
             .ok()
             .flatten(),
@@ -1066,7 +980,6 @@ mod tests {
         let _ = std::fs::remove_file(ready.draft_path);
     }
 
-    /// Editor failure must preserve the user's file and expose its path.
     #[tokio::test]
     async fn editor_launch_failure_preserves_draft_and_exposes_path() {
         use crate::app::App;
@@ -1154,7 +1067,6 @@ mod tests {
                     },
                 },
             };
-            // A draft mutation names the workspace it acts in.
             let owner = requests.recv().await.expect("request owner");
             assert!(matches!(owner.request, Request::GetArchiveWorkspace));
             let _ = owner.reply.send(Ok(workspace()));
@@ -1306,10 +1218,6 @@ mod tests {
         };
         let (bg, mut bg_rx) = mpsc::unbounded_channel::<IpcRequest>();
 
-        // Bounded, because the regression here is a hang rather than a wrong
-        // answer: nothing serves `bg`, so a refusal that only arrives after the
-        // account lookup waits forever. Unbounded, it wedges the run instead of
-        // failing it.
         let refusal = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             super::prepare_draft_edit(&bg, draft),
@@ -1317,8 +1225,6 @@ mod tests {
         .await
         .expect("refusing an HTML draft must not depend on a daemon reply");
 
-        // Matched rather than `expect_err`: `DraftEditReadyData` deliberately
-        // has no `Debug`, so draft bodies cannot reach a log line.
         let error = match refusal {
             Ok(_) => panic!("an HTML draft has no markdown compose-file representation"),
             Err(error) => error,
@@ -1334,9 +1240,6 @@ mod tests {
         );
     }
 
-    /// Editing a stored draft (a resumed reply, or from Drafts) saves the
-    /// edits, then opens the same send review as a fresh reply, bound to
-    /// that draft and the revision the save produced.
     #[tokio::test]
     async fn an_edited_stored_draft_saves_then_opens_the_send_review() {
         use crate::app::{App, PendingSendMode};
@@ -1449,8 +1352,6 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Plan 004 / Step 4b: editor non-zero exit (discard) deletes the
-    /// draft file immediately.
     #[tokio::test]
     async fn editor_discard_deletes_draft_file() {
         use crate::app::App;
@@ -1476,7 +1377,6 @@ mod tests {
         let mut app = App::new();
         let (bg, _bg_rx) = mpsc::unbounded_channel::<IpcRequest>();
 
-        // non-zero exit status = discard
         let discard_status = std::process::ExitStatus::from_raw(1 << 8);
         super::handle_compose_editor_status(&mut app, &data, Ok(discard_status), &bg).await;
 

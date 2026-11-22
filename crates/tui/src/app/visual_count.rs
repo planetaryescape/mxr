@@ -1,14 +1,9 @@
 use super::*;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-/// Vim-style cap. A count larger than the list just reaches the last row.
 const MAX_VISUAL_COUNT: usize = 9999;
 
-// Counts only mean something in visual line mode: outside it, digits are the
-// tab keys (1-5) and must keep that meaning.
 impl App {
-    /// `Some(None)` consumes the key. `None` leaves it to the normal router,
-    /// which is also where a count is dropped by any key it does not use.
     pub(super) fn visual_count_key(&mut self, key: KeyEvent) -> Option<Option<Action>> {
         if !self.mailbox.visual_mode {
             self.mailbox.visual_count = None;
@@ -56,8 +51,6 @@ impl App {
         }
     }
 
-    /// Moves the cursor `count` rows, clamped to the list, and extends the
-    /// visual range the same way a single j/k does.
     fn move_visual_cursor(&mut self, count: usize, down: bool) {
         if self.screen == Screen::Search {
             let last = self.search_row_count().saturating_sub(1);

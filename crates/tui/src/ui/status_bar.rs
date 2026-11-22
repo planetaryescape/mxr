@@ -7,32 +7,19 @@ use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusBarState {
     pub mailbox_name: String,
-    /// `None` when the daemon has not managed a real reading yet — a degraded
-    /// status snapshot carries no count, and the mailbox length behind it is
-    /// capped, so printing either would be a number the user could act on
-    /// wrongly.
     pub total_count: Option<usize>,
     pub unread_count: usize,
     pub starred_count: usize,
     pub body_status: Option<String>,
     pub sync_status: Option<String>,
-    /// Short account/action copy used only when the full warning would clip.
     pub compact_sync_status: Option<String>,
-    /// The sync words are a warning (failing, paused or stale sync): drawn
-    /// in the warning colour so they stand out from the counts.
     pub sync_warning: bool,
     pub feature_health_status: Option<String>,
     pub status_message: Option<String>,
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
-    /// Peak size of the current mutation batch; > 1 switches the pending
-    /// prefix to "n/m" bulk progress.
     pub mutation_batch_total: usize,
-    /// True while any replaceable request or queued mutation is in
-    /// flight — renders the spinner at the left edge of the bar.
     pub busy: bool,
-    /// Set while a search query or an applied mailbox filter is active;
-    /// the bar names the mode after the counts.
     pub search_mode: Option<SearchMode>,
 }
 
@@ -128,16 +115,11 @@ pub fn draw(
             }
 
             if Line::from(status.clone()).width() + spinner_width > available_width {
-                // A long account label still gets the available cells before
-                // routine mailbox counts do.
                 status[0] = Span::raw(String::new());
             }
         }
     }
 
-    // Prepend an animated spinner while background work is in flight so
-    // the user can tell the daemon is busy even without a pane-local
-    // loading indicator.
     let line = match spinner.filter(|_| state.busy) {
         Some(spinner) => {
             let mut spans = vec![
@@ -153,9 +135,6 @@ pub fn draw(
         None => Line::from(status),
     };
 
-    // Reserve room on the right for a DEMO chip when the process is bound to
-    // the demo instance — this way a recording always shows whether the user
-    // is on demo data or their real inbox.
     if mxr_config::is_demo_instance() {
         let chip = " DEMO ";
         let chip_width = chip.len() as u16;
@@ -188,9 +167,6 @@ pub fn draw(
     frame.render_widget(bar, area);
 }
 
-/// Prefix for the in-flight mutation status. Bulk batches (more than one
-/// queued mutation) render "n/m" completed-of-total progress; a single
-/// pending mutation keeps the existing "[pending:1]" form.
 fn pending_progress_prefix(state: &StatusBarState) -> String {
     if state.mutation_batch_total > 1 {
         let done = state
@@ -202,7 +178,6 @@ fn pending_progress_prefix(state: &StatusBarState) -> String {
     }
 }
 
-/// Format a sync status string for display.
 pub fn format_sync_status(unread: usize, sync_status: Option<&str>) -> String {
     let sync_part = sync_status.unwrap_or("not synced");
     format!("[INBOX] {unread} unread | {sync_part}")
@@ -295,8 +270,6 @@ mod tests {
         warning.sync_warning = true;
         let theme = crate::theme::Theme::default();
         let spinner = ThrobberState::default();
-        // 74 cells is the warning area left by the demo chip in an 80-column
-        // terminal; the warning must survive the counts and freshness tails.
         let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(74, 1)).unwrap();
         terminal
             .draw(|frame| draw(frame, frame.area(), &warning, Some(&spinner), &theme))

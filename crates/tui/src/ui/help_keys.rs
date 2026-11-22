@@ -1,16 +1,9 @@
-//! Help's key tables, read from the key definition
-//! (`crates/keymap/keymap.toml`, blueprint 35) for the place help is
-//! opened in, with the person's `keys.toml` remaps. Nothing here names a
-//! key: rows, titles and labels all come from the definition.
-
 use crate::action::UiContext;
 use crate::keybindings::{parse_key_string, KeybindingConfig, ViewContext};
 use crate::keymap_names::action_named;
 use crate::ui::command_palette::shown_key;
 use mxr_keymap::{KeyAction, TuiBinding, MODE_SECTIONS};
 
-/// The places whose keys help lists for a screen, when the app didn't
-/// name one: Analytics lists every view's keys under its own.
 pub(crate) fn places_for(context: UiContext) -> Vec<&'static str> {
     match context {
         UiContext::MailboxSidebar => vec!["sidebar"],
@@ -37,23 +30,15 @@ pub(crate) fn places_for(context: UiContext) -> Vec<&'static str> {
     }
 }
 
-/// Places help lists wherever it is opened: the assistant pane takes the
-/// keys while it is open, so help can't be opened from it, and the writing
-/// proof is an overlay. Help lists every overlay after these, the
-/// assistant's proof, question and history among them.
 pub(crate) const ALWAYS_LISTED: [&str; 3] =
     ["assistant", "assistant-input", "compose-assist-proof"];
 
-/// The keys that run the definition's actions, as the person has them.
 pub(crate) struct KeyRows<'a> {
     pub config: &'a KeybindingConfig,
-    /// The list or reader map that governs `keys.toml` remaps here.
     pub view: ViewContext,
 }
 
 impl KeyRows<'_> {
-    /// One row per action with keys in `place`, in the definition's order:
-    /// every key that runs it there, `" / "` between them, and its label.
     pub(crate) fn rows(&self, place: &str) -> Vec<(String, String)> {
         mxr_keymap::defaults()
             .actions
@@ -65,13 +50,11 @@ impl KeyRows<'_> {
             .collect()
     }
 
-    /// The first key that runs action `id` in `place`, if any.
     pub(crate) fn key(&self, id: &str, place: &str) -> Option<String> {
         let action = mxr_keymap::defaults().get(id)?;
         self.keys(action, place).into_iter().next()
     }
 
-    /// Every key that runs `action` in `place`, as help spells keys.
     pub(crate) fn keys(&self, action: &KeyAction, place: &str) -> Vec<String> {
         let mut keys: Vec<String> = Vec::new();
         for binding in action.tui.iter().filter(|b| b.contexts.includes(place)) {
@@ -98,7 +81,6 @@ impl KeyRows<'_> {
                 .map(|key| shown_key(key))
                 .collect();
         }
-        // The list and reader maps also govern Search and the sidebar.
         let mapped = matches!(
             place,
             "list" | "reader" | "sidebar" | "place" | "search" | "search-preview"
@@ -111,7 +93,6 @@ impl KeyRows<'_> {
                 return self.config.key_displays(self.view, &tui_action);
             }
         }
-        // A default the person gave to another action no longer runs this.
         binding
             .keys
             .iter()

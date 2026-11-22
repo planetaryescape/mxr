@@ -1,8 +1,3 @@
-//! Focus & reply: the conversation on screen, why it is here and its
-//! newest message from them, under a count and a thin progress bar. At the
-//! end it says what's left, as the web's finish does. Pure render; wiring
-//! lives in `app/focus_actions.rs`, and the keys are in the hint bar.
-
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -12,7 +7,6 @@ use crate::ui::sanitize::{one_line, strip_control_chars};
 pub struct FocusView<'a> {
     pub page: &'a FocusPageState,
     pub focused: bool,
-    /// The newest message's text, reader-cleaned; `None` while it loads.
     pub body: Option<String>,
 }
 
@@ -20,7 +14,6 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-/// `██████░░░░░░` for how many are handled.
 fn bar(progress: FocusProgress, width: usize) -> String {
     let filled = (width * progress.done)
         .checked_div(progress.total)
@@ -32,7 +25,6 @@ fn bar(progress: FocusProgress, width: usize) -> String {
     )
 }
 
-/// The end of a session: only claim everyone when nobody is left anywhere.
 fn finish_lines(page: &FocusPageState, theme: &crate::theme::Theme) -> Vec<Line<'static>> {
     let progress = page.progress();
     let deferred = page.deferred.len();
@@ -129,8 +121,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &FocusView<'_>, theme: &crate::
         Style::default().fg(theme.accent),
     ))];
 
-    // A failed source can't prove nobody is waiting: that is an error to
-    // retry, never a finish.
     let loading = !page.loaded;
     match (current, &page.error) {
         _ if loading => {
@@ -170,8 +160,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &FocusView<'_>, theme: &crate::
             lines.push(Line::from(""));
             match &view.body {
                 Some(body) => {
-                    // Email text is untrusted: no control sequence reaches
-                    // the terminal.
                     for line in strip_control_chars(body).lines() {
                         lines.push(Line::from(line.to_string()));
                     }

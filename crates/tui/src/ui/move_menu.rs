@@ -1,6 +1,3 @@
-//! The move menu `X` and `P` open, and the arrivals list Enter on Now's
-//! line opens (D119). Pure render; wiring lives in `app/move_actions.rs`.
-
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -8,9 +5,6 @@ use crate::app::{ArrivalsListState, MoveMenu, MoveOption};
 use crate::ui::centered_rect_fixed_height;
 use crate::ui::sanitize::{one_line, truncate};
 
-/// "Move to…": each option prints its key (D168), a lowercase letter for
-/// this email and a capital for its sender; the highlighted one runs on
-/// Enter. On a new sender's row the capitals answer its question.
 pub fn draw_move_menu(
     frame: &mut Frame,
     area: Rect,
@@ -90,8 +84,6 @@ pub fn draw_move_menu(
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-/// The emails behind one count of the arrivals line, newest first, each
-/// with when it arrived, who sent it, the subject and where it went.
 pub fn draw_arrivals_list(
     frame: &mut Frame,
     area: Rect,
@@ -144,8 +136,6 @@ pub fn draw_arrivals_list(
                 },
                 Style::default().fg(theme.text_secondary),
             )));
-            // The count line above and the blank and key lines below stay;
-            // the rows between scroll so the selection is always on screen.
             let visible = (inner.height as usize).saturating_sub(3).max(1);
             let offset = (state.selected + 1).saturating_sub(visible);
             for (i, item) in list.items.iter().enumerate().skip(offset).take(visible) {
@@ -186,8 +176,6 @@ pub fn draw_arrivals_list(
         }
     }
     lines.push(Line::from(""));
-    // The sender's key moved from `K` to `P` in K3; the definition says
-    // which keys these are, so the line can't name a retired one.
     let key = |id: &str| mxr_keymap::guide_key(id).unwrap_or_default();
     lines.push(Line::from(Span::styled(
         format!(
@@ -385,7 +373,6 @@ mod tests {
         let top = render(0);
         assert!(top.contains("Issue 00"), "{top}");
         assert!(!top.contains("Issue 29"), "{top}");
-        // Far down the list, the selected row is drawn and the first isn't.
         for selected in [9, 20, 29] {
             let rendered = render(selected);
             let marker = rendered

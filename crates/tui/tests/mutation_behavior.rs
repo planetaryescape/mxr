@@ -1,15 +1,3 @@
-//! Behavior tests for TUI mutation actions.
-//!
-//! These tests construct an `App` directly and drive `Action` dispatches
-//! through the public `App::apply` entry point. No daemon, no IPC — they
-//! verify what the user observes in the TUI immediately after a keystroke,
-//! before any provider round-trip resolves.
-//!
-//! Test names describe behavior, not implementation. Each test should
-//! survive an internal refactor of mutation infrastructure (snapshot
-//! buffer, reconciliation routing, etc.) as long as the observable
-//! outcome remains the same.
-
 #![expect(
     clippy::panic,
     reason = "integration tests panic when an observable action produces the wrong variant"
@@ -81,7 +69,6 @@ fn unstarred_inbox_envelope() -> Envelope {
 
 #[test]
 fn star_applies_optimistically_before_daemon_response() {
-    // Given: a TUI with one unstarred message visible in the inbox.
     let mut app = App::new();
     let envelope = unstarred_inbox_envelope();
     let message_id = envelope.id.clone();
@@ -100,12 +87,8 @@ fn star_applies_optimistically_before_daemon_response() {
         "precondition: no mutations queued"
     );
 
-    // When: the user dispatches Star. No daemon connection exists in the
-    // test, so the mutation cannot have been confirmed by any provider.
     app.apply(Action::Star);
 
-    // Then: the visible envelope is already starred — the user observes
-    // the change before any network round-trip.
     assert!(
         app.mailbox.envelopes[0]
             .flags
@@ -113,7 +96,6 @@ fn star_applies_optimistically_before_daemon_response() {
         "envelope flags reflect optimistic star application"
     );
 
-    // And: exactly one Star mutation is queued for the daemon to apply.
     assert_eq!(
         app.pending_mutation_queue.len(),
         1,
@@ -141,7 +123,6 @@ fn star_applies_optimistically_before_daemon_response() {
 
 #[test]
 fn star_reverts_when_reconciliation_fails() {
-    // Given: an unstarred message and an optimistic star applied through Action::Star.
     let mut app = App::new();
     let envelope = unstarred_inbox_envelope();
     app.mailbox.envelopes.push(envelope);
@@ -155,18 +136,12 @@ fn star_reverts_when_reconciliation_fails() {
         "precondition: optimistic star is applied to local state"
     );
 
-    // Simulate the IPC worker draining the queue (this is what `lib.rs`
-    // does when sending the mutation to the daemon). Capture the
-    // mutation's ID — in production the daemon echoes this ID back when
-    // it cannot reconcile the change with the provider.
     let drained = std::mem::take(&mut app.pending_mutation_queue);
     assert_eq!(drained.len(), 1, "exactly one mutation was queued");
     let mutation_id: MutationId = drained[0].id;
 
-    // When: the daemon notifies us that the provider rejected this mutation.
     app.handle_mutation_reconciliation_failed(mutation_id);
 
-    // Then: the user sees the optimistic star reverted.
     assert!(
         !app.mailbox.envelopes[0]
             .flags
@@ -177,9 +152,6 @@ fn star_reverts_when_reconciliation_fails() {
 
 #[test]
 fn concurrent_mutations_on_same_message_compose_under_out_of_order_success() {
-    // Two mutations on the same message — Star then ApplyLabel. Both
-    // succeed, but the daemon acknowledges them in reverse order. The
-    // final state must reflect both optimistic effects.
     let mut app = App::new();
     app.mailbox.envelopes.push(unstarred_inbox_envelope());
     app.mailbox.selected_index = 0;
@@ -196,12 +168,9 @@ fn concurrent_mutations_on_same_message_compose_under_out_of_order_success() {
     );
     let label_id = app.pending_mutation_queue[1].id;
 
-    // Daemon acks the LABEL first, then the STAR. Each ack discards the
-    // mutation's rollback snapshot — the optimistic local state stands.
     let _ = app.mutation_snapshots.take(label_id);
     let _ = app.mutation_snapshots.take(star_id);
 
-    // Final state composes both effects.
     assert!(
         app.mailbox.envelopes[0]
             .flags
@@ -215,7 +184,6 @@ fn concurrent_mutations_on_same_message_compose_under_out_of_order_success() {
         "label effect retained"
     );
 
-    // Snapshot store empties out — nothing left to roll back.
     assert!(
         app.mutation_snapshots.is_empty(),
         "no orphan snapshots remain after both mutations are acknowledged"
@@ -224,9 +192,6 @@ fn concurrent_mutations_on_same_message_compose_under_out_of_order_success() {
 
 #[test]
 fn concurrent_mutations_on_same_message_partial_failure() {
-    // Two mutations on the same message — Star then ApplyLabel. Star
-    // succeeds at the provider; ApplyLabel fails. Only the Label effect
-    // should be reverted; the Star effect must persist.
     let mut app = App::new();
     app.mailbox.envelopes.push(unstarred_inbox_envelope());
     app.mailbox.selected_index = 0;
@@ -250,13 +215,10 @@ fn concurrent_mutations_on_same_message_partial_failure() {
         "precondition: label applied optimistically"
     );
 
-    // Star succeeded → discard its rollback snapshot.
     let _ = app.mutation_snapshots.take(star_id);
 
-    // Label failed → replay its snapshot, reverting only the label.
     app.handle_mutation_reconciliation_failed(label_id);
 
-    // Final state: starred (Star kept), no label (Label reverted).
     assert!(
         app.mailbox.envelopes[0]
             .flags
@@ -273,9 +235,6 @@ fn concurrent_mutations_on_same_message_partial_failure() {
 
 #[test]
 fn flag_reply_later_queues_set_reply_later_request() {
-    // `b` asks when; Enter with no time queues the untimed SetReplyLater
-    // and marks the row locally so the user gets immediate feedback before
-    // daemon reconciliation.
     let mut app = App::new();
     let envelope = unstarred_inbox_envelope();
     let message_id = envelope.id.clone();
@@ -386,7 +345,6 @@ fn a_phrase_that_does_not_parse_stays_in_the_prompt() {
 
 #[test]
 fn flag_reply_later_with_no_selection_shows_status_not_queued() {
-    // No message selected → action is a no-op with a clear status.
     let mut app = App::new();
     app.apply(Action::FlagReplyLater);
 
@@ -400,9 +358,6 @@ fn flag_reply_later_with_no_selection_shows_status_not_queued() {
 
 #[test]
 fn move_to_label_removes_message_optimistically() {
-    // Moving a message to a different label removes it from the
-    // current view immediately — the user shouldn't have to wait for
-    // a provider round-trip to see the action take effect.
     let mut app = App::new();
     let envelope = unstarred_inbox_envelope();
     let message_id = envelope.id.clone();
@@ -439,9 +394,6 @@ fn move_to_label_removes_message_optimistically() {
 
 #[test]
 fn bulk_star_reverts_all_messages_when_reconciliation_fails() {
-    // A bulk mutation goes through the confirmation modal before queuing.
-    // When the daemon rejects the batch, every message in it must revert
-    // to pre-mutation state — not just the cursor message.
     let mut app = App::new();
     let env_a = unstarred_inbox_envelope();
     let env_b = unstarred_inbox_envelope();
@@ -453,8 +405,6 @@ fn bulk_star_reverts_all_messages_when_reconciliation_fails() {
     app.mailbox.selected_set.insert(id_a);
     app.mailbox.selected_set.insert(id_b);
 
-    // Multi-target Star opens the bulk-confirm modal — no mutation queued
-    // until the user confirms.
     app.apply(Action::Star);
     assert!(
         app.modals.pending_bulk_confirm.is_some(),
@@ -466,7 +416,6 @@ fn bulk_star_reverts_all_messages_when_reconciliation_fails() {
         "no mutation queued before confirmation"
     );
 
-    // Confirm: optimistic apply runs and the mutation is queued.
     app.apply(Action::OpenSelected);
     assert!(
         app.mailbox.envelopes[0]
@@ -487,7 +436,6 @@ fn bulk_star_reverts_all_messages_when_reconciliation_fails() {
     );
     let mutation_id = app.pending_mutation_queue[0].id;
 
-    // Daemon rejects the batch. All messages in the batch revert.
     app.handle_mutation_reconciliation_failed(mutation_id);
     assert!(
         !app.mailbox.envelopes[0]

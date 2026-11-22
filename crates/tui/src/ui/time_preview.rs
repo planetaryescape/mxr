@@ -1,15 +1,8 @@
-//! Live preview for typed times: what a phrase resolves to, what was assumed,
-//! and the other readings when it is ambiguous. Shared by the snooze panel
-//! and the send-at / remind prompts so every TUI time field reads the same.
-
 use mxr_config::SnoozeConfig;
 use mxr_core::natural_time::{
     resolve_time_local, TimeResolution, TimeResolveError, TimeResolveErrorKind,
 };
 
-/// A typed time's last resolution and the reading Tab selected. It is
-/// updated when the text changes, never while drawing, and Enter commits
-/// exactly the instant it holds, so what was previewed is what is stored.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TimePreview {
     resolution: Option<Result<TimeResolution, TimeResolveError>>,
@@ -17,8 +10,6 @@ pub struct TimePreview {
 }
 
 impl TimePreview {
-    /// Resolve `input` the way the daemon's `ResolveTime` does: local time
-    /// with the user's snooze hours. Resets the Tab selection.
     pub fn update(&mut self, input: &str, config: &SnoozeConfig) {
         self.resolution = Some(resolve_time_local(input, &config.time_prefs()));
         self.choice = 0;
@@ -28,7 +19,6 @@ impl TimePreview {
         *self = Self::default();
     }
 
-    /// Move the Tab selection to the next reading, wrapping around.
     pub fn next_choice(&mut self) {
         if let Some(Ok(resolution)) = &self.resolution {
             if resolution.choices.len() > 1 {
@@ -37,7 +27,6 @@ impl TimePreview {
         }
     }
 
-    /// The previewed instant for the selected reading, or why there isn't one.
     pub fn chosen(&self) -> Result<chrono::DateTime<chrono::Utc>, String> {
         match &self.resolution {
             Some(Ok(resolution)) => Ok(resolution
@@ -49,12 +38,10 @@ impl TimePreview {
         }
     }
 
-    /// Whether the text resolved to a time (cheap enough to call per frame).
     pub fn is_resolved(&self) -> bool {
         matches!(self.resolution, Some(Ok(_)))
     }
 
-    /// The preview lines to draw under the prompt.
     pub fn lines(&self) -> Vec<String> {
         self.resolution
             .as_ref()
@@ -63,8 +50,6 @@ impl TimePreview {
     }
 }
 
-/// Preview lines for `input`. Empty input shows nothing so the prompt stays
-/// quiet until the user types.
 fn lines(result: &Result<TimeResolution, TimeResolveError>, choice: usize) -> Vec<String> {
     match result {
         Err(error) if error.kind == TimeResolveErrorKind::Empty => Vec::new(),

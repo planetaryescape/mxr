@@ -1,18 +1,11 @@
-//! The `b` picker, Not now (D173): "Later (no time)" first where there is
-//! one, then the snooze presets on digits, then a typed time.
-
 use super::centered_rect;
 use crate::app::{snooze_presets, NotNowTarget, SnoozePanelState, SnoozePreset};
 use mxr_config::SnoozeConfig;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-/// Row label rendered for the trailing "Custom..." entry that opens
-/// the conversational time input. Kept as a constant so tests can match
-/// it without re-hardcoding the string.
 pub const CUSTOM_ROW_LABEL: &str = "Custom… (e.g. tomorrow 9am, in 2h)";
 
-/// One row of the picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotNowRow {
     Later,
@@ -20,15 +13,12 @@ pub enum NotNowRow {
     Custom,
 }
 
-/// The rows for a target, in order: Later (when it has one), the presets,
-/// then Custom.
 pub struct NotNowRows {
     later: bool,
     presets: Vec<SnoozePreset>,
 }
 
 impl NotNowRows {
-    /// Every preset, for `target`.
     pub fn of(target: &NotNowTarget) -> Self {
         Self {
             later: target.later_label().is_some(),
@@ -40,7 +30,6 @@ impl NotNowRows {
         usize::from(self.later) + self.presets.len() + 1
     }
 
-    /// The Nth preset, as its digit picks it.
     pub fn preset(&self, nth: usize) -> Option<SnoozePreset> {
         nth.checked_sub(1)
             .and_then(|index| self.presets.get(index))
@@ -68,8 +57,6 @@ impl NotNowRows {
     }
 }
 
-/// Rows for a panel, with the presets it opened with; a panel opened
-/// without a target (tests, a stale state) behaves as mail.
 pub fn rows_of(panel: &SnoozePanelState) -> NotNowRows {
     let mut rows = panel.target.as_ref().map_or(
         NotNowRows {
@@ -85,7 +72,6 @@ pub fn rows_of(panel: &SnoozePanelState) -> NotNowRows {
     rows
 }
 
-/// How many rows the open panel has, for the cursor's wrap.
 pub fn rows_count(panel: &SnoozePanelState) -> usize {
     rows_of(panel).len()
 }
@@ -131,8 +117,6 @@ pub fn draw(
     let mut preset_number = 0;
     let items: Vec<ListItem> = (0..rows.len())
         .map(|index| {
-            // Each row prints its key: Enter on the highlighted row, a
-            // digit on each preset.
             let (key, label, muted) = match rows.row(index) {
                 NotNowRow::Later => (
                     "\u{21b5}".to_string(),
@@ -271,7 +255,6 @@ mod tests {
         assert_eq!(mail.row(0), NotNowRow::Later);
         assert_eq!(mail.row(1), NotNowRow::Preset(snooze_presets()[0]));
         assert_eq!(mail.row(mail.len() - 1), NotNowRow::Custom);
-        // A to-do has no untimed later: the presets start at the top.
         let todo = NotNowRows::of(&NotNowTarget::Todo {
             todo_id: "t1".into(),
         });

@@ -1,7 +1,3 @@
-//! Sends the assistant pane's requests. They run in order on their own
-//! queue, so a refetch can't overtake the decision it follows and a slow
-//! mail request can't hold up the pane.
-
 use crate::app::App;
 use crate::async_result::AsyncResult;
 use crate::ipc::{ipc_call, IpcRequest};

@@ -1,14 +1,6 @@
-//! Reading what the assistant sends: the messages a preview names, a
-//! readout as one line, and its markdown as plain text. A change's title
-//! and warning come from the daemon (docs/blueprint/29), not from here.
-//!
-//! Every string here may come from someone else's email (subjects, senders,
-//! a model's reply about them): it is displayed, never acted on.
-
 use mxr_protocol::{AssistantLinkData, AssistantReadoutData};
 use serde_json::Value;
 
-/// A tool name as words: `mxr_list_messages` reads "List messages".
 pub fn tool_words(tool: &str) -> String {
     let words = tool.strip_prefix("mxr_").unwrap_or(tool).replace('_', " ");
     let mut chars = words.chars();
@@ -26,15 +18,12 @@ fn text(value: &Value, fallback: &str) -> String {
     }
 }
 
-/// One message a preview names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewMessage {
     pub subject: String,
     pub from: String,
 }
 
-/// The messages a preview names, wherever the tool put them: the first
-/// list of objects with a subject, a few levels down.
 pub fn preview_messages(preview: &Value) -> Vec<PreviewMessage> {
     fn find(value: &Value, depth: u8) -> Option<&Vec<Value>> {
         if depth > 4 {
@@ -73,7 +62,6 @@ pub fn preview_messages(preview: &Value) -> Vec<PreviewMessage> {
         .unwrap_or_default()
 }
 
-/// A draft a preview shows (sending one previews it whole).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewDraft {
     pub to: String,
@@ -108,7 +96,6 @@ pub fn preview_draft(preview: &Value) -> Option<PreviewDraft> {
     })
 }
 
-/// "Work, plus a note" from an `ask_user` result the user wrote.
 pub fn answered_with(result: Option<&str>) -> Option<String> {
     let parsed: Value = serde_json::from_str(result?).ok()?;
     let mut parts = Vec::new();
@@ -123,8 +110,6 @@ pub fn answered_with(result: Option<&str>) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(", "))
 }
 
-/// A step's readout on one line: "9 found: Ann, Bo, Cy and 6 more", or its
-/// facts, "Accepted yes · Items 2".
 pub fn readout_line(readout: &AssistantReadoutData) -> Option<String> {
     if let Some(total) = readout.total {
         let names: Vec<&str> = readout.rows.iter().map(|row| row.title.as_str()).collect();
@@ -147,27 +132,18 @@ pub fn readout_line(readout: &AssistantReadoutData) -> Option<String> {
     (!facts.is_empty()).then(|| facts.join(" · "))
 }
 
-/// The assistant's light markdown as terminal text: markers dropped,
-/// bullets kept, links as "text (url)", in-app `mxr:` links as their text,
-/// images as their description only (nothing remote is fetched or shown).
 pub fn plain_text(markdown: &str) -> String {
     render_plain(markdown, None)
 }
 
-/// The most links a reply numbers: one key each, `1` to `9`.
 pub const MAX_NUMBERED_LINKS: usize = 9;
 
-/// A reply as [`plain_text`], with each in-app link numbered after its
-/// words, "Q1 report \[1\]", and the links in that order. The same email
-/// linked twice keeps one number. The daemon has already dropped links
-/// whose ids no tool returned, so these are safe to open.
 pub fn plain_text_with_links(markdown: &str) -> (String, Vec<AssistantLinkData>) {
     let mut links = Vec::new();
     let text = render_plain(markdown, Some(&mut links));
     (text, links)
 }
 
-/// An `mxr:thread/<id>` or `mxr:person/<id>` href.
 fn parse_mxr_link(url: &str) -> Option<AssistantLinkData> {
     let (kind, id) = url.strip_prefix("mxr:")?.split_once('/')?;
     if id.is_empty() {
@@ -212,7 +188,6 @@ fn render_plain(markdown: &str, mut links: Option<&mut Vec<AssistantLinkData>>) 
     out.join("\n")
 }
 
-/// Emphasis and code markers dropped; links and images rewritten.
 fn inline(text: &str, mut links: Option<&mut Vec<AssistantLinkData>>) -> String {
     let mut out = String::with_capacity(text.len());
     let chars: Vec<char> = text.chars().collect();
@@ -223,9 +198,6 @@ fn inline(text: &str, mut links: Option<&mut Vec<AssistantLinkData>>) -> String 
         if c == '[' || image {
             let start = if image { i + 2 } else { i + 1 };
             if let Some((label, url, end)) = link_at(&chars, start) {
-                // An image is only its description: nothing remote loads.
-                // An mxr: link is its words, numbered when the reply's
-                // links can be opened by number.
                 if image || label == url || url.is_empty() || url.starts_with("mxr:") {
                     out.push_str(&label);
                     let numbered = links
@@ -261,8 +233,6 @@ fn inline(text: &str, mut links: Option<&mut Vec<AssistantLinkData>>) -> String 
     out
 }
 
-/// `**`/`__` runs and lone `*`/`_` next to a word, not ones in the middle
-/// of `snake_case` or `2 * 3`.
 fn is_marker_run(chars: &[char], i: usize) -> bool {
     let c = chars[i];
     if chars.get(i + 1) == Some(&c) || (i > 0 && chars[i - 1] == c) {
@@ -274,8 +244,6 @@ fn is_marker_run(chars: &[char], i: usize) -> bool {
     word(before) != word(after)
 }
 
-/// `label](url)` starting at `start`: the label, the url and the index
-/// after the closing parenthesis.
 fn link_at(chars: &[char], start: usize) -> Option<(String, String, usize)> {
     let close = (start..chars.len()).find(|&j| chars[j] == ']')?;
     if chars.get(close + 1) != Some(&'(') {

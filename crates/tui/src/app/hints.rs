@@ -1,14 +1,3 @@
-//! Hints in the TUI (D118, amended 2026-10-07). There is no page-top card
-//! and no tour: a hint is one sentence in the status line while the cursor
-//! is on the element it explains, the first time that element is needed.
-//! Esc, or acting on the element, dismisses it in every client
-//! (`SetHintSeen`). The copy and the seen state come with each mode's guide.
-//!
-//! The rules match the web app's (`apps/web/src/features/hints`): one hint
-//! at a time; none on arrival until a key is pressed on the page, unless the
-//! element is the only thing there; and no chains, so once a hint leaves
-//! nothing shows until the cursor moves.
-
 use std::collections::{HashMap, HashSet};
 
 use mxr_protocol::{HintData, ModeGuideData, Request};
@@ -16,8 +5,6 @@ use mxr_protocol::{HintData, ModeGuideData, Request};
 use super::*;
 use crate::app::state::{NowRow, ReadingRow, UpdatesRow};
 
-/// Where the cursor is, as far as hints care: the page, the row, and the
-/// part of the page that has the keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HintSpot {
     view: MailboxView,
@@ -28,23 +15,13 @@ pub struct HintSpot {
 
 #[derive(Debug, Default)]
 pub struct HintState {
-    /// Dismissed here before the daemon answered, so none flickers back.
     closed: HashSet<String>,
-    /// The `SetHintSeen` sent for each dismissal, so a failed write can
-    /// show that hint again at its next need.
     pending: HashMap<MutationId, String>,
-    /// The page the last key was pressed on. The key that opens a page
-    /// was pressed on the page before, so arriving never counts as a use.
     key_on: Option<MailboxView>,
-    /// Where the cursor was when the last hint left.
     quiet_at: Option<HintSpot>,
-    /// Actions whose "Next time" this session already asked the daemon
-    /// about, so a repeat run from the palette asks nothing.
     next_time_asked: HashSet<&'static str>,
 }
 
-/// The hints that can attach where the cursor is, in the order they win,
-/// with whether the element is the only thing on the page.
 struct Candidates<'a> {
     guide: Option<&'a ModeGuideData>,
     ids: Vec<&'static str>,
@@ -98,7 +75,6 @@ impl App {
                 if first_bar == Some(at) {
                     ids.push("todo.runway");
                 }
-                // The catch-up line sits above the first row.
                 if at == 0 && page.runway.as_ref().is_some_and(|r| r.catchup_count > 0) {
                     ids.push("todo.catchup");
                 }
@@ -198,8 +174,6 @@ impl App {
         }
     }
 
-    /// The hint for the element under the cursor, if it is that element's
-    /// first need. Pure: drawing calls it every frame.
     pub fn active_hint(&self) -> Option<&HintData> {
         if self.screen != Screen::Mailbox || self.mailbox.active_pane == ActivePane::Sidebar {
             return None;
@@ -218,12 +192,10 @@ impl App {
         })
     }
 
-    /// Every key counts as a use of the page it was pressed on.
     pub(crate) fn note_key_for_hints(&mut self) {
         self.hints.key_on = (self.screen == Screen::Mailbox).then_some(self.mailbox.mailbox_view);
     }
 
-    /// The quiet after a hint leaves lasts until the cursor moves.
     pub(crate) fn settle_hint_quiet(&mut self) {
         if self
             .hints
@@ -234,15 +206,12 @@ impl App {
         }
     }
 
-    /// Esc while a hint shows.
     pub(crate) fn dismiss_active_hint(&mut self) {
         if let Some(id) = self.active_hint().map(|hint| hint.id.clone()) {
             self.dismiss_hint(id);
         }
     }
 
-    /// Acting on the element a hint explains dismisses it: a hint about
-    /// something already done is noise.
     pub(crate) fn dismiss_hint_acted_on(&mut self, action: &Action) {
         let Some(id) = self.active_hint().map(|hint| hint.id.clone()) else {
             return;
@@ -301,11 +270,7 @@ impl App {
         self.hints.pending.insert(mutation, id);
     }
 
-    /// An action with a key here ran from the palette: name its key, once
-    /// per action and profile (D171). The daemon says whether this run is
-    /// the first; only then does the toast show.
     pub(crate) fn offer_next_time(&mut self, command: &crate::ui::command_palette::PaletteCommand) {
-        // With single-character shortcuts off, teach a key that still works.
         let single_keys = self.keybindings.single_keys;
         let key = command.shortcut.split(" / ").find(|key| {
             !key.is_empty() && (single_keys || !crate::keybindings::is_character_shortcut(key))
@@ -327,16 +292,12 @@ impl App {
         );
     }
 
-    /// The daemon didn't store a dismissal: the hint shows again at its
-    /// next need, the safer miss.
     pub(crate) fn reopen_hint_after_failure(&mut self, failed: MutationId) {
         if let Some(id) = self.hints.pending.remove(&failed) {
             self.hints.closed.remove(&id);
         }
     }
 
-    /// The first done here on a conversation: say in the status line that
-    /// it only clears this mode. Once, in every client.
     pub(crate) fn explain_done_here_once(&mut self) {
         const DONE_HERE: &str = "done_here";
         let hint = [
@@ -354,12 +315,10 @@ impl App {
             return;
         }
         let text = hint.text.clone();
-        // Queueing the dismissal sets its own (empty) status; the hint wins.
         self.dismiss_hint(DONE_HERE.to_string());
         self.status_message = Some(text);
     }
 
-    /// The status line while a hint shows: the hint, then how to dismiss it.
     pub(crate) fn hint_status_line(&self) -> Option<String> {
         self.active_hint()
             .map(|hint| format!("Hint: {} (Esc dismisses)", hint.text))

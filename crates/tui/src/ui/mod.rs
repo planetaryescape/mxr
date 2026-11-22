@@ -76,12 +76,6 @@ pub mod whois_modal;
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
-/// Centered popup rect sized as a percentage of `area`. Single shared
-/// implementation for every modal renderer — replaces the per-module
-/// copies that had drifted into two different argument orders.
-/// Centered rect that is `percent_x` wide but a *fixed* number of rows tall
-/// (clamped to the area), so a modal can size itself to its content instead of
-/// a fixed percentage that clips when content grows.
 pub(crate) fn centered_rect_fixed_height(percent_x: u16, height: u16, area: Rect) -> Rect {
     let height = height.min(area.height);
     let top = area.height.saturating_sub(height) / 2;

@@ -9,10 +9,6 @@ pub struct SavedSearchTabsView<'a> {
     pub searches: &'a [SavedSearch],
     pub active_query: Option<&'a str>,
     pub active_mode: Option<SearchMode>,
-    /// Optional per-saved-search unread match count, keyed by id.
-    /// When a saved search has a non-zero count, the label is
-    /// suffixed with ` (N)`. Missing or zero counts render the bare
-    /// label so the strip doesn't visually flap as counts settle.
     pub unread_counts: &'a HashMap<SavedSearchId, u32>,
 }
 

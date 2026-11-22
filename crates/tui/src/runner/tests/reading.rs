@@ -1,9 +1,3 @@
-//! Reading in the TUI: `g r` opens the edition, Enter reads beside it and
-//! records the open, `b` on a digest link puts it on Later and saves its
-//! article, `A` and `D` preview before they change anything and commit
-//! exactly what they previewed, `L` names the site before it fetches, and
-//! `M` sends the item to Marginalia.
-
 use super::*;
 use crate::app::ReadingConfirm;
 use crate::ui::reading_lens::tests::edition;
@@ -31,7 +25,6 @@ fn queued(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// Reading open on a loaded edition with its hints dismissed.
 fn reading_app() -> App {
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
@@ -81,12 +74,10 @@ fn enter_reads_and_records_the_open() {
 #[test]
 fn b_on_a_digest_link_saves_it_to_later_and_fetches_its_article() {
     let mut app = reading_app();
-    // The lead essay, then the digest, then its first link.
     key(&mut app, 'j');
     key(&mut app, 'j');
     let link_key = app.selected_reading_row().expect("a row").key().to_string();
     assert!(link_key.ends_with(":1"), "{link_key}");
-    // `b` opens Not now; Enter on its first row, Later, saves it.
     key(&mut app, 'b');
     assert!(app.modals.snooze_panel.visible);
     press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
@@ -132,7 +123,6 @@ fn l_names_the_site_before_fetching_and_an_essay_has_nothing_to_fetch() {
         .status_message
         .as_deref()
         .is_some_and(|status| status.contains("no article")));
-    // The teaser, after the digest's four shown links.
     for _ in 0..6 {
         key(&mut app, 'j');
     }
@@ -177,7 +167,6 @@ fn let_go_of_everything_previews_then_commits_the_same_threads() {
         "nothing changes before the preview"
     );
     assert_eq!(asked.len(), 4);
-    // The daemon previews three of them (one went meanwhile).
     let previewed: Vec<ThreadId> = asked[..3].to_vec();
     app.show_reading_let_go_preview(&asked, previewed.iter().cloned().map(outcome).collect());
     assert!(matches!(
@@ -211,7 +200,6 @@ fn esc_on_a_preview_changes_nothing() {
 #[test]
 fn unsubscribe_previews_with_the_evidence_before_it_commits() {
     let mut app = reading_app();
-    // The Growth Digest in the Fading band is the last row.
     for _ in 0..7 {
         key(&mut app, 'j');
     }
@@ -225,8 +213,6 @@ fn unsubscribe_previews_with_the_evidence_before_it_commits() {
     assert!(queued(&app).is_empty());
     assert_eq!(target.evidence, "You opened 0 of the last 11 issues");
     assert_eq!(target.method, ReadingUnsubscribeData::OneClick);
-    // The preview's own method wins over the edition's, and its token
-    // goes with the commit.
     app.show_reading_unsubscribe_preview(
         target.clone(),
         purge_preview(
@@ -244,7 +230,6 @@ fn unsubscribe_previews_with_the_evidence_before_it_commits() {
         panic!("a preview is on screen");
     };
     assert_eq!(shown.method, ReadingUnsubscribeData::Mailto);
-    // `a` clears the issues too: the purge commits exactly that preview.
     press(&mut app, KeyCode::Char('a'), KeyModifiers::NONE);
     let requests = queued(&app);
     assert!(
@@ -423,7 +408,6 @@ fn highlight(id: &str, origin: &str, note: Option<&str>) -> mxr_protocol::Readin
     }
 }
 
-/// The reader open on an item with an mxr highlight and a Marginalia one.
 fn highlights_app() -> App {
     let mut app = reading_app();
     let mut detail_item = edition().bands[0].items[0].clone();
@@ -463,7 +447,6 @@ fn shift_h_edits_a_note_and_a_blank_one_clears_it() {
     for _ in 0.."first".len() {
         press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
     }
-    // Esc leaves the note as it was and asks nothing of the daemon.
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
     assert!(queued(&app).is_empty());
     key(&mut app, 'e');
@@ -548,8 +531,6 @@ fn the_digits_pick_reading_tabs_and_esc_comes_back_from_later() {
     assert!(!app.mailbox.reading_page.later_shelf);
 }
 
-/// `B` is Brief me's key now; in Reading it says where Later went and
-/// changes nothing.
 #[test]
 fn shift_b_says_later_moved_to_a_digit() {
     let mut app = reading_app();
@@ -562,7 +543,6 @@ fn shift_b_says_later_moved_to_a_digit() {
     );
 }
 
-/// The reader's `1` leaves the reader for the edition, as Esc does.
 #[test]
 fn one_in_the_reader_goes_back_to_the_edition() {
     let mut app = reading_app();

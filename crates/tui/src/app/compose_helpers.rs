@@ -69,9 +69,6 @@ impl App {
         paths
     }
 
-    /// First default-and-enabled account id, if any. Used by IPC
-    /// dispatchers that need an account id but don't have one in
-    /// scope (e.g. sidebar lens refresh).
     pub fn default_account_id(&self) -> Option<&mxr_core::AccountId> {
         self.accounts
             .page
@@ -89,10 +86,6 @@ impl App {
             })
     }
 
-    /// Build a Draft from the PendingSend and dispatch SendDraft via
-    /// the mutation queue. Shared between the regular `[s] send` path
-    /// and the `[O] override + send` path. `override_safety_token`
-    /// is `Some(token)` only on the override path.
     pub(crate) fn dispatch_send_pending(
         &mut self,
         pending: PendingSend,
@@ -107,7 +100,6 @@ impl App {
         override_safety_token: Option<String>,
         remind_at: Option<chrono::DateTime<chrono::Utc>>,
     ) {
-        // Keep the reviewed file reachable even when local preparation fails.
         self.compose.pending_send_confirm = Some(pending.clone());
         let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
         let reply_headers =
@@ -144,8 +136,6 @@ impl App {
             revision: Some(revision),
             id: pending.draft_id(),
             account_id: pending.account_id.clone(),
-            // `fm.from` was validated when the PendingSend was built; a parse
-            // error is unreachable here, so fall back to "no override".
             from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
                 .ok()
                 .flatten(),
@@ -169,8 +159,6 @@ impl App {
             updated_at: now,
         };
         if let Some(stored) = pending.stored_draft.as_deref() {
-            // A stored draft is sent exactly as saved and reviewed: the daemon
-            // refuses content that differs from its saved revision.
             draft = stored.clone();
         } else if let Err(error) = mxr_compose::forward::apply(&mut draft, &pending.fm) {
             self.push_toast(Toast::error(error.to_string()));

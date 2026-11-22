@@ -290,13 +290,11 @@ mod query_tests {
             timeout,
             true
         ));
-        // Answered quickly, even with nothing useful: the reader finished.
         assert!(!query_went_unanswered(
             Duration::from_millis(40),
             timeout,
             true
         ));
-        // Capabilities came back: the terminal answered.
         assert!(!query_went_unanswered(
             Duration::from_millis(2001),
             timeout,

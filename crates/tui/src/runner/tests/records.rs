@@ -1,7 +1,3 @@
-//! Archive in the TUI: `g e` opens the ledger and its guide, `/` asks,
-//! the verbs become the daemon requests they name, and `T` on a
-//! conversation previews filing it before anything is written.
-
 use super::*;
 use crate::app::RECORD_KIND_CHIPS;
 use crate::ui::records_lens::tests::{apple, dell, lisbon_answer, octopus_list, page};
@@ -32,7 +28,6 @@ fn queued(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// Archive open on Dell's order and an Apple receipt.
 fn archive_app() -> App {
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
@@ -60,7 +55,6 @@ fn slash_and_a_query_ask_the_answer_box_and_y_copies_the_answer() {
     );
     assert!(!app.mailbox.records_page.asking);
     app.set_records_answer(lisbon_answer());
-    // With an answer on screen, the keys act on its record.
     press(&mut app, KeyCode::Char('y'));
     assert_eq!(
         app.mailbox.records_page.last_copied.as_deref(),
@@ -69,7 +63,6 @@ fn slash_and_a_query_ask_the_answer_box_and_y_copies_the_answer() {
     assert_eq!(app.status_message.as_deref(), Some("K7QX2M copied"));
     press(&mut app, KeyCode::Esc);
     assert!(app.mailbox.records_page.answer.is_none());
-    // Back on the ledger: Y copies the row's amount as plain digits.
     press_shifted(&mut app, 'Y');
     assert_eq!(
         app.mailbox.records_page.last_copied.as_deref(),
@@ -90,11 +83,9 @@ fn a_shows_every_match_and_esc_puts_the_ledger_back() {
     assert_eq!(page.pending_answer.as_deref(), Some("lisbon booking ref"));
     assert!(page.answer_list, "the runtime asks for the list");
 
-    // A slow answer to another query never lands under this one.
     app.set_records_answer(octopus_list());
     assert!(app.mailbox.records_page.listed_matches().is_none());
 
-    // A list opens on its best match, and the keys act on the rows.
     let mut listed = octopus_list();
     listed.query = "lisbon booking ref".into();
     app.set_records_answer(listed);
@@ -112,7 +103,6 @@ fn a_shows_every_match_and_esc_puts_the_ledger_back() {
     assert_eq!(page.rows().len(), 2, "the ledger's Dell and Apple rows");
     assert_eq!(app.mailbox.selected_index, 0);
 
-    // A new query decides for itself again.
     press(&mut app, KeyCode::Char('/'));
     typed(&mut app, "dell");
     press(&mut app, KeyCode::Enter);
@@ -130,7 +120,6 @@ fn x_takes_a_record_out_at_once_and_u_brings_it_back() {
     ));
     assert_eq!(app.mailbox.records_page.rows()[0].id, "rec_apple");
 
-    // The daemon's answer offers u, which restores exactly those records.
     let undo = crate::runner::records_undo(&RecordChangeData {
         dry_run: false,
         action: "dismiss".into(),
@@ -182,8 +171,6 @@ fn the_export_previews_and_enter_writes_it() {
 #[test]
 fn the_verbs_name_their_requests() {
     let mut app = archive_app();
-    // Dell is checked already; Apple's amount isn't. `,` then Enter with
-    // nothing typed marks a record checked.
     press(&mut app, KeyCode::Char(','));
     press(&mut app, KeyCode::Enter);
     assert!(queued(&app).is_empty());
@@ -264,7 +251,6 @@ fn pass_to_a_mode_previews_filing_then_files_it() {
     app.mailbox.envelopes = make_test_envelopes(2);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
     let message_id = app.mailbox.envelopes[0].id.clone();
-    // From the palette now: `T` merged into `X` (blueprint 35).
     app.apply(Action::PassToMode);
     let menu = app
         .mailbox
@@ -357,7 +343,6 @@ fn g_f_reaches_subscriptions_and_their_keys_act_on_the_subscription() {
         Some("Disney+")
     );
 
-    // Esc from the list goes back to every record.
     for _ in 0..RECORD_KIND_CHIPS.len() - 1 {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
         press(&mut app, KeyCode::Char('f'));

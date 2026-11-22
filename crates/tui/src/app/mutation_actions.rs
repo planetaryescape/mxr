@@ -3,19 +3,10 @@ use super::*;
 
 impl App {
     pub(super) fn apply_mutation_action(&mut self, action: Action) {
-        // On the desk and in a place, verbs act on the row under the cursor
-        // (a desk row's account and whole thread, a place's one message),
-        // never on whatever the mailbox or reader showed last. Verbs that
-        // need more than a row ask to open it.
-        // On the desk, archive is Done: put the conversation away (archive
-        // and mark read, done waiting, or keep the promise) until someone
-        // writes in it again.
         if matches!(action, Action::Archive | Action::MarkReadAndArchive) && self.done_on_desk_row()
         {
             return;
         }
-        // In Updates and Reading, `e` is done here in that mode: the
-        // provider archive happens only when no other mode holds the thread.
         if action == Action::Archive && self.done_in_place_row() {
             return;
         }
@@ -40,8 +31,6 @@ impl App {
                 && self.place_list_focused()
                 && !self.modals.snooze_panel.visible)
             {
-                // Not now (`b`) works on a desk row: it acts on the row's
-                // conversation, as reply later did.
                 self.status_message = Some(hint.into());
                 return;
             }
@@ -52,11 +41,6 @@ impl App {
             Action::Archive => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
-                    // Archive removes INBOX. The list should hide the row only
-                    // when we're viewing INBOX; in Starred / All Mail / custom
-                    // labels the message still belongs in the current view, so
-                    // an optimistic removal would just flicker until the next
-                    // sync put it back.
                     let removes_from_view = self.active_label_matches("INBOX");
                     let completion_effect = if removes_from_view {
                         remove_from_list_effect(&ids)
@@ -152,11 +136,6 @@ impl App {
                     self.status_message =
                         Some(mxr_core::i18n::EN.status.invite_cancelled.to_string());
                 } else if let Some(undo) = self.take_pending_undo() {
-                    // A batch job (a sweep) left one undo per chunk; each
-                    // chunk touched different messages, so order is free.
-                    // RefreshList re-fetches the active label so restored
-                    // messages reappear; the status reads "Undoing..." until
-                    // the daemon acknowledges.
                     let status = undo.undoing_label();
                     let focus_effect = self.focus_undo_effect(&undo.verb_past);
                     match undo.action {
@@ -166,8 +145,6 @@ impl App {
                             } else if self.mailbox.mailbox_view == MailboxView::Updates {
                                 MutationEffect::RefreshUpdates(String::new())
                             } else if self.mailbox.mailbox_view == MailboxView::Reading {
-                                // Brings back a removed highlight or an old
-                                // note in the open reader, and a let-go item.
                                 MutationEffect::ModeDone(String::new())
                             } else {
                                 MutationEffect::RefreshList
@@ -234,7 +211,6 @@ impl App {
                             );
                         }
                         UndoAction::Records(undo) => self.undo_records(undo, status),
-                        // Tuning a source back is the undo; it offers none.
                         UndoAction::UpdateSource {
                             account_id,
                             source_key,
@@ -261,7 +237,6 @@ impl App {
                                 status,
                             );
                         }
-                        // The daemon puts the move back and says where to.
                         UndoAction::Move(correction_id) => {
                             self.queue_mutation(
                                 Request::UndoMove { correction_id },
@@ -277,8 +252,6 @@ impl App {
                             ));
                             self.status_message = Some(status);
                         }
-                        // Setting the previous kind again is the undo; its
-                        // own answer offers no further undo.
                         UndoAction::SenderKind {
                             account_id,
                             sender_email,
@@ -303,10 +276,6 @@ impl App {
             Action::Star => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
-                    // One row toggles what it shows; a multi-selection always
-                    // stars. A desk row is one conversation: toggle its thread
-                    // star. A conversation row shows its newest message's star,
-                    // so a starred one unstars every listed message.
                     let conversation_row = self.mailbox.selected_set.is_empty()
                         && self.mailbox.mail_list_mode == MailListMode::Threads;
                     let starred = if let Some(row) = self
@@ -322,8 +291,6 @@ impl App {
                     {
                         !message.starred
                     } else if conversation_row {
-                        // What the row shows (its newest message's star), not
-                        // an older message focused in the reader.
                         let shown = if self.screen == Screen::Search {
                             self.selected_search_envelope()
                         } else {
@@ -448,7 +415,6 @@ impl App {
             }
             Action::ApplyLabel => {
                 if let Some((_, ref label_name)) = self.modals.pending_label_action.take() {
-                    // Label picker confirmed — dispatch mutation
                     let ids = self.mutation_target_ids();
                     if let Some(refusal) = self.label_refusal(&ids, label_name) {
                         self.status_message = Some(refusal);
@@ -484,7 +450,6 @@ impl App {
                         });
                     }
                 } else {
-                    // Open label picker
                     self.modals
                         .label_picker
                         .open(self.label_picker_labels(), LabelPickerMode::Apply);
@@ -492,7 +457,6 @@ impl App {
             }
             Action::MoveToLabel => {
                 if let Some((_, ref label_name)) = self.modals.pending_label_action.take() {
-                    // Label picker confirmed — dispatch move
                     let ids = self.mutation_target_ids();
                     if let Some(refusal) = self.label_refusal(&ids, label_name) {
                         self.status_message = Some(refusal);
@@ -517,7 +481,6 @@ impl App {
                         });
                     }
                 } else {
-                    // Open label picker
                     self.modals
                         .label_picker
                         .open(self.label_picker_labels(), LabelPickerMode::Move);
@@ -616,7 +579,6 @@ impl App {
                 self.modals.pending_unsubscribe_confirm = None;
                 self.status_message = Some("Unsubscribe cancelled".into());
             }
-            // `b`, Not now: Enter in the open picker comes back here.
             Action::Snooze => {
                 if self.modals.snooze_panel.visible {
                     self.confirm_not_now();
@@ -626,8 +588,6 @@ impl App {
             }
             Action::RespondInvite(action) => {
                 let message_id = if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
-                    // In the invites lens the selected row is known to be an
-                    // invite, so skip the body-cache calendar check.
                     let Some(invite) = self.selected_invite() else {
                         self.status_message = Some("No invite selected".into());
                         return;
@@ -727,7 +687,6 @@ impl App {
             }
             Action::VisualLineMode => {
                 if self.mailbox.visual_mode {
-                    // Exit visual mode
                     self.mailbox.visual_mode = false;
                     self.mailbox.visual_anchor = None;
                     self.status_message = Some("Visual mode off".into());
@@ -738,7 +697,6 @@ impl App {
                     } else {
                         self.mailbox.selected_index
                     });
-                    // Add current to selection
                     if let Some(env) = self.context_envelope() {
                         self.mailbox.selected_set.insert(env.id.clone());
                     }
@@ -746,16 +704,11 @@ impl App {
                 }
             }
             Action::PatternSelect(pattern) => {
-                // Mutations act on `selected_set` only from the flat mail list
-                // and search results. Anywhere else the selection would show a
-                // count that the next action ignores.
                 if !self.pattern_select_applies() {
                     self.status_message =
                         Some("Pattern select works in mail lists and search results".into());
                     return;
                 }
-                // Field by field, not `mailbox_list_envelopes`, so the
-                // selection below can be written while this is borrowed.
                 let envelopes = if self.screen == Screen::Search {
                     &self.search.page.results
                 } else if self.mailbox.mailbox_view == MailboxView::Snoozed {
@@ -763,8 +716,6 @@ impl App {
                 } else {
                     &self.mailbox.envelopes
                 };
-                // A pattern is a new selection. A visual range left open would
-                // overwrite it on the next j/k.
                 self.mailbox.visual_mode = false;
                 self.mailbox.visual_anchor = None;
                 match pattern {
@@ -811,7 +762,6 @@ impl App {
                 self.status_message = Some(format!("{count} selected"));
             }
 
-            // Phase 2: Other actions
             _ => unreachable!("action routed to wrong handler"),
         }
     }

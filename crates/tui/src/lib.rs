@@ -43,8 +43,6 @@ pub mod ui;
 pub(crate) use async_result::AsyncResult;
 pub use runner::run;
 
-/// Every parse the TUI runs in the HTML helper process. The `mxr` binary
-/// registers them in its helper mode.
 pub fn html_jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
     ui::rich_html::html_jobs()
 }

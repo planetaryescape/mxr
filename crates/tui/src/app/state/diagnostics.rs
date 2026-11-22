@@ -7,7 +7,6 @@ pub enum DiagnosticsPaneKind {
     Events,
     Logs,
     Jobs,
-    /// Local user-activity log; lists recent rows from `user_activity`.
     Activity,
 }
 
@@ -44,9 +43,6 @@ pub struct DiagnosticsPageState {
     pub accounts: Vec<String>,
     pub total_messages: Option<u32>,
     pub sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
-    /// The last `GetStatus` came back without a database reading — the daemon
-    /// was too busy to answer inside its own budget. The counts above are then
-    /// whatever was last actually read, not what the daemon just said.
     pub status_degraded: bool,
     pub recovery: Option<mxr_core::RecoveryStatusData>,
     pub recovery_preview: Option<RecoveryPreview>,
@@ -55,19 +51,10 @@ pub struct DiagnosticsPageState {
     pub events: Vec<mxr_protocol::EventLogEntry>,
     pub logs: Vec<String>,
     pub jobs: Vec<mxr_protocol::JobData>,
-    /// Recent activity rows fetched via `Request::ListActivity` when the
-    /// diagnostics page is opened. Refresh is opt-in (`R`) so we don't
-    /// hammer the daemon while the user is browsing.
     pub activity: Vec<mxr_protocol::ActivityEntry>,
-    /// Free-text search applied to the events pane (matches `summary` /
-    /// `details`). Live-edited while the events pane is focused with `/`.
     pub events_search: String,
-    /// Free-text search applied to the logs pane (substring filter on
-    /// each line). Live-edited while the logs pane is focused with `/`.
     pub logs_search: String,
-    /// Free-text search applied to the activity pane (FTS5 over context_json).
     pub activity_search: String,
-    /// When `Some(pane)`, the user is editing the search box for that pane.
     pub search_input: Option<DiagnosticsPaneKind>,
     pub status: Option<String>,
     pub refresh_pending: bool,

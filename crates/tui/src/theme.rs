@@ -2,39 +2,28 @@ use mxr_core::AccountColor;
 use ratatui::style::{Color, Modifier, Style};
 use serde::Deserialize;
 
-/// Centralized color palette for the TUI.
-/// All UI code should use theme methods instead of hardcoded colors.
 #[derive(Debug, Clone)]
 pub struct Theme {
-    // Borders
     pub border_focused: Color,
     pub border_unfocused: Color,
 
-    // Text
     pub text_primary: Color,
     pub text_secondary: Color,
     pub text_muted: Color,
 
-    // Accent / highlight
     pub accent: Color,
     pub accent_dim: Color,
 
-    // Selection
     pub selection_bg: Color,
     pub selection_fg: Color,
 
-    // Semantic
     pub error: Color,
     pub warning: Color,
     pub success: Color,
 
-    // Contrast poles for text rendered over computed/tinted backgrounds
-    // (e.g. blended selection rows). Pick whichever pole contrasts with
-    // the background instead of hardcoding black/white at call sites.
     pub contrast_dark: Color,
     pub contrast_light: Color,
 
-    // Specific UI
     pub unread_fg: Color,
     pub label_bg: Color,
     pub modal_bg: Color,
@@ -44,51 +33,40 @@ pub struct Theme {
     pub line_number_fg: Color,
     pub link_fg: Color,
 
-    /// Fills and ink for the account chip (blueprint 33). Only the account
-    /// chip reads these, so no other element may take an account colour.
     pub account: AccountPalette,
 }
 
-/// Eight account fills in `AccountColor::ALL` order, and the one ink that
-/// sits on all of them. Both come from the web's `--account-*` tokens so the
-/// two clients show the same colour for the same account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AccountPalette {
     pub fills: [Color; 8],
     pub ink: Color,
-    /// The 256-colour pick for each fill, computed once with the palette.
     picks: [u8; 8],
 }
 
-/// Web dark and midnight. Ink is near-black on these fills.
 const DARK_FILLS: [Color; 8] = [
-    Color::Rgb(0x6c, 0xc0, 0xf0), // sky
-    Color::Rgb(0xe8, 0xa3, 0x3d), // amber
-    Color::Rgb(0x3f, 0xbf, 0x94), // green
-    Color::Rgb(0xe9, 0xdc, 0x5c), // yellow
-    Color::Rgb(0x7a, 0xa6, 0xf5), // blue
-    Color::Rgb(0xf0, 0x8a, 0x5d), // vermilion
-    Color::Rgb(0xd5, 0x8f, 0xc0), // purple
-    Color::Rgb(0xa8, 0xb3, 0xbf), // slate
+    Color::Rgb(0x6c, 0xc0, 0xf0),
+    Color::Rgb(0xe8, 0xa3, 0x3d),
+    Color::Rgb(0x3f, 0xbf, 0x94),
+    Color::Rgb(0xe9, 0xdc, 0x5c),
+    Color::Rgb(0x7a, 0xa6, 0xf5),
+    Color::Rgb(0xf0, 0x8a, 0x5d),
+    Color::Rgb(0xd5, 0x8f, 0xc0),
+    Color::Rgb(0xa8, 0xb3, 0xbf),
 ];
 const DARK_INK: Color = Color::Rgb(0x0b, 0x12, 0x18);
 
-/// Web light. Fills are deeper so white ink reaches 4.5:1.
 const LIGHT_FILLS: [Color; 8] = [
-    Color::Rgb(0x1f, 0x6f, 0xa8), // sky
-    Color::Rgb(0x8f, 0x5a, 0x00), // amber
-    Color::Rgb(0x00, 0x78, 0x5a), // green
-    Color::Rgb(0x6f, 0x64, 0x00), // yellow
-    Color::Rgb(0x2f, 0x55, 0xb8), // blue
-    Color::Rgb(0xb3, 0x47, 0x1b), // vermilion
-    Color::Rgb(0x9a, 0x4a, 0x84), // purple
-    Color::Rgb(0x56, 0x60, 0x6b), // slate
+    Color::Rgb(0x1f, 0x6f, 0xa8),
+    Color::Rgb(0x8f, 0x5a, 0x00),
+    Color::Rgb(0x00, 0x78, 0x5a),
+    Color::Rgb(0x6f, 0x64, 0x00),
+    Color::Rgb(0x2f, 0x55, 0xb8),
+    Color::Rgb(0xb3, 0x47, 0x1b),
+    Color::Rgb(0x9a, 0x4a, 0x84),
+    Color::Rgb(0x56, 0x60, 0x6b),
 ];
 const LIGHT_INK: Color = Color::Rgb(0xff, 0xff, 0xff);
 
-// Built once: every `App` builds a theme, and choosing eight distinct
-// 256-colour picks searches the whole colour cube, which made the palette
-// most of the cost of `App::new` in debug builds.
 static DARK_ACCOUNTS: std::sync::LazyLock<AccountPalette> =
     std::sync::LazyLock::new(|| AccountPalette::new(DARK_FILLS, DARK_INK));
 static LIGHT_ACCOUNTS: std::sync::LazyLock<AccountPalette> =
@@ -103,8 +81,6 @@ impl AccountPalette {
         }
     }
 
-    /// The slot's 256-colour pick. The eight picks are distinct, so a
-    /// palette that maps two fills to one index is never shown.
     pub fn indexed_fill(&self, color: AccountColor) -> Color {
         let slot = AccountColor::ALL
             .iter()
@@ -118,7 +94,6 @@ impl AccountPalette {
     }
 
     pub fn fill(&self, color: AccountColor) -> Color {
-        // A slot this build doesn't know (`Unknown`) falls back to slate, the last one.
         let slot = AccountColor::ALL
             .iter()
             .position(|candidate| *candidate == color)
@@ -127,8 +102,6 @@ impl AccountPalette {
     }
 }
 
-/// The xterm 256-colour index nearest to `color`, from the 6x6x6 cube and
-/// the grey ramp (indices 16 to 255). Non-RGB colours map to black.
 pub fn nearest_256(color: Color) -> u8 {
     let Color::Rgb(r, g, b) = color else {
         return 16;
@@ -139,8 +112,6 @@ pub fn nearest_256(color: Color) -> u8 {
         .unwrap_or(16)
 }
 
-/// Each fill's nearest pick, taken in slot order: where two fills share a
-/// nearest index, the later one takes its next-nearest unused index.
 fn distinct_256_picks(fills: &[Color; 8]) -> [u8; 8] {
     let mut used: Vec<u8> = Vec::with_capacity(8);
     let mut picks = [16u8; 8];
@@ -192,7 +163,6 @@ impl Theme {
         }
     }
 
-    /// Dark theme using colors that match the terminal-native aesthetic.
     pub fn dark() -> Self {
         Self {
             border_focused: Color::Cyan,
@@ -216,7 +186,7 @@ impl Theme {
             quote_fg: Color::DarkGray,
             signature_fg: Color::DarkGray,
             line_number_fg: Color::Rgb(80, 80, 80),
-            link_fg: Color::Rgb(96, 165, 250), // blue, underlined in render
+            link_fg: Color::Rgb(96, 165, 250),
             account: *DARK_ACCOUNTS,
         }
     }
@@ -249,12 +219,6 @@ impl Theme {
         }
     }
 
-    /// A navy palette with cool blue accents for terminals that support RGB.
-    /// The text tiers are the web's `--text-1..3`, the hint bar is `--ink-room`
-    /// and modals are `--ink-overlay` (docs/blueprint/27). The cursor line
-    /// stays a blue tint, not `--ink-lamp`: the TUI does not paint a desk, and
-    /// the lamp is too close to a terminal's own black to show a cursor.
-    /// `default` remains the terminal-native ANSI palette for compatibility.
     pub fn midnight() -> Self {
         Self {
             border_focused: Color::Rgb(84, 221, 255),
@@ -339,7 +303,6 @@ impl Theme {
         }
     }
 
-    // Helper style methods
     pub fn border_style(&self, focused: bool) -> Style {
         if focused {
             Style::default().fg(self.border_focused)
@@ -393,8 +356,6 @@ impl Theme {
         Style::default().bg(self.modal_bg)
     }
 
-    /// Returns a color for a label based on its name.
-    /// System labels get fixed colors, user labels use a hash-based palette.
     pub fn label_color(label_name: &str) -> Color {
         match label_name.to_uppercase().as_str() {
             "INBOX" => Color::Blue,
@@ -406,17 +367,16 @@ impl Theme {
             "ARCHIVE" => Color::DarkGray,
             "IMPORTANT" => Color::Yellow,
             _ => {
-                // Hash-based color for user labels
                 let hash: u8 = label_name.bytes().fold(0u8, u8::wrapping_add);
                 let colors = [
-                    Color::Rgb(96, 165, 250),  // blue
-                    Color::Rgb(52, 211, 153),  // emerald
-                    Color::Rgb(251, 146, 60),  // orange
-                    Color::Rgb(167, 139, 250), // violet
-                    Color::Rgb(251, 113, 133), // rose
-                    Color::Rgb(56, 189, 248),  // sky
-                    Color::Rgb(253, 186, 116), // amber
-                    Color::Rgb(134, 239, 172), // green
+                    Color::Rgb(96, 165, 250),
+                    Color::Rgb(52, 211, 153),
+                    Color::Rgb(251, 146, 60),
+                    Color::Rgb(167, 139, 250),
+                    Color::Rgb(251, 113, 133),
+                    Color::Rgb(56, 189, 248),
+                    Color::Rgb(253, 186, 116),
+                    Color::Rgb(134, 239, 172),
                 ];
                 colors[(hash % colors.len() as u8) as usize]
             }

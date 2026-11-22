@@ -10,14 +10,8 @@ use tokio::time::{sleep, Duration, Instant};
 
 tokio::task_local! { pub(crate) static COMMAND_OWNER: Option<mxr_protocol::ArchiveWorkspaceData>; }
 
-/// Upper bound on any single request through the shared IPC worker. The
-/// daemon answers everything on this path in well under a second when
-/// healthy (slow LLM work uses dedicated connections); large list fetches
-/// on a cold multi-GB store are the slowest legitimate case, still far
-/// inside this bound. Only a dead or wedged peer ever reaches it.
 pub(crate) const IPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// A request sent from the main loop to the background IPC worker.
 pub(crate) struct IpcRequest {
     pub(crate) expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
     pub(crate) request: Request,
@@ -32,9 +26,6 @@ pub(crate) struct AttachmentTransferRequest {
     pub(crate) replace_existing: bool,
 }
 
-/// Runs a single persistent daemon connection in a background task.
-/// The main loop sends requests via channel — no new connections per operation.
-/// Daemon events (SyncCompleted, LabelCountsUpdated, etc.) are forwarded to result_tx.
 #[cfg(test)]
 pub(crate) fn spawn_ipc_worker(
     socket_path: std::path::PathBuf,
@@ -72,16 +63,10 @@ fn spawn_ipc_worker_selected(
 ) -> mpsc::UnboundedSender<IpcRequest> {
     let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
     tokio::spawn(async move {
-        // Create event channel — Client forwards daemon events here
         let (event_tx, mut event_rx) = mpsc::unbounded_channel::<DaemonEvent>();
 
         let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connecting));
 
-        // Initial connect with retry. The previous behavior was to silently
-        // exit the worker on first connect failure, leaving the UI hung at
-        // "connecting" forever. Now we retry forever, emit state transitions
-        // for the UI to render, and reply Err to any pending requests so the
-        // main loop's mutation queue doesn't stall.
         let (mut client, session_workspace) = loop {
             if matches!(target.selection_is_current().await, Ok(false)) {
                 retire_selected_session(&result_tx, &mut rx);
@@ -116,8 +101,6 @@ fn spawn_ipc_worker_selected(
                             reason: error.to_string(),
                         },
                     ));
-                    // Drain any queued requests with an error so the main
-                    // loop doesn't sit indefinitely waiting on oneshot replies.
                     while let Ok(req) = rx.try_recv() {
                         let _ = req
                             .reply
@@ -140,22 +123,9 @@ fn spawn_ipc_worker_selected(
                 req = rx.recv() => {
                     match req {
                         Some(req) => {
-                            // A filter/person read whose consumer moved on must
-                            // not hold up the current selection. Never discard
-                            // a mutation: cancellation cannot establish whether
-                            // it was applied.
                             if req.reply.is_closed() && request_supports_retry(&req.request) {
                                 continue;
                             }
-                            // Bound every request. Without this, a daemon that
-                            // accepts the connection but never replies (wedged,
-                            // killed mid-request, orphaned socket) parks this
-                            // worker forever: the in-flight oneshot never fires,
-                            // the UI shows its queued status ("Archiving...")
-                            // indefinitely, and every later request queues
-                            // behind the stuck one. Slow LLM work doesn't go
-                            // through this worker (see ipc_call_dedicated), so
-                            // a generous bound only ever fires on a dead peer.
                             let is_transfer = req.attachment_transfer.is_some();
                             let transfer = req.attachment_transfer;
                             let completed = {
@@ -194,12 +164,6 @@ fn spawn_ipc_worker_selected(
                             let mut result = match completed {
                                 Ok(result) => result,
                                 Err(_) => {
-                                    // The old connection has a stranded
-                                    // in-flight request; a late reply would be
-                                    // misattributed to the next request. Drop
-                                    // it and connect fresh. If the reconnect
-                                    // fails, keep going — the next request
-                                    // re-enters the reconnect path.
                                     let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Reconnecting {
                                         since: std::time::Instant::now(), reason: "request timed out; reconnecting without replay".into(),
                                     }));
@@ -365,8 +329,6 @@ async fn start_daemon_process(socket_path: &Path) -> Result<(), MxrError> {
     let mut command = std::process::Command::new(exe);
     let inherited = mxr_client::TransportAddr::resolve(mxr_config::socket_path())
         .map_err(|error| MxrError::Ipc(error.to_string()))?;
-    // Preserve exact profile selectors for recovery unless this session was
-    // explicitly constructed for a different socket than its environment.
     if !matches!(inherited, mxr_client::TransportAddr::Unix(ref path) if path == socket_path) {
         command
             .env_remove("MXR_DAEMON_ADDR")
@@ -461,7 +423,6 @@ pub(crate) fn request_supports_retry(request: &Request) -> bool {
     )
 }
 
-/// Send a request to the IPC worker and get the response.
 pub(crate) async fn ipc_call(
     tx: &mpsc::UnboundedSender<IpcRequest>,
     request: Request,
@@ -534,10 +495,6 @@ pub(crate) async fn ipc_transfer_attachment(
         .map_err(|_| MxrError::Ipc("IPC worker dropped".into()))?
 }
 
-/// Send one request on a short-lived daemon connection.
-///
-/// Used for slow, user-triggered LLM work so the main TUI IPC worker can keep
-/// serving body fetches, search, and mutations while the LLM request runs.
 pub(crate) async fn ipc_call_dedicated(
     session: &DaemonSession,
     request: Request,
@@ -601,15 +558,12 @@ mod tests {
     use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload};
     use tokio_util::codec::Framed;
 
-    /// A daemon that acknowledges setup but stalls ordinary requests must
-    /// produce a timeout error instead of parking the worker forever.
     #[tokio::test(start_paused = true)]
     async fn unresponsive_daemon_times_out_instead_of_hanging() {
         let dir = tempfile::tempdir().expect("tempdir");
         let sock = dir.path().join("mxr.sock");
         let listener = tokio::net::UnixListener::bind(&sock).expect("bind");
 
-        // Finish setup, then leave ordinary requests unanswered.
         tokio::spawn(async move {
             let Ok((stream, _)) = listener.accept().await else {
                 return;
@@ -630,18 +584,12 @@ mod tests {
         );
     }
 
-    /// Daemon events pushed while the TUI is idle (no request in flight)
-    /// must be forwarded to the result channel without any request trigger.
-    /// This is a RED test — it fails against current code because the worker
-    /// only reads events inside request(), not while idle.
     #[tokio::test]
     async fn idle_daemon_events_are_delivered_without_a_request() {
         let dir = tempfile::tempdir().expect("tempdir");
         let sock = dir.path().join("mxr_idle_events.sock");
         let listener = tokio::net::UnixListener::bind(&sock).expect("bind");
 
-        // Fake daemon: accept, immediately push one SyncCompleted event,
-        // then hold the connection open.
         tokio::spawn(async move {
             let Ok((stream, _)) = listener.accept().await else {
                 return;
@@ -672,14 +620,12 @@ mod tests {
                 }),
             };
             let _ = framed.send(event_msg).await;
-            // Hold the connection open so the worker doesn't see EOF.
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
         });
 
         let (result_tx, mut result_rx) = mpsc::unbounded_channel();
         let _worker = spawn_ipc_worker(sock, result_tx);
 
-        // The worker should deliver the event without us sending any request.
         let received = tokio::time::timeout(std::time::Duration::from_secs(5), async {
             loop {
                 let msg = result_rx.recv().await?;
@@ -699,22 +645,16 @@ mod tests {
         );
     }
 
-    /// When the daemon closes the connection while the worker is idle,
-    /// the worker must emit ConnectionState::Reconnecting and not hang.
     #[tokio::test(start_paused = true)]
     async fn idle_connection_close_triggers_reconnect_state() {
         let dir = tempfile::tempdir().expect("tempdir");
         let sock = dir.path().join("mxr_idle_close.sock");
         let listener = tokio::net::UnixListener::bind(&sock).expect("bind");
 
-        // Fake daemon: accept the first connection then immediately drop it.
-        // Also accept a second connection (from reconnect attempt) and hold it.
         tokio::spawn(async move {
-            // First connection: accept and drop immediately.
             if let Ok((stream, _)) = listener.accept().await {
                 drop(stream);
             }
-            // Second connection (reconnect): accept and hold open.
             if let Ok((_stream, _)) = listener.accept().await {
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
             }
@@ -723,7 +663,6 @@ mod tests {
         let (result_tx, mut result_rx) = mpsc::unbounded_channel();
         let _worker = spawn_ipc_worker(sock, result_tx);
 
-        // Drain until we see a Reconnecting state.
         let saw_reconnecting = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {
                 let msg = result_rx.recv().await?;

@@ -1,8 +1,3 @@
-//! Archive's subscriptions in the TUI: one row per subscription (what,
-//! amount, cadence, next charge, status) under the totals per currency,
-//! and a card with the charge history and price changes. Renders
-//! `Request::ListRecordSubscriptions`; the daemon works out every value.
-
 use mxr_protocol::{RecordSubscriptionData, RecordSubscriptionsData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -11,7 +6,6 @@ use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
 fn date(at: chrono::DateTime<chrono::Utc>) -> String {
-    // Days are stored at midday UTC, so UTC reads the day meant.
     at.format("%-d %b %Y").to_string()
 }
 
@@ -30,7 +24,6 @@ fn amount_cell(subscription: &RecordSubscriptionData) -> String {
     )
 }
 
-/// "next 3 Jul 2025", "overdue since 3 May 2025", "ended 3 Apr 2025".
 fn when(subscription: &RecordSubscriptionData) -> String {
     match (subscription.status.as_str(), subscription.next_expected) {
         ("overdue", Some(next)) => format!("overdue since {}", date(next)),
@@ -76,7 +69,6 @@ fn row(
     ])
 }
 
-/// The list's lines and which one is selected.
 pub(crate) fn lines(
     data: Option<&RecordSubscriptionsData>,
     selected: usize,
@@ -145,8 +137,6 @@ pub(crate) fn lines(
     (out, selected_line)
 }
 
-/// The card: what it is, the fields with where they came from, the price
-/// changes and every charge.
 pub(crate) fn card_text(
     subscription: &RecordSubscriptionData,
     width: usize,

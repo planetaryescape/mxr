@@ -73,8 +73,6 @@ fn mutation_can_auto_retry(request: &Request) -> bool {
         Request::SendDraft { .. }
             | Request::SendStoredDraft { .. }
             | Request::SubmitArchive { .. }
-            // A retry after the daemon applied it would find nothing to
-            // remove and bury the undo it made.
             | Request::RemoveHighlight { .. }
             | Request::Mutation {
                 mutation: mxr_protocol::MutationCommand::Archive { .. },
@@ -128,9 +126,6 @@ fn run_with_terminal_suspended<R>(
     )
 }
 
-/// Drives the Outlook device-code flow in a background task, forwarding each
-/// `GetAuthSession` state update as an `AsyncResult::AuthSession` event so the
-/// TUI can render the device-code overlay and react to terminal states.
 async fn spawn_outlook_auth_session(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     result_tx: mpsc::UnboundedSender<AsyncResult>,
@@ -439,16 +434,12 @@ pub async fn run() -> anyhow::Result<()> {
         app.accounts.page.refresh_pending = true;
     } else {
         app.load(&mut client).await?;
-        // Now is the front page; the inbox stays loaded one key away.
-        // No tour: each mode teaches itself with hints at the element they
-        // explain, the first time it is needed (blueprint 22, D118).
         if session.target.is_paired_remote() {
             app.apply(crate::action::Action::OpenMailboxScreen);
             app.status_message = Some("Remote mailbox: reading and downloads are available; replies require host-approved send access".into());
         } else {
             app.apply(crate::action::Action::OpenNow);
         }
-        // Load accounts for sidebar account section
         app.accounts.page.refresh_pending = !session.target.is_paired_remote();
     }
 
@@ -457,10 +448,8 @@ pub async fn run() -> anyhow::Result<()> {
     app.set_terminal_image_support(crate::terminal_images::TerminalImageSupport::detect());
     let mut events = Some(EventStream::new());
 
-    // Channels for async results
     let (result_tx, mut result_rx) = mpsc::unbounded_channel::<AsyncResult>();
 
-    // Background IPC worker — also forwards daemon events to result_tx
     let bg = spawn_ipc_worker_for_session(session.clone(), result_tx.clone());
     let html_assets =
         crate::terminal_images::spawn_html_image_asset_worker(bg.clone(), result_tx.clone());
@@ -480,8 +469,6 @@ pub async fn run() -> anyhow::Result<()> {
         crate::local_io::submit_pending_work(&mut app, &local_io);
 
         if std::mem::take(&mut app.pending_suspend) {
-            // Restores the terminal, stops until the shell resumes us, then
-            // takes the terminal back; the next draw repaints everything.
             run_with_terminal_suspended(
                 &mut terminal,
                 &mut events,
@@ -547,7 +534,6 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
 
-        // Batch body fetches, keeping the selected message ahead of window prefetches.
         let body_fetch_ids = if !app.mailbox.priority_body_fetches.is_empty() {
             let ids = std::mem::take(&mut app.mailbox.priority_body_fetches);
             for id in &ids {
@@ -631,7 +617,6 @@ pub async fn run() -> anyhow::Result<()> {
         };
         let timeout = app.next_background_timeout(timeout);
 
-        // Spawn non-blocking search
         if let Some(pending) = app.search.pending.take() {
             let _ = replaceable.send(ReplaceableRequest::Search(pending));
         }
@@ -768,8 +753,6 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::Drafts { drafts },
                     }) => {
-                        // Which drafts are scheduled is extra detail: a
-                        // failure here must not hide the drafts themselves.
                         let sends =
                             match ipc_call(&bg, Request::ListScheduledSends { account_id: None })
                                 .await
@@ -1134,21 +1117,10 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // Drain a debounced summary request once its deadline has
-        // elapsed. Holding down-arrow through the mail list re-stamps
-        // the debounce on every row; only the thread the user actually
-        // lands on (the last to outlast the 250ms window) goes to the
-        // daemon. In-flight requests fired by an earlier debounce are
-        // not cancelled — they complete and the daemon caches the
-        // result for when the user comes back.
         if let Some((thread_id, deadline)) = app.pending_summary_debounce.as_ref() {
             if tokio::time::Instant::now() >= *deadline {
                 let thread_id = thread_id.clone();
                 app.pending_summary_debounce = None;
-                // Only schedule the auto-summary if the thread is worth
-                // summarizing. The user can still force a summary by
-                // pressing `y` (Action::SummarizeCurrentThread bypasses
-                // this gate entirely).
                 let eligible = app
                     .mailbox
                     .viewed_thread
@@ -1217,7 +1189,6 @@ pub async fn run() -> anyhow::Result<()> {
                             message_id: message_id.clone(),
                         },
                         now: None,
-                        // The TUI runs next to the daemon: its zone is ours.
                         time_zone: None,
                     },
                 )
@@ -1295,8 +1266,6 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
 
-        // Gists for the rows around the cursor on the desk and triage
-        // lists; the daemon answers from its cache and queues the rest.
         let now = std::time::Instant::now();
         if app.row_gists.due(now) {
             let candidates = app.row_gist_candidates();
@@ -1613,9 +1582,6 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // Drain any queued saved-search requests (Create / Delete). The edit
-        // path queues `[Delete, Create]` so we dispatch them in order; the
-        // last response triggers a list refresh.
         let saved_search_dispatch = app.take_pending_saved_search_dispatch();
         if !saved_search_dispatch.is_empty() {
             let total = saved_search_dispatch.len();
@@ -1629,23 +1595,16 @@ pub async fn run() -> anyhow::Result<()> {
                         Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                         Err(e) => Err(e),
                     };
-                    let _ = is_last; // last-flag is observed by the response handler.
+                    let _ = is_last;
                     AsyncResult::SavedSearchMutation(result)
                 });
             }
             app.modals.pending_saved_search_refresh = true;
         }
 
-        // Refresh the sidebar list once a saved-search mutation completes.
-        // Triggered either by the dispatch above or by the response handler
-        // when it observes `pending_saved_search_refresh`.
         if app.modals.pending_saved_search_refresh
             && app.modals.pending_saved_search_dispatch.is_empty()
         {
-            // Don't refire if a refresh task is already in flight: clear
-            // the flag here so the response handler can re-set it on the
-            // *next* mutation. Avoids spamming ListSavedSearches every
-            // tick while a save is in-flight.
             app.modals.pending_saved_search_refresh = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -1691,9 +1650,6 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // Drain queued semantic-runtime requests (Enable / Disable / Reindex
-        // / InstallProfile). Each is a one-shot; result routes through the
-        // shared error reporter so failures aren't swallowed.
         let semantic_dispatch = app.take_pending_semantic_dispatch();
         for request in semantic_dispatch {
             let bg = bg.clone();
@@ -1993,8 +1949,6 @@ pub async fn run() -> anyhow::Result<()> {
                     },
                 )
                 .await;
-                // System mailbox counts add up every account; if that second
-                // request fails the default account's own counts stay.
                 let all = ipc_call(
                     &bg,
                     Request::ListLabels {
@@ -2151,12 +2105,6 @@ pub async fn run() -> anyhow::Result<()> {
                         refresh: false,
                     },
                     crate::app::BriefingRequest::Recipient { email } => {
-                        // Account id resolved daemon-side; the briefing
-                        // handler uses the supplied id verbatim. We use
-                        // the default account on the client side.
-                        // (For now, leave account_id construction up to
-                        // the daemon by passing a fresh AccountId — the
-                        // handler validates against the contacts table.)
                         let account_id = mxr_core::AccountId::new();
                         Request::GetRecipientBriefing {
                             account_id,
@@ -2187,7 +2135,6 @@ pub async fn run() -> anyhow::Result<()> {
             app.mailbox.pending_snoozed_refresh = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                // The web's Snoozed page makes the same two requests.
                 let snoozed = match ipc_call(&bg, Request::ListSnoozed).await {
                     Ok(Response::Ok {
                         data: ResponseData::SnoozedMessages { snoozed },
@@ -2311,9 +2258,7 @@ pub async fn run() -> anyhow::Result<()> {
             let _ = submit_task(&queued, async move {
                 AsyncResult::Now(fetch_now(&now_bg).await.map(Box::new))
             });
-            // The arrivals line beside it; only opening Now starts a visit.
             let mark_seen = std::mem::take(&mut app.mailbox.now_page.pending_mark_seen);
-            // Refreshes while Now stays open keep the window the visit opened with.
             let open_since = app.mailbox.now_page.arrivals.as_ref().map(|a| a.since);
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -3037,8 +2982,6 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // A system mailbox no label names (Starred on an account set with no
-        // Starred label) lists by its role, across every enabled account.
         if let Some(role) = app.mailbox.pending_role_fetch.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -3065,7 +3008,6 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // Spawn non-blocking label envelope fetch
         if let Some(label_id) = app.mailbox.pending_label_fetch.take() {
             let bg = bg.clone();
             let label_role = crate::client::unified_role_for(&app.mailbox.labels, &label_id);
@@ -3093,7 +3035,6 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // Drain pending mutations
         let now = std::time::Instant::now();
         let mut deferred_mutations = Vec::new();
         for queued_mutation in app.pending_mutation_queue.drain(..) {
@@ -3326,8 +3267,6 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::ModeGuides { .. },
                     }) => Ok(effect),
-                    // A "Next time" hint another run or client already
-                    // showed says nothing.
                     Ok(Response::Ok {
                         data: ResponseData::HintSeen { newly_seen, .. },
                     }) => Ok(match effect {
@@ -3336,7 +3275,6 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         effect => effect,
                     }),
-                    // Reading: the daemon's own words where it has them.
                     Ok(Response::Ok {
                         data: ResponseData::ReadingLater { copy, .. },
                     }) => Ok(app::MutationEffect::ModeDone(copy)),
@@ -3346,7 +3284,6 @@ pub async fn run() -> anyhow::Result<()> {
                             | ResponseData::ReadingSource { .. }
                             | ResponseData::ReadingHighlight { .. },
                     }) => Ok(effect),
-                    // Changing a highlight: the daemon's undo, offered with `u`.
                     Ok(Response::Ok {
                         data: ResponseData::ReadingHighlightChanged { change },
                     }) if !change.dry_run => {
@@ -3370,7 +3307,6 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         Ok(app::MutationEffect::ModeDone(copy))
                     }
-                    // `M`: Marginalia answers with where the item opens.
                     Ok(Response::Ok {
                         data: ResponseData::MarginaliaSend { send },
                     }) => Ok(app::MutationEffect::ModeDone(
@@ -3399,8 +3335,6 @@ pub async fn run() -> anyhow::Result<()> {
                         if let Some(undo) = records_undo(&change) {
                             let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
                         }
-                        // The daemon's own words: "Filed in Archive.", never
-                        // the provider's "Archived".
                         Ok(app::MutationEffect::Records(change.message))
                     }
                     Ok(Response::Ok {
@@ -3410,8 +3344,6 @@ pub async fn run() -> anyhow::Result<()> {
                             let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
                         }
                         if change.changed.is_empty() {
-                            // Nothing was in a state this applies to: say
-                            // so in the daemon's words, and refetch.
                             Ok(app::MutationEffect::Todo(change.summary))
                         } else {
                             Ok(effect)
@@ -3426,7 +3358,6 @@ pub async fn run() -> anyhow::Result<()> {
                                 ..
                             },
                     }) => {
-                        // A user's move offers undo; the undo itself does not.
                         if matches!(effect, app::MutationEffect::SenderMoved(_)) {
                             let _ =
                                 result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
@@ -3467,8 +3398,6 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::MessageMoved { outcome },
                     }) => {
-                        // `u` puts the move back exactly; the toast is the
-                        // daemon's copy and its sender question.
                         if let Some(correction_id) = outcome.correction_id {
                             let _ =
                                 result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
@@ -3514,7 +3443,6 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::UpdateSource { change },
                     }) => {
-                        // A user's tuning offers undo; the undo itself does not.
                         let undoing = matches!(
                             &effect,
                             app::MutationEffect::ModeDone(message) if !message.is_empty()
@@ -3549,7 +3477,6 @@ pub async fn run() -> anyhow::Result<()> {
                             },
                     }) => {
                         let done = items.iter().filter(|item| item.error.is_none()).count();
-                        // Offer `u` only when there is an undo to run.
                         let effect = if mutation_id.is_some() {
                             effect
                         } else if undo_unavailable {
@@ -3568,8 +3495,6 @@ pub async fn run() -> anyhow::Result<()> {
                                     applied_at: std::time::Instant::now(),
                                 }));
                         }
-                        // A conversation Done could not put away keeps its
-                        // row (the failure refetches the desk); `e` retries.
                         match items.iter().find_map(|item| item.error.as_deref()) {
                             None => Ok(effect),
                             Some(error) => Err(MxrError::Ipc(format!("Not done: {error}"))),
@@ -3584,8 +3509,6 @@ pub async fn run() -> anyhow::Result<()> {
                                 ..
                             },
                     }) => {
-                        // Say what the daemon set, in its words: the time and
-                        // whether it waits on a reply.
                         let when = until
                             .with_timezone(&chrono::Local)
                             .format("%a %e %b %H:%M")
@@ -3628,8 +3551,6 @@ pub async fn run() -> anyhow::Result<()> {
                                 let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
                             }
                         }
-                        // A partly failed undo keeps what failed under the
-                        // same id: `u` again retries just those.
                         if let (Some(mutation_id), Some(failed)) =
                             (undo_id, undo_retry_count(&message))
                         {
@@ -3658,7 +3579,6 @@ pub async fn run() -> anyhow::Result<()> {
         }
         app.pending_mutation_queue.extend(deferred_mutations);
 
-        // Thread export: the picker chose the format and destination.
         if let Some(pending) = app.mailbox.pending_export.take() {
             let bg = bg.clone();
             let _ = submit_task(&local_io, async move {
@@ -3666,7 +3586,6 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // Handle compose actions
         if let Some(compose_action) = app.compose.pending_compose.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -3675,13 +3594,6 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // Prewarm reply context for the message currently in view on a
-        // *dedicated* daemon connection. The shared IPC worker is serial
-        // (one request in flight at a time), so the prewarm must run on
-        // its own socket — otherwise it would queue ahead of the user's
-        // `r`/`a` action. Daemon-side, PrepareReply is now a cheap memo
-        // hit on the second call for the same message, so the prewarm
-        // fills the cache and the keypress wins immediately.
         if let Some(env_id) = app.context_envelope().map(|env| env.id.clone()) {
             let already_warming = app
                 .compose
@@ -3754,9 +3666,6 @@ pub async fn run() -> anyhow::Result<()> {
                 }
             }
             _ = debounce_wait => {
-                // Wake-up only — the top of the next loop iteration
-                // checks `pending_summary_debounce` against the
-                // current time and drains it into the real request.
             }
             result = result_rx.recv() => {
                 if let Some(msg) = result {
@@ -4048,13 +3957,10 @@ pub async fn run() -> anyhow::Result<()> {
                                 app.status_message = Some(format!(
                                     "Screener disposition for {sender_email} failed: {e}"
                                 ));
-                                // Re-fetch to recover from optimistic removal.
                                 app.pending_screener_refresh = Some(account_id);
                             }
                         }
                         AsyncResult::SenderProfileLoaded { email, result } => {
-                            // Drop late responses for a sender other than
-                            // the one currently shown in the modal.
                             let still_relevant = app
                                 .modals
                                 .sender_profile
@@ -4082,8 +3988,6 @@ pub async fn run() -> anyhow::Result<()> {
                             apply_thread_context_loaded(&mut app, &thread_id, result);
                         }
                         AsyncResult::PromisesDetected { message_id, result } => {
-                            // A promise check never interrupts: failures are
-                            // logged, not shown.
                             match result {
                                 Ok(detection) => app.offer_promises(message_id, *detection),
                                 Err(error) => {
@@ -4105,8 +4009,6 @@ pub async fn run() -> anyhow::Result<()> {
                                 &batch,
                                 std::time::Instant::now(),
                             ),
-                            // Quiet: rows keep their snippets and are asked
-                            // about again.
                             Err(error) => {
                                 tracing::debug!(%error, "row gists request failed");
                                 app.row_gists.request_failed(&thread_ids);
@@ -4467,20 +4369,11 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::LabelEnvelopes(Ok(envelopes)) => {
                             let selected_id =
                                 app.selected_mail_row().map(|row| row.representative.id);
-                            // Mask in-flight optimistic state so a daemon
-                            // refresh response can't undo an optimistic remove
-                            // or flag change before the mutation acks.
                             let mut envelopes = envelopes;
                             app.pending_optimistic.apply(&mut envelopes);
                             app.mailbox.envelopes = envelopes;
-                            // Only update active_label when this is a user-initiated
-                            // label switch (pending_active_label was set). For
-                            // refresh-only fetches triggered by sync or mutations,
-                            // pending_active_label is None — preserve current label.
                             if app.mailbox.pending_active_label.is_some() {
                                 app.mailbox.active_label = app.mailbox.pending_active_label.take();
-                                // A selection made in the old list while this
-                                // fetch was in flight must not follow into the new one.
                                 app.clear_selection();
                             }
                             restore_mail_list_selection(&mut app, selected_id);
@@ -4578,13 +4471,7 @@ pub async fn run() -> anyhow::Result<()> {
                             match *outcome {
                                 Ok(effect) => {
                                     app.finish_compose_mutation(id);
-                                    // Daemon ack'd the mutation: discard the rollback
-                                    // snapshot — there's no longer anything to revert.
                                     let _ = app.mutation_snapshots.take(id);
-                                    // The optimistic change is now authoritative on
-                                    // both sides; subsequent refreshes will reflect it
-                                    // naturally, so stop masking refresh responses for
-                                    // this mutation.
                                     app.pending_optimistic.clear(id);
                                     let show_completion_status = app.pending_mutation_count == 0;
                                     let effect = app.with_done_note(id, effect);
@@ -4593,16 +4480,11 @@ pub async fn run() -> anyhow::Result<()> {
                                     if let Some((step, reader_on_it)) = archive_step {
                                         app.finish_archive_step(step, reader_on_it);
                                     }
-                                    // In the invites lens, a completed mutation is an
-                                    // RSVP — refetch so the row's RSVP status updates.
                                     if app.mailbox.mailbox_view
                                         == crate::app::MailboxView::CalendarInvites
                                     {
                                         app.mailbox.pending_calendar_invites_refresh = true;
                                     }
-                                    // Any completed mutation can move a thread
-                                    // on or off the desk or a place (archive,
-                                    // reply, snooze).
                                     app.refresh_places();
                                 }
                                 Err(e) => {
@@ -4615,7 +4497,6 @@ pub async fn run() -> anyhow::Result<()> {
                                     if sync_request_pending_failure {
                                         handle_sync_request_failed(&mut app);
                                     }
-                                    // A failed `]` or `[` archive leaves the reader where it is.
                                     let _ = app.take_archive_step(id);
                                     app.handle_mutation_failure_result(id, best_effort, &e);
                                 }
@@ -4657,8 +4538,6 @@ pub async fn run() -> anyhow::Result<()> {
                         } => {
                             let reply_ok = (*reply).ok();
                             let reply_all_ok = (*reply_all).ok();
-                            // A result from before an address change is stale: a
-                            // deferred action then takes the cold path below.
                             let cached = app.compose.cache_warmed_reply_context(
                                 generation,
                                 message_id.clone(),
@@ -4667,11 +4546,6 @@ pub async fn run() -> anyhow::Result<()> {
                                     reply_all: reply_all_ok.clone(),
                                 },
                             );
-                            // Drain a deferred compose action that was
-                            // parked waiting on this prewarm. The user
-                            // pressed `r`/`a` while the IPC was still
-                            // in flight; firing their action now uses
-                            // the cached context with no extra IPC.
                             if let Some(deferred) = app.compose.deferred_compose.take() {
                                 if deferred.message_id == message_id {
                                     app.status_message = None;
@@ -4696,10 +4570,6 @@ pub async fn run() -> anyhow::Result<()> {
                                         },
                                     );
                                 } else {
-                                    // Stale prewarm — the user navigated
-                                    // away. Put the deferral back so the
-                                    // *next* prewarm for `deferred.message_id`
-                                    // (or a fresh keypress) can claim it.
                                     app.compose.deferred_compose = Some(deferred);
                                 }
                             }
@@ -4734,8 +4604,6 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::OwedReplies(Ok((rows, people))) => {
                             if rows.is_empty() && !app.mailbox.owed_page.entries.is_empty() {
-                                // Say what the Focus finish says: it is everyone you
-                                // write with, and where the others are.
                                 app.status_message = Some(match people {
                                     Some(people) if people.others > 0 => format!(
                                         "Low tide. That's everyone you write with. {} who wrote to you {} in Messages.",
@@ -4782,7 +4650,6 @@ pub async fn run() -> anyhow::Result<()> {
                             app.status_message = Some(format!("Couldn't load Now: {e}"));
                         }
                         AsyncResult::Arrivals(Ok(arrivals)) => app.set_arrivals(*arrivals),
-                        // Now still works without its line.
                         AsyncResult::Arrivals(Err(e)) => {
                             tracing::warn!(error = %e, "arrivals line unavailable");
                         }
@@ -4796,8 +4663,6 @@ pub async fn run() -> anyhow::Result<()> {
                             app.mailbox.trust.chips_in_flight = false;
                             match result {
                                 Ok(items) => app.mailbox.trust.set_chips(items),
-                                // Asked ids stay asked: a failing daemon is
-                                // not asked again every frame.
                                 Err(e) => tracing::warn!(error = %e, "mode chips unavailable"),
                             }
                         }
@@ -5033,10 +4898,6 @@ pub async fn run() -> anyhow::Result<()> {
                             handle_sync_batch(&mut app, results);
                         }
                         AsyncResult::SavedSearchMutation(Ok(())) => {
-                            // Trigger a follow-up list refresh on the next
-                            // dispatcher tick. We don't refresh inline so
-                            // pipelined edits (delete+create) update the
-                            // sidebar with the final state, not mid-flight.
                             app.modals.pending_saved_search_refresh = true;
                         }
                         AsyncResult::SavedSearchMutation(Err(e)) => {
@@ -5047,9 +4908,6 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::SavedSearchListRefreshed(Ok(searches)) => {
                             app.mailbox.saved_searches = searches;
-                            // Chain a follow-up to refresh the per-tab
-                            // unread counts so the strip badges stay
-                            // in sync with what the user just changed.
                             let bg_inner = bg.clone();
                             let _ = submit_task(&queued, async move {
                                 let resp = ipc_call(
@@ -5077,15 +4935,9 @@ pub async fn run() -> anyhow::Result<()> {
                             app.mailbox.saved_search_unread_counts = counts;
                         }
                         AsyncResult::SavedSearchUnreadCountsRefreshed(Err(e)) => {
-                            // Non-fatal — bare labels render fine
-                            // without counts. Log so the user sees the
-                            // failure but keep the strip visible.
                             tracing::debug!(error = %e, "saved-search unread counts refresh failed");
                         }
                         AsyncResult::SemanticOperationResult(Ok(())) => {
-                            // Don't overwrite a fresh `Sent!`-style success
-                            // status from a competing flow; only clear if we
-                            // were the one who set it ("Enabling..." etc).
                             if let Some(status) = app.status_message.as_deref() {
                                 if status.starts_with("Enabling")
                                     || status.starts_with("Disabling")
@@ -5265,10 +5117,6 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                         }
                         AsyncResult::AnalyticsResult { view, result } => {
-                            // Drop responses for a view the user already
-                            // navigated away from. Avoids the "table
-                            // briefly flashes the previous view's data"
-                            // race when switching tabs quickly.
                             if app.analytics.view != view {
                                 continue;
                             }
@@ -5332,8 +5180,6 @@ pub async fn run() -> anyhow::Result<()> {
                                 ) => {
                                     app.status_message =
                                         Some(format!("Contacts refreshed: {rows} rows"));
-                                    // Re-fire the active contacts sub-view so the
-                                    // user immediately sees the recomputed numbers.
                                     if app.analytics.view == crate::app::AnalyticsView::Contacts {
                                         app.analytics.refresh_pending = true;
                                     }
@@ -5382,8 +5228,6 @@ pub async fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// From the daemon's "undo: partly done: restored N, M failed and can be
-/// retried" refusal, how many are left to retry.
 fn undo_retry_count(message: &str) -> Option<u32> {
     let rest = message.strip_prefix("undo: partly done: restored ")?;
     let (_, rest) = rest.split_once(", ")?;
@@ -5393,7 +5237,6 @@ fn undo_retry_count(message: &str) -> Option<u32> {
         .flatten()
 }
 
-/// How often a sweep checks on its archive job.
 const SWEEP_JOB_POLL: std::time::Duration = std::time::Duration::from_millis(300);
 
 pub(crate) fn place_request(fetch: &crate::app::PlaceFetch) -> Request {
@@ -5452,8 +5295,6 @@ pub(crate) fn sweep_request(
     }
 }
 
-/// Run a confirmed sweep over exactly its preview, and wait for the archive
-/// job so undo can cover every chunk it archived.
 async fn run_sweep(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     confirm: crate::app::PendingSweepConfirm,
@@ -5498,15 +5339,11 @@ async fn run_sweep(
         };
     }
     match job.error {
-        // Part of it may have landed: keep its undo reachable by reporting
-        // what succeeded rather than failing outright.
         Some(error) if job.progress.succeeded == 0 => Err(MxrError::Ipc(error)),
         _ => Ok((job.progress.succeeded, job.undo_ids)),
     }
 }
 
-/// The desk request the TUI sends: every account, the daemon's default
-/// lane size. Shared by the runtime and its tests so they cannot drift.
 pub(crate) fn desk_request() -> Request {
     Request::GetDesk {
         account_id: None,
@@ -5517,10 +5354,6 @@ pub(crate) fn desk_request() -> Request {
 #[cfg(test)]
 mod tests;
 
-/// What a done-here answer means for the TUI: the toast in the daemon's
-/// handoff words with the undo it offers, or the error when nothing was
-/// done. A thread done could not let go keeps its row (the failure
-/// refetches Now), and `e` retries it.
 pub(crate) fn mode_done_outcome(
     items: &[mxr_protocol::ModeDoneOutcomeData],
     mutation_id: Option<String>,
@@ -5554,8 +5387,6 @@ pub(crate) fn mode_done_outcome(
     (effect, undo)
 }
 
-/// The list Messages asks for: every account, the picker's filter, the
-/// default page size.
 pub(crate) fn list_messages_request(filter: mxr_protocol::MessagesFilterData) -> Request {
     Request::ListMessages {
         account_id: None,
@@ -5565,8 +5396,6 @@ pub(crate) fn list_messages_request(filter: mxr_protocol::MessagesFilterData) ->
     }
 }
 
-/// Messages' bands and its guide, fetched together so the header, the card
-/// and the rows arrive at once. A guide error leaves the rows on screen.
 async fn fetch_messages(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     filter: mxr_protocol::MessagesFilterData,
@@ -5603,8 +5432,6 @@ async fn fetch_messages(
     Ok((messages, guide))
 }
 
-/// What letting go of a digest did: the daemon's line, undo, or why it
-/// refused (the cut changed since the preview).
 pub(crate) fn updates_let_go_outcome(
     result: &mxr_protocol::UpdatesLetGoData,
 ) -> (
@@ -5642,9 +5469,6 @@ pub(crate) fn updates_let_go_outcome(
     (Ok(app::MutationEffect::ModeDone(copy)), undo)
 }
 
-/// The TUI's pin request names one exact latest message. The daemon reports
-/// whether it actually changed; a no-op refreshes the digest without
-/// replacing a still-valid undo from an earlier action.
 pub(crate) fn updates_pin_outcome(
     message_id: mxr_core::MessageId,
     prior_pinned: bool,
@@ -5663,8 +5487,6 @@ pub(crate) fn updates_pin_outcome(
     (app::MutationEffect::RefreshUpdates(status), undo)
 }
 
-/// The daemon's dry run of letting go of the digest at `cut`, or of one
-/// account's source in it.
 async fn preview_let_go(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     cut: Option<chrono::DateTime<chrono::Utc>>,
@@ -5692,7 +5514,6 @@ async fn preview_let_go(
     }
 }
 
-/// The Updates digest (marking Updates seen) and its guide, together.
 async fn fetch_updates(
     bg: &mpsc::UnboundedSender<IpcRequest>,
 ) -> Result<
@@ -5740,8 +5561,6 @@ async fn fetch_updates(
     Ok((digest, guide))
 }
 
-/// Now and its guide, fetched together so the header, the card and the
-/// rows arrive at once. A guide error leaves the rows on screen.
 async fn fetch_now(
     bg: &mpsc::UnboundedSender<IpcRequest>,
 ) -> Result<(mxr_protocol::NowData, Option<mxr_protocol::ModeGuideData>), MxrError> {
@@ -5771,8 +5590,6 @@ async fn fetch_now(
     Ok((now, guide))
 }
 
-/// The runway and To do's guide, fetched together so the header, the card
-/// and the rows arrive at once. A guide error leaves the rows on screen.
 async fn fetch_todo_runway(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     mark_seen: bool,
@@ -5783,7 +5600,6 @@ async fn fetch_todo_runway(
     ),
     MxrError,
 > {
-    // Independent reads: ask for both at once.
     let (runway, guide) = tokio::join!(
         ipc_call(
             bg,
@@ -5816,7 +5632,6 @@ async fn fetch_todo_runway(
     Ok((runway, guide))
 }
 
-/// `u` for an Archive change, as the daemon described its reversal.
 pub(crate) fn records_undo(change: &mxr_protocol::RecordChangeData) -> Option<app::PendingUndo> {
     if change.dry_run {
         return None;
@@ -5839,8 +5654,6 @@ pub(crate) fn records_undo(change: &mxr_protocol::RecordChangeData) -> Option<ap
     })
 }
 
-/// One Archive read: the payload `extract` takes out of the answer, or
-/// the daemon's error.
 async fn records_call<T>(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     request: Request,
@@ -5862,12 +5675,8 @@ fn change_data(data: ResponseData) -> Option<Box<mxr_protocol::RecordChangeData>
     }
 }
 
-/// The rows a list answer brings at once: as many as a ledger page.
 const RECORDS_ANSWER_LIST_LIMIT: u32 = 200;
 
-/// Starts whatever the Archive lens asked the runtime for.
-/// One daemon request for the trust rung, its answer picked out by
-/// `pick`.
 async fn trust_call<T>(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     request: Request,
@@ -5882,8 +5691,6 @@ async fn trust_call<T>(
     }
 }
 
-/// The arrivals list a count opened, and Inbox's mode chips for the rows
-/// on screen.
 fn spawn_trust_fetches(
     app: &mut App,
     bg: &mpsc::UnboundedSender<IpcRequest>,
@@ -6100,8 +5907,6 @@ fn spawn_records_fetches(
     }
 }
 
-/// `u` for a to-do change: put the rows back. A catch-up decision goes
-/// back to undecided in the batch; anything else back on the runway.
 pub(crate) fn todo_undo(change: &mxr_protocol::TodoChangeData) -> Option<app::PendingUndo> {
     if change.dry_run || change.changed.is_empty() {
         return None;
@@ -6146,9 +5951,6 @@ pub(crate) fn todo_undo(change: &mxr_protocol::TodoChangeData) -> Option<app::Pe
     })
 }
 
-/// Reading's fetches: the edition, the item under the cursor, an
-/// article asked for with `L` or `b`, the two previews and an email's own
-/// text for `R`.
 fn spawn_reading_fetches(
     app: &mut App,
     bg: &mpsc::UnboundedSender<IpcRequest>,
@@ -6280,8 +6082,6 @@ fn spawn_reading_fetches(
     }
 }
 
-/// The edition and Reading's guide, fetched together so the header, the
-/// card and the items arrive at once. A guide error leaves the items.
 async fn fetch_reading_edition(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     mark_visit: bool,

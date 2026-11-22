@@ -1,9 +1,3 @@
-//! Messages in the TUI: the bands the daemon serves (`ListMessages`), the
-//! selected person's page (`GetPerson`), Messages' teaching copy
-//! (`GetModeGuide`) and a Got it waiting out its countdown. The daemon owns
-//! the bands, the order and every message's new text; this state holds
-//! what came back and what the user is doing with it.
-
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     AckPlanData, MessagesData, MessagesFilterData, MessagesRowData, ModeGuideData, PersonPageData,
@@ -11,15 +5,12 @@ use mxr_protocol::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// One selectable item in the list, in band order.
 #[derive(Debug, Clone, Copy)]
 pub enum MessagesItem<'a> {
     Row(&'a MessagesRowData),
-    /// The collapsed "Quiet (N)" line: Enter opens it.
     QuietToggle(u32),
 }
 
-/// Which pane of the lens has the keys.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum MessagesFocus {
     #[default]
@@ -27,64 +18,40 @@ pub enum MessagesFocus {
     Person,
 }
 
-/// A Got it shown with its exact text, sending when `send_at` passes
-/// unless undone.
 #[derive(Debug, Clone)]
 pub struct AckCountdown {
     pub plan: AckPlanData,
-    /// Who it goes to, for the line: "Samir".
     pub to: String,
     pub send_at: std::time::Instant,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct MessagesPageState {
-    /// What the list keeps: the turn and the two toggles. Sent with every
-    /// `ListMessages`.
     pub filter: MessagesFilterData,
     pub messages: Option<MessagesData>,
     pub guide: Option<ModeGuideData>,
-    /// The page for `page_for` (a row id).
     pub page: Option<PersonPageData>,
     pub page_for: Option<String>,
     pub focus: MessagesFocus,
     pub quiet_open: bool,
-    /// Letters opened past their first paragraph.
     pub expanded: HashSet<MessageId>,
-    /// Ask the runtime for the bands and the guide.
     pub pending_refresh: bool,
-    /// Ask the runtime for this row's page, on this topic.
     pub pending_person: Option<(String, Option<ThreadId>)>,
-    /// The page last asked for (`ask_person`). Only its answer is shown,
-    /// and verbs wait until it is: an older answer landing late (a refetch
-    /// of the topic just done) can't replace it.
     pub person_target: Option<(String, Option<ThreadId>)>,
-    /// A row to select once the bands are in, by id (`person:<email>`):
-    /// the person an assistant link opened.
     pub select_row: Option<String>,
-    /// A conversation to open once the bands are in: the row whose topics
-    /// hold it, with its page on that topic (Now's Enter on a person).
     pub select_thread: Option<ThreadId>,
-    /// Ask the daemon for a Got it preview on this thread.
     pub pending_ack_preview: Option<ThreadId>,
-    /// The thread `.` asked a preview for: only its preview may start a
-    /// countdown, and only while the lens is still on it.
     pub ack_requested: Option<ThreadId>,
     pub ack: Option<AckCountdown>,
-    /// What each done here moved to, by its mutation, for its toast:
-    /// "Done: Invoice." and "Next: Pricing.", joined with the daemon's copy.
     pub done_notes: HashMap<crate::app::MutationId, DoneNote>,
 }
 
-/// A row in the list: the same address in two accounts is two rows.
 pub type MessagesRowKey = (AccountId, String);
 
 pub fn row_key(row: &MessagesRowData) -> MessagesRowKey {
     (row.account_id.clone(), row.id.clone())
 }
 
-/// Done here's toast, decided when `e` moved on: what was done and what
-/// opened next. The daemon's copy goes between when it answers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoneNote {
     pub head: String,
@@ -92,8 +59,6 @@ pub struct DoneNote {
 }
 
 impl DoneNote {
-    /// "Done: Invoice. Next: Pricing. Archived in Gmail. u to undo": the
-    /// daemon's copy after its first sentence says where the thread went.
     pub fn line(&self, daemon_copy: &str) -> String {
         let handoff = daemon_copy
             .split_once(". ")
@@ -110,8 +75,6 @@ impl DoneNote {
 }
 
 impl MessagesPageState {
-    /// Selectable items in display order: Your turn, Pinned, Recent, then
-    /// the Quiet line (and its rows once open).
     pub fn items(&self) -> Vec<MessagesItem<'_>> {
         let Some(messages) = &self.messages else {
             return Vec::new();
@@ -129,7 +92,6 @@ impl MessagesPageState {
         items
     }
 
-    /// Row keys in display order, for keeping the selection on a row.
     pub fn row_keys(&self) -> Vec<MessagesRowKey> {
         self.items()
             .into_iter()
@@ -140,20 +102,17 @@ impl MessagesPageState {
             .collect()
     }
 
-    /// Where a row sits among the items, if it is shown.
     pub fn index_of(&self, key: &MessagesRowKey) -> Option<usize> {
         self.items()
             .iter()
             .position(|item| matches!(item, MessagesItem::Row(row) if row_key(row) == *key))
     }
 
-    /// Ask for a row's page on a topic, and make it the one to show.
     pub fn ask_person(&mut self, row_id: String, topic: Option<ThreadId>) {
         self.person_target = Some((row_id.clone(), topic.clone()));
         self.pending_person = Some((row_id, topic));
     }
 
-    /// Whether the page asked for last is the one on screen.
     pub fn target_shown(&self) -> bool {
         let Some((row_id, topic)) = &self.person_target else {
             return true;
@@ -167,8 +126,6 @@ impl MessagesPageState {
             })
     }
 
-    /// Whether done here already took this thread (a second `e` before
-    /// the next topic's page arrives must not send it again).
     pub fn is_done_here(&self, thread_id: &ThreadId) -> bool {
         self.messages.as_ref().is_some_and(|m| {
             m.your_turn
@@ -181,7 +138,6 @@ impl MessagesPageState {
         })
     }
 
-    /// Whether a row sits in the folded Quiet band.
     pub fn in_quiet(&self, key: &MessagesRowKey) -> bool {
         self.messages
             .as_ref()
@@ -199,16 +155,12 @@ impl MessagesPageState {
         }
     }
 
-    /// The page on screen, when it is the selected row's.
     pub fn page_for_row(&self, row: &MessagesRowData) -> Option<&PersonPageData> {
         self.page
             .as_ref()
             .filter(|_| self.page_for.as_deref() == Some(row.id.as_str()))
     }
 
-    /// Done here before the daemon answers: the topic is done, and a row
-    /// leaves Your turn only once nothing of it is left, so a person with
-    /// topics still open keeps their place.
     pub fn mark_done_here(&mut self, thread_id: &ThreadId) {
         let Some(messages) = self.messages.as_mut() else {
             return;
@@ -231,7 +183,6 @@ impl MessagesPageState {
         });
     }
 
-    /// Take a thread's topic out of Your turn before the daemon answers.
     pub fn mark_done(&mut self, thread_id: &ThreadId) {
         let Some(messages) = self.messages.as_mut() else {
             return;

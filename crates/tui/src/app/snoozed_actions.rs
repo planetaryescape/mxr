@@ -1,11 +1,3 @@
-//! Snoozed (`g n`) and wake (`w`). Snoozed is the mail list over the
-//! daemon's snoozed messages (`Request::ListSnoozed`, the request the web's
-//! Snoozed page and `mxr snoozed` use), waking soonest first, so the list's
-//! keys work on it as on any label. `w` wakes the lit conversation now
-//! (`Request::Unsnooze`, as `mxr unsnooze` and the web do); in the reply
-//! queue it takes the lit message out of the queue. Both undo a Not now
-//! (`b`), and `b` sets either again.
-
 use super::*;
 
 impl App {
@@ -33,8 +25,6 @@ impl App {
         self.mailbox.pending_snoozed_refresh = true;
     }
 
-    /// The runtime fetched what is snoozed and its envelopes. Messages whose
-    /// envelope is gone are left out, as the web leaves them out.
     pub(crate) fn set_snoozed(
         &mut self,
         snoozed: Vec<mxr_core::types::Snoozed>,
@@ -85,8 +75,6 @@ impl App {
             self.status_message = Some("Nothing snoozed to wake".into());
             return;
         };
-        // The lit row only, as the web's row action: every snoozed message
-        // in the conversation, or the one message in the messages view.
         let ids: Vec<MessageId> = self
             .mailbox
             .snoozed_page
@@ -98,9 +86,7 @@ impl App {
             })
             .map(|envelope| envelope.id.clone())
             .collect();
-        // Off the list at once; a failure fetches it again.
         self.apply_removed_message_ids(&ids);
-        // Back in the inbox, so its counts and the list behind it change.
         self.mailbox.pending_labels_refresh = true;
         self.mailbox.pending_all_envelopes_refresh = true;
         let last = ids.len().saturating_sub(1);
@@ -118,8 +104,6 @@ impl App {
         }
     }
 
-    /// The reply queue's `w`: out of the queue, as the web's reply-later
-    /// page does.
     fn wake_from_reply_queue(&mut self) {
         let queue = &mut self.modals.reply_queue;
         if queue.selected_index >= queue.messages.len() {

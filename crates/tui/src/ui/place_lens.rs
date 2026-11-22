@@ -1,11 +1,3 @@
-//! Reading and Paper trail: mail that isn't from people, bundled by sender.
-//!
-//! Renders `Request::ListPlace` as one header per sender (name, count, and
-//! why the sender is here) with the bundle's messages under it; one cursor
-//! walks the messages. Nothing is styled or counted as unread. Also draws
-//! the sweep preview and the "move sender to…" menu. Pure render; wiring
-//! lives in `app/place_actions.rs`.
-
 use mxr_protocol::{
     AccountSummaryData, MailPlaceData, PlaceBundleData, PlaceMessageData, SenderKindData,
 };
@@ -22,7 +14,6 @@ pub struct PlaceView<'a> {
     pub place: MailPlaceData,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
-    /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
     pub account_marks: &'a AccountMarks,
 }
@@ -34,7 +25,6 @@ pub(crate) const fn place_title(place: MailPlaceData) -> &'static str {
     }
 }
 
-/// What each place's mode is built on for now: both are early versions.
 const fn early_note(place: MailPlaceData) -> &'static str {
     match place {
         MailPlaceData::Reading => "early version: newsletters and lists in your inbox by sender",
@@ -183,8 +173,6 @@ fn bundle_header(
     ])
 }
 
-/// One message. `chip` is the bundle's account chip, empty when the view
-/// shows none; it sits in the trailing column before the date.
 fn message_line(
     message: &PlaceMessageData,
     selected: bool,
@@ -197,7 +185,6 @@ fn message_line(
     let pin = if message.pinned { "\u{2022} " } else { "  " };
     let date = zone.at(message.date).format("%-d %b").to_string();
     let chip_width: usize = chip.iter().map(Span::width).sum();
-    // marker (2) + indent (2) + pin (2) + subject + gap (2) + chip + date
     let subject_width = width
         .saturating_sub(2 + 2 + 2 + 2 + chip_width + date.chars().count())
         .max(8);
@@ -223,7 +210,6 @@ fn message_line(
     Line::from(spans)
 }
 
-/// The sweep preview: what the daemon's dry run says will be archived.
 pub fn draw_sweep_confirm(
     frame: &mut Frame,
     area: Rect,
@@ -235,7 +221,6 @@ pub fn draw_sweep_confirm(
         return;
     };
     let preview = &confirm.preview;
-    // Sized to its content: a count, up to five subjects, the keys.
     let height = u16::try_from(preview.sample_subjects.len()).unwrap_or(5) + 10;
     let popup = centered_rect_fixed_height(64, height, area);
     frame.render_widget(Clear, popup);
@@ -259,7 +244,6 @@ pub fn draw_sweep_confirm(
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
-    // A sweep reaches mail the lens has not loaded yet: say how much.
     let shown = if !confirm.from_updates && confirm.shown < preview.count {
         format!(" ({} shown here)", confirm.shown)
     } else {
@@ -294,8 +278,6 @@ pub fn draw_sweep_confirm(
                     } else {
                         format!("{name} <{email}>")
                     };
-                    // Keep a useful address visible when a configured account
-                    // name would otherwise consume the whole line.
                     if Line::from(identity.as_str()).width() > account_width {
                         email
                     } else {
@@ -346,8 +328,6 @@ pub fn draw_sweep_confirm(
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-/// The confirm button names the scope, so the whole place never reads
-/// like one sender's bundle: "Archive all 143 from 35 senders".
 fn sweep_confirm_label(confirm: &PendingSweepConfirm) -> String {
     let preview = &confirm.preview;
     if confirm.target.sender_email.is_some() {
@@ -360,11 +340,6 @@ fn sweep_confirm_label(confirm: &PendingSweepConfirm) -> String {
     )
 }
 
-/// The "move sender to…" menu. Its keys: p people, r Reading, t Paper
-/// trail, x screened out, a automatic.
-/// The sender-kind menu's options, on the `g` letters of the modes they
-/// feed (D168): People are Messages' `m`, Paper trail is Updates' `u`, and
-/// Screened out takes `d`, chapter 22's screen-out letter.
 pub const SENDER_KIND_CHOICES: [(char, Option<SenderKindData>, &str); 5] = [
     ('m', Some(SenderKindData::People), "People: on the desk"),
     ('r', Some(SenderKindData::Reading), "Reading"),
@@ -517,7 +492,6 @@ mod tests {
         shop.account_id = work.clone();
         let mut bank = bundle("Bank", &["Statement 1"], 0);
         bank.account_id = home.clone();
-        // A fixed date keeps the snapshot the same tomorrow.
         let fixed = chrono::Utc.with_ymd_and_hms(2026, 10, 1, 9, 0, 0).unwrap();
         for message in shop.messages.iter_mut().chain(bank.messages.iter_mut()) {
             message.date = fixed;

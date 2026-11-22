@@ -1,10 +1,3 @@
-//! Overlays read keys in their own handlers, as the tool screens do, so
-//! this extends `screen_keys_are_what_the_definition_says` to them: every
-//! key the definition lists for an overlay does what it says, and every key
-//! it doesn't list does nothing. Most overlay keys act in place (`inline:`),
-//! so the probe watches what the key changes: the drawn screen, the status
-//! line and the requests waiting to go out.
-
 use super::screen_keys::screen_probe_keys;
 use super::*;
 use crate::app::{
@@ -17,7 +10,6 @@ use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use std::collections::BTreeMap;
 
-/// An overlay, the states that show it, and whether letters type in it.
 struct OverlayProbe {
     context: &'static str,
     setups: &'static [fn(&mut App)],
@@ -92,17 +84,9 @@ const OVERLAYS: &[OverlayProbe] = &[
     probe("assistant-history", &[assistant_history]),
 ];
 
-/// Overlays the probe leaves out, and why. Every other overlay with TUI
-/// keys must be in `OVERLAYS`.
 const NOT_PROBED: &[&str] = &[
-    // Every key but its own passes through to the place underneath, which
-    // that place's probe covers; `runner::tests::moves` covers y and n.
     "sender-ask",
-    // The same: any other key works as usual. `app::promises` covers it.
     "promise-prompt",
-    // With a proof or a question waiting, any other key works as it does
-    // in the assistant pane, which the screen probe covers;
-    // `runner::tests::assistant` covers their own keys.
     "assistant-approval",
     "assistant-question",
 ];
@@ -140,7 +124,6 @@ fn palette(app: &mut App) {
 
 fn label_picker(app: &mut App) {
     *app = inbox();
-    // The picker offers the labels of the selected message's account.
     let account_id = app
         .mailbox
         .envelopes
@@ -253,13 +236,10 @@ fn sender_kind_picker(app: &mut App) {
 fn not_now(app: &mut App) {
     *app = inbox();
     app.apply(Action::Snooze);
-    // Every preset, whatever the hour of the run: after the evening hour
-    // Tonight leaves the picker, and `4` would have no time behind it.
     app.modals.snooze_panel.presets = None;
     app.modals.snooze_panel.selected_index = 1;
 }
 
-/// "fri 3" reads two ways, so Tab has another reading to show.
 const TWO_READINGS: &str = "fri 3";
 
 fn not_now_custom(app: &mut App) {
@@ -285,8 +265,6 @@ fn correct_todo(app: &mut App) {
     app.mailbox.todo_page.prompt = Some(prompt);
 }
 
-/// The saved-search delete; every other destroying confirm answers through
-/// the same `ConfirmChoice::key`.
 fn delete_confirm(app: &mut App) {
     *app = inbox();
     app.modals.pending_saved_search_delete_confirm = Some("Receipts".into());
@@ -384,7 +362,6 @@ fn send_review(app: &mut App) {
     app.compose.pending_send_confirm = Some(pending_send());
 }
 
-/// Blocked, so `O` overrides; nothing else sends.
 fn blocked_send_review(app: &mut App) {
     send_review(app);
     let pending = app.compose.pending_send_confirm.as_mut().unwrap();
@@ -419,7 +396,6 @@ fn error(app: &mut App) {
     app.modals.error = Some(state);
 }
 
-/// The summary; the briefing, whois and expert sheets close on the same keys.
 fn sheet(app: &mut App) {
     *app = inbox();
     app.modals.summary.visible = true;
@@ -432,7 +408,6 @@ fn platform(app: &mut App) {
         .open_loading("Voice profile", "Loading voice profile...");
 }
 
-/// First run: no account yet, so `q` quits.
 fn welcome(app: &mut App) {
     *app = App::new();
     app.screen = Screen::Accounts;
@@ -632,8 +607,6 @@ fn todo_prompt(app: &mut App) {
 fn arrivals_list(app: &mut App) {
     *app = inbox();
     app.mailbox.mailbox_view = MailboxView::Now;
-    // A fixed day, not the clock: "2m ago" turning into "3m ago" during
-    // the probe's two minutes would read as every later key acting.
     let now = chrono::DateTime::parse_from_rfc3339("2026-01-05T09:00:00Z")
         .expect("a valid time")
         .with_timezone(&chrono::Utc);
@@ -740,7 +713,6 @@ fn assistant_history(app: &mut App) {
     app.assistant.focus = crate::app::AssistantFocus::Pane;
     app.assistant.list = Some(crate::app::AssistantListState {
         loading: false,
-        // The middle row lit, so both j and k move.
         conversations: vec![
             summary("c1", "Receipts"),
             summary("c2", "Old trip"),
@@ -750,20 +722,16 @@ fn assistant_history(app: &mut App) {
     });
 }
 
-/// What a key can change while an overlay is open: the drawn screen, the
-/// status line, and requests waiting to go out.
 fn fingerprint(app: &mut App) -> String {
     use std::hash::{Hash, Hasher};
     let mut terminal = Terminal::new(TestBackend::new(110, 34)).expect("test terminal");
     terminal
         .draw(|frame| app.draw(frame))
         .expect("the app draws");
-    // A highlight is a style, so each cell's colours and modifiers count.
     let mut screen = std::collections::hash_map::DefaultHasher::new();
     for cell in terminal.backend().buffer().content() {
         (cell.symbol(), cell.fg, cell.bg, cell.modifier).hash(&mut screen);
     }
-    // State a key changes that the screen behind an overlay may not draw.
     format!(
         "{} {:?} {} {} {} {} {:?} {:?} {} {} {:?} {:?} {} {:?} {}",
         screen.finish(),
@@ -784,7 +752,6 @@ fn fingerprint(app: &mut App) -> String {
     )
 }
 
-/// Key → definition name for an overlay.
 fn defined(overlay: &str) -> BTreeMap<String, String> {
     let mut keys = BTreeMap::new();
     for binding in mxr_keymap::defaults().actions.iter().flat_map(|a| &a.tui) {
@@ -797,7 +764,6 @@ fn defined(overlay: &str) -> BTreeMap<String, String> {
     keys
 }
 
-/// A key a text field takes as typing.
 fn types(event: &KeyEvent) -> bool {
     match event.code {
         KeyCode::Char(_) => !event
@@ -814,8 +780,6 @@ struct Pressed {
     after: String,
 }
 
-/// Press `event` in a fresh app set up by `setup`, whose fingerprint is
-/// `before`.
 fn press_in(setup: fn(&mut App), before: &str, event: KeyEvent) -> Pressed {
     let mut app = App::new();
     setup(&mut app);
@@ -828,9 +792,6 @@ fn press_in(setup: fn(&mut App), before: &str, event: KeyEvent) -> Pressed {
     }
 }
 
-/// The probe draws the screen for every key in every overlay, so it is split
-/// into this many tests for a runner to run side by side. Each takes every
-/// `PARTS`th overlay, so a new overlay lands in one without being assigned.
 const PARTS: usize = 4;
 
 #[test]
@@ -916,7 +877,6 @@ fn overlay_keys_are_what_the_definition_says(part: usize) {
                 None if overlay.types && types(event) => {}
                 None if keymap.moved_from(context, name).is_some() => {}
                 None => {
-                    // Handlers that ignore Ctrl or Alt make `Ctrl+j` an echo of `j`.
                     let echo = event
                         .modifiers
                         .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)

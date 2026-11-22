@@ -1,16 +1,9 @@
-//! Updates in the TUI: open the briefing, let go of the whole digest after
-//! the daemon's preview (Enter commits exactly that selection), let go of
-//! one source, hand a line to To do, tune a source, and open a line's link
-//! or email. The daemon owns the cut, the lines and every selection.
-
 use super::*;
 use crate::app::state::{UpdatesRow, UpdatesTuneMenu};
 use mxr_protocol::{UpdateLineData, UpdateSignalData, UpdateSourceSettingData, UpdatesDigestData};
 
-/// The mode id Updates' guide and its card are kept under.
 pub(crate) const UPDATES_MODE: &str = mxr_protocol::UPDATES_GUIDE.mode;
 
-/// The `K` menu's choices, in the order their digits pick them.
 pub(crate) const TUNE_CHOICES: [(UpdateSourceSettingData, &str); 4] = [
     (UpdateSourceSettingData::EveryDigest, "every digest"),
     (UpdateSourceSettingData::ChangesOnly, "changes only"),
@@ -21,13 +14,10 @@ pub(crate) const TUNE_CHOICES: [(UpdateSourceSettingData, &str); 4] = [
     ),
 ];
 
-/// A parcel line is a tracker: it leaves Updates on its own when it ends.
 pub(crate) fn is_tracker_line(line: &UpdateLineData) -> bool {
     line.tracker.as_ref().is_some_and(|t| t.kind == "parcel")
 }
 
-/// "Google (accounts.google.com)": the name a sender chose beside the host
-/// the mail came from, so a borrowed brand shows before a code is pasted.
 fn named(name: &str, email: &str) -> String {
     let name = crate::ui::sanitize::one_line(name);
     match email
@@ -41,8 +31,6 @@ fn named(name: &str, email: &str) -> String {
     }
 }
 
-/// The system clipboard, reporting a missing or failing tool. Tests never
-/// touch the real one; `last_copied` keeps what would have gone there.
 fn copy_code_to_clipboard(text: &str) -> Result<(), String> {
     #[cfg(test)]
     {
@@ -85,7 +73,6 @@ impl App {
         self.mailbox.pending_rail_refresh = true;
     }
 
-    /// The Updates lens owns the keyboard (its list, not a reader beside it).
     pub(crate) fn updates_list_focused(&self) -> bool {
         self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::Updates
@@ -107,7 +94,6 @@ impl App {
         }
     }
 
-    /// The runtime fetched the digest and its guide.
     pub(crate) fn set_updates_digest(
         &mut self,
         digest: UpdatesDigestData,
@@ -126,7 +112,6 @@ impl App {
         }
     }
 
-    /// Refetch the digest after anything that can move it.
     pub(crate) fn refresh_updates(&mut self) {
         if self.mailbox.mailbox_view == MailboxView::Updates
             || self.mailbox.updates_page.digest.is_some()
@@ -142,8 +127,6 @@ impl App {
             .min(self.mailbox.updates_page.row_count().saturating_sub(1));
     }
 
-    /// Enter unfolds the quieter sources, or opens the line's email; `o`
-    /// always opens the email.
     fn updates_open(&mut self, email_only: bool) {
         if let Some(line) = self
             .selected_updates_line()
@@ -169,8 +152,6 @@ impl App {
         }
     }
 
-    /// `A`: ask the daemon what letting go of the digest would do; with
-    /// that preview on screen, Enter lets go of exactly that selection.
     fn updates_let_go_all(&mut self) {
         let page = &mut self.mailbox.updates_page;
         if let Some(preview) = page.let_go_preview.take() {
@@ -210,7 +191,6 @@ impl App {
         self.status_message = Some("Checking what letting go would change…".into());
     }
 
-    /// The daemon's dry run of letting go of the digest.
     pub(crate) fn show_updates_let_go_preview(&mut self, preview: mxr_protocol::UpdatesLetGoData) {
         self.status_message = None;
         if preview.message_ids.is_empty() {
@@ -220,8 +200,6 @@ impl App {
         self.mailbox.updates_page.let_go_preview = Some(preview);
     }
 
-    /// `e`: let go of this source in the digest, through the same
-    /// preview as `A`: the count shows first, Enter commits that selection.
     fn updates_let_go_source(&mut self) {
         let Some(line) = self.selected_updates_line() else {
             return;
@@ -239,7 +217,6 @@ impl App {
         ));
     }
 
-    /// `t`: this needs me. A to-do titled by the line, on its email.
     fn updates_needs_me(&mut self) {
         let Some(line) = self.selected_updates_line() else {
             return;
@@ -248,7 +225,6 @@ impl App {
             self.status_message = Some("Already in To do".into());
             return;
         }
-        // The message the line's fact and title came from, not the newest.
         let Some(message_id) = line
             .fact_message_id
             .clone()
@@ -272,7 +248,6 @@ impl App {
         );
     }
 
-    /// `K`: the tune menu for this line's source.
     fn updates_tune(&mut self) {
         let Some(line) = self.selected_updates_line() else {
             return;
@@ -374,8 +349,6 @@ impl App {
         }
     }
 
-    /// `y`: the lit line's code, else the newest current code in your mail.
-    /// A fresh code arrives between cuts, where no line shows it yet.
     fn updates_copy_code(&mut self) {
         let line_code = self.selected_updates_line().and_then(|line| {
             line.code
@@ -391,7 +364,6 @@ impl App {
         }
     }
 
-    /// The daemon's recent codes arrived: copy the newest still current.
     pub(crate) fn copy_latest_code(&mut self, codes: &[mxr_protocol::OneTimeCodeData]) {
         match codes.iter().find(|code| code.current) {
             Some(code) => {
@@ -423,16 +395,12 @@ impl App {
             self.status_message = Some("Kept the digest".into());
             return;
         }
-        // An open peek closes before the hint, as on the web.
         if page.peek.take().is_some() {
             return;
         }
         self.dismiss_active_hint();
     }
 
-    /// Space: open the lit line's details under it, or close them. One
-    /// peek at a time. Its latest email is fetched as the reader fetches it,
-    /// so `o` afterwards finds it ready.
     fn updates_toggle_peek(&mut self) {
         let Some(line) = self.selected_updates_line() else {
             return;
@@ -468,8 +436,6 @@ impl App {
         }
     }
 
-    /// The peeked line's latest email as plain text, once fetched. Plain
-    /// text only, as the web's peek reads it.
     pub(super) fn updates_peek_body(&self) -> Option<&str> {
         let page = &self.mailbox.updates_page;
         let peek = page.peek.as_deref()?;
@@ -487,7 +453,6 @@ impl App {
         body.text_plain.as_deref()
     }
 
-    /// Key handling for the Updates lens.
     pub(super) fn updates_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let page = &self.mailbox.updates_page;
         if page.let_go_preview.is_some() {

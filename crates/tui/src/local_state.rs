@@ -3,13 +3,6 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TuiLocalState {
-    // TUI-owned view state belongs here, not in daemon IPC. Teaching
-    // state (which hints are dismissed) lives in the daemon instead, so
-    // every client shares it.
-    /// Most-recent-first labels of palette commands the user has
-    /// confirmed. Persisted by label rather than by `Action` enum because
-    /// the enum's variants change shape across versions; labels are
-    /// stable user-facing strings.
     #[serde(default)]
     pub recent_action_labels: Vec<String>,
 }

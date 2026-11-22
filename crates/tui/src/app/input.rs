@@ -5,9 +5,6 @@ pub(super) fn plain_or_shift(modifiers: KeyModifiers) -> bool {
     modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
 }
 
-/// The web reader's folds and archive-and-step (blueprint 35): `o` the
-/// focused message, `;` every message, `Q` quoted text, `]` and `[`
-/// archive and open the next or previous conversation.
 fn reader_fold_key(key: crossterm::event::KeyEvent) -> Option<Action> {
     match (key.code, key.modifiers) {
         (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::ToggleMessage),
@@ -106,8 +103,6 @@ impl App {
             .input
             .handle_configured_key(&self.keybindings, context, key);
         let Some(name) = resolved else {
-            // Some historic mail defaults are not listed in the display
-            // registry (e.g. undo). Retire those fallback aliases as well.
             if !self.input.is_pending()
                 && self
                     .mail_action_key(key)
@@ -124,7 +119,6 @@ impl App {
         if !crate::action::action_allowed_in_context(&action, self.current_ui_context()) {
             return Some(None);
         }
-        // Reader navigation is intentionally inline in the existing router.
         if matches!(
             context,
             crate::keybindings::ViewContext::MessageView
@@ -184,17 +178,12 @@ impl App {
         }
     }
 
-    /// Context whose bindings the help modal shows: the user's Tab-cycled
-    /// override when set, otherwise the focused view.
     pub(crate) fn help_modal_context(&self) -> UiContext {
         self.modals
             .help_context_filter
             .unwrap_or_else(|| self.current_ui_context())
     }
 
-    /// Cycle the help modal's context filter (Tab while help is open).
-    /// Starts from the focused view and wraps; landing back on the
-    /// focused view clears the override so help tracks focus again.
     fn cycle_help_context(&mut self) {
         const CYCLE: [UiContext; 8] = [
             UiContext::MailboxList,
@@ -210,8 +199,6 @@ impl App {
         let position = CYCLE.iter().position(|context| *context == current);
         let next = match position {
             Some(index) => CYCLE[(index + 1) % CYCLE.len()],
-            // Focused view isn't in the cycle list (sidebar/form variants):
-            // start from the top.
             None => CYCLE[0],
         };
         self.modals.help_context_filter = if next == self.current_ui_context() {
@@ -277,8 +264,6 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> Option<Action> {
         let action = self.input.handle_key(key)?;
-        // Expiring a moved-key notice must not restore these legacy defaults
-        // in mailbox lists. Reader/search keys and explicit remaps stay intact.
         if matches!(action, Action::NextSearchResult | Action::PrevSearchResult)
             && self.screen == Screen::Mailbox
             && self.mailbox.active_pane != ActivePane::MessageView
@@ -311,10 +296,8 @@ impl App {
             (KeyCode::Char('e'), KeyModifiers::NONE) => Some(Action::Archive),
             (KeyCode::Char('m'), KeyModifiers::NONE) => Some(Action::MarkReadAndArchive),
             (KeyCode::Char('#'), _) => Some(Action::Trash),
-            // The web app's Delete and Backspace trash too (with undo).
             (KeyCode::Delete | KeyCode::Backspace, KeyModifiers::NONE) => Some(Action::Trash),
             (KeyCode::Char('!'), _) => Some(Action::Spam),
-            // z too, Gmail's undo, as in the web app (blueprint 35).
             (KeyCode::Char('u' | 'z'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
             (KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::Star),
             (KeyCode::Char('I'), modifiers) if plain_or_shift(modifiers) => Some(Action::MarkRead),
@@ -340,12 +323,9 @@ impl App {
             }
             (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => Some(Action::OpenLinks),
             (KeyCode::Char('t'), KeyModifiers::NONE) => Some(Action::CreateTodoFromMessage),
-            // Slice 5.1 (C2.6): B opens the thread briefing modal.
             (KeyCode::Char('B'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenThreadBriefing)
             }
-            // Same keys as the web app. Reading and Paper trail take `p`
-            // for pin before these mail keys are consulted.
             (KeyCode::Char('p'), KeyModifiers::NONE) => Some(Action::OpenSenderView),
             _ => None,
         }
@@ -365,9 +345,6 @@ impl App {
         self.input_context = Some(context);
         self.input.begin_turn();
         let mut action = self.handle_key_press(key);
-        // `q` closes the innermost layer and quits only at the root
-        // (blueprint 35, "Back and quit"). Below the root it goes back one
-        // level, exactly as Esc does there.
         if action == Some(Action::QuitView) && key.code == KeyCode::Char('q') && self.below_root() {
             let esc = crossterm::event::KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
             action = self.handle_key_press(esc);
@@ -379,9 +356,6 @@ impl App {
         action
     }
 
-    /// A layer under the root is open: a screen other than the mailbox, the
-    /// reader, or a mode's sub-view. Until an account exists the Accounts
-    /// screen is the root, so `q` can still leave first-run setup.
     fn below_root(&self) -> bool {
         if self.accounts.page.onboarding_required {
             return false;
@@ -417,8 +391,6 @@ impl App {
             return Some(Action::DumpActionTrace);
         }
 
-        // Ctrl-z suspends the TUI, as in every terminal program (blueprint
-        // 35). A global modifier chord, so it wins over text fields too.
         if cfg!(unix) && key.code == KeyCode::Char('z') && key.modifiers == KeyModifiers::CONTROL {
             self.pending_suspend = true;
             return None;
@@ -514,7 +486,6 @@ impl App {
         if self.modals.help_open {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?'), _) => Some(Action::Help),
-                // q closes where nothing is typed; in a filter it types.
                 (KeyCode::Char('q'), _) if self.modals.help_query.is_empty() => Some(Action::Help),
                 (KeyCode::Tab, _) => {
                     self.cycle_help_context();
@@ -634,7 +605,6 @@ impl App {
                 (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::SenderProfileNextMessage),
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::SenderProfilePrevMessage),
                 (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSenderProfileMessage),
-                // Whois lives on the person page (blueprint 35).
                 (KeyCode::Char('W'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenWhoisOnFocusedSender)
                 }
@@ -695,11 +665,6 @@ impl App {
             };
         }
 
-        // Saved-search delete confirm, which opens on Keep. Placed before
-        // the form check because both can technically be open when a
-        // delete is triggered from the sidebar with no form open — but the
-        // typical lifecycle is: form closed, delete pending. Either way:
-        // confirm wins.
         if self.modals.pending_saved_search_delete_confirm.is_some() {
             match self.modals.saved_search_delete_choice.key(key.code) {
                 ConfirmKey::Confirm => {
@@ -711,8 +676,6 @@ impl App {
             return None;
         }
 
-        // Saved-search form: routed before command palette so keys
-        // typed into the modal don't trigger global shortcuts.
         if self.modals.saved_search_form.is_some() {
             return self.handle_saved_search_form_key(key);
         }
@@ -721,8 +684,6 @@ impl App {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => {
                     let command = self.command_palette.palette.confirm_command()?;
-                    // Recents changed; flag for async save by the
-                    // local-IO worker on the next tick.
                     self.pending_local_state_save = true;
                     self.offer_next_time(&command);
                     return Some(command.action);
@@ -748,7 +709,6 @@ impl App {
             }
         }
 
-        // Route keys to search bar when active
         if self.search.bar.active {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => return Some(Action::SubmitSearch),
@@ -756,13 +716,11 @@ impl App {
                 (KeyCode::Esc, _) => return Some(Action::CloseSearch),
                 (KeyCode::Backspace, _) => {
                     self.search.bar.on_backspace();
-                    // Live filter as you type
                     self.trigger_live_search();
                     return None;
                 }
                 (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                     self.search.bar.on_char(c);
-                    // Live filter as you type
                     self.trigger_live_search();
                     return None;
                 }
@@ -774,7 +732,6 @@ impl App {
             return self.handle_compose_model_picker_key(key);
         }
 
-        // Route keys to send confirmation prompt
         if self.compose.viewing_voice_source {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => self.compose.viewing_voice_source = false,
@@ -880,8 +837,6 @@ impl App {
                                 }
                             };
                             let draft_id = pending.draft_id();
-                            // A stored draft was saved before its review; saving it
-                            // again would move the revision the schedule names.
                             let prelude = if pending.stored_draft.is_some() {
                                 Vec::new()
                             } else {
@@ -950,7 +905,6 @@ impl App {
                 }
             }
             match (key.code, key.modifiers) {
-                // Enter runs the lit option (blueprint 35's overlay grammar).
                 (KeyCode::Enter, _) => {
                     let send = self
                         .compose
@@ -964,9 +918,6 @@ impl App {
                     ));
                 }
                 (KeyCode::Char('s'), KeyModifiers::NONE) => {
-                    // Send. Suppressed when the safety verdict is
-                    // Blocked — the user must use Ctrl-O (with the
-                    // override token) or edit the draft to proceed.
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;
@@ -978,16 +929,11 @@ impl App {
                     }
                     return None;
                 }
-                // Ctrl-a is GNU screen's prefix, which a TUI default never
-                // takes (blueprint 35); it says where add-to-Cc went.
                 (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
                     self.announce_moved("send-review", "Ctrl+a");
                     return None;
                 }
                 (KeyCode::Char('c'), KeyModifiers::NONE) => {
-                    // Slice 5.3 (C2.7 cont): add the top "maybe
-                    // include" suggestion to the draft's Cc and
-                    // remove it from the suggestions list.
                     if let Some(pending) = self.compose.pending_send_confirm.as_mut() {
                         if let Some(top) = pending.suggested_collaborators.first().cloned() {
                             let cc = pending.fm.cc.trim();
@@ -1002,13 +948,8 @@ impl App {
                     }
                     return None;
                 }
-                // `O` is the advertised override, matching the web app. Ctrl-O
-                // stays as a silent alias for existing muscle memory.
                 (KeyCode::Char('o'), KeyModifiers::CONTROL)
                 | (KeyCode::Char('O'), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                    // Override + send. Consumes the single-use token
-                    // the daemon minted on the prior CheckDraftSafety.
-                    // Only meaningful when the verdict is Blocked.
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         if !pending.is_blocked() || pending.override_token.is_none() {
                             self.compose.pending_send_confirm = Some(pending);
@@ -1040,7 +981,6 @@ impl App {
                     return None;
                 }
                 (KeyCode::Char('d'), KeyModifiers::NONE) => {
-                    // Save as draft to mail server
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;
@@ -1050,8 +990,6 @@ impl App {
                         }
                         let retained = pending.clone();
                         if let Some(stored) = pending.stored_draft.as_deref() {
-                            // Already saved before the review: keep it, and put it
-                            // on the server as a fresh reply's save does.
                             let id = self.queue_mutation(
                                 Request::SaveDraftToServer {
                                     draft: stored.clone(),
@@ -1115,16 +1053,11 @@ impl App {
                     }
                     return None;
                 }
-                // Edit again: reopen the editor on the same file. `Esc` goes
-                // back to the draft the same way, because it must never
-                // destroy (blueprint 35, "Back and quit"); the file holds the
-                // only copy, so closing without reopening would strand it.
                 (KeyCode::Char('e'), KeyModifiers::NONE) | (KeyCode::Esc, _) => {
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;
                         if let Some(stored) = pending.stored_draft {
-                            // Its saved text is the only copy that matters now.
                             self.schedule_draft_cleanup(pending.draft_path);
                             self.pending_draft_edit_request = Some(*stored);
                         } else {
@@ -1137,8 +1070,6 @@ impl App {
                     return None;
                 }
                 (KeyCode::Char('r'), KeyModifiers::NONE) => {
-                    // Draft for me rewrites the review's text, which a stored
-                    // draft sends exactly as saved: edit it instead.
                     if self
                         .compose
                         .pending_send_confirm
@@ -1149,10 +1080,7 @@ impl App {
                     }
                     return Some(Action::RefinePendingDraft);
                 }
-                // Discard only on the option that names it, with the shared
-                // destroy key (blueprint 36's "# discard draft").
                 (KeyCode::Char('#'), _) => {
-                    // A stored draft is deleted from Drafts, behind its own preview.
                     if self
                         .compose
                         .pending_send_confirm
@@ -1175,8 +1103,6 @@ impl App {
 
         if let Some(confirm) = self.mailbox.sweep_confirm.as_mut() {
             return match (key.code, key.modifiers) {
-                // y is Enter (blueprint 35): both run the highlighted option,
-                // which a whole place's sweep starts on Cancel.
                 (KeyCode::Enter, _) | (KeyCode::Char('y'), KeyModifiers::NONE) => {
                     self.confirm_sweep();
                     None
@@ -1194,8 +1120,6 @@ impl App {
             };
         }
 
-        // Moves (D119): the menu `X` and `K` open, "Always for this
-        // sender? y/n" after a Not-sure answer, and the arrivals list.
         if self.mailbox.trust.move_menu.is_some() {
             return self.move_menu_key(key);
         }
@@ -1213,8 +1137,6 @@ impl App {
                     self.mailbox.sender_kind_menu = None;
                     None
                 }
-                // A picker moves with j, k and the arrows, and Enter runs
-                // the lit choice (blueprint 35's overlay grammar).
                 (KeyCode::Char('j') | KeyCode::Down, KeyModifiers::NONE) => {
                     menu.selected = (menu.selected + 1).min(choices.len() - 1);
                     None
@@ -1226,7 +1148,6 @@ impl App {
                 (KeyCode::Enter, _) => choices
                     .get(menu.selected)
                     .map(|(_, kind, _)| Action::SetSenderKind(*kind)),
-                // A sender's menu: either case picks.
                 (KeyCode::Char(c), modifiers) if plain_or_shift(modifiers) => {
                     let c = c.to_ascii_lowercase();
                     crate::ui::place_lens::SENDER_KIND_CHOICES
@@ -1247,7 +1168,6 @@ impl App {
                 }
                 (KeyCode::Esc, _) | (KeyCode::Char('n' | 'q'), KeyModifiers::NONE) => {
                     self.modals.pending_bulk_confirm = None;
-                    // A `]` or `[` waiting on this confirm steps nowhere.
                     if self
                         .mailbox
                         .archive_step
@@ -1282,14 +1202,12 @@ impl App {
                 (KeyCode::Char('U'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ConfirmUnsubscribeOnly)
                 }
-                // `e` is Archive's letter (blueprint 35's Pick rule).
                 (KeyCode::Char('e'), KeyModifiers::NONE) => {
                     Some(Action::ConfirmUnsubscribeAndArchiveSender)
                 }
                 (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ConfirmUnsubscribeAndArchiveSender)
                 }
-                // A yes or no question: n is Esc, and q closes too.
                 (KeyCode::Esc | KeyCode::Char('n' | 'q'), _) => Some(Action::CancelUnsubscribe),
                 _ => None,
             };
@@ -1315,12 +1233,10 @@ impl App {
         }
 
         if self.modals.snooze_panel.visible {
-            // Custom-input mode: text-entry takes precedence over list navigation.
             if self.modals.snooze_panel.custom_input.is_some() {
                 match (key.code, key.modifiers) {
                     (KeyCode::Enter, _) => return Some(Action::Snooze),
                     (KeyCode::Esc, _) => {
-                        // Back to preset list — preserves the panel.
                         self.modals.snooze_panel.custom_input = None;
                         self.modals.snooze_panel.custom_error = None;
                         return None;
@@ -1364,13 +1280,10 @@ impl App {
                     self.close_not_now();
                     return None;
                 }
-                // A digit picks the Nth time at once (D166).
                 (KeyCode::Char(digit @ '1'..='9'), KeyModifiers::NONE) => {
                     self.not_now_preset(digit as usize - '0' as usize);
                     return None;
                 }
-                // Ctrl-n and Ctrl-p move too, as in the web's Not now, whose
-                // letters type a time.
                 (KeyCode::Char('n'), KeyModifiers::CONTROL)
                 | (KeyCode::Char('j') | KeyCode::Down, _) => {
                     self.modals.snooze_panel.selected_index =
@@ -1391,7 +1304,6 @@ impl App {
             }
         }
 
-        // Route keys to URL modal when active
         if let Some(ref mut url_state) = self.mailbox.url_modal {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter | KeyCode::Char('o'), _) => {
@@ -1460,9 +1372,6 @@ impl App {
             }
         }
 
-        // The export picker takes every key while it is open. Keys are read
-        // per stage, so `c`, `s` and the format letters only mean something
-        // where they're offered.
         if self.modals.export.visible {
             match self.modals.export.stage {
                 crate::app::ExportStage::Format => match (key.code, key.modifiers) {
@@ -1507,9 +1416,6 @@ impl App {
             return None;
         }
 
-        // Route keys to the save-attachment modal when it's on top of
-        // the attachment panel. This block must run before the
-        // attachment-panel handler below since the modal layers on top.
         if self.modals.save_attachment.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Esc, _) => {
@@ -1556,7 +1462,6 @@ impl App {
             }
         }
 
-        // Route keys to compose picker when active
         if self.mailbox.attachment_panel.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter | KeyCode::Char('o'), _) => {
@@ -1591,7 +1496,6 @@ impl App {
             }
         }
 
-        // Route keys to compose picker when active
         if self.compose.compose_picker.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => {
@@ -1606,7 +1510,6 @@ impl App {
                     return None;
                 }
                 (KeyCode::Tab, _) => {
-                    // Tab adds selected contact to recipients
                     self.compose.compose_picker.add_recipient();
                     return None;
                 }
@@ -1634,7 +1537,6 @@ impl App {
             }
         }
 
-        // Route keys to label picker when active
         if self.modals.label_picker.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => {
@@ -1673,14 +1575,10 @@ impl App {
             }
         }
 
-        // The assistant pane, once no modal above it wants the key: every
-        // key while the pane has focus.
         if let Some(action) = self.assistant_key(key) {
             return action;
         }
 
-        // A promise prompt answers to y / n / Esc once no modal or prompt
-        // above it wants the key; every other key works as usual.
         if !self.promise_prompts.is_empty() {
             let answer = match (key.code, key.modifiers) {
                 (KeyCode::Char('y'), KeyModifiers::NONE) => Some(true),
@@ -1688,7 +1586,6 @@ impl App {
                 _ => None,
             };
             if let Some(keep) = answer {
-                // A held key must not answer the next prompt too.
                 if key.kind != crossterm::event::KeyEventKind::Repeat {
                     self.answer_promise(keep, std::time::Instant::now());
                 }
@@ -1696,7 +1593,6 @@ impl App {
             }
         }
 
-        // Digits count rows in visual line mode, before they can mean tabs.
         if let Some(action) = self.visual_count_key(key) {
             return action;
         }
@@ -1715,16 +1611,10 @@ impl App {
             return None;
         }
 
-        // A key that moved away from the list, reader or sidebar says where
-        // it went (the modes do this in `defined_key`).
         if self.announce_moved_key(key) {
             return None;
         }
 
-        // Remaps are authoritative only in mail panes, after all modal/text
-        // owners. Explicit keys also beat lens-specific single-key defaults.
-        // A mode takes its remaps from its own keys.toml section, so
-        // `[mail_list]` stays out of it.
         if self.mode_key_context().is_none()
             && matches!(
                 self.current_ui_context(),
@@ -1739,9 +1629,6 @@ impl App {
             }
         }
 
-        // The second key of a chord (`g r`, `g a`, `i a`) completes it,
-        // before any single-key binding such as `r` reply can claim it.
-        // A mode completes its own sequences from the key definition.
         if self.input.is_pending() && self.mode_key_context().is_none() {
             let action = self.contextual_input_action(key);
             return if self.screen == Screen::Mailbox
@@ -1757,12 +1644,10 @@ impl App {
             return self.handle_screen_key(key);
         }
 
-        // Route keys based on active pane
         match self.mailbox.active_pane {
             ActivePane::MessageView => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
-                // The palette's Ctrl-k, before `k` scrolls (it ignores modifiers).
                 (KeyCode::Char('k'), KeyModifiers::CONTROL) => Some(Action::OpenCommandPalette),
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     self.move_message_view_down();
@@ -1772,9 +1657,6 @@ impl App {
                     self.move_message_view_up();
                     None
                 }
-                // J/K move focus between messages in a thread. This used to
-                // live on j/k, which left a long body unscrollable whenever
-                // the thread held more than one message.
                 (KeyCode::Char('J'), modifiers) if plain_or_shift(modifiers) => {
                     self.move_thread_focus_down();
                     None
@@ -1797,8 +1679,6 @@ impl App {
                     self.mailbox.message_scroll_offset = u16::MAX;
                     None
                 }
-                // The keyboard's motion keys and Space page the body, as in
-                // the web reader; Home reaches `g g` below.
                 (KeyCode::End, KeyModifiers::NONE) => {
                     self.mailbox.message_scroll_offset = u16::MAX;
                     None
@@ -1819,25 +1699,18 @@ impl App {
                 (KeyCode::Char('M'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ToggleRemoteContent)
                 }
-                // h = move left to mail list
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
                     if self.mailbox.layout_mode != LayoutMode::FullScreen {
                         self.mailbox.active_pane = ActivePane::MailList;
                     }
                     None
                 }
-                // L = open links picker
                 (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenLinks)
                 }
-                // X: move this email to another mode. K stays the
-                // previous message here.
                 (KeyCode::Char('X'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenMoveMenu)
                 }
-                // Enter only reopened the conversation already open here, and
-                // the web reader leaves Enter to its buttons (blueprint 35's
-                // same keys in both clients).
                 (KeyCode::Enter, _) => None,
                 _ if reader_fold_key(key).is_some() => reader_fold_key(key),
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
@@ -1846,7 +1719,6 @@ impl App {
             ActivePane::Sidebar => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
-                // The palette's Ctrl-k, before `k` moves (it ignores modifiers).
                 (KeyCode::Char('k'), KeyModifiers::CONTROL) => Some(Action::OpenCommandPalette),
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     self.sidebar_move_down();
@@ -1856,8 +1728,6 @@ impl App {
                     self.sidebar_move_up();
                     None
                 }
-                // { and } jump between sections; Enter on a section's
-                // header folds or unfolds it (blueprint 35).
                 (KeyCode::Char('{'), _) => {
                     self.sidebar_jump_section(false);
                     None
@@ -1866,11 +1736,7 @@ impl App {
                     self.sidebar_jump_section(true);
                     None
                 }
-                // c creates what this place holds: a saved search.
                 (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenSavedSearchFormNew),
-                // e/# only mean something on a Saved Searches row: a label
-                // can't be edited or deleted from here. Elsewhere they fall
-                // through.
                 (KeyCode::Char('e'), KeyModifiers::NONE)
                     if self.current_sidebar_group() == SidebarGroup::SavedSearches =>
                 {
@@ -1882,7 +1748,6 @@ impl App {
                     Some(Action::DeleteSavedSearch)
                 }
                 (KeyCode::Enter | KeyCode::Char('o'), _) => self.sidebar_select(),
-                // l = select label and move to mail list
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE) => self.sidebar_select(),
                 (KeyCode::Char('u' | 'z'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
                 _ => {
@@ -1920,22 +1785,17 @@ impl App {
             ActivePane::MailList => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
-                // h = move left to sidebar
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
                     self.mailbox.active_pane = ActivePane::Sidebar;
                     None
                 }
-                // Right arrow opens selected message
                 (KeyCode::Right, KeyModifiers::NONE) => Some(Action::OpenSelected),
-                // X moves this email to another mode; K sets its sender's.
                 (KeyCode::Char('X'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenMoveMenu)
                 }
-                // P: this sender, always (blueprint 35's Shift on p).
                 (KeyCode::Char('P'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenSenderMoveMenu)
                 }
-                // Wake: the list's row action, as the web's (live in Snoozed).
                 (KeyCode::Char('w'), KeyModifiers::NONE) => Some(Action::Wake),
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
@@ -1943,11 +1803,6 @@ impl App {
         }
     }
 
-    /// Key handling for Reading and Paper trail: `s` pins, `P` moves the
-    /// sender, `E` sweeps the place (blueprint 35's verbs). Sweeping one
-    /// sender's bundle and loading more senders are in the palette. Other
-    /// keys fall through to the mail keys, which act on the message under
-    /// the cursor.
     fn place_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         match (key.code, key.modifiers) {
             (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
@@ -1971,11 +1826,6 @@ impl App {
         }
     }
 
-    /// Key handling for the calendar-invites lens (a list pane with inline
-    /// RSVP). The `i` chords respond, as everywhere else (`i a`, `i m`,
-    /// `i d`, and with a capital to add a comment); Enter opens the
-    /// underlying message. Unhandled keys fall through to the shared
-    /// vim/chord input so j/k/gg/G still navigate.
     fn calendar_invites_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         match (key.code, key.modifiers) {
             (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
@@ -1986,16 +1836,12 @@ impl App {
             (KeyCode::Enter | KeyCode::Char('o') | KeyCode::Right, _) => {
                 Some(Action::OpenMessageView)
             }
-            // Cancel a just-issued RSVP while it's still in its send window.
             (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
             _ => self.contextual_input_action(key),
         }
     }
 
     fn handle_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        // The palette's Ctrl-k, before a screen's `k` (which ignores
-        // modifiers) moves; a text field keeps it, and so does an open
-        // overlay (blueprint 35: it owns every key).
         let typing = (self.screen == Screen::Rules && self.rules.page.form.visible)
             || (self.screen == Screen::Accounts && self.accounts.page.form.editing_field)
             || (self.screen == Screen::Search && self.search.page.editing);
@@ -2028,7 +1874,6 @@ impl App {
     fn handle_deliveries_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         use crossterm::event::{KeyCode, KeyModifiers};
         match (key.code, key.modifiers) {
-            // Scroll the open email in the split preview.
             (KeyCode::Char('d'), KeyModifiers::CONTROL) if self.deliveries.preview_active => {
                 self.mailbox.message_scroll_offset =
                     self.mailbox.message_scroll_offset.saturating_add(10);
@@ -2047,15 +1892,12 @@ impl App {
                 self.deliveries.select_prev();
                 None
             }
-            // Refresh the list. `R`, since `r` resolves and `g` starts the
-            // `g` + capital tool chords.
             (KeyCode::Char('R'), modifiers) if plain_or_shift(modifiers) => {
                 self.deliveries.loading = true;
                 self.pending_deliveries_refresh = true;
                 None
             }
             (KeyCode::Char('D'), _) => {
-                // Cycle Active -> Delivered -> All and refetch.
                 self.deliveries.filter = self.deliveries.filter.next();
                 self.deliveries.loading = true;
                 self.pending_deliveries_refresh = true;
@@ -2088,20 +1930,15 @@ impl App {
                 }
                 None
             }
-            // Esc closes the split preview before falling through.
             (KeyCode::Esc, _) if self.deliveries.preview_active => {
                 self.close_delivery_preview();
                 None
             }
-            // Anything else (tab switches, quit, command palette, help, sync)
-            // falls through to the shared input handler — otherwise the
-            // Deliveries screen would trap the user with no way out.
             _ => self.contextual_input_action(key),
         }
     }
 
     fn handle_draft_options_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        // The instruction is a text field: letters type, they don't navigate.
         if self.modals.draft_options.active == crate::app::DraftOptionsField::Instruction {
             match key.code {
                 KeyCode::Char(c)
@@ -2133,15 +1970,10 @@ impl App {
     }
 
     fn handle_analytics_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        // The analytics filter modal is a focused form: capture
-        // text-edit keys here before they fall through to the screen
-        // keymap.
         if self.modals.analytics_filter.is_some() {
             return self.handle_analytics_filter_modal_key(key);
         }
 
-        // The Wrapped view replaces row navigation with tile
-        // navigation (the tile grid is a 3x3 layout, not a list).
         if self.analytics.view == crate::app::AnalyticsView::Wrapped {
             return self.handle_wrapped_key(key);
         }
@@ -2167,20 +1999,17 @@ impl App {
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
             (KeyCode::Char('f'), KeyModifiers::NONE) => Some(Action::OpenAnalyticsFilterModal),
             (KeyCode::Enter, _) => Some(Action::AnalyticsRowDrillDown),
-            // Storage view bindings.
             (KeyCode::Char('m'), KeyModifiers::NONE)
                 if view == crate::app::AnalyticsView::Storage =>
             {
                 Some(Action::CycleStorageMode)
             }
-            // `b` for group by: `g` starts the `g` + capital tool chords.
             (KeyCode::Char('b'), KeyModifiers::NONE)
                 if view == crate::app::AnalyticsView::Storage
                     && storage_mode == crate::app::StorageMode::Breakdown =>
             {
                 Some(Action::CycleStorageGroupBy)
             }
-            // Stale view bindings.
             (KeyCode::Char('p'), KeyModifiers::NONE)
                 if view == crate::app::AnalyticsView::StaleThreads =>
             {
@@ -2198,7 +2027,6 @@ impl App {
             (KeyCode::Char('}'), _) if view == crate::app::AnalyticsView::StaleThreads => {
                 Some(Action::AdjustStaleWithinDays(30))
             }
-            // Contacts view bindings.
             (KeyCode::Char('m'), KeyModifiers::NONE)
                 if view == crate::app::AnalyticsView::Contacts =>
             {
@@ -2209,13 +2037,11 @@ impl App {
             {
                 Some(Action::RefreshContacts)
             }
-            // ResponseTime view bindings.
             (KeyCode::Char('d'), KeyModifiers::NONE)
                 if view == crate::app::AnalyticsView::ResponseTime =>
             {
                 Some(Action::ToggleResponseTimeDirection)
             }
-            // Subscriptions view bindings.
             (KeyCode::Char('o'), KeyModifiers::NONE)
                 if view == crate::app::AnalyticsView::Subscriptions =>
             {
@@ -2231,8 +2057,6 @@ impl App {
     }
 
     fn handle_wrapped_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        // Tile order is row-major over a 2x3 grid (six tiles total).
-        // Indices: 0=Volume 1=When 2=Contacts | 3=Reply 4=Storage 5=News
         match (key.code, key.modifiers) {
             (KeyCode::Char('h') | KeyCode::Left, _) => {
                 let curr = self.analytics.wrapped_selected_tile;
@@ -2450,8 +2274,6 @@ impl App {
             return self.handle_rule_form_key(key);
         }
 
-        // Rule delete confirm, which opens on Keep: `y`, or `Enter` on
-        // "Delete rule", deletes; n/Esc/q keep the rule.
         if let Some((rule_id, name)) = self.rules.page.delete_confirm.clone() {
             match self.rules.page.delete_choice.key(key.code) {
                 ConfirmKey::Confirm => {
@@ -2506,7 +2328,6 @@ impl App {
                 Some(Action::ShowRuleHistory)
             }
             (KeyCode::Char('#'), _) => Some(Action::DeleteRule),
-            // c creates what this place holds (blueprint 35).
             (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenRuleFormNew),
             (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenRuleFormEdit)
@@ -2661,13 +2482,9 @@ impl App {
     }
 
     fn handle_diagnostics_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        // Live-search input mode: when active, all keys feed into the search
-        // string for the focused pane. Esc cancels, Enter commits (closes the
-        // input but keeps the string applied), Backspace deletes.
         if let Some(target_pane) = self.diagnostics.page.search_input {
             match (key.code, key.modifiers) {
                 (KeyCode::Esc, _) => {
-                    // Cancel: clear both the input and the applied search.
                     match target_pane {
                         crate::app::DiagnosticsPaneKind::Events => {
                             self.diagnostics.page.events_search.clear();
@@ -2725,7 +2542,6 @@ impl App {
 
         match (key.code, key.modifiers) {
             (KeyCode::Char('/'), _) => {
-                // Start search-input mode on a filterable pane.
                 let pane = self.diagnostics.page.active_pane();
                 if matches!(
                     pane,
@@ -2793,9 +2609,6 @@ impl App {
             return None;
         }
 
-        // "Resume draft" is lit and "Discard draft" is named (blueprint 35's
-        // Destroy rule): only `y`, or Enter on "Discard draft", throws the
-        // form away. `n`, Esc and `q` keep it for later.
         if self.accounts.page.resume_new_account_draft_prompt_open {
             let choice = &mut self.accounts.page.resume_draft_choice;
             match key.code {
@@ -2824,7 +2637,6 @@ impl App {
         }
 
         match (key.code, key.modifiers) {
-            // i edits the selected account's colour and tag (blueprint 33).
             (KeyCode::Char('i'), KeyModifiers::NONE) => {
                 self.open_identity_editor();
                 None
@@ -2840,14 +2652,8 @@ impl App {
                     self.accounts.page.selected_index.saturating_sub(1);
                 None
             }
-            // c creates what this place holds (blueprint 35); Edit Config,
-            // which had c here, is in the palette.
             (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenAccountFormNew),
             (KeyCode::Char('r'), _) => {
-                // Phase 2.3: when the selected account is reporting an
-                // unhealthy sync, `r` repairs it instead of refreshing
-                // the list. Refresh stays available via `R` (Shift) so
-                // the original behavior never disappears.
                 let unhealthy = self
                     .selected_account()
                     .is_some_and(|account| self.account_unhealthy(account));
@@ -2973,9 +2779,6 @@ impl App {
             };
         }
 
-        // With single-key shortcuts off, a letter typed into a text field is
-        // text, not the form's command for that letter (`s` saves, `r`
-        // reauthorises). Enter is not needed first.
         if !self.keybindings.single_keys
             && matches!(key.code, KeyCode::Char(_))
             && plain_or_shift(key.modifiers)
@@ -3087,9 +2890,9 @@ fn analytics_row_count(app: &App) -> usize {
             ContactsMode::Decay => app.analytics.decay_rows.len(),
         },
         AnalyticsView::CadenceDrift => app.analytics.cadence_drift_rows.len(),
-        AnalyticsView::ResponseTime => 1, // single summary row
+        AnalyticsView::ResponseTime => 1,
         AnalyticsView::Subscriptions => app.analytics.subscriptions.len(),
         AnalyticsView::SearchAggregation => app.analytics.search_aggregation_rows.len(),
-        AnalyticsView::Wrapped => 1, // tile grid uses tile selection, not row index
+        AnalyticsView::Wrapped => 1,
     }
 }

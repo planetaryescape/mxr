@@ -1,10 +1,6 @@
 use crate::action::Action;
 use crate::app::Screen;
 
-/// Debug-only action trace.
-///
-/// This is a debugging aid, not a re-runner; full session replay would require
-/// deterministic IPC responses, which mxr does not currently provide.
 #[cfg(debug_assertions)]
 pub struct ActionRecorder {
     buffer: std::collections::VecDeque<RecordedAction>,

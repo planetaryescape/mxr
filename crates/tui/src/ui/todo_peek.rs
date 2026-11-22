@@ -1,12 +1,3 @@
-//! What To do's Space opens under a row: the details the web shows under
-//! it (`TodoRow.tsx`, `Details`). The dates in full, when the source email
-//! arrived or left the inbox, why the row is here and what happens next,
-//! where its link goes, the email's first lines, where each field came
-//! from, and where `o` goes. All of it is from the runway the daemon
-//! served, except the first lines, which come from the body the reader
-//! fetches. Plain text: mail-controlled strings pass through `one_line`
-//! before they reach the terminal.
-
 use chrono::{DateTime, Utc};
 use mxr_protocol::TodoData;
 
@@ -14,8 +5,6 @@ use crate::ui::received_label::{received_label, DisplayZone};
 use crate::ui::sanitize::one_line;
 use crate::ui::updates_peek::preview_lines;
 
-/// The web's field names and the order its provenance list uses
-/// (`todoRows.ts`, `FIELD_LABELS`).
 const FIELD_LABELS: [(&str, &str); 10] = [
     ("title", "What"),
     ("kind", "Kind"),
@@ -46,8 +35,6 @@ fn field_label(field: &str) -> String {
         )
 }
 
-/// The peek's lines, top to bottom. `body` is the source email's plain text
-/// once the reader has it; until then the other lines stand on their own.
 pub(crate) fn peek_lines(
     todo: &TodoData,
     body: Option<&str>,
@@ -55,7 +42,6 @@ pub(crate) fn peek_lines(
     zone: DisplayZone,
 ) -> Vec<String> {
     let mut lines = Vec::new();
-    // The row cuts its dates to fit; the peek has room for all of them.
     let when = one_line(&todo.when_label);
     if !when.is_empty() {
         lines.push(when);
@@ -84,8 +70,6 @@ pub(crate) fn peek_lines(
         ));
     }
     lines.extend(body.map(preview_lines).unwrap_or_default());
-    // Where each field came from. Evidence the why line already quotes is
-    // not repeated, and the model's asks are diagnostics the web folds away.
     let mut seen = vec![todo.why.clone()];
     let mut fields: Vec<_> = todo
         .fields

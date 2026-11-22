@@ -20,9 +20,6 @@ impl App {
         }
     }
 
-    /// The envelopes the mailbox's mail list shows: Snoozed's own, or the
-    /// label, filter or all-mail list. Rows, selection and mutations all
-    /// read this, so they agree on what a row is.
     pub(crate) fn mailbox_list_envelopes(&self) -> &[Envelope] {
         if self.mailbox.mailbox_view == MailboxView::Snoozed {
             &self.mailbox.snoozed_page.envelopes
@@ -37,7 +34,6 @@ impl App {
             self.mailbox.mail_list_mode,
         ));
         if self.mailbox.mailbox_view == MailboxView::Snoozed {
-            // A conversation wakes when its first snoozed message does.
             let wakes = &self.mailbox.snoozed_page.wake_at;
             for row in &mut rows {
                 row.wake_at = self
@@ -81,15 +77,6 @@ impl App {
     }
 
     fn with_pending_mutation_markers(&self, mut rows: Vec<MailListRow>) -> Vec<MailListRow> {
-        // Pre-compute the set of thread_ids that have any pending or
-        // reply-later message in one pass over the envelope lists,
-        // then mark rows via O(1) HashSet lookups. The previous
-        // implementation iterated every envelope per row inside two
-        // `any()` calls — O(rows × envelopes) per render, hit on every
-        // J keystroke because the renderer rebuilds rows three times
-        // per frame. For a mailbox with hundreds of threads this
-        // dominates the per-frame budget and turns scroll into a
-        // queue-and-drain experience.
         let pending_ids = self.pending_mutation_message_ids();
         let mut pending_thread_ids: HashSet<mxr_core::ThreadId> = HashSet::new();
         let mut reply_later_thread_ids: HashSet<mxr_core::ThreadId> = HashSet::new();

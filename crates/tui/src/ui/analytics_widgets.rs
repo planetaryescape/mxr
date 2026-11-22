@@ -1,13 +1,3 @@
-//! Shared visual primitives for the analytics page. Each function
-//! takes a `Frame`, a sub-area, the data it visualises, and the
-//! current `Theme`. All colors come from the theme — no hardcoded
-//! palette here.
-//!
-//! Charting policy: a chart on a metrics page must show something a
-//! single number can't (a ratio, a distribution shape, or a position
-//! on a scale). A bar chart that just illustrates "this number is
-//! bigger than that number" duplicates the table — we omit it.
-
 use crate::theme::Theme;
 use ratatui::layout::{Alignment, Direction, Rect};
 use ratatui::prelude::*;
@@ -15,10 +5,6 @@ use ratatui::style::Modifier;
 use ratatui::widgets::{Bar, BarChart, BarGroup, Block, Borders, Paragraph, Wrap};
 use tui_big_text::{BigText, PixelSize};
 
-/// A bordered "stat card": small label up top, big value below it.
-/// Used in 3-up summary strips above each analytics tab. The
-/// `accent` flag picks between accent-coloured and primary-coloured
-/// values so a strip can highlight the headline metric.
 pub fn stat_card(
     frame: &mut Frame,
     area: Rect,
@@ -47,11 +33,6 @@ pub fn stat_card(
     );
 }
 
-/// Compact title card with a `tui-big-text` label. Reserved for the
-/// Wrapped header — celebratory, single-glance year-in-review banner.
-/// Falls back to a styled paragraph when the inner height is too
-/// small for big text. `pixel_size` controls how tall the glyphs
-/// render: `Sextant` ≈ 3 rows, `HalfHeight` ≈ 4 rows, `Full` ≈ 8.
 pub fn big_text_banner(
     frame: &mut Frame,
     area: Rect,
@@ -93,10 +74,6 @@ pub fn big_text_banner(
     frame.render_widget(big, inner);
 }
 
-/// Vertical bar chart used for distribution histograms (response
-/// time histogram, day-of-week, age bucket). `items` is
-/// `(short_label, count)`. Bars get equal width; label widths come
-/// from the inner area.
 pub fn histogram_bar_chart(
     frame: &mut Frame,
     area: Rect,
@@ -153,8 +130,6 @@ pub fn histogram_bar_chart(
     frame.render_widget(chart, area);
 }
 
-/// Terse human count formatter: `123` → `123`, `1234` → `1.2k`,
-/// `1_234_567` → `1.2M`. Lossy on purpose.
 pub fn format_count(n: u64) -> String {
     if n < 1000 {
         format!("{n}")

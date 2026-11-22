@@ -1,9 +1,3 @@
-//! Sorting shows its work in the TUI (D119): `X` moves one email and `P`
-//! its sender through `MoveMessage`, `u` undoes a move with its correction
-//! id, a Not-sure question on Now answers through `X` and then asks "Always
-//! for this sender? y/n" once, Enter on the arrivals line lists the emails
-//! behind it, and Inbox rows carry their mode.
-
 use super::*;
 use crate::app::NowRow;
 use crate::ui::now_lens::tests::{page, populated};
@@ -30,7 +24,6 @@ fn queued(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// The mail list with three emails, the first selected.
 fn inbox_app() -> App {
     let mut app = App::new();
     app.screen = Screen::Mailbox;
@@ -119,7 +112,6 @@ pub(crate) fn arrivals(not_sure: Vec<NotSureData>) -> ArrivalsData {
     }
 }
 
-/// Now open with its line and two Not-sure questions loaded.
 fn now_with_questions() -> App {
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
@@ -203,7 +195,6 @@ fn shift_in_the_menu_and_p_move_the_sender_to_a_mode_a_sender_can_live_in() {
         .as_ref()
         .expect("P opens the sender menu");
     assert!(menu.sender_only);
-    // To do and Archive hold one email, never a sender.
     press(&mut app, KeyCode::Char('x'));
     press(&mut app, KeyCode::Char('e'));
     assert!(queued(&app).is_empty());
@@ -214,7 +205,6 @@ fn shift_in_the_menu_and_p_move_the_sender_to_a_mode_a_sender_can_live_in() {
         vec![(selected, ModeKindData::Updates, true, None)]
     );
 
-    // Esc closes without a move.
     let mut app = inbox_app();
     press(&mut app, KeyCode::Char('X'));
     press(&mut app, KeyCode::Esc);
@@ -298,7 +288,6 @@ fn after_a_move_p_says_always_for_this_sender_at_once() {
         vec![(message, ModeKindData::Reading, true, None)]
     );
 
-    // Any other key lets the question go; a later P opens the menu.
     let mut app = inbox_app();
     app.after_move(
         &outcome(MessageId::new(), ModeKindData::Reading, true),
@@ -343,8 +332,6 @@ fn navigation_chords_on_a_not_sure_question_never_answer_it() {
     }
 }
 
-/// One verb per key (blueprint 35): on a Not-sure question, Now's `e` and
-/// `r` act on its email as on any other Now row. Only `X` answers it.
 #[test]
 fn now_keys_on_a_not_sure_question_act_on_its_email() {
     let mut app = now_with_questions();
@@ -392,7 +379,6 @@ fn now_keys_on_a_not_sure_question_act_on_its_email() {
 #[test]
 fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
     let mut app = now_with_questions();
-    // The line, its two questions, then Now's own rows.
     assert!(matches!(
         app.mailbox.now_page.rows()[..3],
         [NowRow::Arrivals(_), NowRow::NotSure(_), NowRow::NotSure(_)]
@@ -433,7 +419,6 @@ fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
     );
     let ask = app.mailbox.trust.sender_ask.clone().expect("asks once");
     assert!(ask.yes_no);
-    // Enter is yes (D168).
     press(&mut app, KeyCode::Enter);
     assert_eq!(
         queued(&app).iter().filter_map(moved).next_back(),
@@ -441,7 +426,6 @@ fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
     );
     assert!(app.mailbox.trust.sender_ask.is_none());
 
-    // n answers no: nothing more is sent.
     let mut app = now_with_questions();
     app.mailbox.selected_index = 1;
     press(&mut app, KeyCode::Char('X'));
@@ -450,7 +434,6 @@ fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
     assert_eq!(queued(&app).len(), 1);
     assert!(app.mailbox.trust.sender_ask.is_none());
 
-    // To do and Archive never ask about the sender.
     let mut app = now_with_questions();
     app.mailbox.selected_index = 1;
     press(&mut app, KeyCode::Char('X'));
@@ -514,7 +497,6 @@ fn enter_on_the_arrivals_line_lists_the_emails_behind_it() {
     );
     assert!(app.mailbox.trust.arrivals_list.is_some());
 
-    // Tab walks the line's counts, then its "also"s.
     press(&mut app, KeyCode::Tab);
     assert_eq!(
         app.mailbox.trust.pending_list.as_ref().unwrap().bucket,
@@ -550,7 +532,6 @@ fn enter_on_the_arrivals_line_lists_the_emails_behind_it() {
             items: vec![item.clone()],
         },
     );
-    // X there moves the listed email.
     press(&mut app, KeyCode::Char('X'));
     assert_eq!(
         app.mailbox
@@ -616,8 +597,6 @@ fn inbox_rows_carry_their_mode_and_a_move_anywhere_refreshes_them() {
 
 #[test]
 fn a_missed_address_change_is_recovered_by_dropping_cached_reply_contexts() {
-    // Events missed while disconnected can include an address change, so the
-    // gap and reconnect resync must drop the cache too.
     let mut app = inbox_app();
     let message = app.mailbox.envelopes[0].id.clone();
     app.compose.reply_context_cache.insert(
@@ -706,7 +685,6 @@ fn x_marks_the_mode_the_email_is_in_without_moving_the_highlight() {
     assert!(!menu.not_sure, "an ordinary move is not a Not-sure answer");
     assert_eq!(menu.selected, 0, "the highlight starts on the first option");
 
-    // Now marks the mode the lit row is from.
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
     press(&mut app, KeyCode::Char('h'));

@@ -121,14 +121,10 @@ pub fn draw(frame: &mut Frame, area: Rect, state: Option<&UrlModalState>, theme:
     );
 }
 
-/// Extract URLs from message body text (plain text and/or HTML).
-/// HTML anchor tags get label extraction; plain-text URLs are also captured.
-/// Deduplicates by URL, preferring labeled entries from HTML anchors.
 pub fn extract_urls(text_plain: Option<&str>, text_html: Option<&str>) -> Vec<UrlEntry> {
     let mut urls = Vec::new();
     let mut seen = HashSet::new();
 
-    // Extract from HTML anchor tags first (they have labels)
     if let Some(html) = text_html {
         let mut rest = html;
         while let Some(href_start) = rest.find("href=\"") {
@@ -164,7 +160,6 @@ pub fn extract_urls(text_plain: Option<&str>, text_html: Option<&str>) -> Vec<Ur
         }
     }
 
-    // Extract plain text URLs from both plain text and HTML (for URLs not in anchors)
     for text in [text_plain, text_html].into_iter().flatten() {
         extract_plain_urls(text, &mut urls, &mut seen);
     }
@@ -223,7 +218,6 @@ fn strip_html_tags(text: &str) -> String {
 }
 
 pub fn open_url(url: &str) {
-    // Tests press Enter in the links picker without opening a browser.
     #[cfg(test)]
     let _ = url;
     #[cfg(all(target_os = "macos", not(test)))]

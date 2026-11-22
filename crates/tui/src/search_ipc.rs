@@ -1,5 +1,3 @@
-//! Search IPC helpers: one daemon page per user search request.
-
 use crate::async_result::SearchResultData;
 use crate::ipc::{ipc_call, IpcRequest};
 use mxr_core::{

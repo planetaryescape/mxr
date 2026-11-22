@@ -1,8 +1,3 @@
-//! To do in the TUI: open the runway, do what a row's button says, tick
-//! off, schedule, correct, dismiss, restore, and the one-time catch-up.
-//! The daemon owns every rule and label; this module turns keys into
-//! requests and keeps the lens honest until the daemon answers.
-
 use super::input::plain_or_shift;
 use super::key_dispatch::DefinedKey;
 use super::*;
@@ -11,10 +6,8 @@ use mxr_protocol::{
     TodoCatchupDecisionData, TodoChangeData, TodoData, TodoEditData, TodoStateActionData,
 };
 
-/// Not a to-do, Not mine, Already done, Wrong details.
 const CORRECT_REASONS: usize = 4;
 
-/// The mode id `GetModeGuide` takes for To do.
 pub(crate) const TODO_MODE: &str = mxr_protocol::TODO_GUIDE.mode;
 
 impl App {
@@ -92,14 +85,12 @@ impl App {
         }
     }
 
-    /// The To do lens owns the keyboard (its list, not a reader beside it).
     pub(crate) fn todo_list_focused(&self) -> bool {
         self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::Todo
             && self.mailbox.active_pane == ActivePane::MailList
     }
 
-    /// The guide `?` leads with: the mode's whose lens is on screen.
     pub(crate) fn help_mode_guide(&self) -> Option<&mxr_protocol::ModeGuideData> {
         if self.screen != Screen::Mailbox {
             return None;
@@ -123,7 +114,6 @@ impl App {
             .copied()
     }
 
-    /// The runtime fetched the runway and the guide.
     pub(crate) fn set_todo_runway(
         &mut self,
         runway: mxr_protocol::TodoRunwayData,
@@ -158,7 +148,6 @@ impl App {
             .min(self.mailbox.todo_page.row_count().saturating_sub(1));
     }
 
-    /// Refetch whatever the lens shows after a change.
     pub(crate) fn refresh_todo(&mut self) {
         let page = &mut self.mailbox.todo_page;
         page.pending_refresh = true;
@@ -177,13 +166,10 @@ impl App {
         self.refresh_todo();
     }
 
-    /// Enter opens the source email; its link remains in context.
     fn todo_primary(&mut self) {
         let Some(todo) = self.selected_todo().cloned() else {
             return;
         };
-        // Never the link itself: the email opens, and the footer has
-        // already said where its link goes.
         self.open_todo_email(&todo);
     }
 
@@ -286,8 +272,6 @@ impl App {
     }
 
     fn open_todo_email(&mut self, todo: &TodoData) {
-        // The action names the message its link is in; the row's source
-        // message otherwise.
         let message_id = todo
             .action
             .as_ref()
@@ -310,19 +294,12 @@ impl App {
                 );
             }
             None => {
-                // Enter is an explicit look at the task even for an own
-                // promise without source mail; merely selecting it is not.
                 self.mark_todo_row_seen(todo);
                 self.status_message = Some("This to-do has no email to open".into());
             }
         }
     }
 
-    /// Space: open the lit to-do's details under it, or close them. One
-    /// peek at a time. Peeking is a look at the row, so it counts as seen,
-    /// as the web's details do; the source email is fetched as the reader
-    /// fetches it, so the peek can show its first lines and `o` finds it
-    /// ready.
     fn todo_toggle_peek(&mut self) {
         let Some(todo) = self.selected_todo().cloned() else {
             return;
@@ -358,8 +335,6 @@ impl App {
         }
     }
 
-    /// Done, not a to-do, or restore, for the row under the cursor. The
-    /// row leaves at once; the daemon's answer offers `u`.
     fn set_selected_todo_state(&mut self, action: TodoStateActionData) {
         let Some(todo) = self.selected_todo().cloned() else {
             return;
@@ -387,8 +362,6 @@ impl App {
         );
     }
 
-    /// Take rows off the lens before the daemon answers, so the next row
-    /// takes the cursor.
     pub(crate) fn remove_todo_rows(&mut self, ids: &[String]) {
         let page = &mut self.mailbox.todo_page;
         let keep = |todo: &TodoData| !ids.contains(&todo.id);
@@ -408,8 +381,6 @@ impl App {
         self.clamp_todo_cursor();
     }
 
-    /// Called once `GetEnvelope` answers for a row's email: show that
-    /// message, not the newest in its thread, with the row's link marked.
     pub(crate) fn open_todo_envelope(
         &mut self,
         env: mxr_core::types::Envelope,
@@ -439,8 +410,6 @@ impl App {
         self.mailbox.todo_page.prompt = Some(TodoPromptState::new(kind, String::new()));
     }
 
-    /// `t` on a conversation: a prompt for what to do, starting from
-    /// "Reply to <sender>".
     fn open_create_todo_prompt(&mut self) {
         let now_person = self
             .now_list_focused()
@@ -503,7 +472,6 @@ impl App {
         ));
     }
 
-    /// Keys while the prompt is open: typing, Enter to send, Esc to cancel.
     pub(super) fn todo_prompt_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
         let Some(prompt) = self.mailbox.todo_page.prompt.as_mut() else {
             return;
@@ -511,8 +479,6 @@ impl App {
         if prompt.pending.is_some() && code != KeyCode::Esc {
             return;
         }
-        // Correcting is a picker, not a text prompt (blueprint 35): j and k
-        // move, Enter runs the highlighted reason, its digit runs it at once.
         if matches!(prompt.kind, TodoPromptKind::Correct { .. }) {
             match code {
                 KeyCode::Down | KeyCode::Char('j') => {
@@ -667,8 +633,6 @@ impl App {
         );
     }
 
-    /// `A` asks the daemon what letting go of all would change; with that
-    /// preview on screen, Enter lets go of exactly the previewed rows.
     fn let_go_of_all_catchup(&mut self) {
         let page = &mut self.mailbox.todo_page;
         if page.panel != TodoPanel::Catchup {
@@ -696,7 +660,6 @@ impl App {
         );
     }
 
-    /// The daemon's dry run of "let go of all".
     pub(crate) fn show_catchup_preview(&mut self, preview: TodoChangeData) {
         self.status_message = None;
         if preview.changed.is_empty() {
@@ -706,9 +669,6 @@ impl App {
         self.mailbox.todo_page.catchup_preview = Some(preview);
     }
 
-    /// Key handling for the To do lens. Only the mode's verbs and
-    /// navigation reach it: mail verbs need an email, and this list holds
-    /// things to do.
     pub(super) fn todo_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if plain_or_shift(key.modifiers) {
             let page = &mut self.mailbox.todo_page;
@@ -775,7 +735,6 @@ impl App {
                 KeyCode::PageUp => page.microsoft_scroll = page.microsoft_scroll.saturating_sub(10),
                 KeyCode::Home => page.microsoft_scroll = 0,
                 KeyCode::End => page.microsoft_scroll = page.microsoft_scroll_max.get(),
-                // Enter confirms, as in every preview (blueprint 35).
                 KeyCode::Enter if page.microsoft_review_visible.get() => {
                     self.microsoft_todo_request(false);
                 }
@@ -792,7 +751,6 @@ impl App {
                     return None;
                 }
             }
-            // Enter syncs once the sync's preview is on screen.
             if key.code == KeyCode::Enter
                 && page.microsoft_sync_preview.is_some()
                 && page.microsoft_sync_review_visible.get()
@@ -818,7 +776,6 @@ impl App {
                 KeyCode::Enter | KeyCode::Char('y') => Some(Action::TodoConfirmResolution),
                 KeyCode::Char('x') => Some(Action::TodoDismissResolution),
                 KeyCode::Char('o') => Some(Action::TodoOpenEmail),
-                // y is Enter and n is Esc (blueprint 35); q closes too.
                 KeyCode::Esc | KeyCode::Char('n' | 'q') => {
                     self.mailbox.todo_page.resolution_preview = None;
                     None
@@ -831,7 +788,6 @@ impl App {
             TodoPanel::Catchup => "catchup",
             TodoPanel::Expired => "expired",
         };
-        // An open peek closes before the hint, as in Updates.
         if key.code == KeyCode::Esc
             && context == "todo"
             && self.mailbox.todo_page.peek.take().is_some()
@@ -842,8 +798,6 @@ impl App {
             return Some(Action::DismissHint);
         }
         match self.defined_key(context, key) {
-            // `u` undoes an accepted resolution before the last mutation,
-            // unless a just-made change is still waiting to be undone.
             DefinedKey::Action(Action::UndoLastMutation)
                 if self.pending_undo.is_none()
                     && self.pending_invite_send.is_none()
@@ -854,8 +808,6 @@ impl App {
             {
                 Some(Action::TodoUndoResolution)
             }
-            // `,` corrects what mxr read: a later email's resolution comes
-            // first when one is waiting on the lit to-do.
             DefinedKey::Action(Action::TodoEdit)
                 if self
                     .selected_todo()

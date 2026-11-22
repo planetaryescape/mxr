@@ -16,17 +16,13 @@ pub(crate) struct DaemonSession {
 pub struct Client {
     conn: IpcConnection,
     event_tx: Option<mpsc::UnboundedSender<DaemonEvent>>,
-    // How to reconnect, for requests that may leave the connection unusable.
     target: mxr_client::SelectedDaemonTarget,
 }
 
-/// `label_role` that lists every enabled account's mail.
 pub(crate) fn all_mail_role() -> Option<String> {
     Role::AllMail.system_mailbox_wire_name().map(str::to_string)
 }
 
-/// `label_role` for listing `label` across every account, for a System
-/// label; `None` for user labels and folders, which stay per label id.
 pub(crate) fn unified_role_for(labels: &[Label], label_id: &LabelId) -> Option<String> {
     labels
         .iter()
@@ -36,11 +32,6 @@ pub(crate) fn unified_role_for(labels: &[Label], label_id: &LabelId) -> Option<S
         .map(str::to_string)
 }
 
-/// The sidebar's labels when no account is chosen: the default account's
-/// system mailboxes folded across accounts (see `with_unified_system_counts`),
-/// plus every enabled account's user labels, each keeping its account so the
-/// row can carry its chip. `all` is `None` when the all-accounts request
-/// failed; the default account's labels stand.
 pub(crate) fn sidebar_labels_across_accounts(
     labels: Vec<Label>,
     all: Option<&[Label]>,
@@ -59,14 +50,6 @@ pub(crate) fn sidebar_labels_across_accounts(
     merged
 }
 
-/// Fold every account's system mailboxes into the default account's labels.
-///
-/// Each system label's unread/total becomes the mailbox's total across
-/// accounts, from the daemon's `counts` or, for a daemon without
-/// `SystemMailboxCounts`, the sum of the accounts' labels. A mailbox only
-/// another account has gets an entry too (its label as that account has it),
-/// so Sent on a second account is reachable when the default account has no
-/// Sent label. User labels are left alone.
 pub(crate) fn with_unified_system_counts(
     mut labels: Vec<Label>,
     all: &[Label],
@@ -278,9 +261,6 @@ impl Client {
             .map_err(map_request_error)
     }
 
-    /// `SystemMailboxCounts` through the shared client helper: a daemon that
-    /// does not know it yields an `Unsupported` response on a connection that
-    /// is already healthy again, so the labels' own counts stand in.
     async fn system_mailbox_counts(
         &mut self,
         account_id: Option<AccountId>,
@@ -308,9 +288,6 @@ impl Client {
         if let Request::SystemMailboxCounts { account_id } = req {
             return self.system_mailbox_counts(account_id).await;
         }
-        // No connection-level timeout: the IPC worker bounds every request
-        // (see `ipc::IPC_REQUEST_TIMEOUT`) and owns the reconnect-on-timeout
-        // policy, so the mechanism here stays a plain awaited exchange.
         let event_tx = self.event_tx.clone();
         self.conn
             .request_response(
@@ -326,7 +303,6 @@ impl Client {
             .map_err(map_request_error)
     }
 
-    /// Every enabled account's mail (the All Mail mailbox), newest first.
     pub async fn list_envelopes(
         &mut self,
         limit: u32,
@@ -351,9 +327,6 @@ impl Client {
         }
     }
 
-    /// The default account's labels, with each system mailbox's counts
-    /// summed over every account. A failed sum request keeps the default
-    /// account's counts: the sidebar still renders.
     pub async fn list_labels(&mut self) -> Result<Vec<Label>, MxrError> {
         let resp = self
             .request(Request::ListLabels {
@@ -392,11 +365,6 @@ impl Client {
         Ok(sidebar_labels_across_accounts(labels, Some(&all), &counts))
     }
 
-    /// Phase F: paginated thread list. Provides the TUI's read path
-    /// for `Request::ListThreads`. The TUI's existing mailbox screen
-    /// renders messages grouped client-side by `thread_id`; a future
-    /// dedicated thread-pane view can call this to render threads
-    /// directly (each `Thread` carries its `message_ids`).
     pub async fn list_threads(
         &mut self,
         limit: u32,
@@ -555,11 +523,6 @@ impl Client {
     }
 }
 
-/// Map a `mxr-client` failure onto the `MxrError::Ipc` strings the TUI worker
-/// classifies on (`should_reconnect_ipc` matches substrings such as
-/// "connection closed" / "broken pipe" / "connection reset"). The `Io` arm
-/// keeps the protocol-mismatch hint via [`describe_ipc_failure`], which is
-/// otherwise a pass-through so those substrings survive.
 fn map_request_error(error: ClientError) -> MxrError {
     match error {
         ClientError::Closed => MxrError::Ipc(
@@ -570,12 +533,6 @@ fn map_request_error(error: ClientError) -> MxrError {
             MxrError::Ipc(describe_ipc_failure(&message))
         }
         ClientError::Daemon { message, .. } => MxrError::Ipc(message),
-        // Intentional deviation: the old `request` loop silently skipped a
-        // rogue frame and kept reading; we now surface it as an error. A frame
-        // that does not correlate means the connection is out of step, and
-        // skipping risks parking the worker; it is also unreachable in practice
-        // (one in-flight request per connection, and the worker drops the
-        // connection on timeout — see ipc.rs). Not a reconnect trigger.
         ClientError::UnexpectedFrame {
             frame_id,
             expected_id,
@@ -588,9 +545,6 @@ fn map_request_error(error: ClientError) -> MxrError {
             duration.as_secs()
         )),
         ClientError::Connect { source, .. } => MxrError::Ipc(source.to_string()),
-        // Transport-level connect failure (generic-connector path). The TUI
-        // dials via the path constructor, so this is unreachable here; the arm
-        // keeps the match exhaustive.
         ClientError::Transport(error) => MxrError::Ipc(error.to_string()),
     }
 }

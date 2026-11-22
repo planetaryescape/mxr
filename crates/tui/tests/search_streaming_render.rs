@@ -1,15 +1,3 @@
-//! Phase 1.4: visible-first-batch render check.
-//!
-//! Streamed search keeps the UI responsive by rendering each batch as
-//! soon as it lands, instead of gating on the final query completion.
-//! This widget-level test pins that behavior: with `ui_status =
-//! Searching` (the still-in-flight state) and a first-batch result
-//! already applied to `search.page.results`, the rendered output
-//! must show those rows.
-//!
-//! If we ever flipped to "wait for done before rendering rows", this
-//! test would catch it.
-
 use chrono::{TimeZone, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageFlags, UnsubscribeMethod};
@@ -69,8 +57,6 @@ fn streaming_row(env: Envelope) -> MailListRow {
 
 #[test]
 fn result_list_renders_first_batch_before_query_completes() {
-    // First batch landed; second batch still pending. `ui_status =
-    // Searching` is the precondition: the request is in-flight.
     let envelope = streaming_envelope("first-batch", "Build report", "Alice");
     let state = SearchPageState {
         query: "report".into(),
@@ -80,8 +66,6 @@ fn result_list_renders_first_batch_before_query_completes() {
         triage_verdicts: Default::default(),
         mode: mxr_core::SearchMode::Lexical,
         sort: None,
-        // has_more = true is the daemon's signal that more results
-        // are still on the wire.
         has_more: true,
         degraded: None,
         loading_more: true,
@@ -124,9 +108,6 @@ fn result_list_renders_first_batch_before_query_completes() {
         );
     });
 
-    // The sender and subject from the first batch are present in the
-    // rendered output. If the page ever gated row rendering on
-    // `ui_status == Loaded`, this would fail.
     assert!(
         rendered.contains("Alice") || rendered.contains("first-batch"),
         "first batch sender should be visible while the request is still streaming; got:\n{rendered}"

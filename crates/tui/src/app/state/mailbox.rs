@@ -12,21 +12,12 @@ pub struct PendingBrowserOpen {
     pub document: String,
 }
 
-/// An archive from the reader that opens the next or previous
-/// conversation once the daemon has done it, as the web reader's `]` and
-/// `[` do. The step waits for the archive, so a failed or refused one
-/// leaves the reader where it was.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveStep {
-    /// The messages the archive acts on, so a bulk confirm adopts the step
-    /// only for this archive.
     pub message_ids: Vec<MessageId>,
     pub thread_id: mxr_core::ThreadId,
     pub forward: bool,
-    /// The row to open afterwards, by its representative message; `None`
-    /// when the conversation was the last (or first) one.
     pub neighbour: Option<MessageId>,
-    /// The queued archive, once it is queued.
     pub mutation: Option<crate::app::MutationId>,
 }
 
@@ -47,44 +38,17 @@ pub enum MailListMode {
 pub enum MailboxView {
     Messages,
     Subscriptions,
-    /// Owed-replies lens (Slice 2.3 / C2.2). Entries are loaded via
-    /// `Request::ListOwedReplies` and re-fetched after a successful
-    /// reply send.
     Owed,
-    /// The desk (`Request::GetDesk`): what needs you, not what arrived.
-    /// Lanes are re-fetched after mutations and syncs.
     Desk,
-    /// Calendar-invites lens. Entries are loaded via `Request::ListInvites`
-    /// from the dedicated `calendar_invites` store table and re-fetched
-    /// after an RSVP. Groundwork for future calendar/event features.
     CalendarInvites,
-    /// Reading or Paper trail (`Request::ListPlace`): mail that isn't from
-    /// people, bundled by sender, each bundle with the reason it is there.
     Place(mxr_protocol::MailPlaceData),
-    /// To do (`Request::GetTodoRunway`): things email asked you to do, as
-    /// a runway ordered by when to act.
     Todo,
-    /// Now (`Request::GetNow`): the front page, at most ten things in four
-    /// fixed sections.
     Now,
-    /// Reading (`Request::GetReadingEdition`): newsletters as an edition,
-    /// with a reader beside it.
     Reading,
-    /// Updates (`Request::GetUpdatesDigest`): notifications as a briefing
-    /// by source, gathered at fixed cuts and let go in one key.
     Updates,
-    /// Archive, the mode (`Request::ListRecords`): records built from
-    /// mail, a ledger by month under an answer box.
     ArchiveMode,
-    /// Messages, the mode (`Request::ListMessages`): people you talk with,
-    /// one row each, with the selected person's page beside them.
-    /// (`Messages` above is the plain mail list.)
     People,
-    /// Focus & reply (`Request::GetDesk` and `Request::ListReplyQueue`):
-    /// everyone you owe a reply, one conversation at a time.
     Focus,
-    /// Snoozed (`Request::ListSnoozed`): snoozed mail as a mail list, waking
-    /// soonest first, where `w` wakes the lit conversation.
     Snoozed,
 }
 
@@ -181,21 +145,12 @@ pub struct MailListRow {
     pub representative: Envelope,
     pub message_count: usize,
     pub unread_count: usize,
-    /// Distinct participant emails in the thread (from/to/cc) besides the
-    /// representative [`Envelope::from`] address — used for the `+N` chip in
-    /// thread list rows. Zero in message-discrete mode or before aggregation fills it.
     pub other_participant_count: usize,
     pub open_commitment_count: u32,
-    /// Cached triage verdict token (ACTION/FYI/ROUTINE) when loaded by a
-    /// triage-capable search/view. Kept on the row so the TUI can sort/filter
-    /// or render a verdict column without depending on daemon/store internals.
     pub triage_verdict: Option<String>,
     pub reply_later: bool,
     pub pending_mutation: bool,
-    /// Where the email went (D119): "Reading", "Spam". Inbox shows it
-    /// quietly; the selected row's full chip is in the list's title.
     pub mode_chip: Option<&'static str>,
-    /// In Snoozed: when the row comes back, shown in place of its date.
     pub wake_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -205,8 +160,6 @@ pub struct SubscriptionEntry {
     pub envelope: Envelope,
 }
 
-/// A section header in the sidebar. The cursor rests on it, `Enter` folds
-/// or unfolds the section, and `{` / `}` jump between headers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidebarHeader {
     Accounts,
@@ -220,10 +173,8 @@ pub enum SidebarItem {
     Header(SidebarHeader),
     Account(Box<mxr_protocol::AccountSummaryData>),
     AllMail,
-    /// Starred by the flag, when no account has a Starred label.
     Starred,
     Subscriptions,
-    /// The rail: Now, the five modes, then Inbox.
     Now,
     Messages,
     Todo,
@@ -231,7 +182,6 @@ pub enum SidebarItem {
     Reading,
     ArchiveMode,
     Inbox,
-    /// Pages under More.
     Screener,
     ReplyQueue,
     Waiting,
@@ -269,8 +219,6 @@ pub struct SubscriptionsPageState {
     pub entries: Vec<SubscriptionEntry>,
 }
 
-/// Snoozed mail as last fetched: the envelopes, waking soonest first, and
-/// when each wakes.
 #[derive(Debug, Clone, Default)]
 pub struct SnoozedPageState {
     pub envelopes: Vec<Envelope>,
@@ -281,25 +229,18 @@ pub struct SnoozedPageState {
 #[derive(Debug, Clone, Default)]
 pub struct OwedRepliesPageState {
     pub entries: Vec<mxr_protocol::OwedReplyRowData>,
-    /// The daemon's count of people you write with and others who wrote
-    /// to you, the one Now, Messages and the rail use.
     pub people: Option<mxr_protocol::PeopleSplitData>,
 }
 
-/// The desk as last fetched: lanes in display order plus the everything-else
-/// counts. One cursor walks [`DeskPageState::rows`] across every lane.
 #[derive(Debug, Clone, Default)]
 pub struct DeskPageState {
     pub lanes: Vec<(mxr_protocol::DeskLaneKind, mxr_protocol::DeskLaneData)>,
     pub elsewhere: mxr_protocol::DeskElsewhereData,
     pub loaded: bool,
-    /// You cleared it: it had work last time and has none now. The lens
-    /// says so in one calm line instead of the plain empty state.
     pub low_tide: bool,
 }
 
 impl DeskPageState {
-    /// Build from a `ResponseData::Desk`; `None` for any other response.
     pub fn from_response(data: mxr_protocol::ResponseData) -> Option<Self> {
         use mxr_protocol::DeskLaneKind;
         let mxr_protocol::ResponseData::Desk {
@@ -326,7 +267,6 @@ impl DeskPageState {
         })
     }
 
-    /// Every row in display order, for the single cursor.
     pub fn rows(&self) -> impl Iterator<Item = &mxr_protocol::DeskRowData> {
         self.lanes.iter().flat_map(|(_, lane)| lane.rows.iter())
     }
@@ -335,8 +275,6 @@ impl DeskPageState {
         self.lanes.iter().map(|(_, lane)| lane.rows.len()).sum()
     }
 
-    /// Take a conversation's row off the desk at once (Done); the next
-    /// fetch has the daemon's word on it.
     pub fn remove_thread(&mut self, thread_id: &mxr_core::ThreadId) {
         for (_, lane) in &mut self.lanes {
             let before = lane.rows.len();
@@ -346,7 +284,6 @@ impl DeskPageState {
         }
     }
 
-    /// The sidebar badge: only work that is yours to do (owed and due).
     pub fn work_count(&self) -> usize {
         use mxr_protocol::DeskLaneKind;
         self.lanes
@@ -357,8 +294,6 @@ impl DeskPageState {
     }
 }
 
-/// A place (Reading or Paper trail) as last fetched. One cursor walks every
-/// message of every bundle; bundle headers are not stops.
 #[derive(Debug, Clone, Default)]
 pub struct PlacePageState {
     pub place: Option<mxr_protocol::MailPlaceData>,
@@ -369,7 +304,6 @@ pub struct PlacePageState {
 }
 
 impl PlacePageState {
-    /// Build from a `ResponseData::Place`; `None` for any other response.
     pub fn from_response(data: mxr_protocol::ResponseData) -> Option<Self> {
         let mxr_protocol::ResponseData::Place {
             place,
@@ -390,7 +324,6 @@ impl PlacePageState {
         })
     }
 
-    /// Every listed message in display order with its bundle.
     pub fn rows(
         &self,
     ) -> impl Iterator<
@@ -411,10 +344,6 @@ impl PlacePageState {
             .sum()
     }
 
-    /// Flip a message's pin locally, so the lens shows it before the
-    /// refetch lands.
-    /// Take a thread's messages off the place at once (done here); the
-    /// next fetch has the daemon's word on it.
     pub fn remove_thread(&mut self, thread_id: &mxr_core::ThreadId) {
         for bundle in &mut self.bundles {
             bundle
@@ -444,26 +373,20 @@ impl PlacePageState {
     }
 }
 
-/// Senders fetched per page of the place lens.
 pub const PLACE_PAGE_SENDERS: u32 = 50;
-/// Messages fetched per sender per page.
 pub const PLACE_PAGE_MESSAGES: u32 = 20;
 
-/// A fetch for the place lens, and how its answer joins what is shown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlaceFetch {
-    /// The first page again, as many senders and messages as are loaded.
     Refresh {
         place: mxr_protocol::MailPlaceData,
         senders: u32,
         messages_per_sender: u32,
     },
-    /// The next page of senders, appended.
     MoreSenders {
         place: mxr_protocol::MailPlaceData,
         offset: u32,
     },
-    /// The next page of one sender's messages, appended to its bundle.
     MoreFromSender {
         place: mxr_protocol::MailPlaceData,
         account_id: mxr_core::AccountId,
@@ -473,7 +396,6 @@ pub enum PlaceFetch {
 }
 
 impl PlacePageState {
-    /// What refreshing the lens should fetch so nothing loaded disappears.
     pub fn refresh_fetch(&self, place: mxr_protocol::MailPlaceData) -> PlaceFetch {
         let loaded = if self.place == Some(place) {
             self
@@ -493,8 +415,6 @@ impl PlacePageState {
         }
     }
 
-    /// Fold a fetched page in: replace, append senders, or append one
-    /// sender's messages.
     pub fn apply(&mut self, fetch: &PlaceFetch, page: Self) {
         match fetch {
             PlaceFetch::Refresh { .. } => *self = page,
@@ -542,13 +462,11 @@ impl PlacePageState {
         }
     }
 
-    /// More senders exist than are loaded.
     pub fn has_more_senders(&self) -> bool {
         (self.bundles.len() as u32) < self.total_bundles
     }
 }
 
-/// What a sweep covers: a whole place, or one sender's bundle in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SweepTarget {
     pub place: mxr_protocol::MailPlaceData,
@@ -556,29 +474,21 @@ pub struct SweepTarget {
     pub sender_email: Option<String>,
 }
 
-/// A sweep waiting on the user's yes, with the daemon's dry-run preview.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingSweepConfirm {
     pub target: SweepTarget,
     pub preview: mxr_protocol::SweepPreviewData,
-    /// How many of the previewed messages the lens has loaded: a sweep can
-    /// reach mail not yet shown, and the preview says so.
     pub shown: u32,
-    /// Enter sweeps only when Sweep has focus. One sender's bundle opens
-    /// on Sweep; the whole place opens on Cancel, so a slip from `S` to
-    /// `A` followed by Enter archives nothing.
     pub sweep_focused: bool,
     pub from_updates: bool,
 }
 
-/// The "move sender to…" menu for the sender under the cursor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SenderKindMenu {
     pub account_id: mxr_core::AccountId,
     pub sender_email: String,
     pub display: String,
     pub current: mxr_protocol::MailKindData,
-    /// The highlighted choice, which Enter runs.
     pub selected: usize,
 }
 
@@ -608,11 +518,7 @@ pub struct PendingAttachmentAction {
     pub attachment_id: AttachmentId,
     pub filename: String,
     pub operation: AttachmentOperation,
-    /// User-chosen save destination for `Download` operations. Set by
-    /// the save-attachment modal; `None` falls back to the TUI's
-    /// client-local attachment cache (used by `Open`).
     pub destination: Option<std::path::PathBuf>,
-    /// True only when the save modal confirmed replacing an existing file.
     pub replace_existing: bool,
 }
 
@@ -651,9 +557,7 @@ pub struct MailboxState {
     pub thread_summary: Option<ThreadSummaryPreview>,
     pub thread_summary_in_flight: HashSet<mxr_core::ThreadId>,
     pub thread_summary_error: Option<String>,
-    /// Facts for the open thread (`GetThreadContext`), shown above it.
     pub thread_context: Option<mxr_protocol::ThreadContextData>,
-    /// The model's gist and ask for the open thread (`GetThreadGist`).
     pub thread_gist: Option<mxr_protocol::ThreadGistData>,
     pub thread_selected_index: usize,
     pub message_scroll_offset: u16,
@@ -674,21 +578,14 @@ pub struct MailboxState {
     pub owed_page: OwedRepliesPageState,
     pub snoozed_page: SnoozedPageState,
     pub desk_page: DeskPageState,
-    /// To do (`GetTodoRunway`): the runway, its guide and its lists.
     pub todo_page: super::TodoPageState,
     pub records_page: super::RecordsPageState,
-    /// Now (`GetNow`): the front page and its guide.
     pub now_page: super::NowPageState,
-    /// Moves, the sender ask, the arrivals list and Inbox's chips (D119).
     pub trust: super::TrustState,
-    /// Messages (`ListMessages`, `GetPerson`): the bands, the person page,
-    /// the guide and a Got it counting down.
     pub messages_page: super::MessagesPageState,
-    /// Reading (`GetReadingEdition`): the edition, the reader and its guide.
     pub reading_page: super::ReadingPageState,
     pub updates_page: super::UpdatesPageState,
     pub focus_page: super::FocusPageState,
-    /// The rail (`GetRail`): badges, counts and which modes are early.
     pub rail: Option<mxr_protocol::RailData>,
     pub pending_rail_refresh: bool,
     pub place_page: PlacePageState,
@@ -696,8 +593,6 @@ pub struct MailboxState {
     pub active_label: Option<mxr_core::LabelId>,
     pub pending_label_fetch: Option<mxr_core::LabelId>,
     pub pending_active_label: Option<mxr_core::LabelId>,
-    /// A system mailbox listed by role because no label names it (Starred on
-    /// an account set with no Starred label). Set when the list is requested.
     pub active_role: Option<mxr_core::Role>,
     pub pending_role_fetch: Option<mxr_core::Role>,
     pub pending_labels_refresh: bool,
@@ -706,26 +601,14 @@ pub struct MailboxState {
     pub pending_owed_refresh: bool,
     pub pending_snoozed_refresh: bool,
     pub pending_desk_refresh: bool,
-    /// The place to (re)fetch for the place lens.
     pub pending_place_refresh: Option<mxr_protocol::MailPlaceData>,
-    /// A further page for the place lens (more senders, or more from one).
     pub pending_place_more: Option<PlaceFetch>,
-    /// A sweep whose dry-run preview the runtime should fetch.
     pub pending_sweep_preview: Option<SweepTarget>,
-    /// A confirmed sweep for the runtime to run, bounded by its preview.
     pub pending_sweep: Option<PendingSweepConfirm>,
-    /// The preview on screen, waiting for Enter or Esc.
     pub sweep_confirm: Option<PendingSweepConfirm>,
-    /// The open "move sender to…" menu.
     pub sender_kind_menu: Option<SenderKindMenu>,
     pub pending_calendar_invites_refresh: bool,
-    /// Set when the user opens an invite from the calendar-invites lens or a
-    /// row on the desk. The runtime fetches the envelope by id
-    /// (`Request::GetEnvelope`) and then opens the message view — both carry
-    /// only a `message_id`.
     pub pending_invite_open: Option<MessageId>,
-    /// A To do row's link, marked in that message of the open thread.
-    /// Cleared when any other message is opened.
     pub todo_link: Option<(MessageId, String)>,
     pub pending_commitment_counts_refresh: bool,
     pub open_commitment_counts: HashMap<(mxr_core::AccountId, mxr_core::ThreadId), u32>,
@@ -740,29 +623,18 @@ pub struct MailboxState {
     pub show_reader_stats: bool,
     pub remote_content_enabled: bool,
     pub signature_expanded: bool,
-    /// `Q`: the open thread's quoted text in full instead of folded.
     pub quotes_expanded: bool,
-    /// `o` and `;`: messages of the open thread shown as one line.
     pub collapsed_messages: HashSet<MessageId>,
-    /// Set by `o` and `;` so the next frame scrolls the reader to the
-    /// focused message; folding shifts every row below it.
     pub scroll_to_focused_message: bool,
-    /// `]` and `[`: where the reader goes once the archive is done.
     pub archive_step: Option<ArchiveStep>,
     pub attachment_panel: AttachmentPanelState,
     pub pending_attachment_action: Option<PendingAttachmentAction>,
     pub selected_set: HashSet<MessageId>,
     pub visual_mode: bool,
     pub visual_anchor: Option<usize>,
-    /// Digits typed in visual mode, waiting for a j/k. Digits mean tab
-    /// numbers everywhere else.
     pub visual_count: Option<usize>,
-    /// Set by the export picker on confirm; the runner takes it and performs
-    /// the daemon request and the write or copy.
     pub pending_export: Option<super::export_modal::PendingExport>,
     pub sidebar_accounts_expanded: bool,
-    /// Spinner state for the per-account "syncing" indicator in the
-    /// sidebar. Ticked while any account reports sync_in_progress.
     pub sidebar_sync_throbber: ThrobberState,
     pub sidebar_system_expanded: bool,
     pub sidebar_user_expanded: bool,
@@ -838,8 +710,6 @@ impl MailboxState {
             pending_subscriptions_refresh: false,
             pending_owed_refresh: false,
             pending_snoozed_refresh: false,
-            // Fetch once at startup so the sidebar badge is right before
-            // the desk is first opened.
             pending_desk_refresh: true,
             pending_place_refresh: None,
             pending_place_more: None,

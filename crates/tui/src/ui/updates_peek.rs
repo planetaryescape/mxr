@@ -1,13 +1,3 @@
-//! What Updates' Space opens under a line: the parts the one-line row
-//! leaves out, as the web's peek shows them (`UpdateLineRow.tsx`, `Peek`).
-//! The whole fact when the row cuts it, when the latest email arrived and
-//! its first lines, why the line is here, the numbers as the mail quoted
-//! them, a tracker's state, how many emails a line folds, a parcel's items
-//! and references, the time, and where `L` and `o` go. All of it is from the
-//! digest the daemon served, except the first lines, which come from the
-//! body the reader fetches. Plain text: mail-controlled strings pass through
-//! `one_line` before they reach the terminal.
-
 use chrono::{DateTime, Utc};
 use mxr_protocol::UpdateLineData;
 use regex::Regex;
@@ -16,17 +6,11 @@ use std::sync::LazyLock;
 use crate::ui::received_label::{received_label, DisplayZone};
 use crate::ui::sanitize::one_line;
 
-/// A fact this long may not fit on the row's one line (the web's
-/// `LONG_FACT`).
 const LONG_FACT: usize = 70;
-/// Lines of the email shown, the longest one in characters, and how far
-/// into the message to look (the web's `emailPreview.ts`).
 const PREVIEW_LINES: usize = 4;
 const LINE_MAX_CHARS: usize = 160;
 const SCAN_LINES: usize = 80;
 
-// The web's patterns, so both clients pick the same lines. Static literals,
-// so a failed compile is a bug caught by the tests below.
 static BARE_LINK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(?:\[[^\]]*\]\s*)?<?(?:https?://|www\.)\S+>?$").expect("valid pattern")
 });
@@ -56,8 +40,6 @@ fn clip(line: &str) -> String {
     format!("{}\u{2026}", kept.trim_end())
 }
 
-/// Whether a line says something: not a greeting, footer, bare link or
-/// fragment. A receipt's "Total $24.00" is two words; a lone word is a label.
 fn informative(line: &str) -> bool {
     if !line.chars().any(char::is_alphanumeric) {
         return false;
@@ -71,7 +53,6 @@ fn informative(line: &str) -> bool {
     line.split(' ').count() >= 2 || line.chars().any(|c| c.is_ascii_digit())
 }
 
-/// The first informative lines of a message's text, whitespace collapsed.
 pub(crate) fn preview_lines(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for raw in text.lines().take(SCAN_LINES) {
@@ -108,8 +89,6 @@ fn tracker_status(line: &UpdateLineData) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" \u{b7} "))
 }
 
-/// The peek's lines, top to bottom. `body` is the latest email's plain text
-/// once the reader has it; until then the other lines stand on their own.
 pub(crate) fn peek_lines(
     line: &UpdateLineData,
     body: Option<&str>,
@@ -132,7 +111,6 @@ pub(crate) fn peek_lines(
         lines.push(format!("Numbers: {}", numbers.join(", ")));
     }
     lines.extend(tracker_status(line));
-    // Repeats of one alert fold into the line; the peek says how many.
     if line.tracker.is_none() && line.count > 1 {
         lines.push(format!("{} emails in this digest", line.count));
     }

@@ -1,7 +1,3 @@
-//! The assistant pane: hidden until @, takes every key while it has
-//! focus, and each key sends the daemon request it names (send, approve,
-//! reject, answer, skip, stop, trust, delete after a dry run).
-
 use super::*;
 use crate::app::{AssistantCall, AssistantFocus, AssistantPrompt};
 use mxr_protocol::{
@@ -103,8 +99,6 @@ fn question() -> AssistantPendingData {
     }
 }
 
-/// An open pane showing `conversation`, with the requests it took to get
-/// there drained.
 fn showing(conversation: AssistantConversationData) -> App {
     let mut app = App::new();
     at(&mut app);
@@ -143,12 +137,9 @@ fn at_opens_the_pane_with_the_keys_and_asks_if_it_can_run() {
     ));
     let wide = render_to_string(140, 30, |frame| app.draw(frame));
     assert!(wide.contains("Talk to your mail"), "{wide}");
-    // Narrow terminals get the pane over the right of the screen.
     let narrow = render_to_string(90, 30, |frame| app.draw(frame));
     assert!(narrow.contains("Talk to your mail"), "{narrow}");
 
-    // Esc hands the keys back in two steps; @ then focuses the input,
-    // types there, and hides the pane from off the input.
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
     assert_eq!(app.assistant.focus, AssistantFocus::Pane);
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
@@ -162,7 +153,6 @@ fn at_opens_the_pane_with_the_keys_and_asks_if_it_can_run() {
     at(&mut app);
     assert!(!app.assistant.open);
 
-    // Ctrl-a, its old key, opens nothing.
     press(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
     assert!(!app.assistant.open);
 }
@@ -208,7 +198,6 @@ fn enter_sends_the_message_with_what_is_open() {
     }
     assert!(app.assistant.input.is_empty());
     assert!(app.assistant.running());
-    // A second Enter while the turn runs sends nothing.
     type_text(&mut app, "more");
     press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
     assert!(requests(&mut app).is_empty());
@@ -220,7 +209,6 @@ fn y_approves_the_waiting_change() {
         AssistantStatusData::AwaitingUser,
         vec![approval()],
     ));
-    // Something waits, so the keys went to it rather than the message box.
     assert_eq!(app.assistant.focus, AssistantFocus::Pane);
     let screen = render_to_string(140, 40, |frame| app.draw(frame));
     assert!(screen.contains("Archive 2 emails"), "{screen}");
@@ -233,7 +221,6 @@ fn y_approves_the_waiting_change() {
             decision: AssistantDecisionKindData::Approve,
         }
     );
-    // A second y before the daemon answers decides nothing more.
     press(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
     assert!(requests(&mut app).is_empty());
 }
@@ -268,7 +255,6 @@ fn number_keys_choose_and_enter_answers() {
         AssistantStatusData::AwaitingUser,
         vec![question()],
     ));
-    // Enter with nothing chosen sends nothing.
     press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
     assert!(requests(&mut app).is_empty());
     press(&mut app, KeyCode::Char('2'), KeyModifiers::NONE);
@@ -385,7 +371,6 @@ fn updates_refetch_the_open_conversation_one_at_a_time() {
         app.assistant.progress,
         Some(AssistantProgressData::Thinking { step: 3 })
     );
-    // The answer lands, and the events that came meanwhile ask once more.
     let mut done = conversation(AssistantStatusData::Idle, Vec::new());
     done.items.push(AssistantItemData::ToolCall {
         title: None,
@@ -518,7 +503,6 @@ fn hash_in_the_history_deletes_the_highlighted_conversation_after_a_dry_run() {
             },
         }),
     );
-    // The list stays open without it; the open conversation is untouched.
     let list = app.assistant.list.as_ref().expect("the list stays open");
     assert_eq!(list.conversations.len(), 1);
     assert_eq!(list.selected, 0);
@@ -590,8 +574,6 @@ fn toasts_stack_beside_the_pane_and_leave_its_hint_line_visible() {
 
 const LINKED_THREAD: &str = "019e6f2a-1234-7000-8000-abcdef000001";
 
-/// A finished turn whose reply links an email and two people, one of them
-/// not in Messages.
 fn linked_reply() -> App {
     let mut conversation = conversation(AssistantStatusData::Idle, vec![]);
     conversation.items.push(AssistantItemData::Assistant {
@@ -773,7 +755,6 @@ fn models() -> mxr_protocol::AssistantModelsData {
     }
 }
 
-/// The pane open on the picker, with the choices answered and drained.
 fn picking() -> App {
     let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
@@ -799,7 +780,6 @@ fn m_opens_the_model_picker_on_the_one_in_use_and_names_the_key_in_the_hint() {
     assert!(screen.contains("GPT-6 Luna"), "{screen}");
     assert!(screen.contains("Add an OpenAI key"), "{screen}");
     assert!(screen.contains("Enter use this model"), "{screen}");
-    // The pane's own hint line advertises the key.
     app.assistant.models = None;
     let screen = render_to_string(140, 30, |frame| app.draw(frame));
     assert!(screen.contains("M model"), "{screen}");
@@ -808,7 +788,6 @@ fn m_opens_the_model_picker_on_the_one_in_use_and_names_the_key_in_the_hint() {
 #[test]
 fn enter_on_an_available_model_asks_the_daemon_to_set_it_and_a_disabled_one_says_why() {
     let mut app = picking();
-    // GPT-6 Luna has no key: no request, the reason shows instead.
     press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
     press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
     assert!(requests(&mut app).is_empty());
@@ -838,7 +817,6 @@ fn enter_on_an_available_model_asks_the_daemon_to_set_it_and_a_disabled_one_says
             },
         }),
     );
-    // The picker closes and the model line is asked for again.
     assert!(app.assistant.models.is_none());
     assert!(matches!(
         requests(&mut app).as_slice(),
@@ -879,7 +857,6 @@ fn the_picker_scrolls_to_keep_the_highlighted_model_in_view_on_a_short_pane() {
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
     press(&mut app, KeyCode::Char('M'), KeyModifiers::SHIFT);
     requests(&mut app);
-    // Eight models, each unavailable with a reason that wraps in a narrow pane.
     let choices = (1..=8)
         .map(|n| {
             model_choice(
@@ -911,7 +888,6 @@ fn the_picker_scrolls_to_keep_the_highlighted_model_in_view_on_a_short_pane() {
         );
         press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
     }
-    // And back up to the first.
     for _ in 0..8 {
         press(&mut app, KeyCode::Char('k'), KeyModifiers::NONE);
     }

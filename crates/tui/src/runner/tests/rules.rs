@@ -19,7 +19,6 @@ fn a_delayed_rule_list_preserves_an_unsaved_sorting_preview_and_apply() {
     app.rules.dry_run_request_id = 42;
     let saved = serde_json::json!({"id":"unrelated", "name":"Saved rule"});
 
-    // First while the draft request is in flight, then after its token arrives.
     app.replace_rule_list(vec![saved.clone()]);
     assert_eq!(app.rules.dry_run_request_id, 42);
     assert!(app.rules.pending_dry_run.is_none());
@@ -147,7 +146,6 @@ fn category_rule_form_can_preview_all_accounts_and_switch_back() {
         Some(account_id.clone())
     );
 
-    // Treatment-only forms retain their existing account-choice policy.
     app.rules.page.form.visible = true;
     app.rules.page.form.action = "treatment:reading".into();
     app.sync_rule_form_editors();
@@ -178,8 +176,6 @@ fn category_rule_preview_pages_beyond_65k_effects() {
     assert!(app.rules.pending_category_apply.is_none());
 }
 
-/// `#` on a rule only asks, naming it; only the confirm deletes, and
-/// `n`/`Esc` keep it (blueprint 35: `#` previews everywhere).
 #[test]
 fn hash_asks_before_deleting_a_rule_and_only_the_confirm_deletes() {
     let mut app = App::new();

@@ -38,8 +38,6 @@ impl App {
                             "Follow up on our conversation \"{}\".",
                             env.subject.trim()
                         ),
-                        // A new email to this person, not a reply in the
-                        // thread (a source message would make it a reply).
                         source_message_id: None,
                         thread_id: None,
                         register: None,
@@ -111,8 +109,6 @@ impl App {
         }
     }
 
-    /// Confirm the Draft Options modal: draft a reply to the stored thread
-    /// using the chosen tone/length overrides (or auto when left unset).
     pub(crate) fn submit_draft_options_modal(&mut self) {
         let Some(thread_id) = self.modals.draft_options.thread_id.clone() else {
             self.modals.draft_options.close();

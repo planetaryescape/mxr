@@ -4,8 +4,6 @@ use mxr_core::ExportFormat;
 use std::path::PathBuf;
 
 impl App {
-    /// `E` on a thread. Opens the picker; nothing is written until a
-    /// destination is confirmed.
     pub fn open_export_modal(&mut self) {
         let Some(thread_id) = self.context_envelope().map(|env| env.thread_id.clone()) else {
             self.status_message = Some("No message selected".into());
@@ -14,8 +12,6 @@ impl App {
         self.modals.export.open(thread_id);
     }
 
-    /// Arrow keys in the format stage. `j`/`k` are not used here because
-    /// `j` picks JSON.
     pub fn export_modal_move(&mut self, down: bool) {
         let state = &mut self.modals.export;
         if down {
@@ -37,7 +33,6 @@ impl App {
         self.queue_export(ExportDestination::Clipboard);
     }
 
-    /// Moves to the path stage with the default path for the chosen format.
     pub fn export_modal_choose_save(&mut self) {
         let state = &mut self.modals.export;
         let (Some(thread_id), Some(format)) = (state.thread_id.as_ref(), state.format.as_ref())
@@ -64,9 +59,6 @@ impl App {
         state.awaiting_overwrite_confirm = false;
     }
 
-    /// Validates the typed path the same way the attachment save does. A
-    /// blank path, a directory, or an existing file keep the modal open with
-    /// the reason. An existing file needs a second Enter.
     pub fn export_modal_confirm_path(&mut self) {
         let raw = self.modals.export.input.trim().to_string();
         if raw.is_empty() {
@@ -94,9 +86,6 @@ impl App {
         self.queue_export(ExportDestination::Save { path, overwrite_ok });
     }
 
-    /// Hands the export to the runner and closes the picker. The status line
-    /// is set by the runner once the write or copy finishes, so it names the
-    /// real destination.
     fn queue_export(&mut self, destination: ExportDestination) {
         let export = std::mem::take(&mut self.modals.export);
         if let (Some(thread_id), Some(format)) = (export.thread_id, export.format) {

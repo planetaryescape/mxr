@@ -1,14 +1,3 @@
-//! The To do lens: things email asked you to do, as a runway ordered by
-//! when to act, never a list of subject lines.
-//!
-//! Renders `Request::GetTodoRunway` in four bands (Now, Coming up by week,
-//! Whenever, Done this week) with each row as an instruction: verb and
-//! object, who, how much, a runway bar and "act by Wed 7 · due Fri 9".
-//! The footer prints where Enter goes before it is pressed. The header
-//! line and the empty states come from the daemon's mode guide; hints show
-//! in the status line (`app/hints.rs`). Pure render; wiring lives in
-//! `app/todo_actions.rs`.
-
 use chrono::{DateTime, Utc};
 use mxr_protocol::{TodoChangeData, TodoData};
 use ratatui::prelude::*;
@@ -23,22 +12,14 @@ pub struct TodoView<'a> {
     pub page: &'a TodoPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
-    /// "Now" for relative and absolute arrival times, passed in so the render
-    /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
-    /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
     pub account_marks: crate::ui::account_mark::AccountMarks,
-    /// The peeked to-do's source email as plain text, once fetched.
     pub peek_body: Option<&'a str>,
 }
 
-/// Cells in the runway bar.
 const BAR_CELLS: usize = 10;
 
-/// The runway bar: it fills from the day the row showed up to the day it's
-/// due. One colour, the accent; past the deadline the row says "was due"
-/// instead of drawing a bar.
 pub(crate) fn runway_bar(todo: &TodoData) -> Option<String> {
     if todo.overdue {
         return None;
@@ -57,7 +38,6 @@ pub(crate) fn runway_bar(todo: &TodoData) -> Option<String> {
     ))
 }
 
-/// Who the row is for: "you promised Priya" on a promise, else the payee.
 fn who(todo: &TodoData) -> String {
     one_line(
         todo.person_label
@@ -67,8 +47,6 @@ fn who(todo: &TodoData) -> String {
     )
 }
 
-/// The footer's first line: where the row's link goes (Enter opens the
-/// email, never the link), then why the row is here.
 pub(crate) fn trust_line(
     todo: &TodoData,
     now: DateTime<Utc>,
@@ -98,7 +76,6 @@ pub(crate) fn trust_line(
     parts.join(" \u{b7} ")
 }
 
-/// What Enter does on this row, named for its action and destination.
 pub(crate) fn primary_label(todo: &TodoData) -> String {
     match &todo.action {
         Some(action) => one_line(&action.label),
@@ -106,14 +83,10 @@ pub(crate) fn primary_label(todo: &TodoData) -> String {
     }
 }
 
-/// The footer's keys in `width`. Enter, undo, a waiting review and help
-/// always show; the rest follow the guide's order, the last ones dropped
-/// first when space runs short.
 fn keys_line(page: &TodoPageState, selected: Option<&TodoData>, width: usize) -> String {
     let entries = match page.panel {
         TodoPanel::Runway => {
             let enter = selected.map_or_else(|| "do it".to_string(), primary_label);
-            // The mode's own key table, so the footer says what web and CLI say.
             let rest: Vec<(String, String)> = match &page.guide {
                 Some(guide) => guide
                     .keys
@@ -123,8 +96,6 @@ fn keys_line(page: &TodoPageState, selected: Option<&TodoData>, width: usize) ->
                 None => mxr_protocol::TODO_GUIDE
                     .keys
                     .iter()
-                    // Before the daemon's guide arrives, the compiled-in copy names
-                    // actions by id; show their keys, as the guide would.
                     .filter_map(|(id, verb)| {
                         Some((mxr_keymap::guide_key(id)?, (*verb).to_string()))
                     })
@@ -176,8 +147,6 @@ fn keys_line(page: &TodoPageState, selected: Option<&TodoData>, width: usize) ->
     crate::ui::key_footer::fit(&entries, "  ", width)
 }
 
-/// Greedy word wrap for the cards and catch-up copy, which are plain text.
-/// Now's lens uses it too.
 pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
     let width = width.max(16);
     let mut lines = Vec::new();
@@ -206,9 +175,6 @@ fn band(title: &str, theme: &crate::theme::Theme) -> Line<'static> {
     ))
 }
 
-/// Column widths for a row, chosen from the lens width alone so bars and
-/// dates line up down a band. The title and the whole date come first;
-/// the bar, the amount and then who give way as the lens narrows.
 struct RowColumns {
     title: usize,
     who: usize,
@@ -218,17 +184,14 @@ struct RowColumns {
 }
 
 impl RowColumns {
-    /// Long enough for "shows up Mon 19 Oct · act by Mon 26 Oct".
     const WHEN: usize = 40;
     const TITLE_MIN: usize = 14;
-    /// The title grows to this before who and the amount get room.
     const TITLE_PREFERRED: usize = 28;
     const TITLE_MAX: usize = 48;
     const WHO_MAX: usize = 22;
     const AMOUNT: usize = 9;
 
     fn for_width(width: usize) -> Self {
-        // The marker, and the gap after the title.
         let avail = width.saturating_sub(2 + 2);
         let when = Self::WHEN.min(avail.saturating_sub(Self::TITLE_MIN));
         let mut left = avail.saturating_sub(when + Self::TITLE_MIN);
@@ -262,8 +225,6 @@ impl RowColumns {
     }
 }
 
-/// One row as a sentence: title, who, amount, bar and dates. `dim` for
-/// Coming up and Whenever, which aren't asking for anything yet.
 fn row_line(
     todo: &TodoData,
     selected: bool,
@@ -325,7 +286,6 @@ fn row_line(
         ));
     }
     spans.extend(chip.unwrap_or_default());
-    // Overdue is a fact in the row's own words, never red.
     spans.push(Span::styled(when, Style::default().fg(theme.text_muted)));
     if selected {
         for span in &mut spans {
@@ -339,7 +299,6 @@ struct Body {
     lines: Vec<Line<'static>>,
     selected_line: usize,
     sync_preview_end: Option<usize>,
-    /// The line after the lit row's peek, so scrolling can show all of it.
     peek_end: Option<usize>,
 }
 
@@ -532,8 +491,6 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
             Style::default().fg(theme.accent),
         );
     }
-    // The daemon sets the empty state whenever Now is empty: what lands
-    // here, or when the next thing shows up.
     if runway.now.is_empty() && runway.empty_state.is_some() {
         body.push(Line::from(""));
         let empty = runway
@@ -544,7 +501,6 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
         for line in wrap(&empty, width.saturating_sub(4)) {
             body.text(line, secondary);
         }
-        // Never had any: say how to add one by hand.
         if let Some(guide) = page
             .guide
             .as_ref()
@@ -588,7 +544,6 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
             theme,
         ));
     }
-    // Counted when the lens opened; later refreshes count from then.
     let expired = page.expired_on_open.max(runway.expired_since_last_looked);
     if expired > 0 {
         body.push(Line::from(""));
@@ -745,8 +700,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::t
             let row = body
                 .selected_line
                 .saturating_sub(body_height.saturating_sub(2));
-            // An open peek under the lit row shows whole, as far as the
-            // row itself can stay on screen.
             body.peek_end.map_or(row, |end| {
                 row.max(end.saturating_sub(body_height))
                     .min(body.selected_line)
@@ -862,8 +815,6 @@ fn draw_microsoft_preview(
     page.microsoft_review_visible.set(true);
 }
 
-/// "Let go of all" as the daemon previewed it: Enter lets go of exactly
-/// these rows.
 fn draw_catchup_preview(
     frame: &mut Frame,
     area: Rect,
@@ -905,8 +856,6 @@ fn draw_catchup_preview(
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-/// The `,` and `t` prompt. Drawn over any screen: `t` works from
-/// the mail list and the reader too.
 pub fn draw_prompt(
     frame: &mut Frame,
     area: Rect,
@@ -958,7 +907,6 @@ pub fn draw_prompt(
         chunks[0],
     );
     let field = if matches!(prompt.kind, TodoPromptKind::Correct { .. }) {
-        // The reasons, each with its digit, the highlighted one lit.
         let reasons = ["Not a to-do", "Not mine", "Already done", "Wrong details"];
         Line::from(
             reasons
@@ -1293,7 +1241,6 @@ pub(crate) mod tests {
         assert!(rendered.contains("\u{a3}142.00"));
         assert!(rendered.contains("\u{2593}\u{2593}\u{2593}\u{2593}\u{2593}\u{2593}\u{2591}\u{2591}\u{2591}\u{2591} act by Wed 7 Oct \u{b7} due Fri 9 Oct"));
         assert!(rendered.contains("3 expired since you last looked \u{b7} 3 open the list"));
-        // The footer says where Enter goes before it's pressed.
         assert!(rendered.contains("link goes to camden.gov.uk \u{b7} Here because"));
         assert!(rendered.contains("\u{21b5} Open email to pay  e tick off  b schedule"));
         assert!(!rendered.contains('\u{2014}'), "no em dashes");
@@ -1312,7 +1259,6 @@ pub(crate) mod tests {
             !line.contains('\u{2593}'),
             "no bar past the deadline: {line}"
         );
-        // Draw again and check no cell is painted in the theme's error red.
         let theme = crate::theme::Theme::default();
         let backend = ratatui::backend::TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -1495,7 +1441,6 @@ pub(crate) mod tests {
                 ("Pay council", "act by Wed 7 Oct \u{b7} due Fri 9 Oct"),
                 ("Renew car", "shows up Mon 19 Oct \u{b7} act by Mon 26 Oct"),
             ] {
-                // The row, not the headline that also names it.
                 let line = rendered
                     .lines()
                     .find(|line| line.contains(title) && !line.contains("need you"))
@@ -1503,7 +1448,6 @@ pub(crate) mod tests {
                 assert!(line.contains(when), "{width}: the date is cut: {line}");
             }
         }
-        // At 80 columns the bar still fits; at 60 it gives way to the date.
         let wide = render_at(&page, 80);
         let bill = wide
             .lines()

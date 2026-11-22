@@ -4,9 +4,6 @@ use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-/// Maximum hints surfaced in the bar at once. Past this, the user is
-/// better served by Cmd+K (palette) or `?` (help). Five fits a single
-/// 80-col line and matches the "top-5 contextual" design intent.
 pub const HINT_BAR_MAX_HINTS: usize = 5;
 
 pub struct HintBarState<'a> {
@@ -18,14 +15,8 @@ pub struct HintBarState<'a> {
     pub selected_count: usize,
     pub bulk_confirm_open: bool,
     pub sync_status: Option<String>,
-    /// True when the focused message carries a calendar invite that the
-    /// user can RSVP to. Surfaces accept/decline keys in the hint bar so
-    /// the action is discoverable without opening the palette.
     pub viewing_invite: bool,
-    /// First key of an in-progress multi-key chord; renders as "g …" at
-    /// the head of the bar so the user can see the pending prefix.
     pub pending_prefix: Option<char>,
-    /// The lit item's verbs in a mode, from the key definition's strips.
     pub mode_strip: Option<Vec<(String, String)>>,
     pub _marker: std::marker::PhantomData<&'a ()>,
 }
@@ -73,8 +64,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
         )
     };
 
-    // Pending multi-key chord: prepend "g …" so the user can see the
-    // handler is waiting for the second key.
     if let Some(prefix) = state.pending_prefix {
         let pending_span = Span::styled(
             format!(" {prefix} … "),
@@ -86,7 +75,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
         }
     }
 
-    // Split area: hints on left, sync status on right
     let sync_text = state.sync_status.as_deref().unwrap_or("not synced");
     let sync_color = if sync_text.starts_with("syncing") {
         theme.accent
@@ -97,7 +85,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
     } else {
         theme.error
     };
-    let sync_width = (sync_text.chars().count() + 4) as u16; // "● " + text + padding
+    let sync_width = (sync_text.chars().count() + 4) as u16;
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -109,7 +97,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
         chunks[0],
     );
 
-    // Sync status indicator
     let sync_line = Line::from(vec![
         Span::styled("● ", Style::default().fg(sync_color)),
         Span::styled(sync_text.to_string(), Style::default().fg(theme.text_muted)),
@@ -120,10 +107,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
     );
 }
 
-/// Hints for the bar in this context. Capped at [`HINT_BAR_MAX_HINTS`];
-/// less-frequent actions live in Cmd+K palette or the `?` help modal.
-/// Action lists below are ordered by user-task primacy: open the
-/// dominant action first, then escape/help last.
 pub fn hints_for_context(
     context: UiContext,
     selected_count: usize,
@@ -171,8 +154,6 @@ fn hints_with_keybindings(
             ],
         ),
         UiContext::MailboxMessage if viewing_invite => {
-            // Calendar invite is open — surface RSVP keys first so the
-            // action is discoverable without the palette.
             let mut hints = display_bindings_for_actions(
                 ViewContext::ThreadView,
                 &[
@@ -183,7 +164,6 @@ fn hints_with_keybindings(
                     "archive",
                 ],
             );
-            // Fall back to defaults if any binding is missing in user config.
             if hints.is_empty() {
                 hints = display_bindings_for_actions(
                     ViewContext::ThreadView,
@@ -330,9 +310,6 @@ mod tests {
     use super::{hints_for_context, HINT_BAR_MAX_HINTS};
     use crate::action::UiContext;
 
-    /// The hint bar promises a top-N contextual surface; deeper
-    /// commands live in Cmd+K and `?`. Test that every context keeps
-    /// the bar under the documented cap so the design stays honest.
     #[test]
     fn no_context_exceeds_hint_bar_cap() {
         let contexts = [

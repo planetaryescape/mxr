@@ -1,10 +1,6 @@
-//! The two options of a destroying confirm, the lit one marked, and the
-//! keys that answer it (`app::ConfirmChoice`).
-
 use crate::app::ConfirmChoice;
 use ratatui::prelude::*;
 
-/// `› Keep it   Delete draft`, with the lit option marked and coloured.
 pub fn options(
     keep: &str,
     action: &str,
@@ -29,7 +25,6 @@ pub fn options(
     Line::from(spans)
 }
 
-/// The keys under the options.
 pub fn keys_hint(theme: &crate::theme::Theme) -> Line<'static> {
     Line::from(Span::styled(
         "y yes \u{b7} n/Esc/q keep \u{b7} j/k move \u{b7} Enter the lit one",

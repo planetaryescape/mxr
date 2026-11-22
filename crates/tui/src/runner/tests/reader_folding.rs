@@ -1,6 +1,3 @@
-//! The reader's `o`, `;` and `Q` folds and its `]` and `[` archive-and-step,
-//! as the web reader has them.
-
 use super::*;
 use crate::app::ArchiveStep;
 
@@ -21,8 +18,6 @@ fn plain_body(id: &MessageId, text: &str) -> MessageBody {
     }
 }
 
-/// The reader open on a three-message thread whose messages read
-/// "Body 0" to "Body 2" over `lines` lines each. The middle one is unread.
 fn open_thread(lines: usize) -> App {
     let mut app = App::new();
     app.mailbox.html_view = false;
@@ -82,7 +77,6 @@ fn semicolon_folds_all_but_the_newest_and_unread_then_opens_every_message() {
 
     press(&mut app, KeyCode::Char(';'));
 
-    // 0 is read and older; 1 is unread; 2 is the newest.
     assert_eq!(
         app.mailbox.collapsed_messages,
         std::collections::HashSet::from([ids[0].clone()])
@@ -114,7 +108,6 @@ fn folding_puts_the_focused_message_at_the_top_of_the_reader_once() {
     assert!(app.mailbox.message_scroll_offset > 0);
     assert!(!app.mailbox.scroll_to_focused_message);
 
-    // The next frame keeps the person's scroll.
     app.mailbox.message_scroll_offset = 0;
     let again = screen(&mut app);
     assert!(again.contains("Body 0 line 0"), "{again}");
@@ -196,7 +189,6 @@ fn q_in_plain_text_says_plain_text_shows_quotes_in_full() {
     );
 }
 
-/// The reader open on row `row` of a three-conversation Inbox.
 fn reader_on_row(row: usize, inbox: bool) -> App {
     let mut app = App::new();
     if inbox {
@@ -216,7 +208,6 @@ fn viewing(app: &App) -> Option<MessageId> {
         .map(|env| env.id.clone())
 }
 
-/// What the runner does when the daemon finishes the archive.
 fn complete(app: &mut App) -> MessageId {
     let queued = app.pending_mutation_queue.remove(0);
     let step = app.take_archive_step(queued.id);
@@ -240,7 +231,6 @@ fn close_bracket_archives_with_the_lists_archive_then_opens_the_next() {
 
     press(&mut app, KeyCode::Char(']'));
 
-    // The same request and undo as `e`; the reader waits for the daemon.
     assert_eq!(viewing(&app), Some(ids[0].clone()));
     assert!(matches!(
         app.mailbox.archive_step,
@@ -263,15 +253,12 @@ fn open_bracket_archives_then_opens_the_previous() {
     press(&mut app, KeyCode::Char('['));
     assert_eq!(complete(&mut app), ids[1]);
 
-    // The Inbox lost the row, so the reader first lands on the one that
-    // took its place; the step takes it back to the previous one.
     assert_eq!(viewing(&app), Some(ids[0].clone()));
     assert_eq!(app.mailbox.selected_index, 0);
 }
 
 #[test]
 fn close_bracket_steps_on_where_the_archive_leaves_the_row_in_the_list() {
-    // No active label: the archived row stays, as in All Mail.
     let mut app = reader_on_row(0, false);
     let ids: Vec<MessageId> = app.mailbox.envelopes.iter().map(|e| e.id.clone()).collect();
 
@@ -318,7 +305,6 @@ fn a_failed_archive_steps_nowhere() {
 
     press(&mut app, KeyCode::Char(']'));
     let queued = app.pending_mutation_queue.remove(0);
-    // The runner drops the step when the daemon refuses the archive.
     assert!(app.take_archive_step(queued.id).is_some());
 
     assert_eq!(viewing(&app), Some(ids[0].clone()));

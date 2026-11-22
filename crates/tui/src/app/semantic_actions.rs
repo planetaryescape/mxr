@@ -43,9 +43,6 @@ impl App {
         }
     }
 
-    /// Queue a semantic IPC request for the dispatcher to drain on its
-    /// next iteration. One queue per request keeps the existing
-    /// "drain in lib.rs" pattern consistent with saved-searches.
     pub(crate) fn queue_semantic_request(&mut self, request: mxr_protocol::Request) {
         self.modals.pending_semantic_dispatch.push(request);
     }

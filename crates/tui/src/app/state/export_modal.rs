@@ -2,9 +2,6 @@ use mxr_core::id::ThreadId;
 use mxr_core::ExportFormat;
 use std::path::PathBuf;
 
-/// The picker's steps: format, then destination, then (for save) the path.
-/// Esc closes it from any step, so nothing is written or copied until the
-/// last step confirms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExportStage {
     #[default]
@@ -36,10 +33,7 @@ pub struct ExportModalState {
     pub visible: bool,
     pub thread_id: Option<ThreadId>,
     pub stage: ExportStage,
-    /// Highlighted row in the format stage, an index into `FORMAT_CHOICES`.
     pub selected: usize,
-    /// Set when the user leaves the format stage. The path stage relies on it
-    /// being fixed, so the prefilled path always matches the chosen format.
     pub format: Option<ExportFormat>,
     pub input: String,
     pub error: Option<String>,

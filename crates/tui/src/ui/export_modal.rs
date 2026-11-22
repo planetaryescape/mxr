@@ -79,7 +79,6 @@ fn destination_stage(
     state: &ExportModalState,
     theme: &crate::theme::Theme,
 ) -> (Vec<Line<'static>>, &'static str) {
-    // The destination step is only reached after a format is chosen.
     let format = state.format.as_ref().map_or("", format_label);
     let lines = vec![
         Line::styled(

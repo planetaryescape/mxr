@@ -22,8 +22,6 @@ impl App {
         let selected_row_message_id = (!append && self.search.page.result_selected)
             .then(|| self.selected_search_envelope().map(|env| env.id.clone()))
             .flatten();
-        // Mask in-flight optimistic state so a daemon-sourced page can't
-        // undo an optimistic remove or flag change before the mutation acks.
         let mut envelopes = envelopes;
         let mut scores = scores;
         let mut triage_verdicts = triage_verdicts;
@@ -63,8 +61,6 @@ impl App {
         }
 
         self.search.page.has_more = has_more;
-        // Once any page was limited the line stays, so a list that mixes
-        // limited and full pages is not presented as complete.
         self.search.page.degraded = if append {
             degraded.or_else(|| self.search.page.degraded.take())
         } else {
@@ -318,8 +314,6 @@ impl App {
             self.search.active = false;
         } else {
             let query_words: Vec<&str> = query.split_whitespace().collect();
-            // Instant client-side filter: every query word must prefix-match
-            // some word in subject, from, or snippet
             let filtered: Vec<Envelope> = self
                 .mailbox
                 .all_envelopes

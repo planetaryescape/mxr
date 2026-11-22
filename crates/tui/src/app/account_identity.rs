@@ -3,8 +3,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use mxr_core::{parse_account_tag, AccountColor};
 
 impl App {
-    /// `i` on the Accounts list: edit the selected account's colour and tag
-    /// (blueprint 33). Only configured accounts have an identity to write.
     pub(super) fn open_identity_editor(&mut self) {
         let Some(account) = self.selected_account().cloned() else {
             return;
@@ -87,8 +85,6 @@ impl App {
         None
     }
 
-    /// The first Enter previews the change through the daemon's dry run; the
-    /// next Enter, with nothing edited since, saves it.
     fn submit_identity_editor(&mut self) {
         let Some(editor) = self.accounts.page.identity_editor.as_mut() else {
             return;
@@ -108,9 +104,6 @@ impl App {
         self.accounts.pending_identity = Some(request);
     }
 
-    /// Called with the daemon's answer to an identity write, or with `None`
-    /// when the request failed. A saved change closes the editor; a dry run
-    /// that passes leaves it open for the second Enter.
     pub(crate) fn finish_identity_write(
         &mut self,
         result: Option<&mxr_protocol::AccountOperationResult>,
@@ -228,7 +221,6 @@ mod tests {
             "second Enter saves"
         );
 
-        // Keys are ignored while the save is in flight.
         press(&mut app, KeyCode::Right);
         assert_eq!(
             app.accounts.page.identity_editor.as_ref().unwrap().color,
@@ -311,7 +303,6 @@ mod tests {
         assert_eq!(after.color, AccountColor::Amber);
     }
 
-    /// With single-key shortcuts off, the tag must still take letters.
     #[test]
     fn the_identity_tag_counts_as_text_input_and_the_colour_does_not() {
         let mut app = App::new();

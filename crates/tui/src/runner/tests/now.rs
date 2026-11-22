@@ -1,8 +1,3 @@
-//! Now and the rail in the TUI: `g h` opens the front page, each rail key
-//! opens its mode, `e` is done here through `SetModeDone` with the
-//! daemon's handoff copy and `u` to undo, `A` lets go of the Updates card
-//! only after a preview, and a new sender's question is answered in place.
-
 use super::*;
 use crate::ui::now_lens::tests::{page, populated};
 use mxr_protocol::{ModeDoneOutcomeData, ModeKindData, SenderKindData};
@@ -25,7 +20,6 @@ fn queued(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// Now open on the demo's front page.
 fn now_app(hints_seen: bool) -> App {
     let mut app = App::new();
     chord(&mut app, 'h');
@@ -98,7 +92,6 @@ fn e_on_a_person_is_done_in_messages_and_u_undoes_it() {
         "the row leaves at once"
     );
 
-    // The daemon's answer: its handoff copy is the toast, with undo.
     let (effect, undo) = crate::runner::mode_done_outcome(
         &[outcome(
             thread.clone(),
@@ -158,7 +151,6 @@ fn e_on_a_due_row_is_done_in_to_do_for_its_thread() {
     ));
 }
 
-/// The daemon's dry run of letting go of a digest.
 pub(super) fn let_go_preview(threads: &[ThreadId]) -> mxr_protocol::UpdatesLetGoData {
     mxr_protocol::UpdatesLetGoData {
         dry_run: true,
@@ -230,9 +222,7 @@ fn esc_keeps_the_digest() {
 #[test]
 fn a_new_senders_question_is_answered_through_x() {
     let mut app = now_app(true);
-    // Iris, the third person, is new.
     app.mailbox.selected_index = 2;
-    // The digits that answered moved into the X picker.
     let before = app.status_message.clone();
     press(&mut app, KeyCode::Char('2'));
     assert_eq!(
@@ -261,7 +251,6 @@ fn a_new_senders_question_is_answered_through_x() {
         [Request::SetSenderKind { sender_email, kind: Some(SenderKindData::PaperTrail), .. }]
             if sender_email == "iris.chen@example.com"
     ));
-    // Block is D, in the sender's half from P too.
     app.pending_mutation_queue.clear();
     let p = app
         .handle_key(KeyEvent::new(KeyCode::Char('P'), KeyModifiers::SHIFT))
@@ -450,7 +439,6 @@ fn done_moves_the_cursor_to_the_next_row_and_at_the_end_to_the_previous() {
         "the next row"
     );
 
-    // The last row done: only rows with a done of their own, so no card.
     if let Some(now) = app.mailbox.now_page.now.as_mut() {
         now.updates = None;
         now.reading = None;
@@ -516,7 +504,6 @@ fn r_a_and_f_answer_or_forward_the_lit_person_and_nothing_else() {
         assert_eq!(composed, Some((expected, message)), "{key}");
     }
 
-    // A to-do row is not a conversation: `o` opens its email first.
     for key in ['a', 'f'] {
         let mut app = now_app(true);
         app.mailbox.selected_index = 3;
@@ -545,10 +532,6 @@ fn screen(app: &mut App) -> String {
         .join("\n")
 }
 
-/// Dogfood 2026-10-29: Enter on a person opened their email in a reader the
-/// Now page never drew, so the keys went to an invisible reader. It opens
-/// Messages on that person now, their page on that conversation, as the
-/// web's Enter does.
 #[test]
 fn enter_on_a_person_opens_messages_on_that_conversation() {
     let mut app = now_app(true);
@@ -562,12 +545,10 @@ fn enter_on_a_person_opens_messages_on_that_conversation() {
         app.mailbox.pending_invite_open.is_none(),
         "no hidden reader"
     );
-    // The bands arrive with the conversation under the second person.
     let mut messages = crate::ui::messages_lens::tests::populated();
     let row = messages.your_turn.get_mut(1).expect("a second person");
     row.topics[0].thread_id = thread.clone();
     let row_id = row.id.clone();
-    // The runtime has asked for the bands by the time they arrive.
     app.mailbox.messages_page.pending_refresh = false;
     app.set_messages(messages, None);
     let page = &app.mailbox.messages_page;
@@ -580,8 +561,6 @@ fn enter_on_a_person_opens_messages_on_that_conversation() {
     assert!(page.select_thread.is_none());
 }
 
-/// Dogfood 2026-10-29: `o` opens the email itself, full width, since Now
-/// draws no reader beside it; Esc comes back to Now.
 #[test]
 fn o_opens_the_email_where_it_can_be_seen_and_esc_comes_back() {
     let mut app = now_app(true);
@@ -594,7 +573,6 @@ fn o_opens_the_email_where_it_can_be_seen_and_esc_comes_back() {
     assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
     let shown = screen(&mut app);
     assert!(shown.contains(&subject), "the email is on screen: {shown}");
-    // F would split it beside a list Now doesn't draw: it stays full width.
     press(&mut app, KeyCode::Char('F'));
     assert_eq!(app.mailbox.layout_mode, LayoutMode::FullScreen);
     press(&mut app, KeyCode::Esc);
@@ -603,9 +581,6 @@ fn o_opens_the_email_where_it_can_be_seen_and_esc_comes_back() {
     assert!(screen(&mut app).contains("Now"));
 }
 
-/// Dogfood 2026-10-29: before the daemon's guide arrived, Now's key line
-/// printed action ids ("now.open open in its mode"), and the Updates card
-/// named the retired `A`.
 #[test]
 fn nows_key_lines_name_keys_from_the_definition() {
     let mut app = now_app(true);

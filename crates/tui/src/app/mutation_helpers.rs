@@ -17,8 +17,6 @@ impl App {
         add: &[String],
         remove: &[String],
     ) {
-        // Each message gets its own account's label ids: the same name is a
-        // different label on every account.
         let labels = &self.mailbox.labels;
         for envelopes in [
             &mut self.mailbox.envelopes,
@@ -53,15 +51,6 @@ impl App {
         }
     }
 
-    /// Why a by-name label action must not run, or None when every target
-    /// message's account has the label. The daemon resolves the name on each
-    /// message's own account and would send an unknown name to the provider
-    /// as a label id, so the refusal names the account instead. System
-    /// mailboxes are exempt: the sidebar keeps one merged entry per mailbox
-    /// (the default account's), so the list cannot say whether another
-    /// account has it, and every account has its own Inbox, Trash and Spam.
-    /// A name no loaded label has is left to the daemon as before: the list
-    /// may not have loaded yet or may predate a label made elsewhere.
     pub(super) fn label_refusal(
         &self,
         message_ids: &[MessageId],
@@ -191,9 +180,6 @@ impl App {
         }
     }
 
-    /// Messages' done here names what it did and where it went next: its
-    /// note, kept under this mutation, goes around the daemon's copy.
-    /// Any other mutation's completion is left as it is.
     pub fn with_done_note(&mut self, id: MutationId, effect: MutationEffect) -> MutationEffect {
         if self
             .mailbox
@@ -213,19 +199,11 @@ impl App {
         }
     }
 
-    /// Apply the completion of a mutation to UI state.
-    ///
-    /// Called from the main event loop after the daemon's `MutationResult`
-    /// arrives. `show_completion_status` is true only when this is the last
-    /// in-flight mutation — matches the existing main-loop gating semantics
-    /// so a batch of archives doesn't overwrite the status mid-flight.
     pub fn apply_mutation_completion(
         &mut self,
         effect: MutationEffect,
         show_completion_status: bool,
     ) {
-        // Anything done from Snoozed (a wake, a new time, an archive, an
-        // undo) can change what is snoozed, so the list is fetched again.
         if self.mailbox.mailbox_view == MailboxView::Snoozed {
             self.mailbox.pending_snoozed_refresh = true;
         }
@@ -258,7 +236,6 @@ impl App {
             }
             MutationEffect::RefreshList => {
                 crate::daemon_events::queue_active_list_fetch(self);
-                // An undo of done here puts a thread back in its modes.
                 match self.mailbox.mailbox_view {
                     MailboxView::Now => self.refresh_now(),
                     MailboxView::People => self.refresh_messages(),
@@ -368,11 +345,6 @@ impl App {
                 sent_message_id,
                 draft_path,
             } => {
-                // Refresh the active label so a Sent-view user sees the new
-                // message immediately. Subscriptions also refresh because
-                // some sends affect mailing-list-derived counts. Owed
-                // refreshes too: a successful reply removes the thread
-                // from the owed lens.
                 if let Some(label_id) = self.mailbox.active_label.clone() {
                     self.mailbox.pending_label_fetch = Some(label_id);
                 }
@@ -492,12 +464,6 @@ impl App {
         .any(|needle| error.contains(needle))
     }
 
-    /// Capture a snapshot of the state about to change, suitable for
-    /// reversing the optimistic effect on reconciliation failure.
-    ///
-    /// Snapshots are read from the current envelope state. Effects without
-    /// rollback semantics (`RefreshList`, `StatusOnly`, `SentSuccess`)
-    /// produce a `None` snapshot.
     pub(super) fn snapshot_for_effect(&self, effect: &MutationEffect) -> MutationSnapshot {
         match effect {
             MutationEffect::UpdateFlags { message_id, .. } => {
@@ -568,11 +534,6 @@ impl App {
         }
     }
 
-    /// Apply the daemon's reconciliation-failed signal for a previously
-    /// queued mutation: replay the captured snapshot to restore the
-    /// affected envelopes' pre-mutation state. If the snapshot has been
-    /// evicted (capacity reached), this is a no-op — the higher-level
-    /// failure UX still surfaces the error and the next sync reconciles.
     pub fn handle_mutation_reconciliation_failed(&mut self, id: MutationId) {
         let Some(snapshot) = self.mutation_snapshots.take(id) else {
             return;
@@ -651,9 +612,6 @@ impl App {
             if !sending {
                 self.schedule_draft_cleanup(pending.draft_path);
             }
-            // Messages shows a conversation's unsent reply on its row, and
-            // `r` continues the draft the row names: a reply just saved or
-            // sent has to show there, or the next `r` starts another draft.
             if self.mailbox.mailbox_view == MailboxView::People {
                 self.mailbox.messages_page.pending_refresh = true;
             }
@@ -727,7 +685,6 @@ impl App {
         self.mailbox.pending_all_envelopes_refresh = true;
         self.diagnostics.pending_status_refresh = true;
         self.mailbox.pending_subscriptions_refresh = true;
-        // A desk row taken off at once (Done) comes back.
         self.mailbox.pending_desk_refresh = true;
         if self.mailbox.mailbox_view == MailboxView::Snoozed {
             self.mailbox.pending_snoozed_refresh = true;
@@ -819,15 +776,10 @@ impl App {
             }
         }
 
-        // Visual-mode anchor is index-based; list mutations shift indices so
-        // the anchor is now stale. Exit visual mode and drop the anchor while
-        // keeping selected_set (MessageId-keyed, still valid).
         self.mailbox.visual_mode = false;
         self.mailbox.visual_anchor = None;
     }
 
-    /// Full envelope clone for optimistic list-removal rollback (same lookup
-    /// order as [`Self::message_flags`]).
     fn envelope_snapshot_clone(&self, message_id: &MessageId) -> Option<Envelope> {
         self.mailbox
             .envelopes
@@ -846,8 +798,6 @@ impl App {
             })
     }
 
-    /// Undo optimistic [`MutationEffect::RemoveFromList*`] by merging rows
-    /// back into every live list and re-establishing date-desc order.
     fn restore_removed_from_lists(&mut self, envelopes: Vec<Envelope>) {
         if envelopes.is_empty() {
             return;
@@ -884,9 +834,6 @@ impl App {
             self.ensure_search_visible();
         }
 
-        // Visual-mode anchor is index-based; restored/re-sorted rows shift
-        // indices so the anchor is now stale. Exit visual mode and drop the
-        // anchor while keeping selected_set (MessageId-keyed, still valid).
         self.mailbox.visual_mode = false;
         self.mailbox.visual_anchor = None;
     }
@@ -945,9 +892,6 @@ impl App {
         if self.mailbox.mail_list_mode != MailListMode::Threads {
             return vec![env.id.clone()];
         }
-        // In Threads mode, a row represents the whole conversation. Mutations
-        // operate on every visible message in that thread to match Gmail's
-        // thread-level archive/trash/star semantics.
         let source: &[Envelope] = if self.screen == Screen::Search {
             &self.search.page.results
         } else {
@@ -1020,14 +964,6 @@ impl App {
             return;
         };
 
-        // `visual_anchor` and the live cursor are ROW indices into the
-        // thread-collapsed list the cursor actually navigates (`mail_list_rows`
-        // / `search_mail_list_rows`), NOT indices into the flat envelope list.
-        // In `MailListMode::Threads` one row can cover several envelopes, so a
-        // row range must be expanded to its member message ids — mirroring the
-        // thread expansion in `mutation_target_ids`. Slicing the flat envelope
-        // list by these indices silently mis-targets messages the user never
-        // highlighted, which a subsequent bulk archive/trash then acts on.
         let (cursor, rows) = if self.screen == Screen::Search {
             (
                 self.search.page.selected_index,
@@ -1043,8 +979,6 @@ impl App {
         let start = anchor.min(cursor).min(last);
         let end = anchor.max(cursor).min(last);
 
-        // Source slice must match the list the rows were built from so
-        // `thread_id` lookups resolve against the right envelopes.
         let source: &[Envelope] = if self.screen == Screen::Search {
             &self.search.page.results
         } else {
@@ -1071,8 +1005,6 @@ impl App {
     }
 }
 
-/// The provider ids of the labels a name or id refers to on one account.
-/// An unknown reference passes through unchanged, as the daemon does.
 fn label_provider_ids(
     labels: &[Label],
     account_id: &mxr_core::AccountId,

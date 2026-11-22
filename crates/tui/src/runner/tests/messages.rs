@@ -1,8 +1,3 @@
-//! Messages in the TUI: `g m` opens the people list and its page follows
-//! the cursor, `[` and `]` step through topics, `.` shows Got it's exact
-//! text and sends only after its countdown unless `u` undoes it, `e` is
-//! done here through `SetModeDone`, and `s` pins.
-
 use super::*;
 use crate::app::{ComposeAction, MessagesFocus};
 use crate::runner::list_messages_request;
@@ -22,7 +17,6 @@ fn queued(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// Messages open on the fixture people, with Samir's page loaded.
 fn messages_app(hints_seen: bool) -> App {
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
@@ -330,7 +324,6 @@ fn r_on_a_conversation_with_an_unsent_reply_continues_that_draft() {
         "no fresh, empty reply alongside the draft"
     );
 
-    // A draft on another of their conversations is not this one's.
     let mut app = messages_app(true);
     let mut data = populated();
     let other = data.your_turn[0].topics[1].thread_id.clone();
@@ -352,7 +345,6 @@ fn r_on_a_conversation_with_an_unsent_reply_continues_that_draft() {
     ));
 }
 
-/// `.` pressed and its preview shown: a Got it counting down from `start`.
 fn counting_down(app: &mut App, start: std::time::Instant) -> AckPlanData {
     press(app, KeyCode::Char('.'));
     assert!(app
@@ -499,7 +491,6 @@ fn a_preview_nobody_asked_for_registers_nothing() {
     assert!(app.mailbox.messages_page.ack.is_none());
 }
 
-/// Where the row with this id sits in the list.
 fn at(app: &App, id: &str) -> usize {
     let page = &app.mailbox.messages_page;
     (0..page.item_count())
@@ -513,7 +504,6 @@ fn only_note(app: &App) -> crate::app::DoneNote {
     notes.values().next().cloned().unwrap()
 }
 
-/// The page the daemon would send for `row` on its first topic.
 fn page_of(row: &mxr_protocol::MessagesRowData) -> mxr_protocol::PersonPageData {
     let mut page = samir_page();
     let topic = row.topics[0].clone();
@@ -525,7 +515,6 @@ fn page_of(row: &mxr_protocol::MessagesRowData) -> mxr_protocol::PersonPageData 
     page
 }
 
-/// Deliver the page the lens asked for last.
 fn answer(app: &mut App, page: mxr_protocol::PersonPageData) {
     let (row_id, topic) = app.mailbox.messages_page.pending_person.take().unwrap();
     app.set_person_page(row_id, topic, page);
@@ -576,7 +565,6 @@ fn done_on_a_persons_last_topic_moves_to_the_next_person() {
         selected_row_id(&app).as_deref(),
         Some("person:jon@example.com")
     );
-    // `e` waits for Jon's page; then it is done for his topic.
     press(&mut app, KeyCode::Char('e'));
     assert!(queued(&app).is_empty(), "nothing shown yet, nothing done");
     let jon = app.selected_messages_row().unwrap().clone();
@@ -667,7 +655,6 @@ fn dones(app: &App) -> usize {
 #[test]
 fn e_waits_for_the_next_persons_page_before_doing_anything() {
     let mut app = messages_app(true);
-    // Jon, then Iris: nobody pinned between them.
     let mut data = populated();
     data.pinned.clear();
     app.set_messages(data, None);
@@ -679,7 +666,6 @@ fn e_waits_for_the_next_persons_page_before_doing_anything() {
         selected_row_id(&app).as_deref(),
         Some("person:iris@example.com")
     );
-    // Iris's page hasn't come: `e` must not take her first topic unseen.
     press(&mut app, KeyCode::Char('e'));
     assert_eq!(dones(&app), 1);
     let iris = app.selected_messages_row().unwrap().clone();
@@ -699,8 +685,6 @@ fn a_late_answer_for_the_topic_just_done_never_replaces_the_next_one() {
     let contract = samir.topics[0].thread_id.clone();
     let launch = subject_thread(&app, "Launch checklist");
     press(&mut app, KeyCode::Char('e'));
-    // The done finishes before the next topic's page arrives: the refetch
-    // asks again for the next topic, not the one still on screen.
     app.refresh_messages();
     assert_eq!(
         app.mailbox.messages_page.pending_person,
@@ -709,7 +693,6 @@ fn a_late_answer_for_the_topic_just_done_never_replaces_the_next_one() {
     let mut next = samir.clone();
     next.conversation.as_mut().unwrap().thread_id = launch.clone();
     answer(&mut app, next);
-    // An answer for the done topic, asked for earlier, lands last.
     app.set_person_page(samir.row.id.clone(), Some(contract), samir);
     let shown = app.mailbox.messages_page.page.as_ref().unwrap();
     assert_eq!(shown.conversation.as_ref().unwrap().thread_id, launch);
@@ -723,13 +706,11 @@ fn the_same_address_in_two_accounts_keeps_its_own_row_across_a_refetch() {
     other.account_id = mxr_core::AccountId::from_provider_id("fake", "work");
     data.your_turn.push(other.clone());
     app.set_messages(data.clone(), None);
-    // The work account's Samir, last in Your turn.
     app.mailbox.selected_index = data.your_turn.len() - 1;
     assert_eq!(
         app.selected_messages_row().unwrap().account_id,
         other.account_id
     );
-    // A refetch puts the work account's row first.
     let row = data.your_turn.pop().unwrap();
     data.your_turn.insert(0, row);
     app.set_messages(data, None);
@@ -819,7 +800,6 @@ fn ctrl_f_picks_unread_and_the_list_request_carries_it() {
         "Ctrl-f opens the picker"
     );
 
-    // Rows: Needs attention, All, Your turn, Waiting on them, Unread, Past your pace.
     for _ in 0..4 {
         press(&mut app, KeyCode::Char('j'));
     }
@@ -835,7 +815,6 @@ fn ctrl_f_picks_unread_and_the_list_request_carries_it() {
         Request::ListMessages { turn: None, filter: sent, .. } if sent.unread && !sent.past_pace
     ));
 
-    // Enter on the toggle again turns it off, and the picker stays open.
     press(&mut app, KeyCode::Enter);
     assert!(!app.mailbox.messages_page.filter.unread);
     assert!(app.modals.messages_filter.is_some());
@@ -882,7 +861,6 @@ fn opening_the_filter_picker_cancels_a_got_it_counting_down() {
         app.mailbox.messages_page.ack.is_none(),
         "the picker cancels the countdown"
     );
-    // `u` in the picker changes nothing and sends nothing.
     press(&mut app, KeyCode::Char('u'));
     app.tick_messages_ack(start + std::time::Duration::from_secs(10));
     assert!(
@@ -908,19 +886,19 @@ fn clear_filters_resets_the_turn_and_both_toggles_at_once() {
     let mut app = messages_app(true);
     press_ctrl(&mut app, 'f');
     press(&mut app, KeyCode::Char('j'));
-    press(&mut app, KeyCode::Enter); // All conversations
+    press(&mut app, KeyCode::Enter);
     for _ in 0..3 {
         press(&mut app, KeyCode::Char('j'));
     }
-    press(&mut app, KeyCode::Enter); // Unread
+    press(&mut app, KeyCode::Enter);
     press(&mut app, KeyCode::Char('j'));
-    press(&mut app, KeyCode::Enter); // Past your pace
+    press(&mut app, KeyCode::Enter);
     let on = app.mailbox.messages_page.filter;
     assert!(on.turn.is_some() && on.unread && on.past_pace);
 
     app.mailbox.messages_page.pending_refresh = false;
     press(&mut app, KeyCode::Char('j'));
-    press(&mut app, KeyCode::Enter); // Clear filters
+    press(&mut app, KeyCode::Enter);
     assert_eq!(
         app.mailbox.messages_page.filter,
         mxr_protocol::MessagesFilterData::default()

@@ -1,18 +1,9 @@
-//! Archive in the TUI: open the ledger, ask the answer box, copy a
-//! reference or an amount, open a record's PDF or email, step through
-//! years and issuers, fix and confirm fields, dismiss, export, and `T`
-//! on a conversation to file it. The daemon owns every rule, total and
-//! message; this module turns keys into requests.
-
 use super::*;
 use crate::app::state::{PassMenu, RecordFixPrompt, RECORD_KIND_CHIPS};
 use mxr_protocol::{RecordData, RecordEditData, RecordUndoData};
 
-/// The mode id `GetModeGuide` takes for Archive.
 pub(crate) const ARCHIVE_MODE: &str = mxr_protocol::ARCHIVE_GUIDE.mode;
 
-/// Copies to the system clipboard. Tests never touch the real one: what
-/// was copied is kept on the page either way.
 fn copy_to_clipboard(text: &str) {
     #[cfg(all(not(test), target_os = "macos"))]
     {
@@ -45,7 +36,6 @@ fn copy_to_clipboard(text: &str) {
     let _ = text;
 }
 
-/// Plain digits for a spreadsheet or a form: "1249.00".
 fn plain_amount(minor: i64) -> String {
     let sign = if minor < 0 { "-" } else { "" };
     let minor = minor.unsigned_abs();
@@ -102,14 +92,12 @@ impl App {
         page.pending_refresh = true;
     }
 
-    /// The Archive lens owns the keyboard (its ledger, not a reader).
     pub(crate) fn records_list_focused(&self) -> bool {
         self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::ArchiveMode
             && self.mailbox.active_pane == ActivePane::MailList
     }
 
-    /// The ledger row under the cursor.
     pub fn selected_record(&self) -> Option<&RecordData> {
         self.mailbox
             .records_page
@@ -117,7 +105,6 @@ impl App {
             .get(self.mailbox.selected_index)
     }
 
-    /// What the keys act on: the open card, else the answer, else the row.
     pub(crate) fn focused_record(&self) -> Option<&RecordData> {
         let page = &self.mailbox.records_page;
         page.card
@@ -126,7 +113,6 @@ impl App {
             .or_else(|| self.selected_record())
     }
 
-    /// The runtime fetched the ledger and the guide.
     pub(crate) fn set_records_ledger(
         &mut self,
         ledger: mxr_protocol::RecordLedgerData,
@@ -146,16 +132,12 @@ impl App {
     }
 
     pub(crate) fn set_records_answer(&mut self, answer: mxr_protocol::RecordAnswerData) {
-        // A slow answer to a query the box has moved on from would show
-        // one query's records under another's words.
         let asked = self.mailbox.records_page.query.trim();
         if !asked.is_empty() && answer.query != asked {
             return;
         }
         let page = &mut self.mailbox.records_page;
         page.card = None;
-        // A list starts on its best match; leaving one puts the cursor back
-        // in the ledger's range.
         let top = answer.list.as_ref().map(|list| {
             list.records
                 .iter()
@@ -173,7 +155,6 @@ impl App {
         }
     }
 
-    /// `a` on an answer: every match as a list, so none is out of sight.
     fn show_all_matches(&mut self) {
         let page = &mut self.mailbox.records_page;
         let Some(answer) = &page.answer else {
@@ -197,7 +178,6 @@ impl App {
         }
     }
 
-    /// The subscription under the cursor, while their chip is on.
     pub(crate) fn selected_subscription(&self) -> Option<&mxr_protocol::RecordSubscriptionData> {
         let page = &self.mailbox.records_page;
         if !page.showing_subscriptions() {
@@ -206,10 +186,6 @@ impl App {
         page.subscription_rows().get(self.mailbox.selected_index)
     }
 
-    /// Keys on the subscriptions: Enter or → opens the card with its
-    /// history, `o` the newest charge's email, `p` the issuer's records,
-    /// `Y` copies the amount, Esc closes the card and then goes back to
-    /// every record. Returns whether the key was handled here.
     fn apply_subscriptions_action(&mut self, action: &Action) -> bool {
         match action {
             Action::RecordsOpenDocument | Action::RecordsOpenCard => {
@@ -263,8 +239,6 @@ impl App {
                 }
             }
             Action::RecordsNextKind | Action::RecordsAsk => return false,
-            // Fixing, checking and dismissing act on one record: open the
-            // charge's record from the ledger for those.
             Action::RecordsCopyReference
             | Action::RecordsFix
             | Action::RecordsMarkChecked
@@ -321,7 +295,6 @@ impl App {
             }
         };
         copy_to_clipboard(&text);
-        // Say what was copied, so it can be read out to a call centre.
         self.status_message = Some(format!("{} copied", crate::ui::sanitize::one_line(&label)));
         self.mailbox.records_page.last_copied = Some(text);
     }
@@ -349,7 +322,6 @@ impl App {
                     crate::ui::sanitize::one_line(&pdf.filename)
                 ));
             }
-            // No PDF: the card is the record.
             None => self.mailbox.records_page.pending_card = Some(record.id),
         }
     }
@@ -367,7 +339,6 @@ impl App {
         }
     }
 
-    /// Called once `GetEnvelope` answers for a record's email.
     pub(crate) fn open_record_envelope(&mut self, env: mxr_core::types::Envelope) {
         self.open_todo_envelope(env, None);
     }
@@ -399,8 +370,6 @@ impl App {
         let Some(current) = page.current_year() else {
             return;
         };
-        // Step to the next year that has records, so a gap never shows an
-        // empty ledger.
         let next = if step < 0 {
             years.iter().filter(|year| **year < current).max().copied()
         } else {
@@ -412,7 +381,6 @@ impl App {
                 self.reload_records_ledger();
             }
             None if step > 0 && page.filter.year.is_some() => {
-                // Past the newest year: back to every year.
                 self.mailbox.records_page.filter.year = None;
                 self.reload_records_ledger();
             }
@@ -444,8 +412,6 @@ impl App {
         self.mailbox.scroll_offset = 0;
     }
 
-    /// Esc: the card, then the answer, then the issuer page and year. A
-    /// hint on screen takes Esc first (`Action::DismissHint`).
     fn records_back(&mut self) {
         let page = &mut self.mailbox.records_page;
         if page.card.take().is_some() {
@@ -454,7 +420,6 @@ impl App {
         if let Some(answer) = page.answer.take() {
             page.query.clear();
             page.answer_list = false;
-            // The cursor was on the list's rows; the ledger starts again.
             if answer.list.is_some() {
                 self.mailbox.selected_index = 0;
                 self.mailbox.scroll_offset = 0;
@@ -505,7 +470,6 @@ impl App {
         let Some(record) = self.focused_record().cloned() else {
             return;
         };
-        // The row leaves at once; the daemon's answer offers `u`.
         let page = &mut self.mailbox.records_page;
         if let Some(ledger) = page.ledger.as_mut() {
             ledger.records.retain(|row| row.id != record.id);
@@ -554,7 +518,6 @@ impl App {
         ));
     }
 
-    /// `u` for an Archive change, as the daemon described its reversal.
     pub(super) fn undo_records(&mut self, undo: RecordUndoData, status: String) {
         match undo.kind.as_str() {
             "restore" | "dismiss" => {
@@ -590,7 +553,6 @@ impl App {
         }
     }
 
-    /// `T` on a conversation: the pass menu for the message in view.
     fn open_pass_menu(&mut self) {
         let Some(message_id) = self.context_envelope().map(|envelope| envelope.id.clone()) else {
             self.status_message = Some("Open or select an email to pass it to a mode".into());
@@ -602,8 +564,6 @@ impl App {
         });
     }
 
-    /// Keys while the pass menu is open: `a` or Enter asks what filing
-    /// would make; with that card on screen, Enter files it.
     pub(super) fn pass_menu_key(&mut self, code: KeyCode) {
         let Some(menu) = self.mailbox.records_page.pass_menu.as_mut() else {
             return;
@@ -638,16 +598,12 @@ impl App {
         }
     }
 
-    /// Keys while the `,` prompt is open: typing, Enter to preview, Enter
-    /// again to apply what was previewed, Esc to cancel.
     pub(super) fn records_prompt_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
         let Some(prompt) = self.mailbox.records_page.prompt.as_mut() else {
             return;
         };
         match code {
             KeyCode::Esc => self.mailbox.records_page.prompt = None,
-            // Nothing typed: every field is right, so the record is checked
-            // (`,` took over the old `v`, blueprint 35).
             KeyCode::Enter if prompt.input.trim().is_empty() => {
                 self.mailbox.records_page.prompt = None;
                 self.mark_record_checked();
@@ -719,7 +675,6 @@ impl App {
         }
     }
 
-    /// The export's dry run, or what the export wrote.
     pub(crate) fn show_export(&mut self, export: mxr_protocol::RecordExportData) {
         self.status_message = None;
         if export.dry_run {
@@ -749,7 +704,6 @@ impl App {
         }
     }
 
-    /// Keys while the ask box takes input.
     fn records_ask_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let page = &mut self.mailbox.records_page;
         match key.code {
@@ -757,7 +711,6 @@ impl App {
             KeyCode::Enter => {
                 page.asking = false;
                 let query = page.query.trim().to_string();
-                // A new query decides for itself between answer and list.
                 page.answer_list = false;
                 if query.is_empty() {
                     page.answer = None;
@@ -780,8 +733,6 @@ impl App {
         None
     }
 
-    /// Key handling for the Archive lens. Only the mode's verbs and
-    /// navigation reach it: the ledger holds records, not emails.
     pub(super) fn records_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if self.mailbox.records_page.asking {
             return self.records_ask_key(key);
@@ -803,7 +754,6 @@ impl App {
             };
         }
         let plain = key.modifiers == KeyModifiers::NONE;
-        // With an answer showing, `a` lists every record it matched.
         if key.code == KeyCode::Char('a') && plain && self.mailbox.records_page.answer.is_some() {
             self.show_all_matches();
             return None;

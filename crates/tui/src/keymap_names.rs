@@ -1,18 +1,9 @@
-//! The TUI action each name in the key definition stands for
-//! (`crates/keymap/keymap.toml`, `[[action.tui]] name`). A name is the
-//! action's `Debug` spelling, which is what the dispatcher probe records,
-//! so a test can check every arm against the definition.
-
 use crate::action::{Action, PatternKind};
 use crate::app::AnalyticsView;
 use mxr_core::types::SemanticProfile;
 use mxr_protocol::CalendarInviteActionData as Invite;
 use mxr_protocol::{ModeKindData as Mode, SenderKindData as Kind};
 
-/// The action a definition name stands for. `inline:` names are keys a pane
-/// handles in place, `lit:` names run whichever overlay option is lit, and
-/// `SidebarSelect` is whatever the selected sidebar item opens, so none has
-/// one action.
 pub(crate) fn action_named(name: &str) -> Option<Action> {
     Some(match name {
         "ApplyLabel" => Action::ApplyLabel,
@@ -298,7 +289,6 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
             Action::UseSemanticProfile(SemanticProfile::MultilingualE5Small)
         }
         "UseSemanticProfile(BgeM3)" => Action::UseSemanticProfile(SemanticProfile::BgeM3),
-        // The tool screens', Search's and the invites lens's own keys.
         "ApplyRuleTreatment" => Action::ApplyRuleTreatment,
         "SaveRuleForm" => Action::SaveRuleForm,
         "SaveAccountForm" => Action::SaveAccountForm,
@@ -331,8 +321,6 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "CycleWrappedWindow" => Action::CycleWrappedWindow,
         "SubmitSearch" => Action::SubmitSearch,
         "OpenMessageView" => Action::OpenMessageView,
-        // Overlays' keys (`runner::tests::overlay_keys` holds them to their
-        // handlers).
         "AnswerAlwaysForSender(false)" => Action::AnswerAlwaysForSender(false),
         "AnswerAlwaysForSender(true)" => Action::AnswerAlwaysForSender(true),
         "AnswerNewSender(PaperTrail)" => Action::AnswerNewSender(Kind::PaperTrail),

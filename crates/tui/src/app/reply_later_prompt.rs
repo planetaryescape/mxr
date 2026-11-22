@@ -1,17 +1,9 @@
-//! `b`: reply later at a time, from the list, the reader or the desk. The
-//! prompt previews the typed time with the shared parser, and Enter sends
-//! the previewed instant (`DeferThreads`); the daemon decides by who wrote
-//! last whether that is reply later or "bring it back if nobody replies".
-//! Enter with nothing typed is the untimed reply later.
-
 use super::*;
 use crate::app::state::ReplyLaterPromptState;
 use mxr_core::id::ThreadId;
 use mxr_protocol::DeskLaneKind;
 
 impl App {
-    /// The conversation `b` acts on: the desk row under the cursor, or the
-    /// message in context elsewhere (a desk row's reader included).
     pub(super) fn reply_later_target(&self) -> Option<(ThreadId, MessageId, bool)> {
         let desk_row = (self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::Desk)
@@ -36,7 +28,6 @@ impl App {
         Some((envelope.thread_id.clone(), envelope.id.clone(), waiting))
     }
 
-    /// Keys while the prompt is open. Returns the action Enter confirms.
     pub(super) fn reply_later_prompt_key(
         &mut self,
         code: KeyCode,
@@ -69,8 +60,6 @@ impl App {
         None
     }
 
-    /// Enter: the untimed flag when nothing was typed, otherwise the
-    /// previewed time, or the parser's reason in the prompt.
     pub(super) fn confirm_reply_later_prompt(&mut self) {
         let Some(prompt) = self.modals.reply_later_prompt.as_mut() else {
             return;
@@ -96,8 +85,6 @@ impl App {
         else {
             return;
         };
-        // Off the desk at once; the answer says what was set, and a failure
-        // refetches the desk.
         self.remove_desk_thread(&thread_id);
         self.queue_mutation(
             Request::DeferThreads {
@@ -110,7 +97,6 @@ impl App {
         );
     }
 
-    /// The untimed reply later: into the reply queue now.
     pub(super) fn flag_reply_later_now(&mut self, message_id: MessageId) {
         let effect = MutationEffect::ReplyLater {
             message_id: message_id.clone(),

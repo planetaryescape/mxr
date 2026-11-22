@@ -24,11 +24,8 @@ mod list_advance;
 mod mailbox_actions;
 mod mailbox_helpers;
 
-/// The one line a cleared desk or reply queue earns: calm, no animation.
 pub(crate) const LOW_TIDE: &str = "Low tide. Nobody's waiting on you.";
 
-/// The status bar's freshness read: every account, no arrival list (the
-/// bar shows only the newest arrival's age and the sync state).
 pub(crate) const FRESHNESS_REQUEST: Request = Request::GetFreshness {
     account_id: None,
     limit: Some(0),
@@ -153,8 +150,6 @@ pub enum MutationEffect {
         status: String,
     },
     RefreshUpdates(String),
-    /// A pin requested from an Updates row: only the daemon's changed count
-    /// can make the prior value an available undo.
     UpdatesPin {
         message_id: MessageId,
         prior_pinned: bool,
@@ -162,48 +157,24 @@ pub enum MutationEffect {
     },
     RefreshList,
     StatusOnly(String),
-    /// A "Next time" key hint (D171): shown when the daemon says this was
-    /// the first time, and as its own toast, so it survives a batch.
     NextTime(String),
-    /// A pin or a sender-kind change: refetch the place on screen and the
-    /// desk, then say what happened.
     RefreshPlaces(String),
-    /// A sender moved to another kind by the user: refresh like
-    /// `RefreshPlaces`, and offer `u` to move it back.
     SenderMoved(String),
-    /// A to-do changed (ticked off, scheduled, edited, made, restored,
-    /// kept or let go): refetch the lens and say what happened.
     Todo(String),
-    /// A record changed (fixed, confirmed, dismissed, filed): refetch the
-    /// Archive lens and say what happened in the daemon's words.
     Records(String),
-    /// Done here in a mode (`SetModeDone`) or a sender answered: refetch
-    /// Now, the rail, the desk, places and To do, and say what happened in
-    /// the daemon's handoff words.
     ModeDone(String),
-    /// Something in Messages changed (Got it sent, a pin): refetch the
-    /// bands, the page, Now and the rail, and say what happened.
     Messages(String),
-    /// An undone Done in Focus & reply: the conversation is back in
-    /// front of the queue.
     FocusRestore {
         thread_id: mxr_core::ThreadId,
     },
-    /// Successful SendDraft. Refreshes the active label so a Sent-view user
-    /// sees the just-sent message immediately (no manual sync), and shows
-    /// `status` in the status bar.
     SentSuccess {
         status: String,
         remind_at: Option<chrono::DateTime<chrono::Utc>>,
         sent_message_id: Option<MessageId>,
-        /// The compose file the message was written in, so a focus run
-        /// moves on only for its own reply (a source without a Message-ID
-        /// header gives nothing else to match on).
         draft_path: Option<std::path::PathBuf>,
     },
 }
 
-/// Slice 5.1/5.2 (C2.6): which briefing the runtime should fetch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BriefingRequest {
     Thread(mxr_core::ThreadId),
@@ -221,13 +192,8 @@ pub enum Screen {
     Deliveries,
 }
 
-/// Health of the IPC connection to the daemon. Drives the status bar and the
-/// "daemon not responding" modal — replaces the old behaviour where a failed
-/// initial connect silently exited the IPC worker and left the UI hung at
-/// "connecting".
 #[derive(Debug, Clone)]
 pub enum ConnectionState {
-    /// The installation deliberately selected another workspace; this session is retired.
     SelectionChanged,
     Connecting,
     Connected,
@@ -237,24 +203,15 @@ pub enum ConnectionState {
     },
 }
 
-/// Wall-clock window before a `Reconnecting` state escalates to an error
-/// modal. Five seconds matches the existing `START_DAEMON_TIMEOUT` so
-/// users see feedback right after the auto-restart attempt would have
-/// succeeded if the daemon were healthy.
 const CONNECTION_STALE_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// Client-side undo window. Matches the daemon's 60s expiry so the TUI
-/// stops offering an undo affordance the daemon would refuse.
 const UNDO_HINT_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// What `u` reverses.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UndoAction {
     /// Daemon mutations by id: usually one; a batch job (a sweep) leaves
     /// one per chunk, all undone together.
     Mutations(Vec<String>),
-    /// A sender moved to another kind: put it back where it was
-    /// (`None`: automatic).
     SenderKind {
         account_id: mxr_core::AccountId,
         sender_email: String,
@@ -263,7 +220,6 @@ pub enum UndoAction {
     /// To-dos ticked off or dismissed: put them back on the runway
     /// (`SetTodoState` undo).
     Todos(Vec<String>),
-    /// An evidence-backed resolution accepted for one task.
     TodoCorrection {
         todo_id: String,
         correction_id: String,
@@ -277,7 +233,6 @@ pub enum UndoAction {
     /// An Archive change, reversed as the daemon's `RecordUndoData` says:
     /// restore or dismiss records, or drop the fields you set.
     Records(mxr_protocol::RecordUndoData),
-    /// An Updates source tuned: set it back to what it was.
     UpdateSource {
         account_id: mxr_core::AccountId,
         source_key: String,
@@ -292,9 +247,6 @@ pub enum UndoAction {
     CategoryMembership(String),
 }
 
-/// Captured handle for a recent undoable mutation. The TUI uses this to
-/// show "Archived 5 — u to undo" in the status bar and to dispatch
-/// `Request::UndoMutation` when the user presses `u`.
 #[derive(Debug, Clone)]
 pub struct PendingUndo {
     pub action: UndoAction,
@@ -339,10 +291,6 @@ impl PendingUndo {
     }
 }
 
-/// Hold-and-undo window for an iCal invite RSVP. Differs from `PendingUndo`
-/// in that the daemon RPC has not fired yet — pressing `u` within the window
-/// cancels it outright, so no email reaches the organizer. The status bar
-/// rendering reads `status_label` directly while this is `Some`.
 #[derive(Debug, Clone)]
 pub struct PendingInviteSend {
     pub message_id: mxr_core::MessageId,
@@ -351,8 +299,6 @@ pub struct PendingInviteSend {
     pub status_label: String,
 }
 
-/// Pending `SetScreenerDecision` request queued by the screener
-/// modal. Drained by the runtime each tick.
 #[derive(Debug, Clone)]
 pub struct PendingScreenerDecision {
     pub account_id: mxr_core::AccountId,
@@ -377,35 +323,21 @@ pub struct App {
     pub diagnostics: DiagnosticsState,
     pub analytics: AnalyticsState,
     pub deliveries: DeliveriesState,
-    /// The assistant pane, hidden until asked for.
     pub assistant: AssistantState,
     pub modals: ModalsState,
-    /// Which hints are dismissed here and where the keys were last used.
     pub(crate) hints: hints::HintState,
     pub compose: ComposeState,
     pub screen: Screen,
     pub should_quit: bool,
-    /// Ctrl-z: the runner suspends the TUI before the next draw.
     pub pending_suspend: bool,
     pub command_palette: CommandPaletteState,
     pub last_sync_status: Option<String>,
-    /// The newest arrival and each account's sync health (`GetFreshness`),
-    /// refreshed with the status snapshot. Its words are worked out at draw
-    /// time so the ages tick.
     pub freshness: Option<mxr_protocol::FreshnessData>,
-    /// You asked for a sync and it has not finished: its failure is worth a
-    /// status line, where a background retry's is not.
     pub user_sync_pending: bool,
     pub user_sync_acknowledgements_pending: usize,
-    /// Accounts returned as Started or Joined by the user's SyncAll request.
     pub user_sync_targets: HashSet<mxr_core::AccountId>,
-    /// Accounts selected by the current explicit batch, including accounts
-    /// whose start was rejected before a sync event could be emitted.
     pub user_sync_batch_accounts: HashSet<mxr_core::AccountId>,
-    /// A later account's completion must not hide a failure from this batch.
     pub user_sync_batch_failures: HashMap<mxr_core::AccountId, String>,
-    /// Events can race the SyncAll acknowledgement. Defer them until the
-    /// daemon tells us which accounts belong to this user request.
     pub user_sync_events_before_ack: Vec<mxr_protocol::DaemonEvent>,
     pub visible_height: usize,
     pub html_image_support: Option<TerminalImageSupport>,
@@ -415,131 +347,47 @@ pub struct App {
     pub in_flight_html_image_asset_requests: HashSet<MessageId>,
     pub pending_local_state_save: bool,
     pub status_message: Option<String>,
-    /// Animated spinner state for the status-bar in-flight indicator.
-    /// Ticks while `has_in_flight_work()` is true.
     pub status_throbber: ThrobberState,
-    /// Transient operation-outcome notifications rendered as stacked
-    /// bottom-right boxes above the status bar. Ambient state stays on
-    /// `status_message`; completed/failed operations go here.
     pub toasts: ToastQueue,
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
-    /// Peak size of the current mutation batch. Set while mutations are
-    /// queued/in flight so the status bar can render "n/m" progress for
-    /// bulk operations; resets to 0 once the batch drains.
     pub mutation_batch_total: usize,
     pub pending_archive_preview: Option<Vec<MessageId>>,
     pub pending_mutation_queue: Vec<QueuedMutation>,
     pub mutation_snapshots: MutationSnapshotStore,
     pub mutation_id_generator: MutationIdGenerator,
-    /// Tracks message-id state of in-flight optimistic mutations so a
-    /// stale envelope refresh from the daemon can't undo a still-pending
-    /// optimistic change. See `pending_optimistic.rs` for the full bug
-    /// description.
     pub pending_optimistic: PendingOptimisticState,
     pub connection_state: ConnectionState,
-    /// Set by the input handler when the user presses "retry now" while the
-    /// connection-error modal is open. The IPC worker drains and clears it.
     pub pending_connection_retry: bool,
-    /// Category IPC calls carry the dialog generation so late replies from a
-    /// closed picker cannot replace the current account/category view.
     pub pending_category_requests: Vec<(u64, Request)>,
-    /// Set when the snippets browser modal opens; the runtime drains
-    /// this flag and dispatches a `Request::ListSnippets`.
     pub pending_snippets_refresh: bool,
-    /// Set when the reply-later queue modal opens; the runtime drains
-    /// this flag and dispatches a `Request::ListReplyQueue`.
     pub pending_reply_queue_refresh: bool,
-    /// Set when the stored-drafts modal opens; the runtime drains this
-    /// flag and dispatches a `Request::ListDrafts`.
     pub pending_drafts_refresh: bool,
-    /// Set when the user presses edit on a selected stored draft. The
-    /// runtime resolves the sending account's email, renders the draft
-    /// to an editor-ready compose file in the private scratch dir, and
-    /// reports back via `AsyncResult::DraftEditReady` so `$EDITOR` can
-    /// be opened on it.
     pub pending_draft_edit_request: Option<mxr_core::Draft>,
-    /// Set by a reply in Messages on a conversation with an unsent reply;
-    /// the runtime resolves the draft and continues through the same
-    /// `DraftEditReady` path as editing a stored draft.
     pub pending_reply_draft_resume: Option<ReplyDraftResume>,
-    /// Confirmed delete/provider-copy operation captured from the stored-drafts
-    /// preview. The runtime drains this into the matching daemon request.
     pub pending_draft_operation: Option<StoredDraftOperation>,
-    /// Set when the Deliveries screen opens or its filter changes; the
-    /// runtime drains this and dispatches a `Request::ListDeliveries`.
     pub pending_deliveries_refresh: bool,
-    /// Queued manual resolve/dismiss of a delivery (drained by the runtime,
-    /// which fires the IPC and re-refreshes the list).
     pub pending_delivery_resolve: Option<mxr_core::DeliveryId>,
     pub pending_delivery_dismiss: Option<mxr_core::DeliveryId>,
-    /// Set when the user opens a delivery's source thread (`o`/Enter on the
-    /// Deliveries screen). The runtime fetches the thread by id and opens it
-    /// in the mailbox message view.
     pub pending_delivery_open: Option<mxr_core::ThreadId>,
-    /// Set when a link in the assistant's reply names an email. The
-    /// runtime fetches the thread and opens its latest message.
     pub pending_assistant_thread_open: Option<mxr_core::ThreadId>,
-    /// Set when the activity modal opens (or the user requests a refresh);
-    /// the runtime drains this and dispatches a `Request::ListActivity`.
     pub pending_activity_refresh: bool,
-    /// Set when the user toggles pause/resume from the activity modal.
     pub pending_activity_pause_toggle: bool,
-    /// Pending sender-view request — `Some((account_id, email))`
-    /// triggers a `Request::GetSenderProfile`. Drained by the runtime
-    /// after dispatch.
     pub pending_sender_profile_request: Option<(mxr_core::AccountId, String)>,
-    /// Pending thread-summary requests. Drained by the runtime into
-    /// `Request::SummarizeThread` calls.
     pub pending_summary_requests: VecDeque<mxr_core::ThreadId>,
-    /// Trailing-edge debounce for the lazy on-thread-open summary fire.
-    /// Scrolling through the mail list opens a thread per row, which
-    /// would otherwise fire an LLM request for every keypress. We park
-    /// the request here with a deadline; only when the deadline elapses
-    /// without being replaced does it move to `pending_summary_requests`
-    /// and actually go to the daemon. In-flight requests already fired
-    /// are not cancelled — they complete and the daemon caches them.
     pub pending_summary_debounce: Option<(mxr_core::ThreadId, tokio::time::Instant)>,
-    /// Thread whose context facts (`GetThreadContext`) the runtime should
-    /// fetch; set when a thread resolves.
     pub pending_thread_context: Option<mxr_core::ThreadId>,
-    /// Debounced gist fetch (`GetThreadGist`), like the summary: only the
-    /// thread the user lands on goes to the model.
     pub pending_gist_debounce: Option<(mxr_core::ThreadId, tokio::time::Instant)>,
-    /// List-row gists (`GetThreadGists`) for the desk and triage lists.
     pub row_gists: RowGistState,
-    /// Slice 5.1/5.2 (C2.6): pending briefing fetch. Drained by the
-    /// runtime, which fires either `Request::GetThreadBriefing` or
-    /// `Request::GetRecipientBriefing` depending on the variant.
     pub pending_briefing_request: Option<BriefingRequest>,
-    /// Slice 6.1 (C2.9): pending whois query. Drained by the runtime
-    /// which fires `Request::ExplainEntity`.
     pub pending_whois_query: Option<String>,
-    /// Slice 5.4 (C2.8 cont): pending expert-finder query. Drained
-    /// by the runtime which fires `Request::FindExpert`.
     pub pending_expert_query: Option<String>,
-    /// Pending screener queue refresh — set when the modal opens or
-    /// after a disposition lands so the runtime re-fetches the queue.
     pub pending_screener_refresh: Option<mxr_core::AccountId>,
-    /// Queue of screener-decision IPCs to dispatch. Populated by the
-    /// disposition keypaths (a/d/f/p) and drained by the runtime.
     pub pending_screener_decisions: Vec<PendingScreenerDecision>,
-    /// Recent undoable mutation, if any. Cleared by `tick_pending_undo`
-    /// once the daemon-side window expires.
     pub pending_undo: Option<PendingUndo>,
-    /// iCal invite RSVP queued for send after a 1s hold window. While set,
-    /// pressing `u` cancels without ever dispatching to the daemon (no email
-    /// goes out). `tick_pending_invite_send` promotes it into the mutation
-    /// queue once `dispatch_at` arrives.
     pub pending_invite_send: Option<PendingInviteSend>,
-    /// Sent message the runtime should check for promises
-    /// (`DetectPromises`); set on every successful send.
     pub pending_promise_check: Option<MessageId>,
-    /// Promises from recent sends, offered one at a time (`y` / `n`).
     pub promise_prompts: VecDeque<PromisePrompt>,
-    /// Default destination for the "save attachment as..." modal,
-    /// mirrored from `config.general.download_dir`. Falls back to
-    /// `dirs::download_dir()` when no config is available.
     pub download_dir: std::path::PathBuf,
     recorder: ActionRecorder,
     input: InputHandler,
@@ -691,13 +539,7 @@ impl App {
         }
     }
 
-    /// Update the IPC connection health and propagate side effects:
-    /// - On `Connected`, close any existing "daemon not responding" error
-    ///   modal so the user isn't left with a stale dialog after recovery.
-    /// - On `Reconnecting` or `Connecting`, leave the modal alone — the
-    ///   tick-based opener decides when to surface it.
     pub fn set_connection_state(&mut self, state: ConnectionState) {
-        // An old session cannot be revived by a late connection result.
         if matches!(self.connection_state, ConnectionState::SelectionChanged) {
             return;
         }
@@ -708,9 +550,6 @@ impl App {
                 mxr_client::selected_daemon::SELECTION_CHANGED_MESSAGE,
             ));
         }
-        // The IPC worker re-emits `Reconnecting` with a fresh `since` on every
-        // failed retry. Keep the first one so the watchdog times the whole
-        // outage; a successful reconnect goes through `Connected`, which clears it.
         let state = match (&self.connection_state, state) {
             (
                 ConnectionState::Reconnecting { since, .. },
@@ -733,8 +572,6 @@ impl App {
                 self.modals.error = None;
             }
         }
-        // No replay exists for events missed while disconnected. Refresh the
-        // authoritative views without replacing private compose ownership.
         if matches!(state, ConnectionState::Connected)
             && !matches!(self.connection_state, ConnectionState::Connected)
         {
@@ -743,10 +580,6 @@ impl App {
         self.connection_state = state;
     }
 
-    /// Called from the main event loop on every tick. If the connection has
-    /// been `Reconnecting` for more than `CONNECTION_STALE_THRESHOLD`,
-    /// surface an error modal explaining the daemon is not responding.
-    /// Idempotent — re-opening an already-open modal is fine.
     pub fn tick_connection_state(&mut self, now: std::time::Instant) {
         if let ConnectionState::Reconnecting { since, reason } = &self.connection_state {
             if now.saturating_duration_since(*since) >= CONNECTION_STALE_THRESHOLD {
@@ -767,8 +600,6 @@ impl App {
         }
     }
 
-    /// Mark a "retry now" request from the user. The IPC worker drains and
-    /// clears this flag on the next iteration.
     pub fn request_connection_retry(&mut self) {
         if matches!(self.connection_state, ConnectionState::SelectionChanged) {
             return;
@@ -776,8 +607,6 @@ impl App {
         self.pending_connection_retry = true;
     }
 
-    /// Human-readable summary of the IPC connection state for the status bar.
-    /// Returns `None` when `Connected` so the bar shows normal mailbox info.
     pub fn connection_state_label(&self) -> Option<String> {
         match &self.connection_state {
             ConnectionState::Connected => None,
@@ -791,10 +620,6 @@ impl App {
         }
     }
 
-    /// Push a user-visible warning into the bounded error log. Surfaces in
-    /// the status bar (auto-clears after 5s). Use for transient async
-    /// failures that the user might want to know about but shouldn't
-    /// block: HTML asset fetch, body parse, attachment fetch, etc.
     pub fn report_warn(&mut self, message: impl Into<String>) {
         self.push_user_error(UserError {
             severity: UserErrorSeverity::Warn,
@@ -804,9 +629,6 @@ impl App {
         });
     }
 
-    /// Push a user-visible error and escalate it to the error modal. Use
-    /// for failures that demand user attention (mutation rollback, send
-    /// failure, etc). The modal opens even if the status bar is occupied.
     pub fn report_error(&mut self, title: impl Into<String>, detail: impl Into<String>) {
         let title = title.into();
         let detail = detail.into();
@@ -816,9 +638,6 @@ impl App {
             title: Some(title.clone()),
             since: std::time::Instant::now(),
         });
-        // Surface immediately. If a modal is already open, leave it — the
-        // user will see the remaining errors via the log; we don't stack
-        // modals on top of each other.
         if self.modals.error.is_none() {
             self.modals.error = Some(crate::app::ErrorModalState::new(title, detail));
         }
@@ -832,9 +651,6 @@ impl App {
         log.push_back(entry);
     }
 
-    /// Apply a `UserError` raised by a background task. Used by the main
-    /// event loop when consuming `AsyncResult::ReportedError`. Errors
-    /// also escalate to the modal; warns just go in the ring buffer.
     pub fn push_reported_error(&mut self, entry: UserError) {
         let escalate = matches!(entry.severity, UserErrorSeverity::Error);
         let title = entry.title.clone().unwrap_or_else(|| "Error".to_string());
@@ -845,10 +661,6 @@ impl App {
         }
     }
 
-    /// Latest unexpired warning suitable for the status bar. Returns
-    /// `None` when the most recent warn is older than the TTL or when
-    /// the log has no warns. Errors don't surface here — they're shown
-    /// via the error modal instead.
     pub fn current_user_warn(&self, now: std::time::Instant) -> Option<String> {
         let entry = self
             .modals
@@ -862,16 +674,10 @@ impl App {
         Some(entry.message.clone())
     }
 
-    /// Record a recent undoable mutation so the status bar can prompt
-    /// "Archived 15 — u to undo" and the input handler can resolve `u`
-    /// to a specific `mutation_id`. Replaces any prior handle (the
-    /// most recent one wins; the daemon stops offering older ones).
     pub fn set_pending_undo(&mut self, undo: PendingUndo) {
         self.pending_undo = Some(undo);
     }
 
-    /// Drop the pending undo handle once it's expired client-side. The
-    /// daemon would refuse the request anyway, so don't even try.
     pub fn tick_pending_undo(&mut self, now: std::time::Instant) {
         if let Some(undo) = &self.pending_undo {
             if now.saturating_duration_since(undo.applied_at) >= UNDO_HINT_TTL {
@@ -880,9 +686,6 @@ impl App {
         }
     }
 
-    /// Promote a held iCal RSVP into the mutation queue once its 1s hold
-    /// window expires. Until then the slot stays armed so pressing `u`
-    /// cancels without ever talking to the daemon.
     pub fn tick_pending_invite_send(&mut self, now: std::time::Instant) {
         let should_dispatch = self
             .pending_invite_send
@@ -903,11 +706,6 @@ impl App {
         );
     }
 
-    /// Toast for the active undo affordance, e.g. `"Archived 15"` with an
-    /// `"u to undo"` hint and a live countdown of the remaining window.
-    /// Synthesized from `pending_undo` at draw time (rather than queued)
-    /// so pressing `u` dismisses it immediately and the countdown always
-    /// reflects the daemon-side expiry.
     pub fn pending_undo_toast(&self, now: std::time::Instant) -> Option<Toast> {
         let undo = self.pending_undo.as_ref()?;
         let toast = Toast {
@@ -920,21 +718,14 @@ impl App {
         (!toast.expired(now)).then_some(toast)
     }
 
-    /// Queue a transient toast notification. Severity colors and expiry
-    /// are handled by the queue and the `ui::toasts` renderer.
     pub fn push_toast(&mut self, toast: Toast) {
         self.toasts.push(toast);
     }
 
-    /// First key of an in-progress multi-key chord ("g …"), surfaced in
-    /// the hint bar so the user can see the pending prefix.
     pub fn pending_input_prefix(&self) -> Option<char> {
         self.input.pending_prefix()
     }
 
-    /// True while any replaceable request or queued mutation is in
-    /// flight. Drives the status-bar spinner so background work is
-    /// visible even when no pane-local loading indicator is active.
     pub fn has_in_flight_work(&self) -> bool {
         self.pending_mutation_count > 0
             || !self.pending_category_requests.is_empty()
@@ -948,21 +739,14 @@ impl App {
             || self.accounts.page.operation_in_flight
     }
 
-    /// Take the active undo handle, returning the `mutation_id` to
-    /// dispatch in `Request::UndoMutation`. Clears the local handle
-    /// regardless of the daemon's response — preserves the "u undoes
-    /// the most recent" semantics even if the daemon errors.
     pub fn take_pending_undo(&mut self) -> Option<PendingUndo> {
         self.pending_undo.take()
     }
 
-    /// Open a fresh saved-search form (no prefill).
     pub fn open_saved_search_form_new(&mut self) {
         self.modals.saved_search_form = Some(SavedSearchFormState::for_new());
     }
 
-    /// Open the saved-search form prefilled for edit. Save will produce
-    /// a Delete (for the old name) followed by a Create.
     pub fn open_saved_search_form_for_edit(
         &mut self,
         name: String,
@@ -973,20 +757,13 @@ impl App {
             Some(SavedSearchFormState::for_edit(name, query, search_mode));
     }
 
-    /// Close the saved-search form without dispatching anything.
     pub fn close_saved_search_form(&mut self) {
         self.modals.saved_search_form = None;
     }
 
-    /// Validate the form and produce a single Create request for the
-    /// new-saved-search path. Returns `None` if validation fails;
-    /// the form stays open with `validation_error` populated so the
-    /// caller can surface it. Use `take_saved_search_form_requests`
-    /// for the edit path.
     pub fn take_saved_search_form_request(&mut self) -> Option<mxr_protocol::Request> {
         let form = self.modals.saved_search_form.as_mut()?;
         if form.existing_name.is_some() {
-            // Edit path is delete+create — caller used the wrong helper.
             form.validation_error =
                 Some("internal error: edit form requires take_saved_search_form_requests".into());
             return None;
@@ -1005,9 +782,6 @@ impl App {
         Some(request)
     }
 
-    /// Validate the form and produce delete+create requests for the
-    /// edit path (or just create for the new path). Returns `None` if
-    /// validation fails. Form is closed on success.
     pub fn take_saved_search_form_requests(&mut self) -> Option<Vec<mxr_protocol::Request>> {
         let form = self.modals.saved_search_form.as_mut()?;
         if let Some(error) = saved_search_form_validation_error(form) {
@@ -1078,10 +852,6 @@ pub(crate) fn body_status_labels(
     body_status_labels_with_loading(metadata, source, show_reader_stats, false)
 }
 
-/// Phase 3.4: extended chip set that surfaces in-flight remote asset
-/// loading. The async fetch path can take a few hundred ms when the
-/// network is slow; without this chip the rendered HTML view sits
-/// silently while the user wonders if anything is happening.
 pub(crate) fn body_status_labels_with_loading(
     metadata: &BodyViewMetadata,
     source: &BodySource,
@@ -1344,7 +1114,6 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 form.outlook_client_id = client_id.unwrap_or_default();
                 form.outlook_token_ref = token_ref;
             }
-            // Test-only provider; do not surface in account-edit forms.
             mxr_protocol::AccountSyncConfigData::Fake => {}
         }
     } else {
@@ -1437,7 +1206,7 @@ fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
         (AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork, 4) => {
             Some(form.outlook_client_id.as_str())
         }
-        (AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork, 5) => None, // token_ref is read-only
+        (AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork, 5) => None,
         _ => None,
     }
 }
@@ -1558,9 +1327,6 @@ pub fn snooze_presets() -> [SnoozePreset; 4] {
     ]
 }
 
-/// The presets whose label is still true now: "Tonight" leaves once the
-/// evening hour has passed, as it does in the web app's Not now, instead of
-/// meaning tomorrow evening.
 pub fn available_snooze_presets(config: &mxr_config::SnoozeConfig) -> Vec<SnoozePreset> {
     snooze_presets()
         .into_iter()

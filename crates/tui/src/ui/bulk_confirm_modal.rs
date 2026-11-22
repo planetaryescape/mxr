@@ -28,8 +28,6 @@ pub fn draw(
     let width = usize::from(inner.width);
     let preview = &pending.preview;
     let not_in_view = preview.not_in_view;
-    // Detail, a blank line, a blank line and the key hint take four rows; the
-    // rest is list. One row is kept for "and K more" when the list overflows.
     let fixed_rows = 4 + usize::from(not_in_view > 0);
     let list_rows = usize::from(inner.height).saturating_sub(fixed_rows);
     let overflows = preview.rows.len() > list_rows;

@@ -30,10 +30,6 @@ fn single_message_view_uses_jk_to_scroll() {
     assert_eq!(app.mailbox.message_scroll_offset, 0);
 }
 
-/// Regression: j/k used to scroll only when a thread held exactly one
-/// message. In a multi-message thread they moved thread focus instead, so a
-/// long body could not be scrolled — and with focus already on the last
-/// message (the default when it is the unread one) `j` did nothing at all.
 #[test]
 fn multi_message_thread_uses_jk_to_scroll_not_move_focus() {
     let mut app = App::new();
@@ -49,8 +45,6 @@ fn multi_message_thread_uses_jk_to_scroll_not_move_focus() {
 
     app.apply(Action::OpenSelected);
     assert_eq!(app.mailbox.viewed_thread_messages.len(), 2);
-    // Focus defaults to the last unread message — the case where `j` was a
-    // no-op, because move_thread_focus_down had nowhere left to go.
     assert_eq!(app.mailbox.thread_selected_index, 1);
     assert_eq!(app.mailbox.message_scroll_offset, 0);
 
@@ -68,12 +62,10 @@ fn multi_message_thread_uses_jk_to_scroll_not_move_focus() {
     assert_eq!(app.mailbox.message_scroll_offset, 0, "k must scroll back");
     assert_eq!(app.mailbox.thread_selected_index, 1);
 
-    // k at the top stays put rather than stealing focus to the older message.
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
     assert_eq!(app.mailbox.message_scroll_offset, 0);
     assert_eq!(app.mailbox.thread_selected_index, 1);
 
-    // Message navigation still works, on J/K.
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT));
     assert_eq!(app.mailbox.thread_selected_index, 0);
 }
@@ -500,8 +492,6 @@ fn new_account_draft_prompt_can_start_fresh_form() {
     app.apply(Action::OpenAccountFormNew);
     assert!(app.accounts.page.resume_new_account_draft_prompt_open);
 
-    // n keeps the draft for later (blueprint 35's Destroy rule): only the
-    // option named "Discard draft" throws it away.
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
     assert!(action.is_none());
     assert!(!app.accounts.page.resume_new_account_draft_prompt_open);
@@ -932,11 +922,9 @@ fn search_results_from_the_limited_search_keep_their_notice_until_the_next_searc
     app.apply_search_page_results(false, limited_page(vec![results[0].clone()], true));
     assert!(app.search.page.degraded.is_some());
 
-    // A later page from the index does not make the list complete again.
     app.apply_search_page_results(true, limited_page(vec![results[1].clone()], false));
     assert!(app.search.page.degraded.is_some());
 
-    // A fresh answer from the index replaces it.
     app.apply_search_page_results(false, limited_page(results.clone(), false));
     assert!(app.search.page.degraded.is_none());
 }
@@ -1122,8 +1110,6 @@ fn flattened_sidebar_navigation_reaches_saved_searches() {
     }];
     app.mailbox.active_pane = ActivePane::Sidebar;
 
-    // The saved search comes after the rail, More and the labels: walk
-    // the whole flattened list with `j`.
     for _ in 0..app.sidebar_items().len() {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
     }
@@ -1310,12 +1296,10 @@ fn apply_removed_message_ids_clears_visual_anchor() {
     app.mailbox.envelopes = make_test_envelopes(5);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
-    // Enter visual mode with an anchor at index 2.
     app.mailbox.visual_mode = true;
     app.mailbox.visual_anchor = Some(2);
     app.mailbox.selected_index = 4;
 
-    // Remove the first two rows — indices shift, anchor is now stale.
     let id0 = app.mailbox.envelopes[0].id.clone();
     let id1 = app.mailbox.envelopes[1].id.clone();
     app.apply_removed_message_ids(&[id0, id1]);
@@ -1337,18 +1321,15 @@ fn restore_removed_from_lists_clears_visual_anchor() {
     app.mailbox.envelopes = envelopes.clone();
     app.mailbox.all_envelopes = envelopes.clone();
 
-    // Simulate a snapshot for the rollback path.
     let mid = app.mutation_id_generator.next_id();
     app.mutation_snapshots.insert(
         mid,
         crate::app::MutationSnapshot::RemovedFromLists(envelopes.clone()),
     );
 
-    // Enter visual mode.
     app.mailbox.visual_mode = true;
     app.mailbox.visual_anchor = Some(1);
 
-    // Trigger rollback via reconciliation failure — calls restore_removed_from_lists.
     app.handle_mutation_reconciliation_failed(mid);
 
     assert!(
@@ -1365,9 +1346,6 @@ fn restore_removed_from_lists_clears_visual_anchor() {
 fn visual_line_selection_expands_thread_rows_not_flat_envelope_indices() {
     let mut app = App::new();
 
-    // Threads mode is the default. Build a mailbox where row 0 (thread 0)
-    // collapses two messages and row 1 (thread 1) holds one — so a row index
-    // is NOT the same as an envelope index.
     let mut envelopes = make_test_envelopes(3);
     let thread0 = ThreadId::new();
     let thread1 = ThreadId::new();
@@ -1384,16 +1362,11 @@ fn visual_line_selection_expands_thread_rows_not_flat_envelope_indices() {
         "two threads collapse to two rows"
     );
 
-    // Enter visual mode (anchor on row 0), then extend the cursor to row 1 —
-    // the navigation path that invokes `update_visual_selection`.
     app.apply(Action::VisualLineMode);
     assert_eq!(app.mailbox.visual_anchor, Some(0));
     app.apply(Action::MoveDown);
     assert_eq!(app.mailbox.selected_index, 1);
 
-    // Selection must be every message id in threads 0 and 1 (each row expanded
-    // to its members), NOT the flat `envelopes[0..2]` slice the buggy
-    // row-index-as-envelope-index code produced.
     let expected: std::collections::HashSet<MessageId> =
         envelopes.iter().map(|env| env.id.clone()).collect();
     assert_eq!(

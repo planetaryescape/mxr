@@ -1,26 +1,15 @@
-//! Keys in the modes, resolved through the key definition
-//! (`crates/keymap/keymap.toml`, blueprint chapter 35). A mode's handler
-//! deals first with its own states (previews, questions on the lit row),
-//! then asks the definition what the key does in its context, so the keys
-//! help, the hint bar and `mxr keys` describe are the keys that work.
-
 use super::input::plain_or_shift;
 use super::*;
 use crate::keymap_names::action_named;
 use ratatui::crossterm::event::KeyEvent;
 
-/// What a key does in a mode's context.
 pub(crate) enum DefinedKey {
     Action(Action),
-    /// A key the pane handles in place (`inline:` in the definition).
     Inline(&'static str),
-    /// The first key of a sequence; the next key completes it.
     Waiting,
     Unbound,
 }
 
-/// The key's spelling in the definition, as the dispatcher probe names
-/// keys. `None` for a key no binding can spell.
 pub(crate) fn spelling(key: KeyEvent) -> Option<String> {
     let named = |name: &str| (key.modifiers == KeyModifiers::NONE).then(|| name.to_string());
     match key.code {
@@ -45,8 +34,6 @@ pub(crate) fn spelling(key: KeyEvent) -> Option<String> {
 }
 
 impl App {
-    /// The key definition's name for where keys are going: a mode, or the
-    /// mailbox's list, reader or sidebar.
     pub(crate) fn key_place(&self) -> Option<&'static str> {
         if self.screen != Screen::Mailbox {
             return None;
@@ -61,10 +48,6 @@ impl App {
         })
     }
 
-    /// A key that moved away from the list, reader, sidebar or place view
-    /// says where its action went and runs nothing (D171). The modes do this
-    /// in `defined_key`, after their own states have had the key. Returns
-    /// true when it did.
     pub(crate) fn announce_moved_key(&mut self, key: KeyEvent) -> bool {
         if self.mode_key_context().is_some() {
             return false;
@@ -72,8 +55,6 @@ impl App {
         let (Some(place), Some(chord)) = (self.key_place(), spelling(key)) else {
             return false;
         };
-        // With a prefix waiting, only the whole sequence counts: `A` moved
-        // away, but `g A` still opens Analytics.
         let keys = match self.input.pending_prefix() {
             Some(first) => format!("{first} {chord}"),
             None => chord,
@@ -85,20 +66,11 @@ impl App {
         announced
     }
 
-    /// Show "<action> is now <key>" when `keys` moved away from `place`.
-    /// A screen that still reads its own keys (Rules, the drafts list)
-    /// calls this with its own place name. Once the move's `until` release
-    /// is reached the definition no longer has it (D171), so such a call
-    /// shows nothing and returns false.
     pub(crate) fn announce_moved(&mut self, place: &str, keys: &str) -> bool {
-        // The person's keys: a remap onto the old key drops its notice, and
-        // the notice names the key they gave the action.
         let keymap = self.keybindings.keymap();
         let Some((action, moved)) = keymap.moved_entry(place, keys) else {
             return false;
         };
-        // A retired key whose action has none left names where to go
-        // instead (`1` → `g i`), under the old action's name.
         let target = keymap.moved_target(action, moved);
         let remapped = self.keybindings.modes.key_for(place, &target.id);
         let now = moved
@@ -128,9 +100,6 @@ impl App {
         true
     }
 
-    /// What `key` does in `context`, completing a waiting sequence first.
-    /// A second key that completes nothing cancels the sequence and runs
-    /// nothing, as the built-in chords do.
     pub(crate) fn defined_key(&mut self, context: &str, key: KeyEvent) -> DefinedKey {
         let Some(chord) = spelling(key) else {
             self.input.reset();
@@ -152,8 +121,6 @@ impl App {
         let mut chars = chord.chars();
         if let (Some(first), None) = (chars.next(), chars.next()) {
             let keymap = mxr_keymap::defaults();
-            // A retired sequence still waits for its second key while its
-            // move is announced, as `announce_moved` sees the moves.
             if keymap.tui_starts_sequence(context, &chord)
                 || self
                     .keybindings
@@ -165,14 +132,10 @@ impl App {
                 return DefinedKey::Waiting;
             }
         }
-        // Only now, once the mode's own states and bindings had the key, so
-        // a moved letter typed into the ask box still types.
         self.announce_moved(context, &chord);
         DefinedKey::Unbound
     }
 
-    /// What `keys` is bound to in `context`: the person's `keys.toml` mode
-    /// section first, then the definition, minus defaults they moved away.
     fn bound_key(&self, context: &str, keys: &str) -> Option<DefinedKey> {
         let keymap = mxr_keymap::defaults();
         let remaps = &self.keybindings.modes;
@@ -196,7 +159,6 @@ impl App {
         Some(resolved(&binding.name))
     }
 
-    /// Run a mode's key: the action it returns, or its in-place effect.
     pub(crate) fn run_defined_key(&mut self, key: DefinedKey) -> Option<Action> {
         match key {
             DefinedKey::Action(action) => Some(action),
@@ -216,5 +178,4 @@ fn resolved(name: &str) -> DefinedKey {
     action_named(name).map_or(DefinedKey::Unbound, DefinedKey::Action)
 }
 
-/// The in-place keys the modes use.
 const INLINE: &[&str] = &["inline:focus_sidebar"];

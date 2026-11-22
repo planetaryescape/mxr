@@ -1,6 +1,3 @@
-//! `q` closes the innermost layer and quits only at the root (blueprint
-//! 35, "Back and quit"). Below the root it does what Esc does there.
-
 use super::*;
 use crate::app::{MessagesFocus, TodoPanel};
 use crate::ui::records_lens::tests::lisbon_answer;
@@ -22,7 +19,6 @@ fn q_quits_only_at_the_mailbox_root() {
     let mut app = mailbox_app();
     assert_eq!(q(&mut app), Some(Action::QuitView));
 
-    // First-run setup has nothing under it, so q still leaves.
     let mut app = mailbox_app();
     app.screen = Screen::Accounts;
     app.enter_account_setup_onboarding();

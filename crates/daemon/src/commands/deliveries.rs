@@ -110,10 +110,6 @@ pub async fn run(
                     "Scanning mail for deliveries… large windows with LLM enrichment can take a few minutes."
                 );
             }
-            // A backfill over a wide window makes one LLM call per shortlisted
-            // candidate, which easily exceeds the default 120s IPC timeout.
-            // `request_with_events` waits without a deadline; the daemon runs
-            // the scan to completion and replies with the summary.
             let resp = client
                 .request_with_events(
                     Request::ScanDeliveries {

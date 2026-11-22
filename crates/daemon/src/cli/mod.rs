@@ -1505,11 +1505,7 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
 
-    // --- Phase 2: Compose ---
     /// Compose a new email
-    // `html_body` groups the two ways to supply HTML so `--text-file`,
-    // `--inline` and `--signature-html` can require one of them — and
-    // `--signature` can refuse one — without naming both.
     #[command(group = clap::ArgGroup::new("html_body").args(["html_file", "html_stdin"]))]
     Compose {
         /// Recipient(s), comma-separated
@@ -1613,8 +1609,6 @@ pub enum Command {
         /// Has no effect on a real send.
         #[arg(long, requires = "check")]
         no_llm: bool,
-        // Boxed: the assist flags would otherwise make `Compose` the largest
-        // variant by far.
         #[command(subcommand)]
         action: Option<Box<ComposeAction>>,
     },
@@ -1843,7 +1837,6 @@ pub enum Command {
         account: Option<String>,
     },
 
-    // --- Phase 2: Mutations ---
     /// Archive a message (remove from inbox)
     Archive {
         /// Message ID(s). If omitted, reads IDs from stdin when stdin is piped.
@@ -2133,7 +2126,6 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
 
-    // --- Phase 2: Snooze ---
     /// Snooze a message until a specified time
     Snooze {
         #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
@@ -2177,7 +2169,6 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
 
-    // --- Phase 2: Unsubscribe ---
     /// Unsubscribe from a mailing list.
     ///
     /// Positional argument accepts either a message id (uses the
@@ -4636,7 +4627,6 @@ mod tests {
                     .collect()
             };
             let parse = |extra: &[&str]| Cli::try_parse_from(with(extra));
-            // With a search it parses.
             let cli = parse(&["--search", "from:x", "--all", "--dry-run"]).unwrap();
             let bulk = match cli.command {
                 Some(
@@ -4671,7 +4661,6 @@ mod tests {
                     "{command:?} {extra:?} should not parse"
                 );
             }
-            // The flags that follow --all.
             parse(&["--search", "from:x", "--all", "--yes", "--no-wait"]).unwrap();
             parse(&["--search", "from:x", "--all", "--preview-token", "t"]).unwrap();
         }
@@ -4727,7 +4716,6 @@ mod tests {
             &["mxr", "forward", "msg_1", "--draft", "--yes"],
         ];
         for args in cases {
-            // `Cli` doesn't derive `Debug`, so match rather than `expect_err`.
             match Cli::try_parse_from(*args) {
                 Ok(_) => panic!("--draft --yes must be rejected for {:?}", args[1]),
                 Err(err) => assert_eq!(
@@ -4754,7 +4742,6 @@ mod tests {
     fn assert_compose_rejects(args: &[&str], kind: clap::error::ErrorKind) {
         let mut argv = vec!["mxr", "compose"];
         argv.extend_from_slice(args);
-        // `Cli` doesn't derive `Debug`, so discard the Ok value.
         match Cli::try_parse_from(argv).map(|_| ()) {
             Ok(()) => panic!("`mxr compose {}` must be rejected", args.join(" ")),
             Err(err) => assert_eq!(

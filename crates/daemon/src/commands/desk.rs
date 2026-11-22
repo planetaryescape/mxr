@@ -36,7 +36,6 @@ pub async fn run(
     Ok(())
 }
 
-/// Cached gists by conversation.
 type Gists = HashMap<ThreadId, ThreadGistData>;
 
 /// The desk's conversations' cached gists: never a model call.
@@ -233,7 +232,6 @@ fn render(desk: &ResponseData, fmt: OutputFormat, gists: Option<&Gists>) -> anyh
             let mut value = serde_json::to_value(desk)?;
             if let Some(gists) = gists {
                 if let Some(object) = value.as_object_mut() {
-                    // In desk order, each conversation once.
                     let mut seen = HashSet::new();
                     let listed: Vec<&ThreadGistData> = rows()
                         .filter(|row| seen.insert(&row.thread_id))
@@ -323,8 +321,6 @@ fn table(desk: &ResponseData, gists: Option<&Gists>) -> String {
                 who.to_string()
             };
             let gist = gists.and_then(|gists| gists.get(&row.thread_id));
-            // With a gist, the ask says why the row is here better than the
-            // lane's reason does.
             let reason = match gist
                 .and_then(|gist| gist.ask.as_ref())
                 .filter(|_| row.shows_ask())
@@ -416,7 +412,6 @@ pub(crate) fn lane_key(lane: DeskLaneKind) -> &'static str {
     }
 }
 
-/// "2d", "5h", "in 3d" for a promise not yet due, plus the usual pace.
 fn age_cell(row: &DeskRowData) -> String {
     let age = if row.age_seconds < 0 {
         format!("in {}", short_duration(-row.age_seconds))
@@ -597,7 +592,6 @@ mod tests {
         let csv = render(&desk, OutputFormat::Csv, Some(&none)).unwrap();
         assert!(csv.lines().next().unwrap().ends_with(",gist,ask"));
         assert!(csv.lines().nth(1).unwrap().ends_with(",,"));
-        // Without --gists, no gist fields at all.
         let plain: serde_json::Value =
             serde_json::from_str(&render(&desk, OutputFormat::Json, None).unwrap()).unwrap();
         assert!(plain.get("gists").is_none());

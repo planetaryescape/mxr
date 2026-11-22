@@ -36,8 +36,6 @@ pub async fn run(demo: bool, key: String, force: bool) -> anyhow::Result<()> {
         };
         config.accounts.insert(key.clone(), account);
 
-        // Make sure the demo account is the default if no default is set —
-        // saves the user a step.
         if config
             .general
             .default_account
@@ -299,7 +297,6 @@ fn run_llm_wizard() -> anyhow::Result<()> {
 
     let config_path = mxr_config::config_file_path();
     let config = mxr_config::load_config_from_path(&config_path).unwrap_or_default();
-    // The answers only; nothing is written until they are all in.
     let (base_url, model, api_key_env, allow_cloud_relationship_data) = match preset {
         "Local Ollama" => {
             let model_default = config.llm.model.clone();
@@ -348,9 +345,6 @@ fn run_llm_wizard() -> anyhow::Result<()> {
         _ => unreachable!("inquire Select returned an unknown LLM option"),
     };
 
-    // The write re-reads the file under the lock and sets only these keys, so
-    // whatever else changed while the prompts were open (the daemon's own
-    // saves, `mxr config set`) is kept.
     mxr_config::update_config_at_path(&config_path, |config| {
         apply_llm_setup_config(
             config,

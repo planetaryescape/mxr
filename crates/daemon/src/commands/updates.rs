@@ -27,7 +27,6 @@ pub async fn run(
     account: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    // The audit reads the store itself: it needs no daemon.
     if matches!(action, Some(UpdatesAction::AlertAudit)) {
         return super::alert_audit::run(format).await;
     }
@@ -46,7 +45,6 @@ pub async fn run(
             .await?;
             print!("{}", render_digest(&digest, format, &marks)?);
         }
-        // Handled above, before the daemon connection.
         Some(UpdatesAction::AlertAudit) => {}
         Some(UpdatesAction::LetGo { source, dry_run }) => {
             let preview = let_go(
@@ -200,7 +198,6 @@ fn render_digest(
             }
             out
         }
-        // Thread ids, so they feed `mxr modes why` and `mxr modes done`.
         OutputFormat::Ids => {
             let mut out = String::new();
             let mut seen = std::collections::HashSet::new();
@@ -244,7 +241,6 @@ fn line_text(line: &UpdateLineData) -> String {
             filed.with_timezone(&chrono::Local).format("%-d %b %Y")
         );
     }
-    // A code the fact line does not already show ("MFA Login Authentication").
     if let Some(code) = line
         .code
         .as_ref()

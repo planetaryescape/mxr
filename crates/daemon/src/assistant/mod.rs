@@ -163,8 +163,6 @@ async fn run_turn(
         Ok(None) => return TurnOutcome::Failed("the conversation is gone".to_string()),
         Err(error) => return TurnOutcome::Failed(error.to_string()),
     };
-    // Message seqs start at 1 and have no gaps, so the summary that covers
-    // through seq N replaces the first N messages.
     let summary = match (row.summary, row.summary_through_seq) {
         (Some(text), Some(through)) => usize::try_from(through)
             .ok()
@@ -187,7 +185,6 @@ async fn run_turn(
         auto_approve: row.auto_approve,
         summary: std::sync::Mutex::new(summary),
     };
-    // One trace per turn, one Langfuse session per conversation.
     let span = Observation::start("assistant-turn", Kind::Agent).in_session(conversation_id);
     let outcome = match start {
         TurnStart::Send { message, context } => {
@@ -233,7 +230,6 @@ fn outcome_key(outcome: &TurnOutcome) -> &'static str {
     }
 }
 
-/// The turn's answer for the trace: the last thing the assistant said.
 #[cfg(feature = "langfuse")]
 fn last_reply(history: &[ToolChatMessage]) -> serde_json::Value {
     history

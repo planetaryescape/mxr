@@ -135,7 +135,6 @@ async fn generate_report(options: &BugReportOptions) -> anyhow::Result<String> {
     let db_path = data_dir.join("mxr.db");
     let log_path = data_dir.join("logs").join("mxr.log");
     let index_path = data_dir.join("search_index");
-    // Same single-source resolution as the daemon bind / probe / request path.
     let socket_path = crate::server::resolve_daemon_socket()?;
 
     let store = if db_path.exists() {

@@ -70,12 +70,8 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         options.account.as_deref(),
     )
     .await?;
-    // Seed the draft's From with the chosen identity (an owned alias) when one
-    // was named, else the account primary.
     let from_seed = from_override.unwrap_or_else(|| account.email.clone());
     let stdin_or_body = read_body_input(options.body, options.body_stdin)?;
-    // Resolve the signature for the *chosen* identity (from_seed), not just the
-    // account primary, so an alias send picks up the alias's signature.
     let signature = resolve_compose_signature(
         &mut client,
         &account.account_id,
@@ -86,9 +82,6 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     )
     .await?;
 
-    // An HTML body never opens $EDITOR: the caller already authored the
-    // document, and round-tripping it through a markdown compose file would
-    // destroy the markup they supplied it to preserve.
     let html_args = super::compose_html::HtmlComposeArgs {
         html_file: options.html_file.clone(),
         html_stdin: options.html_stdin,
@@ -155,9 +148,6 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     if let Some(html) = html_input {
         apply_html_body(&mut draft, html);
     }
-    // `--draft` forces a save and cannot coexist with `--yes` (clap enforces
-    // the conflict); computing `sending` locally keeps the save-vs-send
-    // decision explicit rather than resting on that guard at a distance.
     let sending = options.yes && !options.draft;
     validate_compose_draft(&frontmatter, draft.content.analysis_text(), sending)?;
 
@@ -251,8 +241,6 @@ fn apply_html_body(draft: &mut Draft, input: super::compose_html::HtmlComposeInp
         inline_assets,
     } = input;
 
-    // A reference mxr cannot resolve is a warning, not a refusal: the author
-    // may know something mxr does not.
     for cid in super::compose_html::unresolved_cid_references(&html, &inline_assets) {
         eprintln!("warning: HTML references cid:{cid} but no --inline provides it");
     }
@@ -429,9 +417,6 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
         thread_context: ctx.thread_context.clone(),
     };
 
-    // The chosen identity: an explicit `--from` override, else the
-    // daemon-computed delivered-to default. Drives both the signature (Fix 7)
-    // and the seeded From, so they stay consistent.
     let effective_from = from_override_or(from.as_deref(), &ctx.from);
     let stdin_or_body = read_body_input(body, body_stdin)?;
     let signature = resolve_compose_signature(
@@ -626,8 +611,6 @@ async fn build_compose_draft(
 
     let (path, cursor_line) =
         mxr_compose::create_draft_file_with_signature(kind, from_email, signature)?;
-    // Seed the `attach:` frontmatter before the editor opens so the user
-    // sees (and can edit) the attachments alongside the rest of the draft.
     rewrite_compose_frontmatter(&path, None, None, attach)?;
     let editor = mxr_compose::editor::resolve_editor(None);
     mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
@@ -662,13 +645,8 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
         remind_after,
         format,
     } = compose;
-    // `--draft` forces a save and cannot coexist with `--yes` (clap enforces
-    // the conflict); computing `sending` locally keeps the save-vs-send
-    // decision explicit rather than resting on that guard at a distance.
     let sending = yes && !draft;
 
-    // Recipient + thread context is only meaningful at the
-    // post-$EDITOR stage where the user has filled in `to:` / `subject:`.
     let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
     let body = if let Some(source) = &frontmatter.forward_source {
         let intro = mxr_compose::forward::introduction(source, &body)?;
@@ -705,8 +683,6 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     if !sending && remind_after.is_some() {
         anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --expected-revision <reviewed-revision> --expected-workspace '<owner-json>' --remind-after <time>`");
     }
-    // Resolve the reminder before sending: a phrase that doesn't parse must
-    // stop the send, not surface after the mail has already gone.
     let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;
 
     if sending && (client.is_paired_remote() || !outgoing.attachments.is_empty()) {
@@ -1338,8 +1314,6 @@ pub async fn drafts_edit(draft_id: String, account: Option<String>) -> anyhow::R
     let from = resolve_account_email(&mut client, &draft.account_id).await?;
 
     let content = mxr_compose::draft_codec::draft_to_compose_file(&draft, &from)?;
-    // A draft is unsent mail content; write it to the per-user private 0700
-    // scratch dir with 0600 perms rather than the world-readable temp root.
     let path = mxr_compose::private_tmp::private_scratch_dir()?.join(format!(
         "mxr-draft-edit-{}-{}.md",
         draft.id,
@@ -1613,7 +1587,6 @@ pub(crate) fn build_check_context(
         original_message_id: None,
         thread_id,
         allow_llm: !no_llm,
-        // CLI `--check` defaults to "send now" timing.
         proposed_send_at: Some(now),
     }
 }
@@ -1632,9 +1605,6 @@ pub async fn check_send(
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
 
-    // Validate the effective From at preview time (same choke point as send):
-    // an unowned stored From must fail here, not silently pass the safety
-    // check and only be rejected at send.
     resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
 
     let context = build_check_context(&draft, no_llm, chrono::Utc::now());
@@ -1684,9 +1654,6 @@ pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Res
     .await?;
     let from_seed = from_override.unwrap_or_else(|| account.email.clone());
 
-    // `--check` has to read the HTML the same way a save or a send does.
-    // Ignoring these flags here meant checking an empty markdown draft and
-    // calling every HTML email safe, dangerous documents included.
     let html_input = super::compose_html::read_html_input(&super::compose_html::HtmlComposeArgs {
         html_file: options.html_file.clone(),
         html_stdin: options.html_stdin,
@@ -1723,7 +1690,6 @@ pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Res
         apply_html_body(&mut draft, html);
     }
 
-    // Validate the effective From at preview, mirroring the real send path.
     resolve_effective_from(&mut client, &draft.account_id, draft.from.as_ref()).await?;
 
     let context = build_check_context(&draft, no_llm, chrono::Utc::now());
@@ -1878,8 +1844,6 @@ async fn resolve_compose_sender(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    // With an explicit account, `--from` (if present) must be an owned address
-    // of *that* account to become the From override.
     if let Some(account_sel) = explicit_account
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -1900,8 +1864,6 @@ async fn resolve_compose_sender(
         return Ok((account, override_addr));
     }
 
-    // No explicit account: an exact owned-address match sets both the account
-    // and the From override. Ambiguity across accounts must be disambiguated.
     if let Some(value) = from.filter(|value| value.contains('@')) {
         let owners = accounts_owning_address(client, &accounts, value).await?;
         match owners.as_slice() {
@@ -1917,7 +1879,7 @@ async fn resolve_compose_sender(
                      pass --account <account> to choose which to send from."
                 );
             }
-            [] => {} // fall through: treat `--from` as a legacy account selector
+            [] => {}
         }
     }
 
@@ -2149,9 +2111,6 @@ pub(crate) fn snippet_context_from_frontmatter(
         .as_ref()
         .and_then(|name| first_name_from_full(name))
         .or_else(|| {
-            // Fall back to the email local-part if there's no display
-            // name at all. Better to fill in `alice` than to leave a
-            // raw `{first_name}` token in someone's draft.
             primary.and_then(|addr| {
                 addr.email
                     .split('@')
@@ -2169,9 +2128,6 @@ pub(crate) fn snippet_context_from_frontmatter(
 }
 
 fn first_name_from_full(name: &str) -> Option<String> {
-    // Handle "Last, First" (with optional trailing extras) — the comma
-    // form is common in directory exports. Take the first whitespace-
-    // delimited token AFTER the comma as the first name.
     if let Some((_last, after_comma)) = name.split_once(',') {
         let candidate = after_comma
             .split_whitespace()
@@ -2232,9 +2188,6 @@ fn expand_snippet_keywords_with_context(
     snippets: &[SnippetData],
     context: Option<&SnippetContext>,
 ) -> String {
-    // Fast path: no `;name` keywords to process. Still run the
-    // builtin-var pass so bare `{first_name}` / `{today}` tokens the
-    // user typed directly get resolved.
     if snippets.is_empty() {
         return expand_builtin_snippet_vars(body, context);
     }
@@ -2280,10 +2233,6 @@ fn expand_snippet_keywords_with_context(
         }
     }
 
-    // Second pass: also resolve bare `{first_name}` / `{thread_subject}`
-    // / `{today}` tokens the user typed directly (i.e. not introduced by
-    // a snippet keyword). Unresolved tokens are left intact so the
-    // send-time validator can warn about them.
     expand_builtin_snippet_vars(&output, context)
 }
 
@@ -2437,8 +2386,6 @@ fn expect_ack(resp: Response) -> anyhow::Result<()> {
         Response::Ok {
             data: ResponseData::Ack | ResponseData::Draft { .. },
         } => Some(()),
-        // SendReceipt is also an "ack-shaped" success for callers that don't
-        // need the message id (e.g. SaveDraft, where receipt is None anyway).
         Response::Ok {
             data: ResponseData::SendReceipt { .. },
         } => Some(()),

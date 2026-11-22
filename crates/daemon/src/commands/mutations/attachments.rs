@@ -12,9 +12,6 @@ use super::helpers::{
     attachment_by_index, format_bytes, load_attachments, parse_message_id as parse_id_for_legacy,
 };
 
-// Attachment commands retain positional message IDs while the list path uses
-// the shared selection module.
-
 pub async fn attachments_list(
     message_id: Option<String>,
     search: Option<String>,
@@ -342,9 +339,6 @@ mod tests {
         let target_dir = Path::new("/tmp/mxr-downloads");
         let id = AttachmentId::default();
 
-        // Absolute paths, `../` traversal, `..`, and empty names must all
-        // collapse to a single component whose parent is exactly `target_dir`,
-        // so the CLI copy can never write outside the user's chosen `--dir`.
         for hostile in ["../../evil", "/etc/evil", "..", ""] {
             let name = safe_download_name(hostile, &id);
             let target = target_dir.join(&name);

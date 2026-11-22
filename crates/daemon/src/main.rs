@@ -16,14 +16,11 @@ const CLI_STACK_BYTES: usize = 32 * 1024 * 1024;
 
 fn main() -> anyhow::Result<ExitCode> {
     let args: Vec<String> = std::env::args().collect();
-    // Helper mode comes first: no argument parsing, runtime or logging, and
-    // stdout carries frames only.
     if args.get(1).map(String::as_str) == Some(mxr::html_helper::HELPER_ARG) {
         return Ok(mxr::html_helper::run_helper());
     }
     mxr::html_helper::install();
     let cli_args = args.clone();
-    // Named `main` so panic messages read as they did on the process's thread.
     let result = std::thread::Builder::new()
         .name("main".to_string())
         .stack_size(CLI_STACK_BYTES)
@@ -42,7 +39,6 @@ fn main() -> anyhow::Result<ExitCode> {
     let Some(typed) = CliError::find(&error) else {
         return Err(error);
     };
-    // Same text the `Termination` impl prints for an `Err` return.
     eprintln!("Error: {error:?}");
     if json_output_requested(&args) {
         eprintln!("{}", typed.json_line());

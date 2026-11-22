@@ -262,7 +262,6 @@ fn forward_cli_preview_editor_draft_inline_body_and_fake_send_include_original_a
         5
     );
 
-    // Actual submission goes only to the fake provider, using the reviewed stored draft.
     let draft_id = saved["draft_id"].as_str().expect("saved draft id");
     let review = run_json(
         &instance,

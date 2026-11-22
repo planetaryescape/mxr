@@ -262,8 +262,6 @@ pub(crate) fn build_llm_provider(
             ),
         ));
     }
-    // Trimmed as the endpoint's route health keys it, so the key read and
-    // the health kept belong to the same variable.
     let api_key_env = config.api_key_env.trim();
     let api_key = if api_key_env.is_empty() {
         None
@@ -303,7 +301,6 @@ pub(crate) struct LlmFallbackChain {
 }
 
 impl LlmFallbackChain {
-    /// The same chain with nothing behind the endpoint.
     fn withheld(&self) -> Self {
         Self {
             routes: Vec::new(),
@@ -337,8 +334,6 @@ pub(crate) fn llm_fallback(
         ));
     };
     if fallback.context_window == Some(0) {
-        // The chain advertises the smallest window, so a zero would shrink
-        // every prompt to the minimum budget even while the endpoint works.
         return Err(
             "llm.fallback.context_window is 0; set the fallback model's window or remove the key"
                 .to_string(),
@@ -469,8 +464,6 @@ fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_
             blocked.insert(feature, reason);
             continue;
         }
-        // The base provider may fall back to the cloud; this feature keeps
-        // the endpoint alone unless its data is allowed there.
         let chain = llm_fallback_chain(config, fallback.as_ref(), Some(feature), &base);
         if chain != base_chain {
             providers.insert(feature, build_llm_provider(&base, chain.as_ref(), &health));
@@ -567,7 +560,6 @@ fn relationship_data_feature(feature: mxr_llm::LlmFeature) -> bool {
             | mxr_llm::LlmFeature::ArchiveAsk
             | mxr_llm::LlmFeature::DecisionLog
             | mxr_llm::LlmFeature::Briefing
-            // Searches and reads across the whole mailbox.
             | mxr_llm::LlmFeature::Assistant
     )
 }
@@ -595,7 +587,6 @@ fn relationship_data_block_reason(
         && (llm_model_routes(effective).is_some()
             || !mxr_llm::is_loopback_endpoint(&effective.base_url))
     {
-        // Routed models go to their vendor and OpenRouter, whatever base_url says.
         let endpoint = if llm_model_routes(effective).is_some() {
             format!("hosted provider (model {})", effective.model)
         } else {
@@ -857,7 +848,6 @@ struct SyncRun {
 }
 
 impl SyncRun {
-    /// Whether the entry still carries anything worth remembering.
     fn is_idle(&self) -> bool {
         self.revision == 0
             && self.deferred_relationship_contacts.is_empty()
@@ -917,13 +907,6 @@ impl Drop for BackgroundSyncClaim {
                 } else {
                     run.background_syncs_queued = run.background_syncs_queued.saturating_sub(1);
                 }
-                // A handed-off claim keeps its entry even when nothing else
-                // is left in it. The pass it handed over is still running —
-                // detached, with the reaper holding it — and the entry is
-                // where its generation lives; dropping it would let an older
-                // claim's cleanup find no later claim and clear the flag of a
-                // sync that is very much in progress. The reaper's
-                // `finish_sync_run` takes the entry out when the pass ends.
                 if run.is_idle() && !self.handed_off {
                     runs.remove(&self.account_id);
                 }
@@ -932,13 +915,6 @@ impl Drop for BackgroundSyncClaim {
         if self.handed_off {
             return;
         }
-        // Nobody finalized this pass: the task panicked, or the runtime
-        // dropped it at shutdown. The `sync_in_progress = true` written before
-        // the ack is still in the store and nothing is left to clear it, so
-        // every later client would read the account as permanently syncing.
-        // Best effort — `Drop` cannot await, and there may be no runtime left
-        // to spawn on during shutdown, in which case the startup reconciler
-        // (`reconcile_interrupted_syncs`) clears it in the next process.
         let Ok(handle) = tokio::runtime::Handle::try_current() else {
             return;
         };
@@ -1004,8 +980,6 @@ impl AppState {
             mxr_store::asks_context_token().ok().as_deref(),
         );
         store.sync_assessment_context(&context).await?;
-        // Cached auth authority belongs to the loaded receiver configuration.
-        // Invalidate before IPC opens, rather than waiting for the first loop tick.
         store
             .sync_receiver_authority(&config.todo.trusted_authentication_services)
             .await?;
@@ -1020,8 +994,6 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
-        // Indexing never runs `render.html_command`: a rebuild would spawn it
-        // once per HTML message. The built-in converter yields the same words.
         let search_index = open_search_index(&index_path, &store).await?;
         let lexical_content_stale = std::sync::OnceLock::new();
         if let Some(path) = search_index.stale_content_path {
@@ -1029,9 +1001,6 @@ impl AppState {
         }
         let (search, search_worker) = SearchServiceHandle::start(search_index.index);
         runtime_tasks.set_search_worker(search_worker);
-        // Searches must not read a stale or short index between here and the
-        // startup rebuild. Startup maintenance ends this hold once the rebuild
-        // is done, or once it finds nothing to rebuild.
         let total_messages = store.count_all_messages().await.unwrap_or_default();
         let indexed_messages = search.num_docs().await.unwrap_or_default();
         if crate::reindex::startup_rebuild_needed(
@@ -1047,7 +1016,6 @@ impl AppState {
         );
         runtime_tasks.set_semantic_worker(semantic_worker);
         let llm = build_llm_runtime(&config.llm);
-        // After the providers are built: building them resets this state.
         let llm_state_path = (!mxr_config::is_demo_instance())
             .then(|| data_dir.join(crate::llm_background::STATE_FILE));
         if let Some(saved) = llm_state_path
@@ -1062,9 +1030,6 @@ impl AppState {
         let (contacts_refresh, contacts_refresh_worker) =
             ContactsRefreshHandle::start(store.clone(), background_db.clone());
         runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
-        // Empty until the registry is loaded below, after provider setup has
-        // inserted the configured accounts. Sync direction reads as Unknown
-        // until then.
         let account_addresses = Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new());
         let sync_engine = Arc::new(SyncEngine::with_address_lookup(
             store.clone(),
@@ -1073,18 +1038,11 @@ impl AppState {
         ));
 
         let provider_setup = Self::create_providers_from_config(&config, &store).await?;
-        // Provider setup inserts the configured accounts, so the registry has
-        // to be built after it or the first sync misses their primaries.
         if let Err(err) = load_account_address_registry(&store, &account_addresses).await {
             tracing::warn!(error = %err, "failed initial account_addresses load");
         }
-        // Repair debt lives in memory, so a restart forgets Unknown directions
-        // written while an earlier daemon's registry was stale. The first sync
-        // pass reclassifies whatever Unknown rows are left.
         account_addresses.mark_repair_owed();
 
-        // A restart forgets which accounts had a direction change in flight.
-        // Every stored account owes a reconciliation, paid on its next pass.
         let direction_repair_owed: HashSet<AccountId> = match store.list_all_accounts().await {
             Ok(accounts) => accounts.into_iter().map(|account| account.id).collect(),
             Err(err) => {
@@ -1273,9 +1231,6 @@ impl AppState {
         let mut default_send_provider = None;
         let requested_default = config.general.default_account.as_deref();
 
-        // Sorted, so a provisional colour or tag shown before insertion is the
-        // one insertion stores. Every configured tag is reserved, so a derived
-        // tag never takes one.
         let mut keys: Vec<&String> = config.accounts.keys().collect();
         keys.sort();
         let reserved_tags: Vec<String> = config
@@ -1287,7 +1242,6 @@ impl AppState {
             let acct_config = &config.accounts[key];
             let provider_kind = sync_provider_kind(acct_config.sync.as_ref());
             let send_kind = send_provider_kind(acct_config.send.as_ref());
-            // The same id as the identity resolver and the config views use.
             let account_id = crate::handler::config_account_id(key, acct_config);
 
             let account = Account {
@@ -1373,10 +1327,6 @@ impl AppState {
                     max_connections,
                     tls_cert_sha256,
                 }) => {
-                    // Degrade, never crash: a bad IMAP config skips just this
-                    // account (mirroring Gmail above). Credentials resolve
-                    // lazily at sync time, so a missing/unreadable secret does
-                    // not reach here — it surfaces as account-unhealthy later.
                     match crate::provider_credentials::imap_config_with_credentials(
                         host.clone(),
                         *port,
@@ -1424,8 +1374,6 @@ impl AppState {
                     key,
                 )?,
                 Some(mxr_config::SyncProviderConfig::Fake) => {
-                    // The fixture dates the demo's Updates mail around the
-                    // cut the digest will use, so both read the same config.
                     let fake = Arc::new(mxr_provider_fake::FakeProvider::new_with_updates_cuts(
                         account_id.clone(),
                         &crate::handler::updates::cuts_from(&config.updates.cuts).labels(),
@@ -1459,7 +1407,6 @@ impl AppState {
                 if providers.contains_key(&account_id) {
                     anyhow::bail!("Account '{key}' uses gmail send without gmail sync");
                 }
-                // Gmail sync provider was skipped (e.g. auth not ready), skip send too
                 tracing::warn!(
                     account = %key,
                     "Skipping Gmail send provider: sync provider not available"
@@ -1475,9 +1422,6 @@ impl AppState {
                 use_tls,
             }) = &acct_config.send
             {
-                // Degrade, never crash: an invalid SMTP config skips only this
-                // account's send provider. The password resolves lazily at send
-                // time, so a missing secret does not abort boot here.
                 match crate::provider_credentials::smtp_config_with_credentials(
                     host.clone(),
                     *port,
@@ -1517,7 +1461,6 @@ impl AppState {
                     }
                     _ => mxr_provider_outlook::OutlookTenant::Personal,
                 };
-                // Resolve client_id: sync config → send config → bundled constant.
                 let cid = match &acct_config.sync {
                     Some(
                         mxr_config::SyncProviderConfig::OutlookPersonal {
@@ -1628,7 +1571,6 @@ impl AppState {
             if stored_at.elapsed() < WRAPPED_CACHE_TTL {
                 return Some(summary.clone());
             }
-            // Stale — drop while we hold the lock.
             cache.remove(key);
         }
         None
@@ -1688,7 +1630,6 @@ impl AppState {
         self.config_snapshot().general.sync_interval
     }
 
-    /// Draft locks precede account provider locks for every draft writer.
     pub async fn acquire_draft_operation(
         &self,
         draft_id: &mxr_core::DraftId,
@@ -1735,7 +1676,6 @@ impl AppState {
     ) -> OwnedMutexGuard<()> {
         let lock = {
             let mut locks = self.attachment_materialization_locks.lock();
-            // Completed keys have no users and can be dropped before admitting another key.
             locks.retain(|_, lock| Arc::strong_count(lock) > 1);
             locks
                 .entry((message_id.clone(), attachment_id.clone()))
@@ -1838,7 +1778,6 @@ impl AppState {
         self.direction_repair_owed.lock().insert(account_id.clone());
     }
 
-    /// Clear and report whether the account owes a direction reconciliation.
     pub(crate) fn take_direction_repair(&self, account_id: &AccountId) -> bool {
         self.direction_repair_owed.lock().remove(account_id)
     }
@@ -1851,7 +1790,6 @@ impl AppState {
             .analytics_repair_owed = true;
     }
 
-    /// Clear and report the account's analytics debt.
     pub(crate) fn take_analytics_repair_debt(&self, account_id: &AccountId) -> bool {
         let mut runs = self.sync_runs.lock();
         let Some(run) = runs.get_mut(account_id) else {
@@ -1878,7 +1816,6 @@ impl AppState {
             .extend(contacts);
     }
 
-    /// Take everything deferred for `account_id` so far.
     pub(crate) fn take_deferred_relationship_contacts(
         &self,
         account_id: &AccountId,
@@ -1915,9 +1852,6 @@ impl AppState {
                 return None;
             }
             run.background_syncs_queued = 1;
-            // Stamped under the same lock as the claim, so a cleanup reading
-            // the entry sees either this claim or the state before it, never
-            // a claim without its generation.
             run.claim_generation = state
                 .next_background_claim
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2197,7 +2131,6 @@ impl AppState {
             tracing::trace!(session_id = %session_id.0, "auth session task aborted");
         }
 
-        // After the workers stopped, so their last outcomes are in it.
         crate::llm_background::save_if_changed(self).await;
 
         tracing::info!(
@@ -2228,9 +2161,6 @@ impl AppState {
     /// holds `config_write`.
     fn sync_llm_from_disk(&self) -> std::result::Result<(), String> {
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
-        // A fallback mxr can't use doesn't hold back the rest of `[llm]`
-        // (turning AI off must still apply): the daemon runs without it, as
-        // at startup, and `mxr llm status` and `mxr config set` say why.
         self.mask_for_restore(&mut config);
         apply_llm_config_to_runtime(&self.llm, &config.llm);
         self.config.write().llm = config.llm;
@@ -2277,7 +2207,6 @@ impl AppState {
     where
         F: FnOnce(&mut mxr_config::MxrConfig) -> std::result::Result<(), String>,
     {
-        // In-process writers first, then the file lock, always in that order.
         let _writing = self.config_write.lock().await;
         let mut seen = None;
         let result = mxr_config::update_config(|config| {
@@ -2285,16 +2214,12 @@ impl AppState {
             mutator(config).map_err(ConfigChangeError::Refused)?;
             Ok::<_, ConfigChangeError>(config.clone())
         });
-        // The file is read and saved as written. The daemon runs with the
-        // environment overrides on top, the way a reload loads it.
         match result {
             Ok(mut saved) => {
                 mxr_config::apply_env_overrides(&mut saved);
                 self.install_config(saved).await
             }
             Err(ConfigChangeError::Refused(reason)) => {
-                // Looking at the file taught the daemon what it has now, even
-                // though nothing was changed: keep its copy in step.
                 if let Some(mut on_disk) = seen {
                     mxr_config::apply_env_overrides(&mut on_disk);
                     if let Err(error) = self.install_config(on_disk).await {
@@ -2384,7 +2309,6 @@ impl AppState {
         self.runtime.read().providers.get(account_id).cloned()
     }
 
-    /// Get provider for a specific account, or fall back to default.
     pub fn get_provider(
         &self,
         account_id: Option<&AccountId>,
@@ -2474,8 +2398,6 @@ impl AppState {
             config.search.semantic.enabled = false;
             config.search.semantic.auto_download_models = false;
         }
-        // Committed sets before and after setup: a config edit can move an
-        // account's primary, and setup writes accounts added since startup.
         let before = owned_sets_by_account(&self.store)
             .await
             .map_err(|e| e.to_string())?;
@@ -2485,8 +2407,6 @@ impl AppState {
         let after = match owned_sets_by_account(&self.store).await {
             Ok(after) => after,
             Err(err) => {
-                // Provider setup may already have changed addresses. A retry
-                // would see no difference, so notify every account now.
                 for (account_id, _) in &before {
                     crate::chimes::emit_daemon_event(
                         self,
@@ -2501,12 +2421,8 @@ impl AppState {
         self.sync_error_chimes
             .retain_accounts(&provider_setup.providers.keys().cloned().collect());
 
-        // The registry must learn the new accounts or sync and desk miss their
-        // primary. Clients hear about address changes whether or not it rebuilds.
         self.refresh_account_addresses().await;
         for account_id in accounts_with_changed_addresses(&before, &after) {
-            // Owed before the reclassify, as for an address command: a batch
-            // prepared under the old set can still land after this.
             self.owe_direction_repair(&account_id);
             match crate::handler::diagnostics_impl::reconcile_account_directions(self, &account_id)
                 .await
@@ -2538,9 +2454,6 @@ impl AppState {
                 default_send_provider: provider_setup.default_send_provider,
             };
         }
-        // Providers are swapped: wake any long-lived loop holding an old
-        // provider Arc (the IDLE watcher) so it reconnects with the refreshed
-        // credential. The periodic sync loop already re-fetches per iteration.
         self.signal_providers_reloaded();
         self.semantic
             .apply_config(config.search.semantic.clone())
@@ -2575,7 +2488,6 @@ impl AppState {
         }
     }
 
-    /// Create an in-memory AppState for tests.
     #[cfg(test)]
     pub async fn in_memory() -> anyhow::Result<Self> {
         let (state, _) = Self::in_memory_with_fake().await?;
@@ -2990,7 +2902,6 @@ async fn open_search_index(
     let existed = index_path.join("meta.json").exists();
     let index = open_search_index_files(index_path, store).await?;
     if !existed {
-        // A new index is built from the current text, so there is nothing to rebuild.
         mxr_search::record_lexical_content_version(index_path)?;
         return Ok(OpenedSearchIndex {
             index,
@@ -3217,7 +3128,6 @@ pub(crate) fn owned_addresses_revision(owned: &mxr_core::types::OwnedAddresses) 
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     let mut update = |value: &str| {
-        // Length-prefixed so no two sets hash the same bytes.
         hasher.update(value.len().to_string().as_bytes());
         hasher.update(b":");
         hasher.update(value.as_bytes());
@@ -3283,7 +3193,6 @@ pub(crate) fn accounts_with_changed_addresses(
     changed
 }
 
-/// Every stored account's owned set, read from committed store data.
 pub(crate) async fn owned_sets_by_account(
     store: &Store,
 ) -> std::result::Result<Vec<(AccountId, mxr_core::types::OwnedAddresses)>, sqlx::Error> {
@@ -3309,11 +3218,9 @@ mod tests {
         assert!(mxr_search::lexical_content_is_current(&index_path));
         drop(opened);
 
-        // An index built before the marker existed has to rebuild once.
         std::fs::remove_file(dir.path().join("search_index.content-version")).unwrap();
         let opened = open_search_index(&index_path, &store).await.unwrap();
         assert_eq!(opened.stale_content_path, Some(index_path.clone()));
-        // The marker is written only after a completed rebuild, not on open.
         assert!(!mxr_search::lexical_content_is_current(&index_path));
     }
 
@@ -3405,7 +3312,6 @@ mod tests {
             .unwrap();
         state.refresh_account_addresses().await;
 
-        // Sync wrote this message while the set was unknown.
         let envelope = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
             .provider_id("unknown-direction")
@@ -3428,11 +3334,9 @@ mod tests {
             }
         };
 
-        // Nothing was stale, so a pass does not reclassify.
         assert!(state.ensure_account_addresses_current().await);
         assert_eq!(direction(&state).await, "unknown");
 
-        // The rebuild fails, then recovers through a path that is not a sync.
         sqlx::query("ALTER TABLE account_addresses RENAME TO account_addresses_off")
             .execute(state.store.writer())
             .await
@@ -3445,7 +3349,6 @@ mod tests {
         state.refresh_account_addresses().await;
         assert!(state.account_addresses.is_loaded());
 
-        // The next pass repairs the row even though the sync fetched nothing.
         assert!(state.ensure_account_addresses_current().await);
         assert_eq!(direction(&state).await, "outbound");
     }
@@ -3519,8 +3422,6 @@ mod tests {
         state.refresh_account_addresses().await;
         assert!(state.account_addresses.is_loaded());
 
-        // Make the read the rebuild performs fail while the accounts row stays
-        // readable.
         sqlx::query("ALTER TABLE account_addresses RENAME TO account_addresses_off")
             .execute(state.store.writer())
             .await
@@ -3536,7 +3437,6 @@ mod tests {
             .await
             .unwrap();
 
-        // The next sync pass retries the stale rebuild and classifies again.
         assert!(state.ensure_account_addresses_current().await);
         assert!(state.account_addresses.is_loaded());
         assert!(!state.account_addresses.is_stale());
@@ -3575,8 +3475,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_config_account_without_a_provider_gets_the_id_its_identity_is_shown_under() {
-        // Drives the real startup path. Before the fix startup used a different
-        // id for a provider-less account, so the resolver saw two accounts.
         let store = Store::in_memory().await.unwrap();
         let mut config = mxr_config::MxrConfig::default();
         config.accounts.insert(
@@ -3609,8 +3507,6 @@ mod tests {
 
     #[tokio::test]
     async fn startup_reuses_a_provider_less_account_stored_under_its_existing_id() {
-        // Rows written before this change hold the account under the id startup
-        // always created for it. Startup must reuse that row, not add a second.
         let store = Store::in_memory().await.unwrap();
         let existing = mxr_core::Account {
             id: AccountId::from_provider_id("account", "bk@work.example"),
@@ -3715,8 +3611,6 @@ use_tls = true
         assert_eq!(after_second_page.current, 250);
         assert_eq!(after_second_page.total, Some(250));
 
-        // A restart re-pages the account from scratch, so the denominator is
-        // as stale as the count it belongs to.
         state.reset_sync_progress(&account_id);
         assert_eq!(
             state.sync_progress(&account_id).expect("progress").total,
@@ -3748,7 +3642,6 @@ use_tls = true
 
         state.record_sync_remaining(&account_id, 100);
         state.record_sync_progress(&account_id, 100, "Stored 100 messages".to_string());
-        // The provider signals the end of the backfill with an empty page.
         state.record_sync_remaining(&account_id, 0);
         state.record_sync_progress(&account_id, 0, "Fetched 0 messages".to_string());
 
@@ -3837,11 +3730,6 @@ use_tls = true
 
     #[tokio::test]
     async fn create_providers_survives_unreadable_credential() {
-        // Regression for the disk-first credential bug: a password-auth IMAP
-        // account whose secret is absent/unreadable must NOT abort daemon
-        // startup. Credentials resolve lazily at sync time, so the provider is
-        // still constructed and the other account keeps working. Pre-fix, the
-        // eager keychain read here returned `?` and bricked the whole daemon.
         let store = Arc::new(Store::in_memory().await.expect("store"));
         let config = mxr_config::load_config_from_str(
             r#"
@@ -3871,13 +3759,10 @@ use_tls = true
         )
         .expect("parse config");
 
-        // Boot must succeed even though the broken account has no readable
-        // secret on disk or in the keychain.
         let setup = AppState::create_providers_from_config(&config, &store)
             .await
             .expect("daemon boots despite an unreadable credential");
 
-        // Both providers are constructed; the healthy account is fully usable.
         assert_eq!(
             setup.providers.len(),
             2,
@@ -3891,14 +3776,6 @@ use_tls = true
 
     #[test]
     fn create_providers_boots_despite_a_corrupt_secrets_file() {
-        // A corrupt/unparseable secrets.toml on the default path must not break
-        // boot: construction is lazy and never reads secrets, so the provider is
-        // still built. This also guards against a regression that makes
-        // construction eager again (which would then fail here on the corrupt
-        // file). This test proves boot ONLY — it does not read the file, so it
-        // makes no leak claim; the sanitized-error-omits-the-secret guarantee is
-        // exercised at the resolver layer by
-        // `provider_credentials::tests::corrupt_disk_surfaces_sanitized_error_without_the_secret`.
         let dir = tempfile::tempdir().expect("tempdir");
         let secrets = dir.path().join("secrets.toml");
         std::fs::write(&secrets, "this is not valid toml").expect("write corrupt");
@@ -4112,8 +3989,6 @@ use_tls = true
         abandoned.mark_handed_off();
         drop(abandoned);
 
-        // The next client, doing what `start_background_sync` does: claim,
-        // mark the account busy, ack.
         let _next = AppState::claim_background_sync(&state, &account_id)
             .expect("the account is free once the first claim goes");
         mark_syncing(&state, &account_id).await;
@@ -4168,8 +4043,6 @@ use_tls = true
         let mut abandoned = AppState::claim_background_sync(&state, &account_id)
             .expect("the account starts unclaimed");
         let abandoned_generation = abandoned.generation;
-        // Reported before the claim goes, so the entry is not idle and
-        // survives the drop carrying this claim's generation.
         state.record_sync_progress(&account_id, 1, "stored a page".to_string());
         abandoned.mark_handed_off();
         drop(abandoned);
@@ -4225,15 +4098,12 @@ use_tls = true
         let state = Arc::new(AppState::in_memory().await.expect("state"));
         let account_id = state.default_provider().account_id().clone();
 
-        // The claim that panicked: its cleanup is spawned but has not run yet.
         let mut abandoned = AppState::claim_background_sync(&state, &account_id)
             .expect("the account starts unclaimed");
         let abandoned_generation = abandoned.generation;
         abandoned.mark_handed_off();
         drop(abandoned);
 
-        // The pass that took the account next, detached before its first
-        // milestone, and handed itself to the reaper.
         let mut detached = AppState::claim_background_sync(&state, &account_id)
             .expect("the account is free once the first claim goes");
         detached.mark_started();
@@ -4267,9 +4137,6 @@ use_tls = true
         abandoned.mark_handed_off();
         drop(abandoned);
 
-        // A later claim that came *and went*: its generation is still on the
-        // entry (kept alive here by a reported milestone), but nothing of it
-        // is outstanding any more.
         let mut later = AppState::claim_background_sync(&state, &account_id)
             .expect("the account is free once the first claim goes");
         later.mark_started();

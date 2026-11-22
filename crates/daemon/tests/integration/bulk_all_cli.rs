@@ -110,16 +110,13 @@ fn the_dry_run_counts_the_whole_selection_and_never_lists_ids() {
     let sample = preview["messages"].as_array().unwrap();
     assert_eq!(sample.len(), inbox.len().min(20));
     assert_eq!(preview["sample_size"], 20);
-    // The newest message first, and every sample message is in the selection.
     assert_eq!(sample[0]["message_id"].as_str().unwrap(), inbox[0]);
     for message in sample {
         assert!(inbox.contains(&message["message_id"].as_str().unwrap().to_owned()));
     }
-    // No id list, under any name the capped output used.
     assert!(preview.get("message_ids").is_none());
     assert!(preview.get("requested").is_none());
 
-    // Nothing changed.
     assert_eq!(inbox_ids(&instance, &data_dir, &config_dir), inbox);
 
     let table = run_status_only(
@@ -230,13 +227,11 @@ fn a_run_is_one_job_with_one_id_that_cannot_be_undone() {
     );
     assert_eq!(job["undo_ids"], serde_json::json!([]), "{output:#}");
     let job_id = job["job_id"].as_str().unwrap().to_owned();
-    // One job id, in one place.
     assert_eq!(run.stdout.matches(&job_id).count(), 1, "{}", run.stdout);
     assert!(output.get("message_ids").is_none());
     assert!(run.stderr.contains("one job"), "{}", run.stderr);
     assert!(inbox_ids(&instance, &data_dir, &config_dir).is_empty());
 
-    // `mxr jobs` shows the job and offers no undo.
     let jobs = run_status_only(
         &instance,
         &data_dir,
@@ -246,8 +241,6 @@ fn a_run_is_one_job_with_one_id_that_cannot_be_undone() {
     assert!(jobs.stdout.contains(&job_id), "{}", jobs.stdout);
     assert!(!jobs.stdout.contains("mxr undo"), "{}", jobs.stdout);
 
-    // `mxr undo JOB_ID` says the job cannot be undone, not "not found", and
-    // changes nothing.
     let undo = run_failing(&instance, &data_dir, &config_dir, &["undo", &job_id]);
     let stderr = String::from_utf8_lossy(&undo.stderr);
     assert!(stderr.contains("cannot be undone"), "{stderr}");
@@ -255,8 +248,6 @@ fn a_run_is_one_job_with_one_id_that_cannot_be_undone() {
     assert!(!stderr.contains("not found"), "{stderr}");
     assert!(inbox_ids(&instance, &data_dir, &config_dir).is_empty());
 
-    // Its dry run refuses the same way, with the same message and exit code,
-    // and never says it would undo.
     let dry = run_failing(
         &instance,
         &data_dir,
@@ -273,7 +264,6 @@ fn format_ids_prints_the_job_id_alone() {
     let _guard = daemon_lock();
     let temp = tempfile::tempdir().unwrap();
     let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
-    // `--format ids` prints that job's id and nothing else.
     let ids = run_status_only(
         &instance,
         &data_dir,
@@ -454,8 +444,6 @@ fn label_edits_over_all_work_only_on_labels_the_user_created() {
     let temp = tempfile::tempdir().unwrap();
     let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
     let before = inbox_ids(&instance, &data_dir, &config_dir);
-    // Adding or removing a system label acts on the mail (trash, spam, the
-    // inbox itself), and names that are no label are not guessed at.
     for (command, name) in [
         ("label", "TRASH"),
         ("label", "spam"),
@@ -478,7 +466,6 @@ fn label_edits_over_all_work_only_on_labels_the_user_created() {
     }
     assert_eq!(inbox_ids(&instance, &data_dir, &config_dir), before);
 
-    // A label the user created is fine to add and to remove.
     for command in ["label", "unlabel"] {
         let preview = run_json(
             &instance,

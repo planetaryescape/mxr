@@ -19,10 +19,6 @@ const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 /// call needs longer (or `0` to wait indefinitely); an unparseable value warns
 /// and falls back to the default rather than failing the call.
 fn request_timeout() -> Option<Duration> {
-    // Resolved once: the value cannot change usefully mid-process, and every
-    // request would otherwise pay for a `getenv` plus a parse. `mxr demo` sets
-    // its own env before any request goes out, so first-use resolution is
-    // late enough.
     static TIMEOUT: std::sync::OnceLock<Option<Duration>> = std::sync::OnceLock::new();
     *TIMEOUT.get_or_init(|| {
         let Ok(raw) = std::env::var("MXR_IPC_TIMEOUT_SECS") else {
@@ -228,8 +224,6 @@ fn map_connect_error(error: ClientError) -> anyhow::Error {
             let message = format!(
                 "{source}. Is the daemon running and reachable at MXR_DAEMON_ADDR?"
             );
-            // Only a failed dial means the daemon is unreachable; an invalid
-            // address is a configuration error and keeps exit 1.
             if matches!(source, TransportError::Connect { .. }) {
                 CliError::daemon_unavailable(message)
             } else {
@@ -256,9 +250,6 @@ fn map_connect_error(error: ClientError) -> anyhow::Error {
 /// guidance.
 fn map_request_error(error: ClientError) -> anyhow::Error {
     match error {
-        // A clean close is what a restarting or crashing daemon looks like too,
-        // and nothing on this path has shown a version mismatch, so it stays
-        // retryable rather than claiming an incompatible daemon.
         ClientError::Closed => CliError::daemon_unavailable(
             "Connection closed before the daemon answered. The daemon may have restarted or crashed; retry, and if it keeps happening, restart the daemon after upgrading.",
         ),
@@ -274,7 +265,6 @@ fn map_request_error(error: ClientError) -> anyhow::Error {
                 anyhow::anyhow!("{text}")
             }
         }
-        // Recreate the exact pre-refactor protocol-error strings.
         ClientError::UnexpectedFrame {
             frame_id,
             expected_id,

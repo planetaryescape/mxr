@@ -10,7 +10,6 @@ pub(super) fn prepare(config: &ActivityConfig, entry: &mut OwnedEntry) -> bool {
     if !config.track_link_clicks && entry.action == "link.click" {
         return false;
     }
-    // Sender targets are email addresses, unlike opaque message/account IDs.
     if !config.track_recipient_handles && entry.target_kind.as_deref() == Some("sender") {
         entry.target_id = None;
     }
@@ -31,8 +30,6 @@ fn redact_context(config: &ActivityConfig, value: &mut Value) {
                         !config.track_recipient_handles
                     }
                     "url" => !config.track_link_clicks,
-                    // `to` is a folder destination and `name` can be a rule,
-                    // label or saved-search name. Neither is a recipient key.
                     _ => false,
                 };
                 if !omit {

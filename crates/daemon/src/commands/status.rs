@@ -125,9 +125,6 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
                     view.daemon_pid
                         .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                 ),
-                // A degraded snapshot has no reading behind these, so print
-                // what is true — that the daemon did not say — rather than the
-                // zero and empty string it sent as filler.
                 format!(
                     "Accounts: {}",
                     if view.degraded {
@@ -415,9 +412,6 @@ mod tests {
         )
         .unwrap();
 
-        // The zero and the empty list are filler the daemon sent because it
-        // ran out of time to read, not a reading. Printing them and then
-        // adding a note that contradicts them is worse than saying nothing.
         assert!(rendered.contains("Health: degraded"), "got {rendered}");
         assert!(rendered.contains("Accounts: unknown"), "got {rendered}");
         assert!(

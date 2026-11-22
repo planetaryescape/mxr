@@ -43,7 +43,6 @@ pub fn map_request(
     if !response_ok {
         return None;
     }
-    // A preview changes nothing, so it is not an activity.
     if matches!(req, Request::SetAccountIdentity { dry_run: true, .. }) {
         return None;
     }
@@ -73,7 +72,6 @@ pub fn map_request(
             "recovery",
             "restore maintenance retains its own durable evidence"
         ),
-        // ----- mail mutations via Mutation envelope -----
         Request::Mutation { mutation, .. } => match mutation {
             MutationCommand::Archive { message_ids } => (
                 "mail.archive",
@@ -138,13 +136,12 @@ pub fn map_request(
                 add,
                 remove,
             } => {
-                // Pick the dominant verb: if either set is non-empty.
                 let action = if !add.is_empty() && remove.is_empty() {
                     "mail.label"
                 } else if add.is_empty() && !remove.is_empty() {
                     "mail.unlabel"
                 } else {
-                    "mail.label" // mixed → keep label as the canonical token
+                    "mail.label"
                 };
                 (
                     action,
@@ -192,7 +189,6 @@ pub fn map_request(
             ),
         },
 
-        // ----- low-level SetFlags (TUI/web sometimes calls directly) -----
         Request::SetFlags {
             message_id,
             flags: _,
@@ -203,7 +199,6 @@ pub fn map_request(
             Some(serde_json::json!({ "via": "set_flags" })),
         ),
 
-        // ----- snooze / unsnooze -----
         Request::Snooze {
             message_id,
             wake_at,
@@ -222,7 +217,6 @@ pub fn map_request(
             None,
         ),
 
-        // ----- unsubscribe -----
         Request::Unsubscribe { message_id } => (
             "mail.unsubscribe",
             Some("message"),
@@ -253,7 +247,6 @@ pub fn map_request(
             Some(serde_json::json!({"archive": archive})),
         ),
 
-        // ----- reply-later flag -----
         Request::SetReplyLater { message_id, flag } => (
             if *flag {
                 "thread.flag_reply_later"
@@ -265,7 +258,6 @@ pub fn map_request(
             None,
         ),
 
-        // ----- desk -----
         Request::DismissDeskThreads {
             thread_ids,
             dry_run,
@@ -302,7 +294,6 @@ pub fn map_request(
             })),
         ),
 
-        // ----- places: Reading and Paper trail -----
         Request::SetSenderKind {
             sender_email, kind, ..
         } => (
@@ -336,7 +327,6 @@ pub fn map_request(
             Some(serde_json::json!({ "place": place, "dry_run": dry_run })),
         ),
 
-        // ----- thread reading -----
         Request::GetThread { thread_id, .. } => (
             "thread.open",
             Some("thread"),
@@ -350,7 +340,6 @@ pub fn map_request(
             None,
         ),
 
-        // ----- drafts -----
         Request::DraftCompose { .. } => ("draft.create", Some("draft"), None, None),
         Request::DraftEval { .. } => {
             skip_activity!("draft_eval", "local evaluation; creates nothing")
@@ -431,7 +420,6 @@ pub fn map_request(
             None,
         ),
 
-        // ----- send -----
         Request::SendDraft { draft, .. } => (
             "mail.send",
             Some("draft"),
@@ -442,9 +430,6 @@ pub fn map_request(
                 "cc_count": draft.cc.len(),
                 "bcc_count": draft.bcc.len(),
                 "has_attachments": !draft.attachments.is_empty(),
-                // Kind and counts only. The HTML document, the text
-                // alternative, and inline asset paths never land here — see
-                // docs/activity-log.md.
                 "content_kind": draft.content.kind_str(),
                 "inline_count": draft.inline_assets.len(),
             })),
@@ -499,7 +484,6 @@ pub fn map_request(
             Some(serde_json::json!({ "kind": "cancel_scheduled" })),
         ),
 
-        // ----- search -----
         Request::Search { query, mode, .. } => (
             "search.run",
             Some("search"),
@@ -540,7 +524,6 @@ pub fn map_request(
             Some(serde_json::json!({ "name": name })),
         ),
 
-        // ----- snippets -----
         Request::SetSnippet { name, .. } => (
             "snippet.create",
             Some("snippet"),
@@ -554,11 +537,9 @@ pub fn map_request(
             Some(serde_json::json!({ "name": name })),
         ),
 
-        // ----- signatures (treat like snippets for activity purposes) -----
         Request::SetSignature { .. } => ("snippet.create", Some("signature"), None, None),
         Request::DeleteSignature { .. } => ("snippet.delete", Some("signature"), None, None),
 
-        // ----- screener -----
         Request::SetScreenerDecision {
             sender_email,
             disposition,
@@ -583,7 +564,6 @@ pub fn map_request(
             Some(serde_json::json!({ "cleared": true })),
         ),
 
-        // ----- reminders -----
         Request::SetAutoReminder {
             sent_message_id,
             remind_at,
@@ -600,7 +580,6 @@ pub fn map_request(
             None,
         ),
 
-        // ----- labels (CreateLabel / DeleteLabel / RenameLabel) -----
         Request::CreateLabel { name, .. } => (
             "mail.label",
             Some("label"),
@@ -620,7 +599,6 @@ pub fn map_request(
             Some(serde_json::json!({ "from": old, "to": new, "kind": "rename" })),
         ),
 
-        // ----- rules -----
         Request::UpsertRule { rule } => (
             "rule.update",
             Some("rule"),
@@ -659,7 +637,6 @@ pub fn map_request(
             Some(serde_json::json!({ "name": rule })),
         ),
 
-        // ----- accounts -----
         Request::UpsertAccountConfig { account } => (
             "account.add",
             Some("account"),
@@ -704,7 +681,6 @@ pub fn map_request(
             Some(serde_json::json!({ "key": key, "kind": "set_default" })),
         ),
 
-        // ----- undo (user-intent: roll back the last action) -----
         Request::UndoMutation { mutation_id } => (
             "mail.archive",
             Some("mutation"),
@@ -712,8 +688,6 @@ pub fn map_request(
             Some(serde_json::json!({ "kind": "undo", "mutation_id": mutation_id })),
         ),
 
-        // ----- export (treated as activity.exported synthesized marker;
-        // these higher-level routes emit content) -----
         Request::ExportThread { thread_id, .. } => (
             "thread.summarize",
             Some("thread"),
@@ -730,9 +704,6 @@ pub fn map_request(
             })),
         ),
 
-        // ----- everything else: intentionally skipped. No wildcard: adding a
-        // Request variant breaks daemon unit tests until the activity policy
-        // is classified as logged above or intentionally skipped here. -----
         Request::ListEnvelopes { .. }
         | Request::ListEnvelopesByIds { .. }
         | Request::PlanUnsubscribe { .. }
@@ -940,9 +911,6 @@ pub fn map_request(
         | Request::FileRecord { .. }
         | Request::SetRecordSender { .. }
         | Request::ExportRecords { .. } => {
-            // Records carry amounts, references and account numbers; until
-            // the catalog has an ids-and-counts shape for them, none is
-            // recorded.
             skip_activity!(
                 "records",
                 "Archive requests are not in the activity catalog yet"
@@ -1011,8 +979,6 @@ pub fn map_request(
                 "Messages requests are not in the activity catalog yet"
             );
         }
-        // Reading: what you chose to read, keep or highlight, by item key
-        // (a message id and an index) and counts only, never text or URLs.
         Request::RecordReadingEngagement {
             item_key,
             opened: true,
@@ -1063,8 +1029,6 @@ pub fn map_request(
                 "has_note": note.is_some(),
             })),
         ),
-        // The note and the quote stay out of the context (privacy
-        // invariant); the id says which highlight.
         Request::UpdateHighlight {
             highlight_id,
             note,
@@ -1671,7 +1635,6 @@ mod tests {
                 .await
                 .unwrap()
                 .rows;
-            // search.save and search.run are distinct compaction keys.
             assert_eq!(rows.len(), 4);
             let json =
                 serde_json::to_string(&rows.iter().map(|r| &r.context_json).collect::<Vec<_>>())

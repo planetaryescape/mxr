@@ -19,7 +19,6 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-/// Name of the saved state in the data directory.
 pub(crate) const STATE_FILE: &str = "llm-background.json";
 
 /// How often changed state is saved and put-off work is looked at. Also
@@ -82,9 +81,7 @@ fn write(path: &Path, snapshot: &BackgroundState) -> std::io::Result<()> {
     mxr_config::write_private_file(path, &bytes)
 }
 
-/// Starts the loop that saves the state and re-runs put-off work.
 pub(crate) fn spawn(state: Arc<AppState>) -> JoinHandle<()> {
-    // Subscribe before spawning so a shutdown sent first is still seen.
     let shutdown_rx = state.shutdown_receiver();
     tokio::spawn(background_loop(state, shutdown_rx))
 }
@@ -108,7 +105,6 @@ async fn background_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<
                 recovery_open = changed.is_ok();
             }
         }
-        // One pass at a time: a pass still running holds this pass's inputs.
         if rerun.as_ref().is_some_and(|pass| !pass.is_finished()) {
             continue;
         }

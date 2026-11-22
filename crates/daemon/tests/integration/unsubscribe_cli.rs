@@ -160,7 +160,6 @@ fn addresses_send_one_request_per_sender_and_the_dry_run_plans_exactly_what_is_s
     let newest = stamp_senders(&runtime, &store, &senders);
     let (newest_a, newest_b, newest_c) = (newest[0].clone(), newest[1].clone(), newest[2].clone());
 
-    // 1. A dry run for two senders names one request per sender, from each newest message.
     let dry = run_unsubscribe(
         &instance,
         &data_dir,
@@ -181,7 +180,6 @@ fn addresses_send_one_request_per_sender_and_the_dry_run_plans_exactly_what_is_s
         "a dry run sends nothing and writes no receipt"
     );
 
-    // 2. A repeated address is planned once.
     let repeated = run_unsubscribe(
         &instance,
         &data_dir,
@@ -194,7 +192,6 @@ fn addresses_send_one_request_per_sender_and_the_dry_run_plans_exactly_what_is_s
     );
     assert_eq!(repeated["request_count"], 1);
 
-    // 3. The real run sends exactly the planned requests.
     let real = run_unsubscribe(
         &instance,
         &data_dir,
@@ -215,7 +212,6 @@ fn addresses_send_one_request_per_sender_and_the_dry_run_plans_exactly_what_is_s
         "exactly one message per sender was sent a request"
     );
 
-    // 4. An already-unsubscribed address plus a new one sends only the new one.
     let mixed_dry = run_unsubscribe(
         &instance,
         &data_dir,
@@ -239,7 +235,6 @@ fn addresses_send_one_request_per_sender_and_the_dry_run_plans_exactly_what_is_s
         "only the new sender gained a receipt"
     );
 
-    // 5. An address mixed with a message id fails before anything is sent.
     let id_text = all_ids[0].as_str();
     let not_sent = assert_cmd::Command::cargo_bin("mxr")
         .expect("mxr binary")

@@ -72,7 +72,6 @@ fn quoted_gt_attribute_bypass() -> String {
     html
 }
 
-/// No whitespace between attributes, so the scan counts one token.
 fn adjacent_quoted_attributes() -> String {
     let mut html = format!("<p>{MARKER}</p><div ");
     for n in 0..100_000 {
@@ -146,9 +145,6 @@ fn assert_survives(name: &str, html: &str, expected: Outcome) {
     });
     let elapsed = started.elapsed();
 
-    // One request timeout, one possible retry after a crash, and the startup of
-    // a debug-build helper. Without isolation these inputs run for minutes or
-    // exhaust memory.
     assert!(
         elapsed < REQUEST_TIMEOUT * 2 + Duration::from_secs(30),
         "{name}: took {elapsed:?}"
@@ -164,7 +160,6 @@ fn assert_survives(name: &str, html: &str, expected: Outcome) {
         resident_bytes()
     );
 
-    // The helper that was stopped is replaced and the next message renders.
     let next = with_supervisor(Arc::clone(&helper), || {
         mxr_reader::html_to_plain_text("<p>second message renders</p>", "test")
     });
@@ -206,9 +201,6 @@ fn formatting_element_reconstruction_is_contained() {
 
 #[test]
 fn a_formatting_reconstruction_under_64_kib_is_contained_too() {
-    // Small documents are not exempt: this one is under 64 KiB and passes the
-    // reader's budget, yet rebuilds millions of elements. It is why every
-    // parse goes to the helper and none is kept in-process for being small.
     let html = formatting_element_reconstruction_of(3_000);
     assert!(html.len() < 64 * 1024, "{} bytes", html.len());
     assert!(mxr_reader::within_budget(&html));
@@ -329,8 +321,6 @@ fn a_poison_message_is_answered_from_memory_the_second_time() {
     let second = second.elapsed();
     let after = helper.stats();
     assert_eq!(one, two);
-    // The first call stopped a helper; the second must not spend another
-    // timeout or kill another helper.
     assert!(before.timeouts + before.deaths >= 1, "{before:?}");
     assert_eq!(after.timeouts, before.timeouts);
     assert_eq!(after.deaths, before.deaths);
@@ -379,8 +369,6 @@ fn parallel_reads_complete_while_a_hostile_message_is_stopped_in_the_batch() {
 
 #[test]
 fn every_isolated_parse_runs_in_the_helper_binary() {
-    // One request per registered job, each answered by the real helper rather
-    // than falling back, so a job missing from its registry is caught here.
     let helper = helper();
     let ok = |kind: &str, html: &str, params: &str| {
         let outcome = helper.run(kind, html.as_bytes(), params.as_bytes(), 2 * 1024 * 1024);

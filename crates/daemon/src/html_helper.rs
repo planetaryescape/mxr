@@ -17,7 +17,6 @@ use mxr_html_worker::{AnyJob, Config};
 /// command.
 pub const HELPER_ARG: &str = "__html-worker";
 
-/// Every parse any crate runs in the helper, which is what its registry holds.
 pub fn jobs() -> Vec<&'static dyn AnyJob> {
     let mut jobs = mxr_reader::html_jobs();
     jobs.extend(mxr_reading::html_jobs());
@@ -28,7 +27,6 @@ pub fn jobs() -> Vec<&'static dyn AnyJob> {
     jobs
 }
 
-/// Runs this process as a helper until its input closes.
 pub fn run_helper() -> ExitCode {
     mxr_html_worker::run_helper(&jobs())
 }
@@ -44,18 +42,10 @@ pub fn install() {
 }
 
 fn helper_program() -> PathBuf {
-    // A daemon that outlives an upgrade must start the binary it is running,
-    // not the one now on disk: the two could speak different frame layouts.
-    // On Linux `/proc/self/exe` is the running image even after its file is
-    // replaced; elsewhere the path is the best there is.
     #[cfg(target_os = "linux")]
     if std::path::Path::new("/proc/self/exe").exists() {
         return PathBuf::from("/proc/self/exe");
     }
-    // Without a known path the name this process was started as is tried
-    // (through PATH when it has no slash). If that fails to start too, the
-    // supervisor answers with fallbacks, which is safe; an unlimited parse
-    // here is not.
     std::env::current_exe().unwrap_or_else(|error| {
         tracing::warn!(%error, "could not find this executable; starting the HTML helper by name");
         std::env::args_os()
@@ -64,7 +54,6 @@ fn helper_program() -> PathBuf {
     })
 }
 
-/// Counts for `mxr doctor` and the diagnostics page.
 pub fn stats() -> mxr_protocol::HtmlHelperStats {
     let stats = mxr_html_worker::stats();
     mxr_protocol::HtmlHelperStats {

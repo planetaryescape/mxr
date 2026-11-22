@@ -137,7 +137,6 @@ fn starts_environment_entry(word: &str) -> bool {
         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// The value of `key` in a `KEY=VALUE` list.
 pub(crate) fn environment_value<'a>(environment: &'a [String], key: &str) -> Option<&'a str> {
     environment.iter().find_map(|entry| {
         entry
@@ -191,8 +190,6 @@ mod tests {
 
     #[test]
     fn a_value_containing_an_assignment_is_cut_short_rather_than_swallowing_the_rest() {
-        // Documented failure direction: the caller sees a value that does not
-        // match and declines to adopt, which is the safe answer.
         let entries = split_environment_entries("MXR_DATA_DIR=/tmp/a OTHER=x HOME=/Users/bk");
 
         assert_eq!(environment_value(&entries, "MXR_DATA_DIR"), Some("/tmp/a"));

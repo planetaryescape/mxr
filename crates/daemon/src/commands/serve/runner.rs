@@ -55,8 +55,6 @@ async fn monitor(config: Hosting, mut child: Option<tokio::process::Child>) -> a
     loop {
         let desired = state::read()?.ok_or_else(|| anyhow::anyhow!("Hosting state removed"))?;
         if !desired.enabled || !desired.daemon_enabled {
-            // Keep the gateway polled while the same boot's stopping notice and
-            // bounded outcome-recovery window are still live.
             if let Err(error) = super::hosting::drain_remote().await {
                 tracing::debug!(%error,"host already unavailable during desired stop");
             }
@@ -111,7 +109,6 @@ async fn ensure_daemon(
     }
     if child.is_none() {
         verify_offline_owner(config).await?;
-        // The daemon's socket/index lock remains the sole ownership arbiter.
         *child = Some(
             tokio::process::Command::new(&config.executable)
                 .args(["daemon", "--foreground", "--no-bridge"])

@@ -219,8 +219,6 @@ async fn purge_pending_on_sqlite_does_not_block_independent_logger() {
             .spawn()
             .unwrap(),
     );
-    // Observe the old archive-lock ownership when present; otherwise allow a
-    // bounded startup window. SQLite stays write-locked until after the probe.
     let start = std::time::Instant::now();
     while start.elapsed() < Duration::from_secs(2) {
         if lock.try_lock().is_err() {

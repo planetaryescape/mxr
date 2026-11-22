@@ -63,13 +63,6 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
                 format!("error account={account_id} {error}")
             }
             DaemonEvent::NewMessages { envelopes, total } => {
-                // `total` is what arrived; `envelopes` is the capped sample the
-                // frame could carry. A pre-0.6.25 daemon never sends `total`,
-                // so it arrives as the serde default of 0 and printing it
-                // verbatim claims `new_messages=0 shown=3`. The daemon
-                // guarantees `total >= envelopes.len()` whenever it does set
-                // it, so falling back to the sample size is honest against both
-                // an old daemon and a capped batch.
                 format!(
                     "message new_messages={} shown={}",
                     (*total).max(envelopes.len()),

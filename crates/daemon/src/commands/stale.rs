@@ -36,7 +36,6 @@ pub async fn run(
     account: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    // Default to --mine when neither flag set; the more common ask.
     let perspective = if theirs {
         StaleBallInCourt::Theirs
     } else {

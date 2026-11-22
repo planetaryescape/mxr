@@ -13,14 +13,12 @@ use mxr_protocol::{
 use mxr_store::AssistantMessageRow;
 use serde_json::{Map, Value};
 
-/// Rows a step shows; the total says how many more there were.
 const ROWS: usize = 5;
 const FACTS: usize = 5;
 const DETAIL_CHARS: usize = 90;
 /// Rows kept per step for a reply to draw from, so a reply that names more
 /// emails than a step's readout shows still finds them all.
 const REPLY_ROWS: usize = 50;
-/// How deep to look for lists. mxr's results nest one or two wrappers.
 const DEPTH: usize = 4;
 
 /// The readout of a whole result, or `None` when it is not JSON or holds
@@ -115,7 +113,6 @@ pub(crate) fn step_rows(
     cap: usize,
 ) -> Option<(Vec<AssistantReadoutRowData>, Option<u64>)> {
     let mut declared = false;
-    // Whether the latest declaration of this id is the step being asked for.
     let mut ours = false;
     let mut result = None;
     for row in messages {
@@ -249,13 +246,6 @@ fn row(object: &Map<String, Value>, account: Option<&str>) -> AssistantReadoutRo
     .find(|detail| *detail != title)
     .map(|detail| clipped(&detail, DETAIL_CHARS));
 
-    // Only keys the tools really return: `from` (search, envelopes),
-    // `snippet` and `has_attachments` (envelopes, place messages, thread
-    // previews), `date` (envelopes, place messages) or `last_at` (Messages
-    // rows) or `latest_at` (thread previews, unix seconds), and `unread`
-    // (place messages, Messages rows), `unread_count` (thread previews) or
-    // `flags` (envelopes). A thread preview names its latest sender in
-    // `sender_name` and `sender_email`.
     let sender = from_name(object)
         .or_else(|| text(object.get("sender_name")))
         .or_else(|| text(object.get("sender_email")));
@@ -302,7 +292,6 @@ fn unread(object: &Map<String, Value>) -> bool {
         .is_some_and(|flags| !flags.split('|').any(|flag| flag.trim() == "READ"))
 }
 
-/// Where the row opens: its conversation, or the person's row in Messages.
 fn link(object: &Map<String, Value>) -> Option<AssistantLinkData> {
     if let Some(thread_id) = text(object.get("thread_id")) {
         return Some(AssistantLinkData::Thread { thread_id });
@@ -333,7 +322,6 @@ fn clipped(text: &str, max: usize) -> String {
     format!("{}…", kept.trim_end())
 }
 
-/// Fields that mean something to code, not to the person reading.
 fn skipped_fact(key: &str) -> bool {
     key == "kind"
         || key == "id"
@@ -357,7 +345,6 @@ fn fact_value(value: &Value) -> Option<String> {
     }
 }
 
-/// `undo_available` reads "Undo available".
 fn words(key: &str) -> String {
     let spaced = one_line(&key.replace('_', " "));
     let mut chars = spaced.chars();
@@ -461,8 +448,6 @@ mod tests {
 
     #[test]
     fn a_search_names_its_emails_with_subject_sender_and_conversation() {
-        // The shape mxr_search returns: ids and a score, plus the subject
-        // and sender the MCP tool adds so the readout can draw rows.
         let out = read(json!({
             "kind": "SearchResults",
             "results": [
@@ -486,7 +471,6 @@ mod tests {
 
     #[test]
     fn flags_serialise_as_names_so_unread_is_the_absence_of_read() {
-        // Pins the wire shape `unread()` reads, from the real type.
         use mxr_core::MessageFlags;
         let json = |flags: MessageFlags| serde_json::to_value(flags).unwrap();
         let read = json(MessageFlags::READ | MessageFlags::STARRED);
@@ -508,7 +492,6 @@ mod tests {
 
     #[test]
     fn an_envelope_row_carries_sender_snippet_time_clip_and_unread() {
-        // The shape mxr_list_messages returns: full envelopes.
         let out = read_rows(json!({"kind": "Envelopes", "envelopes": [{
             "id": "m1", "thread_id": "t1", "subject": "Invoice 4471",
             "from": {"name": "Dana Ruiz", "email": "dana@work.example"},
@@ -523,7 +506,6 @@ mod tests {
         );
         assert_eq!(row.at, Some(1_790_845_200));
         assert!(row.attachment && row.unread);
-        // `detail` is what it always was.
         assert_eq!(row.detail.as_deref(), Some("Dana Ruiz"));
     }
 
@@ -600,8 +582,6 @@ mod tests {
 
     #[test]
     fn thread_previews_fill_the_email_row_from_the_real_wire_shape() {
-        // Serialised from the daemon's own response type, so this pins what
-        // `mxr_thread_previews` hands the readout.
         let first = mxr_core::id::ThreadId::new();
         let second = mxr_core::id::ThreadId::new();
         let content = serde_json::to_string(&mxr_protocol::ResponseData::ThreadPreviews {

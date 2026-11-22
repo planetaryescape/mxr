@@ -120,9 +120,6 @@ pub(crate) async fn report_after_send(
     let source = PromiseSourceData::SentMessage {
         message_id: sent_message_id.clone(),
     };
-    // The daemon's own budget starts at the model call, after any wait for
-    // a model slot; the command must not hang behind that. On time or not,
-    // the mail already went out, so this only ever skips the note.
     let Some(detection) =
         within_deadline(AFTER_SEND_DEADLINE, request_detection(client, source)).await
     else {
@@ -169,7 +166,6 @@ async fn request_detection(
         .request(Request::DetectPromises {
             source,
             now: None,
-            // The CLI runs next to the daemon, so the daemon's zone is ours.
             time_zone: None,
         })
         .await?;
@@ -236,7 +232,6 @@ mod tests {
 
     #[test]
     fn the_note_never_lands_on_piped_or_machine_stdout() {
-        // Piped stdout (not a terminal): stderr, whatever the format.
         for format in [
             None,
             Some(OutputFormat::Table),
@@ -246,7 +241,6 @@ mod tests {
         ] {
             assert!(!note_on_stdout(format.as_ref(), false), "{format:?}");
         }
-        // A person at a terminal reading table output sees it inline.
         assert!(note_on_stdout(None, true));
         assert!(note_on_stdout(Some(&OutputFormat::Table), true));
         assert!(!note_on_stdout(Some(&OutputFormat::Json), true));

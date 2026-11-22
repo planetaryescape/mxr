@@ -9,7 +9,6 @@
 use mxr_store::Tier;
 
 pub fn tier_for(action: &str) -> Tier {
-    // Specific overrides first so prefix rules below don't shadow them.
     match action {
         "thread.flag_reply_later" | "thread.unflag_reply_later" => return Tier::Important,
         "thread.open" | "thread.close" | "thread.summarize" => return Tier::Standard,
@@ -17,7 +16,6 @@ pub fn tier_for(action: &str) -> Tier {
         _ => {}
     }
 
-    // Prefix rules.
     if action.starts_with("mail.")
         || action.starts_with("draft.")
         || action.starts_with("account.")
@@ -39,13 +37,6 @@ pub fn tier_for(action: &str) -> Tier {
     if action.starts_with("view.") {
         return Tier::Ephemeral;
     }
-
-    // Specific exceptions for the draft tier:
-    //   `draft.update` and `draft.save` are operationally noisy and fit
-    //   the `Standard` tier. Override here so we don't end up with
-    //   important-tier rows that are really just keystrokes.
-    // (Already covered by the general `draft.` rule. Phase 9 may
-    // explicitly downgrade these via compaction.)
 
     Tier::Standard
 }

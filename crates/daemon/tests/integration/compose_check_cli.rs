@@ -60,7 +60,6 @@ fn compose_check_warns_on_missing_attachment_without_files() {
         has_missing_attachment,
         "expected MissingAttachment issue, got: {report:#}"
     );
-    // Warning is non-blocking: allowed=true.
     assert_eq!(report["allowed"], Value::Bool(true));
 }
 
@@ -123,8 +122,6 @@ fn compose_check_blocks_pem_private_key() {
         pii_blocker.is_some(),
         "expected PiiSecret Blocker issue, got: {report:#}"
     );
-    // Verifies the no-raw-secrets contract: JSON must not echo the
-    // private key body verbatim.
     assert!(
         !stdout.contains("MIIabcdef"),
         "JSON leaked raw secret material"
@@ -195,7 +192,6 @@ fn send_check_rejects_a_stored_draft_with_an_unowned_from() {
             .assert()
     };
 
-    // Register an alias, save a draft that sends from it, then remove the alias.
     run(&[
         "accounts",
         "addresses",
@@ -235,7 +231,6 @@ fn send_check_rejects_a_stored_draft_with_an_unowned_from() {
     ])
     .success();
 
-    // The stored From is now unowned; --check must fail before the send path.
     let failure = run(&["send", &draft_id, "--check"])
         .failure()
         .get_output()

@@ -479,8 +479,6 @@ async fn cmd_target_diagnostics_report_target_and_separate_local_profile() {
     watch.wait().await.unwrap();
     assert!(requests.load(Ordering::Relaxed) - before_watch >= 2);
 
-    // Explicit Unix targets also keep their socket ownership separate from
-    // the client's profile paths in remote diagnostics.
     let unix_target = root.path().join("unix-target.sock");
     let (_unix_server, _) = spawn_fake_daemon(&unix_target);
     let unix_addr = format!("unix://{}", unix_target.display());
@@ -787,7 +785,6 @@ async fn serve_old_local_daemon_reports_upgrade_before_new_request_or_remote_ove
             })
             .await
             .unwrap();
-        // An old host must never receive a new authority variant or a shutdown/restart.
         assert!(frames.next().await.is_none());
     });
     let output = run_mxr(

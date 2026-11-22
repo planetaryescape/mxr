@@ -14,7 +14,6 @@ use crate::output::{resolve_format, terminal_text};
 use mxr_protocol::*;
 use std::io::{IsTerminal, Write};
 
-/// How often `mxr sweep --yes` checks on its archive job.
 const JOB_POLL: std::time::Duration = std::time::Duration::from_millis(300);
 
 const fn place_data(place: PlaceArg) -> MailPlaceData {
@@ -191,8 +190,6 @@ pub async fn sweep(
         dry_run,
         preview_token,
     };
-    // The preview fixes what the sweep may touch: the sweep archives only
-    // what it listed, so mail that arrives or moves in meanwhile waits.
     let (preview, _) = swept(expect_ok(client.request(request(true, None)).await?)?)?;
     if dry_run || preview.count == 0 {
         print!("{}", render_sweep(&preview, None, true, fmt)?);
@@ -341,7 +338,6 @@ fn render_sweep(
                     out.push_str(&format!("    {}\n", truncate(&terminal_text(subject), 70)));
                 }
             }
-            // One undo per archive chunk; `mxr undo` takes one id at a time.
             if !undo_ids.is_empty() {
                 out.push_str("Undo with:\n");
                 for id in &undo_ids {

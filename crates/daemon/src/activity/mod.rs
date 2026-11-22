@@ -68,7 +68,6 @@ struct Inner {
 }
 
 impl Recorder {
-    /// Snapshot startup policy. The environment kill switch overrides config.
     pub fn spawn(store: Arc<Store>, config: &mxr_config::ActivityConfig) -> Self {
         let enabled = config.enabled && std::env::var("MXR_ACTIVITY").as_deref() != Ok("off");
         let (tx, rx) = mpsc::channel::<RecorderMessage>(1024);
@@ -85,7 +84,6 @@ impl Recorder {
             tokio::spawn(worker_loop(rx, store, inner.clone()));
         } else {
             tracing::info!("activity recorder disabled by startup policy");
-            // Drain the channel quietly so try_send doesn't pile up.
             tokio::spawn(drain_loop(rx));
         }
         Self { inner }
@@ -182,10 +180,8 @@ async fn worker_loop(
                 let until = inner.paused_until.load(Ordering::SeqCst);
                 if paused {
                     if until != 0 && now >= until {
-                        // Auto-resume window elapsed.
                         inner.paused.store(false, Ordering::SeqCst);
                         inner.paused_until.store(0, Ordering::SeqCst);
-                        // Synthesize a resumed marker so the user can see it.
                         write_entry(
                             &store,
                             OwnedEntry {
@@ -202,18 +198,10 @@ async fn worker_loop(
                             },
                         )
                         .await;
-                        // Fall through and record this one too.
                     } else {
-                        // Still paused → drop the entry silently. This is
-                        // the documented contract: pause means no new
-                        // rows from user-driven activity.
                         continue;
                     }
                 }
-                // Phase 9 compaction: only ephemeral/standard tier rows
-                // are eligible for write-time coalescing. Important-tier
-                // mutations are always written as-is to preserve audit
-                // fidelity.
                 let coalesce_eligible = matches!(entry.tier, Tier::Ephemeral | Tier::Standard);
                 if coalesce_eligible {
                     let key: CompactionKey = (
@@ -234,13 +222,9 @@ async fn worker_loop(
                             continue;
                         }
                     }
-                    // Cache miss / expired: insert fresh and update cache.
                     match write_entry_returning_id(&store, entry).await {
                         Some(id) => {
                             if cache.len() >= COALESCE_CACHE_SIZE {
-                                // Drop the oldest entry. HashMap doesn't preserve
-                                // order, so we evict by lowest `ts`. Cheap because
-                                // the cache is bounded.
                                 if let Some(oldest) = cache
                                     .iter()
                                     .min_by_key(|(_, v)| v.ts)
@@ -464,8 +448,6 @@ mod tests {
         wait_for_pause_state(&rec, true).await;
         rec.record(entry("mail.archive"));
         rec.record(entry("mail.read"));
-        // The resume is queued behind both entries, so observing it proves the
-        // worker has already decided their fate.
         rec.resume();
         wait_for_pause_state(&rec, false).await;
 
@@ -493,8 +475,6 @@ mod tests {
         wait_for_pause_state(&rec, true).await;
 
         rec.record_forced(entry("activity.paused"));
-        // Barrier only: the forced entry is handled before this resume, so the
-        // row below was written while the recorder was still paused.
         rec.resume();
         wait_for_pause_state(&rec, false).await;
 
@@ -509,7 +489,6 @@ mod tests {
     #[tokio::test]
     async fn rapid_fire_ephemeral_writes_coalesce_into_one_row_with_count() {
         let (rec, store) = fresh_recorder().await;
-        // Three ephemeral records for the same (action, target) inside the window.
         let make = |ts: i64| OwnedEntry {
             ts,
             account_id: None,
@@ -592,17 +571,13 @@ mod tests {
     #[tokio::test]
     async fn auto_resume_kicks_in_when_paused_until_elapses() {
         let (rec, store) = fresh_recorder().await;
-        // Pause "until 1 ms in the past" — the next record() triggers the auto-resume branch.
         let now = current_unix_ms();
         rec.pause(Some(now - 1));
         wait_for_pause_state(&rec, true).await;
 
         rec.record(entry("mail.send"));
 
-        // Two rows expected: the synthesized activity.resumed marker (Daemon source)
-        // and the mail.send that flowed through after auto-resume.
         let actions = wait_for_actions(&store, &["activity.resumed", "mail.send"]).await;
-        // Newest first; mail.send recorded after the resumed marker.
         assert!(actions.iter().any(|action| action == "activity.resumed"));
         assert!(actions.iter().any(|action| action == "mail.send"));
     }

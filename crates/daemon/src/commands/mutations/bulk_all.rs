@@ -21,7 +21,6 @@ use serde::Serialize;
 use std::io::{IsTerminal, Write};
 use std::time::{Duration, Instant};
 
-/// How often a waiting command asks the daemon how the job is going.
 const POLL: Duration = Duration::from_millis(500);
 /// Progress lines on a non-terminal stderr are at most this far apart.
 const PROGRESS_EVERY: Duration = Duration::from_secs(2);
@@ -58,7 +57,6 @@ impl BulkAction {
         }
     }
 
-    /// The action as the other bulk output names it.
     fn action(&self) -> String {
         match self {
             Self::Archive => "archive".to_owned(),
@@ -68,7 +66,6 @@ impl BulkAction {
         }
     }
 
-    /// "Would archive 12 message(s)" / "Archived 12 message(s)".
     fn would(&self) -> String {
         match self {
             Self::Archive => "archive".to_owned(),
@@ -148,8 +145,6 @@ pub async fn run(run: BulkAllRun) -> anyhow::Result<()> {
     };
     let mutation = run.action.mutation();
 
-    // The token from an earlier `--all --dry-run` is the confirmation: the
-    // user already saw that preview.
     let (token, counts) = match run.preview_token.clone() {
         Some(token) => (token, None),
         None => {
@@ -431,14 +426,8 @@ fn capitalise(text: &str) -> String {
         .unwrap_or_default()
 }
 
-// ---------------------------------------------------------------------------
-// Confirmation and output
-// ---------------------------------------------------------------------------
-
-/// How many sample rows the table shows.
 const TABLE_SAMPLE: usize = 8;
 
-/// Said wherever an `--all` run is previewed or confirmed (D192).
 const NO_UNDO: &str = "An --all job cannot be undone: this preview is the check.";
 
 fn preview_lines(action: &BulkAction, preview: &SelectionPreviewData) -> Vec<String> {
@@ -605,7 +594,6 @@ fn print_preview(
                 .collect();
             println!("{}", jsonl(&lines)?);
         }
-        // Refused before the daemon is asked.
         OutputFormat::Csv | OutputFormat::Ids => {
             anyhow::bail!("--all --dry-run does not support this format")
         }
@@ -701,7 +689,6 @@ fn print_job_table(action: &BulkAction, job: &JobData, waited: bool) {
                 );
             }
         }
-        // The caller turns a failed job into an error after this prints.
         _ => println!(
             "{} {} of {} message(s) before the job stopped.",
             action.did(),
@@ -811,7 +798,6 @@ mod tests {
         assert!(error.contains("mxr jobs job-1"), "{error}");
         assert!(!error.contains("nothing was started"), "{error}");
         assert!(!error.contains("Run the command again"), "{error}");
-        // A daemon that cannot be reached at all is the same: unknown.
         let error = recover_lost_start_with(
             "job-1",
             "connection reset",

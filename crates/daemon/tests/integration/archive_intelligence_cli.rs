@@ -29,7 +29,6 @@ fn ask_with_llm_disabled_returns_structured_json() {
         &["ask", "what did we decide?", "--format", "json"],
     );
 
-    // Top-level shape: text + citations + retrieval.
     assert!(resp["text"].is_string(), "answer.text is a string: {resp}");
     assert!(
         resp["citations"].is_array(),
@@ -133,7 +132,6 @@ fn whois_unknown_email_and_term_return_structured_json() {
         "no citations for unknown contact: {resp}"
     );
 
-    // A term with zero corpus takes the other daemon path: kind unknown.
     let resp = run_json(
         &instance,
         &data_dir,

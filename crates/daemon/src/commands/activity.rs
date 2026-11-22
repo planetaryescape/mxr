@@ -92,8 +92,6 @@ pub async fn run(action: ActivityAction) -> anyhow::Result<()> {
     }
 }
 
-// ===== conversions =====
-
 fn source_arg_to_proto(s: ActivitySourceArg) -> ClientKind {
     match s {
         ActivitySourceArg::Human => ClientKind::Human,
@@ -155,19 +153,16 @@ fn args_to_filter(args: ActivityFilterArgs) -> anyhow::Result<ActivityFilter> {
 /// Parse either a relative duration (`1h`, `3d`, `2w`) or an ISO date/time.
 /// Returns unix milliseconds.
 pub fn parse_time_input(s: &str) -> anyhow::Result<i64> {
-    // Try relative duration first.
     if let Some(ms) = parse_duration_ms(s) {
         let now = Utc::now().timestamp_millis();
         return Ok(now - ms);
     }
-    // Try ISO 8601 date (YYYY-MM-DD)
     if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         let dt = naive_date
             .and_hms_opt(0, 0, 0)
             .ok_or_else(|| anyhow::anyhow!("invalid date"))?;
         return Ok(dt.and_utc().timestamp_millis());
     }
-    // Try ISO 8601 datetime (YYYY-MM-DDTHH:MM:SS[Z])
     if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
         return Ok(dt.with_timezone(&Utc).timestamp_millis());
     }
@@ -183,10 +178,6 @@ fn parse_duration_ms(s: &str) -> Option<i64> {
     if s.is_empty() {
         return None;
     }
-    // Peel the unit off the last *character*, not the last byte: a multibyte
-    // trailing char (e.g. `3日`, Cyrillic `5м`) would make `split_at(len - 1)`
-    // land off a char boundary and panic. Units are ASCII, so any non-ASCII
-    // trailing char simply fails to match and returns `None`.
     let unit = s.chars().last()?;
     let num_part = &s[..s.len() - unit.len_utf8()];
     let n: i64 = num_part.parse().ok()?;
@@ -210,8 +201,6 @@ fn parse_cursor(s: &str) -> anyhow::Result<ActivityCursor> {
         id: id_s.trim().parse()?,
     })
 }
-
-// ===== list =====
 
 async fn run_list(
     client: &mut IpcClient,
@@ -302,8 +291,6 @@ fn render_list_table(entries: &[ActivityEntry], next_cursor: Option<ActivityCurs
     }
 }
 
-// ===== stats =====
-
 async fn run_stats(
     client: &mut IpcClient,
     filter: ActivityFilterArgs,
@@ -358,15 +345,12 @@ fn render_stats_table(buckets: &[ActivityStatBucket], group_by: &ActivityGroupBy
     }
 }
 
-// ===== top =====
-
 async fn run_top(
     client: &mut IpcClient,
     filter: ActivityFilterArgs,
     limit: u32,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    // top is just stats group=action capped to `limit`.
     let f = args_to_filter(filter)?;
     let since = f
         .since
@@ -396,8 +380,6 @@ async fn run_top(
     }
     Ok(())
 }
-
-// ===== export =====
 
 async fn run_export(
     client: &mut IpcClient,
@@ -429,7 +411,6 @@ async fn run_export(
 
     match (body, path) {
         (Some(b), None) => {
-            // inline → stdout
             let mut stdout = io::stdout().lock();
             stdout.write_all(b.as_bytes())?;
             if !b.ends_with('\n') {
@@ -443,8 +424,6 @@ async fn run_export(
     }
     Ok(())
 }
-
-// ===== prune =====
 
 async fn run_prune(
     client: &mut IpcClient,
@@ -478,8 +457,6 @@ async fn run_prune(
     }
     Ok(())
 }
-
-// ===== redact =====
 
 async fn run_redact(
     client: &mut IpcClient,
@@ -534,8 +511,6 @@ async fn run_redact(
     Ok(())
 }
 
-// ===== clear =====
-
 async fn run_clear(
     client: &mut IpcClient,
     window: ActivityClearWindow,
@@ -584,8 +559,6 @@ async fn run_clear(
     }
     Ok(())
 }
-
-// ===== pause / resume =====
 
 async fn run_pause(
     client: &mut IpcClient,
@@ -638,10 +611,7 @@ async fn run_resume(client: &mut IpcClient) -> anyhow::Result<()> {
     Ok(())
 }
 
-// ===== status =====
-
 async fn run_status(client: &mut IpcClient, format: Option<OutputFormat>) -> anyhow::Result<()> {
-    // Count via last 30d so the user can see a "total recent rows" number.
     let now = Utc::now().timestamp_millis();
     let since = now - 30 * 86_400_000;
     let filter = ActivityFilter {
@@ -674,8 +644,6 @@ async fn run_status(client: &mut IpcClient, format: Option<OutputFormat>) -> any
     }
     Ok(())
 }
-
-// ===== saved filters (Phase 8) =====
 
 async fn run_saved(client: &mut IpcClient, action: ActivitySavedAction) -> anyhow::Result<()> {
     match action {
@@ -797,8 +765,6 @@ fn render_saved_table(entries: &[SavedActivityFilterEntry]) {
     }
 }
 
-// ===== tail (Phase 4 deferred) =====
-
 async fn run_tail(
     client: &mut IpcClient,
     filter: ActivityFilterArgs,
@@ -809,7 +775,6 @@ async fn run_tail(
     let fmt = resolve_format(format);
     let base_filter = args_to_filter(filter)?;
 
-    // Initial backfill — most recent `lines` rows.
     let resp = client
         .request(Request::ListActivity {
             filter: base_filter.clone(),
@@ -823,14 +788,12 @@ async fn run_tail(
         } => Some(entries),
         _ => None,
     })?;
-    // Render oldest-first so the screen reads top→bottom.
     entries.reverse();
     for e in &entries {
         emit_tail_row(e, &fmt)?;
     }
     let mut last_seen_ts = entries.last().map_or(0, |e| e.ts);
 
-    // Follow loop.
     let interval = std::time::Duration::from_secs(interval_secs.max(1));
     loop {
         tokio::time::sleep(interval).await;
@@ -879,8 +842,6 @@ fn emit_tail_row(e: &ActivityEntry, fmt: &OutputFormat) -> anyhow::Result<()> {
     Ok(())
 }
 
-// ===== recall (Phase 8) =====
-
 /// Curated, predictable grammar — no NLP. Add phrases by extending this
 /// function. Anything unrecognized returns an error pointing the user at
 /// the supported phrases.
@@ -889,7 +850,6 @@ pub fn parse_recall_phrase(phrase: &str) -> anyhow::Result<(i64, i64)> {
     let phrase = phrase.trim().to_lowercase();
     let day_ms = 86_400_000_i64;
 
-    // Helpers
     let today_start = now
         .date_naive()
         .and_hms_opt(0, 0, 0)
@@ -897,7 +857,6 @@ pub fn parse_recall_phrase(phrase: &str) -> anyhow::Result<(i64, i64)> {
         .and_utc()
         .timestamp_millis();
 
-    // Bare relative: "last 5 minutes", "past 2 days", "last hour".
     if let Some(rest) = phrase
         .strip_prefix("last ")
         .or_else(|| phrase.strip_prefix("past "))
@@ -907,7 +866,6 @@ pub fn parse_recall_phrase(phrase: &str) -> anyhow::Result<(i64, i64)> {
         }
     }
 
-    // Absolute days.
     match phrase.as_str() {
         "today" => return Ok((today_start, today_start + day_ms)),
         "yesterday" => return Ok((today_start - day_ms, today_start)),
@@ -931,12 +889,11 @@ pub fn parse_recall_phrase(phrase: &str) -> anyhow::Result<(i64, i64)> {
         _ => {}
     }
 
-    // Anchored "before/after/since/until <named>".
     for anchor in ["before ", "after ", "since ", "until "] {
         if let Some(rest) = phrase.strip_prefix(anchor) {
             if let Ok((s, u)) = parse_recall_phrase(rest) {
                 return Ok(match anchor {
-                    "before " => (i64::MIN / 2, s), // up to start of window
+                    "before " => (i64::MIN / 2, s),
                     "after " => (u, i64::MAX / 2),
                     "since " => (s, now.timestamp_millis()),
                     "until " => (i64::MIN / 2, s),
@@ -946,7 +903,6 @@ pub fn parse_recall_phrase(phrase: &str) -> anyhow::Result<(i64, i64)> {
         }
     }
 
-    // Yesterday <part>
     if let Some(rest) = phrase.strip_prefix("yesterday ") {
         let (a, _b) = parse_recall_phrase(rest)?;
         return Ok((a - day_ms, a - day_ms + (rest_len_window(rest))));
@@ -969,7 +925,6 @@ fn rest_len_window(rest: &str) -> i64 {
 
 fn parse_human_duration(s: &str) -> Option<i64> {
     let s = s.trim();
-    // "5 minutes", "2 days", "3 hours", "1 week"
     let parts: Vec<&str> = s.split_whitespace().collect();
     if parts.len() == 2 {
         let n: i64 = parts[0].parse().ok()?;
@@ -984,7 +939,6 @@ fn parse_human_duration(s: &str) -> Option<i64> {
         };
         return Some(ms);
     }
-    // Single-word like "hour", "minute"
     let unit = s.trim_end_matches('s');
     let ms = match unit {
         "hour" => 3_600_000,
@@ -1051,8 +1005,6 @@ async fn run_recall(
     Ok(())
 }
 
-// ===== replay (Phase 8) =====
-
 async fn run_replay(
     client: &mut IpcClient,
     since: String,
@@ -1077,7 +1029,6 @@ async fn run_replay(
         } => Some(entries),
         _ => None,
     })?;
-    // Sort ascending for narrative.
     entries.sort_by_key(|e| e.ts);
 
     let fmt = resolve_format(format);
@@ -1098,7 +1049,6 @@ async fn run_replay(
     Ok(())
 }
 
-/// Group consecutive rows by action prefix and emit human-readable lines.
 fn group_for_replay(entries: &[ActivityEntry]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     if entries.is_empty() {
@@ -1167,11 +1117,8 @@ fn describe_group(action: &str, count: usize, slice: &[ActivityEntry]) -> String
     }
 }
 
-// ===== confirm =====
-
 fn confirm(prompt: &str) -> anyhow::Result<bool> {
     if !io::stdin().is_terminal() {
-        // Non-interactive: refuse rather than guess. Caller can pass `--yes`.
         anyhow::bail!("non-interactive: pass `--yes` to confirm");
     }
     eprint!("{prompt} [y/N] ");
@@ -1204,17 +1151,13 @@ mod tests {
 
     #[test]
     fn parse_duration_rejects_multibyte_unit_without_panic() {
-        // A multibyte trailing char used to panic `split_at(len - 1)` on the
-        // byte boundary; now it is simply an unrecognized unit.
         assert!(parse_duration_ms("3日").is_none());
-        assert!(parse_duration_ms("5м").is_none()); // Cyrillic `м`
+        assert!(parse_duration_ms("5м").is_none());
     }
 
     #[test]
     fn render_list_table_handles_multibyte_target_id() {
         use mxr_protocol::{ActivityEntry, ActivityTier, ClientKind};
-        // An IDN address is multibyte at byte 12; byte-slicing the target id
-        // there used to panic. Rendering must truncate on a char boundary.
         let entries = vec![ActivityEntry {
             id: 1,
             ts: 0,
@@ -1276,10 +1219,9 @@ mod tests {
             mk(20_000, "mail.read"),
             mk(30_000, "mail.archive"),
             mk(40_000, "mail.archive"),
-            mk(900_000, "mail.archive"), // 15min later: new group
+            mk(900_000, "mail.archive"),
         ];
         let lines = group_for_replay(&entries);
-        // Expected: 3 groups — mail.read×3, mail.archive×2, mail.archive×1
         assert_eq!(lines.len(), 3);
         assert!(lines[0].contains("Read 3 thread"));
         assert!(lines[1].contains("Archived 2 thread"));

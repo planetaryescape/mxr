@@ -31,8 +31,6 @@ pub(crate) fn imap_config_with_credentials(
     if !auth_required {
         return Ok(config);
     }
-    // Resolve lazily (at connect/sync time), never at construction: the eager
-    // read used to abort daemon boot when a single credential was unreadable.
     Ok(
         config.with_password_reader(Arc::new(|password_ref, username| {
             disk_first_password(password_ref, username).map_err(|error| {
@@ -97,8 +95,6 @@ trait DiskSecretStore {
     fn set(&self, service: &str, account: &str, secret: &str) -> std::io::Result<()>;
 }
 
-// Fully-qualified inherent calls (not `Self::`) so they unambiguously reach the
-// inherent method rather than recursing into these same-named trait methods.
 #[expect(
     clippy::use_self,
     reason = "explicit path disambiguates the inherent methods from these trait methods"
@@ -132,18 +128,12 @@ where
         return Ok(secret);
     }
 
-    // Keychain fully disabled (`MXR_KEYCHAIN=off`): disk is the only source, so
-    // a disk miss is a hard miss — never read the OS keychain.
     if !keychain_enabled {
         return Err(anyhow::anyhow!(
             "no credential found on disk for {scoped_ref} (keychain disabled via MXR_KEYCHAIN=off)"
         ));
     }
 
-    // Disk miss: fall back to the keychain and migrate a real hit to disk. An
-    // empty keychain value is treated as absent — mirroring it would write an
-    // empty disk secret (which get() reports as None anyway) and is
-    // inconsistent with persistence rejecting empty passwords.
     match keychain_get(&scoped_ref, username) {
         Ok(secret) if !secret.is_empty() => {
             match store.set(&scoped_ref, username, &secret) {
@@ -244,7 +234,6 @@ mod tests {
         temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
             let (_dir, store) = empty_store();
 
-            // Disk miss + keychain hit → returns keychain value and mirrors it.
             let first =
                 disk_first_password_with(&store, "keyring:imap", "user@host", true, |_, _| {
                     Ok::<_, String>("keychain-pw".to_string())
@@ -252,13 +241,11 @@ mod tests {
                 .unwrap();
             assert_eq!(first, "keychain-pw");
 
-            // The secret is now on disk under the scoped service.
             assert_eq!(
                 store.get("keyring:imap", "user@host").unwrap().as_deref(),
                 Some("keychain-pw")
             );
 
-            // A subsequent read is served from disk without consulting the keychain.
             let second =
                 disk_first_password_with(&store, "keyring:imap", "user@host", true, keychain_never)
                     .unwrap();
@@ -284,9 +271,6 @@ mod tests {
 
     #[test]
     fn keychain_disabled_disk_miss_never_reads_the_keychain() {
-        // MXR_KEYCHAIN=off: a disk miss must error WITHOUT consulting the OS
-        // keychain. `keychain_never` panics if called, so reaching it fails the
-        // test — proving the read fallback is fully gated off.
         temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
             let (_dir, store) = empty_store();
             let error = disk_first_password_with(
@@ -306,8 +290,6 @@ mod tests {
 
     #[test]
     fn keychain_disabled_still_serves_a_disk_hit() {
-        // With the keychain off, an on-disk secret is still served (disk is the
-        // sole source of truth), and the keychain is never consulted.
         temp_env::with_var("MXR_INSTANCE", Some("mxr"), || {
             let (_dir, store) = empty_store();
             store.set("keyring:imap", "user@host", "disk-pw").unwrap();
@@ -325,10 +307,6 @@ mod tests {
 
     #[test]
     fn mirror_write_failure_still_returns_the_keychain_secret() {
-        // An injected store: get() reports absent, set() (the disk mirror)
-        // ALWAYS errors — deterministic regardless of filesystem perms/root.
-        // Resolution must still return the keychain secret, and the failed
-        // mirror must leave nothing on disk.
         struct FailingSetStore {
             set_calls: std::cell::Cell<usize>,
         }
@@ -373,7 +351,6 @@ mod tests {
                 error.to_string().contains("empty"),
                 "unexpected error: {error}"
             );
-            // Nothing empty was written to disk.
             assert!(store.get("keyring:imap", "user@host").unwrap().is_none());
         });
     }
@@ -398,7 +375,6 @@ mod tests {
                 .unwrap();
             }
 
-            // The keychain must never be consulted — get() errors first.
             let error =
                 disk_first_password_with(&store, "keyring:imap", "user@host", true, keychain_never)
                     .unwrap_err();
@@ -411,10 +387,6 @@ mod tests {
 
     #[test]
     fn imap_config_gets_a_lazy_reader_that_does_not_read_at_construction() {
-        // Construction with auth_required must NOT resolve the secret; that is
-        // what makes daemon boot resilient. We can't easily assert "did not
-        // read" here, but we can assert construction succeeds even with a
-        // password_ref that has no backing secret anywhere.
         let config = imap_config_with_credentials(
             "imap.host".into(),
             993,
@@ -425,7 +397,6 @@ mod tests {
             4,
         )
         .expect("construction never touches the secret");
-        // The lazy reader is installed; resolving it is where absence surfaces.
-        let _ = config; // resolution is covered hermetically above.
+        let _ = config;
     }
 }

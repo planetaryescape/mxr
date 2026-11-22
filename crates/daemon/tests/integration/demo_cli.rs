@@ -38,7 +38,6 @@ const DEMO_MESSAGES: usize = 2_000;
 /// is the guard that does not depend on timing at all.
 const IPC_TIMEOUT_SECS: &str = "60";
 
-/// The stdout lines that bracket the seed phase.
 const SEED_START_MARKER: &str = "Seeding demo mailbox";
 const SEED_DONE_MARKER: &str = "Demo mailbox contains";
 
@@ -114,8 +113,6 @@ impl Drop for DemoTeardown {
             .stderr(std::process::Stdio::null())
             .status();
 
-        // `demo stop` needs a reachable daemon; fall back to the pid file it
-        // leaves behind so a wedged daemon still gets cleaned up.
         if self.socket.exists() {
             if let Ok(raw) = std::fs::read_to_string(self.data_dir.join("daemon.pid")) {
                 if let Ok(pid) = raw.trim().parse::<u32>() {
@@ -179,11 +176,6 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
     }
     write_demo_config_without_semantic(&home, &config_home);
 
-    // `mxr demo` is pinned to the `mxr-demo` instance, and the daemon's
-    // pid-file fallback finds a running demo daemon by scanning `ps` for
-    // `<exe name> daemon --instance mxr-demo`. Driving the stock `mxr` binary
-    // would therefore let this test adopt and shut down a developer's real
-    // demo daemon (or another checkout's), and let theirs do the same to ours.
     let bin = link_mxr_binary(&temp.path().join("mxr-demo-e2e"));
 
     let socket = ShortSocket::new();
@@ -206,8 +198,6 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
     ];
     let messages = DEMO_MESSAGES.to_string();
 
-    // Armed before the demo starts, so every exit path below tears the daemon
-    // down — including a panic inside the demo run itself.
     let _teardown = DemoTeardown {
         bin: bin.clone(),
         env: env
@@ -235,9 +225,6 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
     };
     let seed_started = marker_at(SEED_START_MARKER);
     let seed_elapsed = marker_at(SEED_DONE_MARKER).saturating_sub(seed_started);
-    // Emitted whichever way the assertion goes. nextest only surfaces a
-    // passing test's output under `--success-output immediate`, which is the
-    // flag to reach for when a green run's numbers are what you want.
     eprintln!(
         "demo timings: startup {seed_started:?}, seed {seed_elapsed:?}, whole run {elapsed:?}\n{}",
         timed.timeline()
@@ -256,10 +243,6 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
         demo.stdout,
         demo.stderr
     );
-    // Daemon operation events only reach the client on the no-deadline
-    // request path, so seeing the sync's own `OperationStarted` line is proof
-    // that `SyncNow` did not regress onto the wall-clock-capped path. This
-    // holds regardless of how fast the machine seeds.
     assert!(
         demo.stderr.contains("Starting sync"),
         "the seed sync must stream daemon progress events; stderr={}",
@@ -285,8 +268,6 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
         demo_status.stdout
     );
 
-    // The seeded mailbox has to be readable through the ordinary commands,
-    // not just countable: search, then open one of its hits.
     let inbox = run_json_with_env(
         &bin,
         &env,
@@ -307,8 +288,6 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
         "cat should open a demo message; got: {cat:#}"
     );
 
-    // Demo surfaces are seeded too, so the first click on any of them shows
-    // something. Snippets stand in for the rest of the batch.
     let snippets = run_with_env(&bin, &env, &["snippets", "list"]);
     assert!(
         snippets.stdout.contains("thanks"),
@@ -330,7 +309,6 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
     );
 }
 
-/// Last `lines` lines of a captured stderr stream, for failure messages.
 fn stderr_tail(stderr: &str, lines: usize) -> String {
     let all: Vec<&str> = stderr.lines().collect();
     all[all.len().saturating_sub(lines)..].join("\n")

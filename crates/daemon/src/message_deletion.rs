@@ -14,13 +14,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Deleted messages cleared per round, bounding one round's work.
 const DRAIN_BATCH: u32 = 1_000;
 
-/// Longest the cleanup waits on the semantic worker while sync is held off.
 const SEMANTIC_FORGET_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// How often owed cleanups are retried with nothing else prompting it.
 pub(crate) const DRAIN_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
 /// Clears every deleted message whose cleanup is due. A message whose files
@@ -47,7 +44,6 @@ pub(crate) async fn drain_pending_forgets(state: &AppState) {
             .cloned()
             .collect::<Vec<_>>();
         if let Err(error) = state.store.clear_pending_message_forgets(&cleared).await {
-            // Left recorded; the next drain repeats the (idempotent) work.
             tracing::warn!(%error, "could not mark deleted messages cleared");
             return;
         }
@@ -156,9 +152,6 @@ where
     if gone.is_empty() {
         return Some(failed);
     }
-    // Bounded: sync waits on this lock, and the semantic worker can be busy
-    // with an ingest batch. A forget that times out is not retried; the
-    // vectors go at the next index rebuild, which reads only stored rows.
     match tokio::time::timeout(
         SEMANTIC_FORGET_TIMEOUT,
         state.semantic.forget_messages(&gone),
@@ -290,7 +283,6 @@ mod tests {
         state.store.upsert_envelope(&gone).await.unwrap();
         let files = attachments.path().join(gone.id.as_str());
         std::fs::create_dir_all(&files).unwrap();
-        // The delete commits; nothing runs the fan-out.
         state
             .store
             .delete_messages_and_derived(&account_id, &["gone".to_string()])
@@ -328,8 +320,6 @@ mod tests {
             .delete_messages_and_derived(&account_id, &["INBOX:1".to_string()])
             .await
             .unwrap();
-        // The new message under the same id arrives through a path that does
-        // not clear the owed cleanup, and downloads an attachment.
         state.store.upsert_envelope(&reused).await.unwrap();
         let files = attachments.path().join(reused.id.as_str());
         std::fs::create_dir_all(&files).unwrap();
@@ -369,8 +359,6 @@ mod tests {
             .await
             .unwrap();
 
-        // A sync is mid-write: it holds the lock while it stores the new
-        // message under the reused id.
         let sync_holds = state.store.lock_message_cleanup().await;
         let drain_state = state.clone();
         let drain = tokio::spawn(async move { drain_pending_forgets(&drain_state).await });
@@ -426,9 +414,6 @@ mod tests {
         let failed = tokio::time::timeout(
             std::time::Duration::from_secs(5),
             forget_deleted_messages(&state, &ids, |done| {
-                // After the first message, a sync stores a new message under
-                // the second id. Held across the batch, the lock would make
-                // this wait for the drain and time the test out.
                 let first = *done == ids[0];
                 let revived = revived.clone();
                 let state = &state;
@@ -490,7 +475,6 @@ mod tests {
             .delete_messages_and_derived(&account_id, &["gone".to_string()])
             .await
             .unwrap();
-        // A read-only dir: its entries cannot be unlinked.
         std::fs::set_permissions(&files, std::fs::Permissions::from_mode(0o555)).unwrap();
 
         drain_pending_forgets(&state).await;
@@ -521,7 +505,6 @@ mod tests {
             std::fs::write(images.join("logo.png"), b"png").unwrap();
         }
 
-        // A message that never had files is not an error.
         let mut found = find_message_dirs(root.path(), &[deleted.clone(), MessageId::new()])
             .await
             .unwrap();

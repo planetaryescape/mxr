@@ -82,12 +82,6 @@ pub async fn run(
                 if rewrite {
                     anyhow::bail!("--rewrite only applies to `mxr draft eval --set mine`");
                 }
-                // Quick makes one model call per case, so the whole run can
-                // take minutes: it takes the no-deadline path that long
-                // operations use (`request_with_events`, which passes no
-                // timeout). It is its own request, so a daemon that predates it
-                // rejects it rather than replaying the user's mail. Progress
-                // goes to stderr, so stdout stays clean JSON.
                 let resp = client
                     .request_with_events(Request::DraftEvalQuick, |event| {
                         if let DaemonEvent::OperationProgress {

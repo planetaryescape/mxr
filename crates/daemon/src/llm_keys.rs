@@ -13,7 +13,6 @@ use mxr_llm::{ApiKey, ApiKeySource, RouteProvider};
 use mxr_protocol::{LlmKeySourceData, LlmKeyStatusData, LlmProviderData};
 use std::path::Path;
 
-/// Longest key accepted. Real keys are around 100 characters.
 const MAX_KEY_LEN: usize = 512;
 
 pub(crate) struct LlmKeys {
@@ -48,7 +47,6 @@ impl LlmKeys {
         match self.store.get(&Self::service(), provider.key()) {
             Ok(key) => key.map(ApiKey::new),
             Err(error) => {
-                // The error text names the file, never its contents.
                 tracing::warn!(provider = provider.key(), %error, "couldn't read the stored LLM key");
                 None
             }
@@ -65,7 +63,6 @@ impl LlmKeys {
         self.store.set(&Self::service(), provider.key(), key)
     }
 
-    /// Whether a key was there to remove.
     pub(crate) fn remove(&self, provider: RouteProvider) -> std::io::Result<bool> {
         let service = Self::service();
         let existed = self.store.get(&service, provider.key())?.is_some();
@@ -78,7 +75,6 @@ impl LlmKeys {
         status_of(provider, stored)
     }
 
-    /// What `status` would report with the stored key gone.
     pub(crate) fn status_without_stored(provider: RouteProvider) -> LlmKeyStatusData {
         status_of(provider, None)
     }
@@ -110,7 +106,6 @@ pub(crate) fn status_of(provider: RouteProvider, stored_at: Option<&Path>) -> Ll
 }
 
 impl ApiKeySource for LlmKeys {
-    /// The stored key, then the environment.
     fn api_key(&self, provider: RouteProvider) -> Option<ApiKey> {
         self.stored(provider).or_else(|| Self::from_env(provider))
     }
@@ -156,8 +151,6 @@ pub(crate) fn clean_key(raw: &str) -> Result<String, String> {
 mod tests {
     use super::*;
 
-    // Environment variables are process-wide: the first test owns
-    // ANTHROPIC_API_KEY and the second OPENROUTER_API_KEY.
     fn keys(dir: &tempfile::TempDir) -> LlmKeys {
         LlmKeys::at(dir.path().join("secrets.toml"))
     }
@@ -190,7 +183,6 @@ mod tests {
             Some(dir.path().join("secrets.toml").to_str().unwrap())
         );
 
-        // Removing the stored key falls back to the environment.
         assert!(keys.remove(RouteProvider::Anthropic).unwrap());
         assert_eq!(
             keys.api_key(RouteProvider::Anthropic).unwrap().expose(),

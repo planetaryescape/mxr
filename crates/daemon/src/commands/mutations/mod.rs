@@ -29,8 +29,6 @@ pub async fn undo(
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     if dry_run {
-        // The daemon's preview takes the undo's own lookup, so it refuses the
-        // ids the undo refuses, with the same messages (D192 for `--all` jobs).
         let resp = client
             .request(Request::UndoPreview {
                 mutation_id: mutation_id.clone(),
@@ -190,7 +188,6 @@ pub async fn jobs(job_id: Option<String>, format: Option<OutputFormat>) -> anyho
 /// so a long list is a count and the command that lists them.
 fn undo_summary(job: &JobData) -> String {
     const LISTED: usize = 3;
-    // A listing carries no undo ids; the daemon says how many there are.
     let count = (job.undo_id_count as usize).max(job.undo_ids.len());
     if count == 0 {
         return String::new();
@@ -299,10 +296,6 @@ fn print_jobs_output(jobs: Vec<JobData>, format: Option<OutputFormat>) -> anyhow
     }
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Simple mutations
-// ---------------------------------------------------------------------------
 
 pub async fn archive(
     message_ids: Vec<String>,
@@ -640,10 +633,6 @@ pub async fn unread(
     .await
 }
 
-// ---------------------------------------------------------------------------
-// Label mutations
-// ---------------------------------------------------------------------------
-
 #[allow(clippy::too_many_arguments)]
 pub async fn label(
     name: String,
@@ -760,10 +749,6 @@ pub async fn move_msg(
     )
     .await
 }
-
-// ---------------------------------------------------------------------------
-// Snooze
-// ---------------------------------------------------------------------------
 
 pub async fn snooze(
     message_ids: Vec<String>,
@@ -1090,10 +1075,6 @@ pub async fn snoozed(account: Option<String>, format: Option<OutputFormat>) -> a
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Unsubscribe / Open
-// ---------------------------------------------------------------------------
-
 #[allow(clippy::too_many_arguments)]
 pub async fn unsubscribe(
     message_ids: Vec<String>,
@@ -1107,8 +1088,6 @@ pub async fn unsubscribe(
     preview_token: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    // Classified before connecting, so a mixed command fails before the
-    // daemon is asked for anything. Purge has its own argument rule.
     let addresses = if purge {
         Vec::new()
     } else {
@@ -1353,9 +1332,6 @@ async fn request_unsubscribe_purge(
     let response = if dry_run {
         client.request(request).await?
     } else {
-        // Large sender footprints can exceed the default 120s IPC timeout;
-        // use the long-running request path so the daemon can complete and
-        // return the single undo id for the read+archive batch.
         client.request_with_events(request, |_| {}).await?
     };
     match response {
@@ -1507,10 +1483,6 @@ fn unsubscribe_addresses(arguments: &[String]) -> anyhow::Result<Vec<String>> {
 }
 
 fn looks_like_email(value: &str) -> bool {
-    // Conservative: must contain exactly one `@`, have at least one
-    // character on each side, and contain at least one dot in the
-    // domain. We're not validating RFC 5322 here, just disambiguating
-    // a message-id (often a UUID/hash) from a sender address.
     let Some((local, domain)) = value.split_once('@') else {
         return false;
     };
@@ -1754,8 +1726,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_mixed_command_fails_without_connecting_to_the_daemon() {
-        // No daemon runs in this test. A mixed command must fail on the
-        // argument check, not on the connection.
         let error = unsubscribe(
             vec![
                 "alice@example.com".into(),

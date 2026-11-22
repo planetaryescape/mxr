@@ -33,7 +33,6 @@ const SECRET_HTML: &str =
 
 const DANGEROUS_HTML: &str = "<html><body><p>hi</p><script>alert(1)</script></body></html>";
 
-/// A 1x1 transparent PNG, so `--inline` has real bytes to point at.
 const TINY_PNG: &[u8] = &[
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
@@ -226,14 +225,11 @@ fn compose_draft_with_html_emits_the_structured_json_contract() {
     assert_eq!(payload["inline_count"], 1);
     assert_eq!(payload["attachment_count"], 1);
 
-    // The bug this replaced: an HTML body with no `--text-file` validated as an
-    // empty message, because the draft's analysis text was the empty string.
     assert!(
         !stderr.contains("Message body is empty"),
         "a valid HTML body must not warn about an empty message; stderr={stderr}"
     );
 
-    // And the draft really landed, so the JSON is not describing a no-op.
     let ids = env
         .run(&["drafts", "--format", "ids"])
         .success()

@@ -74,7 +74,6 @@ fn ensure_web_target_supported(
     Ok(())
 }
 
-// Keep Clap's command construction outside the large debug dispatch poll frame.
 /// One command's future, built by [`boxed`].
 type CommandFuture<'a> = Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'a>>;
 
@@ -91,7 +90,6 @@ where
 }
 
 async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
-    // Explicit offline maintenance must not touch demo state, logs or autostart a daemon.
     match cli.command.take() {
         Some(Command::Backup { action }) => return commands::backup::run(action).await,
         Some(Command::Updates {
@@ -107,15 +105,6 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         }
         command => cli.command = command,
     }
-    // Sticky demo: when `mxr demo` has been started in a prior invocation,
-    // it leaves an active-marker behind so every subsequent CLI command
-    // operates on the demo profile until `mxr demo stop`. Apply demo env
-    // vars up front for any non-Demo command so the rest of dispatch sees
-    // the demo paths transparently.
-    //
-    // The Demo command handles its own env setup below (Start re-seeds with
-    // the requested message count; Stop/Status/Reset call apply_active_environment
-    // themselves so they target the demo daemon, not the real one).
     let is_demo_command = matches!(cli.command, Some(Command::Demo { .. }));
     if !is_demo_command {
         commands::demo::apply_active_environment()?;
@@ -128,9 +117,6 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         ..
     }) = &cli.command
     {
-        // Stop/Status/Reset must run inside the demo env so they target the
-        // demo profile rather than the user's real one. Start re-applies env
-        // anyway via demo::run.
         if action.is_some() {
             commands::demo::apply_active_environment()?;
         } else {
@@ -142,7 +128,6 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
     }
 
     let owns_terminal = tracing_stderr_allowed(&cli.command);
-    // Log inspection/preview must not initialize or rotate the files it reads.
     if !matches!(cli.command, Some(Command::Logs { .. })) {
         init_tracing(owns_terminal)?;
     }
@@ -301,7 +286,6 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             anyhow::Ok(())
         }),
         Some(Command::Completions { shell }) => boxed(move || async move {
-            // Clap builds the whole command tree; do not nest its debug frame in dispatch.
             tokio::task::spawn_blocking(move || commands::completions::run(shell)).await??;
             anyhow::Ok(())
         }),
@@ -926,7 +910,6 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             anyhow::Ok(())
         }),
         Some(Command::Setup { demo, key, force }) => boxed(move || async move {
-            // Setup writes config; doesn't need a running daemon.
             commands::setup::run(demo, key, force).await?;
             anyhow::Ok(())
         }),
@@ -972,9 +955,6 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             format,
         }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
-            // Either source of the instruction is fine; --instruct wins
-            // when both are supplied so the long form is the canonical
-            // override surface.
             let instruction_text = instruct.or(instruction).ok_or_else(|| {
                 anyhow::anyhow!(
                     "Provide an instruction: a positional argument or `--instruct \"...\"`"
@@ -1154,9 +1134,6 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             account,
             limit,
         }) => boxed(move || async move {
-            // Diagnostics against an explicitly selected daemon must report
-            // that target's reachability without starting or repairing a
-            // same-machine daemon as a fallback.
             if !commands::diagnostics::selected_target_metadata()?.1 {
                 crate::server::ensure_daemon_running().await?;
             }
@@ -2122,8 +2099,6 @@ pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::{fmt, EnvFilter};
 
-    // Tracing must not prevent config recovery commands from opening bad TOML.
-    // Commands that require a valid configuration still validate it themselves.
     let config = mxr_config::load_config()
         .map(|config| config.logging)
         .unwrap_or_default();
@@ -2172,11 +2147,6 @@ fn safe_dependency_metadata(metadata: &tracing::Metadata<'_>) -> bool {
 }
 
 fn safe_dependency_log(target: &str, level: &tracing::Level) -> bool {
-    // async-imap logs complete commands and response buffers at TRACE. That
-    // includes LOGIN passwords and message bodies, so those events must never
-    // reach either daemon log sink.
-    // tungstenite logs handshake headers and websocket frames at TRACE, which
-    // can contain the paired mail credential and mailbox contents.
     !((target.starts_with("async_imap") || target.starts_with("tungstenite"))
         && level == &tracing::Level::TRACE)
 }

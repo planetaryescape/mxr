@@ -150,9 +150,6 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                             business_hours_backfilled,
                             "all latencies computed",
                         );
-                        // contacts_rows is a *total* (table size after
-                        // refresh), not a delta — flag it differently
-                        // so the user can tell at a glance.
                         println!(
                             "  contacts rows refreshed: {:>7}  ↻ total in materialized view",
                             format_thousands(contacts_rows)
@@ -186,9 +183,6 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
 
     if options.semantic_status || options.reindex_semantic || options.backfill_semantic {
         let mut client = IpcClient::connect().await?;
-        // The two rebuild requests embed every message before answering and
-        // must not run under the 120s request cap (#179); the status read is
-        // a plain fast query.
         let response = if options.backfill_semantic {
             request_with_progress(
                 &mut client,
@@ -422,8 +416,6 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
     let log_path = data_dir.join("logs").join("mxr.log");
-    // Same resolution source as autostart/probe/request so doctor's
-    // reachability agrees with where the daemon actually binds.
     let socket_path = crate::server::resolve_daemon_socket()?;
 
     let data_dir_exists = data_dir.exists();
@@ -545,8 +537,6 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         daemon_running = false;
     }
 
-    // Only the running daemon knows its address registry. Without one, there
-    // is no sync that could write Unknown direction.
     let (address_cache_stale, html_helper) = if socket_reachable {
         daemon_live_signals().await
     } else {
@@ -598,8 +588,6 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         repair_required,
         restart_required,
         semantic_enabled,
-        // Only the daemon can see its own search worker; this path builds the
-        // report client-side from whatever `GetStatus` returned.
         search_worker_stopped: feature_health.as_ref().is_some_and(|health| {
             matches!(health.search, mxr_protocol::FeatureHealth::Degraded { .. })
         }),
@@ -700,16 +688,12 @@ async fn collect_sync_statuses_from_store(store: &Store) -> anyhow::Result<Vec<A
                     .unwrap_or_else(|| describe_cursor(cursor.as_ref())),
             ),
             last_synced_count: runtime.as_ref().map_or(0, |row| row.last_synced_count),
-            // Mirrors `status_helpers`: a backfill in flight is not
-            // unhealthy, only errors and backoff are.
             healthy: backoff_until.is_none()
                 && last_success_at.is_some()
                 && runtime
                     .as_ref()
                     .and_then(|row| row.last_error.as_ref())
                     .is_none(),
-            // Read straight from the store, with no daemon in scope to ask
-            // for the live progress of a pass in flight.
             progress: None,
         });
     }
@@ -1000,8 +984,6 @@ fn recommended_next_steps(
     repair_required: bool,
 ) -> Vec<String> {
     if stale_socket {
-        // Point the remediation at the socket the daemon actually uses (falls
-        // back to the default only if MXR_DAEMON_ADDR is malformed).
         let sock = crate::server::resolve_daemon_socket()
             .unwrap_or_else(|_| crate::state::AppState::socket_path());
         return vec![
@@ -1206,7 +1188,6 @@ fn format_duration(d: std::time::Duration) -> String {
     }
 }
 
-/// `None` means the daemon could not read its config, or predates the field.
 fn history_retention_label(days: Option<u32>) -> String {
     match days {
         Some(0) => "kept forever (automatic prune off)".to_string(),

@@ -88,7 +88,6 @@ pub async fn run(
         })?;
         render_buckets(group_by, &rows, fmt)?;
     } else {
-        // --by message: rank single messages by size_bytes.
         let resp = client
             .request(Request::ListLargestMessages {
                 account_id,
@@ -151,8 +150,6 @@ fn render_largest_messages(rows: &[LargestMessageRow], fmt: OutputFormat) -> any
             }
         }
         OutputFormat::Ids => {
-            // The point of `--by message --format ids`: pipe the message IDs
-            // into `mxr trash` / `mxr archive` / `mxr cat` for direct action.
             for row in rows {
                 println!("{}", row.message_id);
             }

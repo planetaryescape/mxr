@@ -22,8 +22,6 @@ fn cached_headerless_document_has_one_purpose_across_cli_json_surfaces() {
     std::fs::create_dir_all(&data_dir).unwrap();
     std::fs::create_dir_all(&config_dir).unwrap();
     write_fake_account_config(&config_dir);
-    // Seed before boot: a second writer racing startup's fake sync is not
-    // the classification journey this test is intended to exercise.
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let (message_id, thread_id) = runtime.block_on(async {
         let store = mxr_store::Store::new(&data_dir.join("mxr.db")).await.unwrap();

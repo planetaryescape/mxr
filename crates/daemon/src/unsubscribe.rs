@@ -24,7 +24,6 @@ pub enum UnsubscribeResult {
     NoMethod,
 }
 
-/// Execute an unsubscribe action.
 pub async fn execute_unsubscribe(method: &UnsubscribeMethod, client: &Client) -> UnsubscribeResult {
     match method {
         UnsubscribeMethod::OneClick { url } => {
@@ -59,8 +58,6 @@ pub async fn execute_unsubscribe(method: &UnsubscribeMethod, client: &Client) ->
         }
 
         UnsubscribeMethod::Mailto { address, .. } => {
-            // In full implementation, auto-send unsubscribe email.
-            // For now, inform user.
             UnsubscribeResult::Success(format!("Send an email to {address} to unsubscribe."))
         }
 

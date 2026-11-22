@@ -75,16 +75,12 @@ async fn profile_before_events<H: Harness>() {
         let (state, own, excluded) = scoped_state(kind).await;
         let h = H::start().await;
         let (hot, bulk) = lanes();
-        // Both events predate declaration, and no ordinary request is sent.
-        // The ack must be first; only the allowed part may follow it.
         let mut served = serve_with_kind(&h, state.clone(), hot, bulk, kind, |state| {
             emit_mail(state, std::slice::from_ref(&excluded));
             emit_mail(state, &[excluded.clone(), own.clone()]);
         })
         .await;
         assert_own_mail(&mut served, &own).await;
-        // A different configured profile would permit the excluded account.
-        // Conflicting envelope tags must never select it or an unscoped kind.
         for (index, conflict) in [
             ClientKind::Cli,
             ClientKind::Web,
@@ -152,8 +148,6 @@ async fn profile_before_events<H: Harness>() {
         assert_eq!(sync_statuses.len(), 1);
         assert_eq!(sync_statuses[0].account_id, own.account_id);
         assert_eq!(total_messages, 1);
-        // A late declaration cannot switch the pinned kind, even with the
-        // original envelope tag and a second valid profile.
         served
             .client
             .send(IpcMessage {

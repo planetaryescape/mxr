@@ -9,7 +9,6 @@ use chrono::{DateTime, Local, Utc};
 use mxr_protocol::{OneTimeCodeData, Request, Response, ResponseData};
 use std::fmt::Write as _;
 
-/// Codes `--all` lists.
 const LISTED: u32 = 20;
 
 pub async fn run(
@@ -57,7 +56,6 @@ pub async fn run(
         tokio::task::spawn_blocking(move || mxr_tui::copy_to_clipboard(&code))
             .await?
             .map_err(|error| anyhow::anyhow!("Could not copy the code: {error}"))?;
-        // Said on stderr, so stdout stays the code alone for scripts.
         eprintln!(
             "Copied the code from {}, expires {}.",
             who(latest),
@@ -72,7 +70,6 @@ fn render_one(code: &OneTimeCodeData, format: OutputFormat) -> anyhow::Result<St
     Ok(match format {
         OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(code)?),
         OutputFormat::Jsonl => format!("{}\n", serde_json::to_string(code)?),
-        // The code alone: `mxr code --format ids | pbcopy`.
         OutputFormat::Ids => format!("{}\n", terminal_text(&code.code)),
         OutputFormat::Csv | OutputFormat::Table => format!("{}\n", line(code)),
     })
@@ -115,7 +112,6 @@ fn render_all(codes: &[OneTimeCodeData], format: OutputFormat) -> anyhow::Result
     })
 }
 
-/// "482913  Acme · arrived 14:32 · expires 14:42".
 fn line(code: &OneTimeCodeData) -> String {
     let state = if code.current { "expires" } else { "expired" };
     format!(

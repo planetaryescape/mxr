@@ -37,7 +37,6 @@ pub async fn run(
             let start = now - chrono::Duration::days(d as i64);
             (start.timestamp(), now.timestamp(), format!("last {d} days"))
         }
-        // Default and `--ytd`: Jan 1 of current year → now.
         _ => {
             let start = Utc
                 .with_ymd_and_hms(now.year(), 1, 1, 0, 0, 0)
@@ -83,7 +82,6 @@ fn render_narrative(s: &WrappedSummary) {
     println!("    {}", "═".repeat(40));
     println!();
 
-    // Volume
     println!("📬  Volume");
     println!(
         "    You sent {}. You received {}.",
@@ -92,7 +90,6 @@ fn render_narrative(s: &WrappedSummary) {
     println!("    Across {} unique threads.", s.volume.thread_count);
     println!();
 
-    // Time patterns
     if let Some(dow) = s.time_patterns.busiest_day_of_week.as_deref() {
         println!("⏰  When you do email");
         println!(
@@ -115,7 +112,6 @@ fn render_narrative(s: &WrappedSummary) {
         println!();
     }
 
-    // Top contacts
     if !s.top_contacts.most_emailed_to_me.is_empty()
         || !s.top_contacts.most_emailed_by_me.is_empty()
     {
@@ -144,7 +140,6 @@ fn render_narrative(s: &WrappedSummary) {
         println!();
     }
 
-    // Reply discipline
     if let Some(rd) = &s.reply_discipline {
         println!("⏱   Reply discipline");
         println!("    Sample size: {} replies you sent.", rd.sample_count);
@@ -186,7 +181,6 @@ fn render_narrative(s: &WrappedSummary) {
         println!();
     }
 
-    // Storage
     println!("📎  Storage");
     println!(
         "    {} of mail in this window.",
@@ -210,7 +204,6 @@ fn render_narrative(s: &WrappedSummary) {
     }
     println!();
 
-    // Newsletters
     println!("📰  Newsletters");
     println!("    {} unique mailing lists.", s.newsletters.unique_lists);
     if let Some(top) = &s.newsletters.top_list {
@@ -230,7 +223,6 @@ fn render_narrative(s: &WrappedSummary) {
     );
     println!();
 
-    // Superlatives
     println!("🏆  Superlatives");
     if let Some(t) = &s.superlatives.longest_thread {
         let subject: String = t.subject.chars().take(50).collect();

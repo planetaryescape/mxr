@@ -175,8 +175,6 @@ fn settings(var: impl Fn(&str) -> Option<String>) -> Settings {
 }
 
 fn exporter(base_url: &str, public_key: &str, secret_key: &str) -> Result<SpanExporter, String> {
-    // reqwest's blocking client starts its own runtime, which panics when
-    // built (or dropped) on an async worker.
     let client = std::thread::spawn(|| {
         reqwest::blocking::Client::builder()
             .no_proxy()
@@ -197,7 +195,6 @@ fn exporter(base_url: &str, public_key: &str, secret_key: &str) -> Result<SpanEx
         .with_http()
         .with_http_client(client)
         .with_protocol(Protocol::HttpBinary)
-        // Set here, it wins over any OTEL_EXPORTER_OTLP_* endpoint variable.
         .with_endpoint(format!("{base_url}/api/public/otel/v1/traces"))
         .with_timeout(EXPORT_TIMEOUT)
         .with_headers(headers)

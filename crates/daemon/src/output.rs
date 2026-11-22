@@ -17,8 +17,6 @@ use std::io::IsTerminal;
 /// around it. Same character classes as the TUI's `strip_control_chars`,
 /// but a one-line table cell keeps no line breaks either.
 pub fn terminal_text(input: &str) -> std::borrow::Cow<'_, str> {
-    // C0, DEL and C1, plus the Unicode line and paragraph separators, which
-    // a terminal or pager may also break a row on.
     let control = |c: char| matches!(c as u32, 0x00..=0x1F | 0x7F..=0x9F | 0x2028 | 0x2029);
     if input.chars().any(|c| control(c) || is_bidi_control(c)) {
         std::borrow::Cow::Owned(
@@ -82,8 +80,6 @@ const SINGLE_LINE_FIELDS: &[&str] = &[
     "overload_line",
     "not_now",
     "empty_state",
-    // Assistant steps, rows and approvals (`AssistantStepTitleData`,
-    // `AssistantReadoutRowData`).
     "detail",
     "running",
     "done",
@@ -246,7 +242,6 @@ mod tests {
         assert_safe(envelopes[0].from.name.as_deref().unwrap_or_default());
     }
 
-    /// `mxr replies` prints the reply-later queue.
     #[test]
     fn reply_queue_arrives_safe_to_print() {
         let response = sanitize_response(Response::Ok {

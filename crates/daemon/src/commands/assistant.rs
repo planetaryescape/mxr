@@ -12,7 +12,6 @@ use mxr_protocol::*;
 use std::io::IsTerminal;
 use std::time::{Duration, Instant};
 
-/// How often a waiting command checks on the turn.
 const POLL_EVERY: Duration = Duration::from_millis(400);
 /// How long a command waits before handing back a turn still running.
 const WAIT_AT_MOST: Duration = Duration::from_secs(600);
@@ -283,7 +282,6 @@ async fn finish(
     } else {
         wait(client, conversation, &format).await?
     };
-    // A text reply shows what this turn added; JSON gets everything.
     print_conversation(&conversation, since, format)
 }
 
@@ -299,8 +297,6 @@ async fn wait(
         return Ok(conversation);
     }
     let printer = ProgressPrinter::new(is_json(format));
-    // On a terminal the line is rewritten in place, so it can carry a
-    // ticking clock; piped, each change is a new line, so only the words.
     let ticking = std::io::stderr().is_terminal() && !is_json(format);
     let started = Instant::now();
     let deadline = started + WAIT_AT_MOST;
@@ -317,8 +313,6 @@ async fn wait(
             shown = line;
         }
         tokio::time::sleep(POLL_EVERY).await;
-        // The daemon pushes progress as events on this connection; they
-        // queue while we sleep and arrive with the next poll's response.
         let id = conversation.id.clone();
         let mut latest = None;
         let response = client
@@ -383,8 +377,6 @@ fn print_conversation(
                 if !rows.is_empty() {
                     println!();
                 }
-                // Small models sometimes say they did what failed: name
-                // the steps before the reply that did, from mxr's record.
                 let failed: Vec<&str> = conversation
                     .items
                     .iter()
@@ -418,7 +410,6 @@ fn print_conversation(
                 title,
                 ..
             } => {
-                // The daemon's words; the model's reason stays in `--format json`.
                 let words = match title {
                     Some(title) if *state == AssistantCallStateData::Running => &title.running,
                     Some(title) => &title.done,
@@ -443,8 +434,6 @@ fn print_conversation(
                 conversation.last_error.as_deref(),
                 &conversation.last_error_detail,
             ) {
-                // The daemon reworded a known failure; the raw text is in
-                // `--format json`.
                 (Some(sentence), Some(_)) => println!("{sentence}"),
                 (raw, _) => println!("The turn failed: {}", raw.unwrap_or("unknown error")),
             },
@@ -547,7 +536,6 @@ fn state_label(state: AssistantCallStateData) -> &'static str {
     }
 }
 
-/// The id a mail change the assistant made can be undone with.
 fn undo_id(state: AssistantCallStateData, result: Option<&str>) -> Option<String> {
     if !matches!(
         state,
@@ -587,7 +575,6 @@ fn place(cloud: bool) -> &'static str {
     }
 }
 
-/// The choices as a table, the one in use marked with `*`.
 fn models_text(models: &AssistantModelsData) -> String {
     let mut text = String::new();
     match &models.current {

@@ -19,14 +19,12 @@ pub async fn run(
 
     let resolved_query = match (message_id, query) {
         (Some(_), Some(_)) => {
-            // clap's conflicts_with prevents this in practice; defensive.
             anyhow::bail!("--query and a positional message id are mutually exclusive");
         }
         (None, Some(q)) => q,
         (Some(id_str), None) => {
             let id = mxr_core::MessageId::from_str(&id_str)
                 .map_err(|e| anyhow::anyhow!("invalid message id: {e}"))?;
-            // Pull the body to use as the query corpus.
             let resp = client.request(Request::GetBody { message_id: id }).await?;
             match resp {
                 Response::Ok {

@@ -267,7 +267,6 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
         QueryNode::Exact(value) => Conditions::Field(FieldCondition::BodyContains {
             pattern: StringMatch::whole_word(&value),
         }),
-        // Forward-compat: any future mail-query AST variant.
         _ => anyhow::bail!("unknown query node is not supported in rules conditions yet"),
     })
 }

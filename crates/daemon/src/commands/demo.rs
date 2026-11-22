@@ -18,13 +18,6 @@ const DEMO_PERSONAL_EMAIL: &str = "alex@demo.mxr.local";
 const DEMO_WORK_EMAIL: &str = "alex@work.demo.mxr.local";
 const DEMO_INSTANCE: &str = mxr_config::DEMO_INSTANCE_NAME;
 const DEMO_COUNT_MARKER: &str = "demo-message-count";
-// 5: the fake provider derives message ids from the provider id instead of
-// generating random UUIDs, so a profile seeded by an older build has ids the
-// provider no longer produces. Reseed rather than mix the two.
-// 7: the generated threads come from labelled scenario families (blueprint 32,
-// R1b), so their senders, subjects, text and dates differ from a profile seeded
-// by an older build; `mxr classify eval --set full` can only label a profile
-// seeded from them.
 const DEMO_SEED_VERSION: u32 = 7;
 const DEMO_DEFAULT_MESSAGES: usize = 50_000;
 const DEMO_ACTIVE_MARKER: &str = "demo-active";
@@ -121,8 +114,6 @@ pub fn apply_active_environment() -> anyhow::Result<Option<DemoPaths>> {
 }
 
 pub async fn reset_profile() -> anyhow::Result<()> {
-    // Resolve the same way autostart/probe do (honors MXR_DAEMON_ADDR) so demo
-    // teardown targets the socket the demo daemon actually bound at.
     let socket = crate::server::resolve_daemon_socket()?;
     let state =
         crate::server::shutdown_daemon_for_maintenance(&socket, Duration::from_secs(5)).await?;
@@ -149,12 +140,8 @@ pub async fn stop() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // We must apply demo env before reading socket_path so we target the
-    // demo daemon, not the user's real daemon.
     prepare_environment(read_active_marker().unwrap_or(DEMO_DEFAULT_MESSAGES))?;
 
-    // Resolve the same way autostart/probe do (honors MXR_DAEMON_ADDR) so demo
-    // teardown targets the socket the demo daemon actually bound at.
     let socket = crate::server::resolve_daemon_socket()?;
     println!("Stopping demo daemon at {}...", socket.display());
     let state =
@@ -226,15 +213,6 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
     println!("Seeding demo surfaces (snippets, signatures, screener, drafts, ...)");
     seed_demo_surfaces().await?;
 
-    // Sticky demo: every subsequent `mxr <cmd>` invocation should hit demo
-    // data until the user runs `mxr demo stop`. Marker is written outside
-    // the demo data dir so it survives independent of MXR_INSTANCE.
-    //
-    // The marker and this banner come BEFORE the prewarms on purpose: the
-    // mailbox is already usable here, and the prewarms (analytics, Wrapped,
-    // semantic vectors, LLM caches) can take minutes on a large seed. Writing
-    // the marker first means a Ctrl-C during a prewarm still leaves a working
-    // demo instead of a half-seeded profile the user can't reach.
     write_active_marker(messages)?;
     println!();
     println!("Demo mode is now active. All `mxr` commands target the demo profile.");
@@ -322,18 +300,6 @@ async fn prewarm_demo_runtime(mailbox_was_seeded: bool) -> anyhow::Result<()> {
         "Precomputing semantic vectors for {}...",
         active_profile.as_str()
     );
-    // `ReindexSemantic` embeds every message before it answers — around half
-    // an hour for the default 50k mailbox — so the demo kicks it off on its
-    // own connection and watches the profile's counters instead of waiting on
-    // the call. The daemon runs the request to completion whatever this
-    // process does next, and the post-sync ingest is already embedding in
-    // parallel. `force: false` is deliberate: the idempotent reindex skips
-    // chunks that already have vectors, which is exactly what a fresh seed
-    // needs when the post-sync ingest has been embedding the same messages
-    // alongside it. The handle is kept so a rejection (semantic disabled,
-    // model missing, store failure) is reported straight away instead of
-    // leaving the watcher to spend its whole budget on a reindex that never
-    // started.
     let reindex = tokio::spawn(async move {
         IpcClient::connect()
             .await?
@@ -342,9 +308,6 @@ async fn prewarm_demo_runtime(mailbox_was_seeded: bool) -> anyhow::Result<()> {
     });
     await_semantic_prewarm(&mut client, active_profile, reindex).await;
 
-    // Fill LLM-backed caches (voice, decisions) using the canned demo provider
-    // so first-click on those surfaces shows pre-built content. Soft-fails
-    // per account.
     println!("Prewarming LLM-backed surfaces (voice, decisions)...");
     if let Err(error) = prewarm_llm_caches(&mut client).await {
         println!("  llm prewarm skipped: {error}");
@@ -409,8 +372,6 @@ async fn await_semantic_prewarm(
     let deadline = Instant::now() + SEMANTIC_PREWARM_BUDGET;
     let mut latest = None;
     loop {
-        // If the reindex has already come back rejected there is nothing to
-        // wait for; say why rather than spending the budget in silence.
         if let Some(outcome) = (&mut reindex).now_or_never() {
             match outcome {
                 Ok(Ok(Response::Error { message, .. })) => {
@@ -423,14 +384,9 @@ async fn await_semantic_prewarm(
                     println!("  semantic prewarm skipped: {error}");
                     return;
                 }
-                // Finished cleanly, or the task itself failed; either way the
-                // profile's own status below is the authority.
                 Ok(Ok(_)) | Err(_) => {}
             }
         }
-        // A status poll can fail or stall transiently (the semantic worker
-        // rebuilds its ANN index on the same path). Keep watching rather than
-        // treating one bad poll as the answer.
         if let Ok(Some(state)) = fetch_semantic_progress(client, active_profile).await {
             match state.status {
                 SemanticProfileStatus::Ready => {
@@ -589,8 +545,6 @@ async fn sync_demo_account(account_id: &AccountId, expected_messages: usize) -> 
         Ok(Response::Ok {
             data: ResponseData::Ack,
         }) => None,
-        // The daemon only rejects a sync it could not start; anything that
-        // goes wrong once it is running lands on the status row we watch next.
         Ok(Response::Error { message, kind, .. }) => {
             return Err(daemon_response_error(message, kind))
         }
@@ -600,12 +554,6 @@ async fn sync_demo_account(account_id: &AccountId, expected_messages: usize) -> 
             Some(error.to_string())
         }
     };
-    // A transport failure leaves it genuinely unclear whether the daemon ever
-    // saw the request. Ask the account — but not by its instantaneous
-    // `sync_in_progress`: a small seed can be over before we reconnect, and
-    // "not syncing" would then read as "the trigger never landed". Compare it
-    // against the snapshot instead: any movement at all means the daemon acted
-    // on the request.
     if let Some(failure) = failure {
         let now = fetch_demo_sync_status(&mut client, account_id).await?;
         let acted = now.sync_in_progress
@@ -641,24 +589,9 @@ async fn wait_for_demo_sync(
     let mut stall = StallWatch::new(stall_timeout);
     let mut messages = 0usize;
     let mut messages_checked_at: Option<Instant> = None;
-    // The last *usable* reading, carried across iterations, is the whole
-    // fingerprint — and the single `observe` below runs on every path,
-    // including the one that fails in the transport and reconnects.
-    //
-    // A failed poll deliberately contributes nothing of its own: how a poll
-    // failed is not progress, so it feeds the previous reading back in
-    // unchanged. That pins every non-advancing shape to one fingerprint —
-    // every poll failing, success and failure alternating, or two different
-    // failure modes alternating — so the clock runs out instead of being reset
-    // by the noise.
     let mut reading = String::new();
-    // Diagnostics only, never part of the fingerprint: names the most recent
-    // unusable poll in the give-up message below.
     let mut last_failure = String::new();
     loop {
-        // A daemon-level error means the query itself is wrong (unknown
-        // account, store failure) and retrying it forever would spin; only a
-        // transport failure earns a reconnect.
         let status = match client
             .request(Request::GetSyncStatus {
                 account_id: account_id.clone(),
@@ -679,15 +612,8 @@ async fn wait_for_demo_sync(
             }
         };
         if let Some(status) = status {
-            // Rows land in the store page by page, so the stored message count
-            // is the signal that actually advances during a large seed —
-            // `last_synced_count` only reports the page that just landed.
             if messages_checked_at.is_none_or(|at| at.elapsed() >= MESSAGE_COUNT_POLL_INTERVAL) {
                 messages_checked_at = Some(Instant::now());
-                // Any unusable reading just leaves the count as it was; the
-                // sync status below is still what decides a failure. The
-                // failure still lands in the give-up hint: when this poll is
-                // the thing that is wedged, the stall message should say so.
                 match fetch_message_count(client).await {
                     CountPoll::Count(count) => {
                         messages = count;
@@ -699,56 +625,23 @@ async fn wait_for_demo_sync(
                     CountPoll::Rejected(_, message) => {
                         last_failure = format!("message count poll: {message}");
                     }
-                    // The shared client broke; the status poll above owns
-                    // reconnecting, so this only records what happened.
                     CountPoll::Disconnected(error) => {
                         last_failure = format!("message count poll: {error}");
                     }
                 }
             }
 
-            // Failure first. A background pass that fails still clears
-            // `sync_in_progress`, and `last_synced_count` keeps reporting the
-            // last page that *did* land — so checking completion first would
-            // call a seed that died after its second page a success. Only an
-            // error from an attempt newer than the snapshot counts; the account
-            // may have been carrying an old one before we asked for anything.
             let attempted_since = status.last_attempt_at != before.last_attempt_at;
-            // A failing account's error stays while its retry runs, so only an
-            // account that has stopped syncing has failed.
             if let (Some(error), false) = (status.last_error.as_deref(), status.sync_in_progress) {
                 if attempted_since || status.last_error != before.last_error {
                     anyhow::bail!("demo sync failed: {error}");
                 }
             }
 
-            // The store holding every message asked for is the seed's finish
-            // line. The pass may still be walking its post-sync analysis (the
-            // per-message ask/assessment projection and its LLM calls, which
-            // the daemon throttles per message) with `sync_in_progress` still
-            // true; `mxr demo` does not need that to show a full mailbox, and
-            // waiting on it made the seed window grow with host load. The
-            // surfaces seeded below read only the store, and the count is a
-            // commit that has already landed. `wait_for_seeded_count` below
-            // still confirms the target before the demo is declared ready.
             if expected_messages > 0 && messages >= expected_messages {
                 return Ok(());
             }
 
-            // `last_success_at` is stored with one-second granularity, and the
-            // daemon auto-syncs every account the moment it starts. A seed that
-            // finishes inside that same second leaves this request's own sync
-            // indistinguishable from the startup one — and with the provider
-            // already drained it reports zero messages, so neither of the first
-            // two signals fires and the wait would sit here until the next sync
-            // tick (a full `sync_interval`, 60s in the demo profile). The store
-            // having everything that was asked for is the other, unambiguous
-            // way to know the seed is done.
-            //
-            // `last_synced_count` only counts when the account has been
-            // attempted since the snapshot: it is left over from whatever page
-            // landed last, so on a re-run of `mxr demo` it is non-zero from the
-            // start.
             let completed_new_sync = status.last_success_at != before.last_success_at
                 || (attempted_since && status.last_synced_count > 0)
                 || (expected_messages > 0 && messages >= expected_messages);
@@ -756,10 +649,6 @@ async fn wait_for_demo_sync(
                 return Ok(());
             }
 
-            // The account's own progress advances within a page and costs
-            // nothing to read, so it joins the stall fingerprint: a seed that
-            // is still moving inside a page no longer looks stalled just
-            // because the store-wide count has not caught up.
             let account_progress = status
                 .progress
                 .as_ref()
@@ -820,11 +709,6 @@ async fn wait_for_seeded_count(expected: usize, stall_timeout: Duration) -> anyh
     let mut client = IpcClient::connect().await?;
     let progress = ProgressPrinter::new(false);
     let mut stall = StallWatch::new(stall_timeout);
-    // Same rule as `wait_for_demo_sync`: every branch below feeds the one
-    // `observe` at the bottom, and only the last usable count is the
-    // fingerprint. A daemon answering "degraded" forever, a transport failing
-    // forever, or the two taking turns all leave the count where it was, so
-    // none of them can pass for progress.
     let mut count = 0usize;
     let mut last_failure = String::new();
     loop {
@@ -836,10 +720,6 @@ async fn wait_for_seeded_count(expected: usize, stall_timeout: Duration) -> anyh
                 count = reading;
                 progress.note(&seeded_progress_line(count, expected));
             }
-            // A degraded snapshot means the daemon is busy, which is exactly
-            // what a large seed does to it. Keep the connection and wait —
-            // reconnecting on every busy-daemon poll would churn a connection a
-            // second.
             CountPoll::Degraded => last_failure = "degraded status snapshot".to_string(),
             CountPoll::Rejected(kind, message) => {
                 return Err(daemon_response_error(
@@ -1008,7 +888,6 @@ async fn seed_demo_reading(client: &mut IpcClient) -> anyhow::Result<()> {
         mxr_core::id::MessageId::from_scoped_provider_id(&personal, "fake", provider_id)
     };
     let later = message(&mxr_provider_fake::fixtures::reading_demo_later_provider_id());
-    // The hand-written 50-message showcase has no Reading demo mail.
     let exists = matches!(
         client
             .request(Request::GetEnvelope {
@@ -1027,7 +906,6 @@ async fn seed_demo_reading(client: &mut IpcClient) -> anyhow::Result<()> {
             .request(Request::RecordReadingEngagement {
                 item_key: format!("{}:0", message(&provider_id)),
                 opened: true,
-                // About 330 words at 250 a minute.
                 dwell_ms: 80_000,
                 progress: 1.0,
             })
@@ -1088,7 +966,6 @@ async fn seed_demo_todos(client: &mut IpcClient) -> anyhow::Result<()> {
         "fake",
         &mxr_provider_fake::fixtures::todo_demo_promise_provider_id(),
     );
-    // The hand-written 50-message showcase has no To do mail.
     let exists = matches!(
         client
             .request(Request::GetEnvelope {
@@ -1234,9 +1111,6 @@ async fn seed_demo_labels(client: &mut IpcClient) -> anyhow::Result<()> {
             .await?
         {
             Response::Ok { .. } => {}
-            // Soft-tolerate "already exists" since CreateLabel is not always
-            // idempotent at the provider layer (the fake provider should be,
-            // but real providers reject duplicates).
             Response::Error { message, .. } if message.to_ascii_lowercase().contains("exist") => {}
             Response::Error { message, kind, .. } => {
                 return Err(daemon_response_error(
@@ -1267,8 +1141,6 @@ async fn seed_demo_saved_searches(client: &mut IpcClient) -> anyhow::Result<()> 
             .await?
         {
             Response::Ok { .. } => {}
-            // CreateSavedSearch is keyed by name; a duplicate is expected on
-            // re-run and is not an error worth surfacing.
             Response::Error { message, .. }
                 if message.to_ascii_lowercase().contains("exist")
                     || message.to_ascii_lowercase().contains("unique") => {}
@@ -1284,9 +1156,6 @@ async fn seed_demo_saved_searches(client: &mut IpcClient) -> anyhow::Result<()> 
 }
 
 async fn seed_demo_screener(client: &mut IpcClient) -> anyhow::Result<()> {
-    // Mix of dispositions so the triage screen shows variety. Senders are
-    // pulled from the fake provider's generator pool — see
-    // `crates/provider-fake/` for the source list.
     let personal = AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL);
     let entries: &[(
         &AccountId,
@@ -1348,8 +1217,6 @@ async fn seed_demo_screener(client: &mut IpcClient) -> anyhow::Result<()> {
 }
 
 async fn seed_demo_message_state(client: &mut IpcClient) -> anyhow::Result<()> {
-    // Pull the latest 20 envelopes from the personal demo account so we have
-    // stable IDs to snooze / reply-later flag.
     let personal = AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL);
     let envelopes = match client
         .request(Request::ListEnvelopes {
@@ -1378,7 +1245,6 @@ async fn seed_demo_message_state(client: &mut IpcClient) -> anyhow::Result<()> {
     }
 
     let now = chrono::Utc::now();
-    // Snooze the first 5 (mixed wake times) so the snoozed queue is non-empty.
     let snooze_waketimes = [
         chrono::Duration::days(1),
         chrono::Duration::days(2),
@@ -1395,14 +1261,12 @@ async fn seed_demo_message_state(client: &mut IpcClient) -> anyhow::Result<()> {
             })
             .await?
         {
-            // Already-snoozed is OK; keep going.
             if !message.to_ascii_lowercase().contains("snooz") {
                 println!("    snooze skipped for {}: {message}", envelope.id);
             }
         }
     }
 
-    // Flag a different 5 for reply-later.
     for envelope in envelopes.iter().skip(5).take(5) {
         if let Response::Error { message, .. } = client
             .request(Request::SetReplyLater {
@@ -1530,8 +1394,6 @@ async fn seed_demo_drafts(client: &mut IpcClient) -> anyhow::Result<()> {
         if let Response::Error { message, .. } =
             client.request(Request::SaveDraft { draft }).await?
         {
-            // SaveDraft is idempotent on `draft.id`; a "duplicate" warning is
-            // not a hard failure.
             if !message.to_ascii_lowercase().contains("exist") {
                 println!("    draft save skipped: {message}");
             }
@@ -1650,7 +1512,6 @@ fn demo_account_ids() -> [AccountId; 2] {
     ]
 }
 
-/// The demo's bridge and TCP ports: ten above the real profile's defaults.
 const DEMO_BRIDGE_PORT: u16 = 42839;
 const DEMO_TCP_PORT: u16 = 42840;
 
@@ -1659,7 +1520,6 @@ fn ensure_demo_config(messages: usize) -> anyhow::Result<DemoPaths> {
     let config_path = paths.config_dir.join("config.toml");
     std::fs::create_dir_all(&paths.config_dir)?;
     std::fs::create_dir_all(&paths.data_dir)?;
-    // One locked read-modify-write of the demo profile's own file.
     mxr_config::update_config_at_path(&config_path, |config| {
         config.general.default_account = Some(DEMO_ACCOUNT_KEY.to_string());
         config.accounts.insert(
@@ -1687,17 +1547,9 @@ fn ensure_demo_config(messages: usize) -> anyhow::Result<DemoPaths> {
             },
         );
 
-        // Flip LLM on in the demo config so handlers like summarize / briefing /
-        // draft-assist don't short-circuit before the runtime can swap in
-        // `DemoLlmProvider`. The provider itself ignores config.llm.base_url and
-        // api_key_env when running in demo mode (`build_llm_provider` shortcuts
-        // on `is_demo_instance`), so no real network calls are ever made.
         config.llm.enabled = true;
         config.llm.model = "mxr-demo-canned".to_string();
 
-        // The demo runs beside the real profile, whose daemon holds the default
-        // ports, so the demo's bridge would fail to bind. Move them while they
-        // are still the defaults; a port the user chose is kept.
         let defaults = mxr_config::MxrConfig::default();
         if config.bridge.port == defaults.bridge.port {
             config.bridge.port = DEMO_BRIDGE_PORT;
@@ -1789,12 +1641,10 @@ mod tests {
         assert!(stall.observe("1000".to_string()));
         std::thread::sleep(Duration::from_millis(25));
 
-        // Progress: still alive well past a single interval.
         assert!(stall.observe("2000".to_string()));
         std::thread::sleep(Duration::from_millis(25));
         assert!(stall.observe("3000".to_string()));
 
-        // Frozen: the same reading twice, long enough to exhaust the window.
         std::thread::sleep(Duration::from_millis(50));
         assert!(!stall.observe("3000".to_string()));
     }
@@ -2061,9 +1911,6 @@ mod tests {
         with_fake_daemon(
             move |request| {
                 let nth = polls.fetch_add(1, Ordering::Relaxed);
-                // Alternate the two unusable outcomes: a degraded snapshot, then
-                // a dropped connection (a transport failure the wait reconnects
-                // from). The count never moves either way.
                 if !matches!(request, Request::GetStatus) || nth % 2 == 1 {
                     return None;
                 }
@@ -2143,8 +1990,6 @@ mod tests {
     #[test]
     fn active_marker_round_trips() {
         let temp_dir = tempfile::tempdir().expect("create temp dir");
-        // Redirect config_dir via XDG/HOME so active_marker_path() lands in
-        // our temp dir instead of the user's real config.
         temp_env::with_vars(
             [
                 ("XDG_CONFIG_HOME", Some(temp_dir.path().as_os_str())),

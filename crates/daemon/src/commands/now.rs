@@ -36,7 +36,6 @@ fn render(now: &NowData, format: OutputFormat, marks: &AccountMarks) -> anyhow::
     Ok(match format {
         OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(now)?),
         OutputFormat::Jsonl => items_jsonl(now)?,
-        // Thread ids, so they feed `mxr modes done` and `mxr modes why`.
         OutputFormat::Ids => {
             let mut out = String::new();
             for row in &now.people.rows {

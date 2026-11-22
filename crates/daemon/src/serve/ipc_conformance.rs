@@ -71,14 +71,8 @@ const RECV_TIMEOUT: Duration = Duration::from_secs(5);
 /// Longer bound for the multi-MiB frame round-trip: transferring ~15.5 MiB over
 /// the socket pair can be slow on a loaded CI box.
 const BIG_FRAME_RECV_TIMEOUT: Duration = Duration::from_secs(30);
-/// Upper bound on joining a serve task during teardown.
 const JOIN_TIMEOUT: Duration = Duration::from_secs(5);
-/// `IpcCodec`'s frame cap (`crates/protocol/src/codec.rs`): 16 MiB.
 const MAX_FRAME_LEN: usize = 16 * 1024 * 1024;
-
-// ---------------------------------------------------------------------------
-// Test-only request gate (the single `#[cfg(test)]` production hook).
-// ---------------------------------------------------------------------------
 
 /// A `#[cfg(test)]`-only mechanism to hold a Bulk-lane request in flight under
 /// the test's control. `serve_client_connection` consults
@@ -132,15 +126,11 @@ pub(crate) mod gate {
     /// short-circuit the gated sentinel request, or `None` to let normal
     /// dispatch proceed (the only value in production-shaped behavior).
     pub(crate) async fn maybe_intercept(msg: &IpcMessage) -> Option<IpcMessage> {
-        // `RebuildAnalytics` is a mutation; `GetKeymap` is a read. Both park,
-        // so a test can show which one a disconnect cancels.
         let IpcPayload::Request(Request::RebuildAnalytics | Request::GetKeymap) = &msg.payload
         else {
             return None;
         };
         let shared = GATE.lock().clone()?;
-        // Record entry so the test can wait for the lane to be saturated
-        // before releasing the gate.
         shared.entered_tx.send_modify(|count| *count += 1);
         if shared.oversized {
             return Some(IpcMessage {
@@ -186,7 +176,6 @@ pub(crate) mod gate {
     }
 
     impl GateHandle {
-        /// Release every gated request (current and future while installed).
         pub(crate) fn open(&self) {
             let _ = self.open_tx.send(true);
         }
@@ -204,17 +193,14 @@ pub(crate) mod gate {
             }
         }
 
-        /// Current count of requests that have entered the gate.
         pub(crate) fn entered(&self) -> usize {
             *self.entered_rx.borrow()
         }
 
-        /// Gated requests that ran to completion.
         pub(crate) fn completed(&self) -> usize {
             *self.completed_rx.borrow()
         }
 
-        /// Gated requests cancelled while parked at the gate.
         pub(crate) fn cancelled(&self) -> usize {
             *self.cancelled_rx.borrow()
         }
@@ -226,7 +212,6 @@ pub(crate) mod gate {
         }
     }
 
-    /// Install a fresh gate, serializing against any other gate-using test.
     pub(crate) async fn install() -> GateHandle {
         install_with(false).await
     }
@@ -259,13 +244,6 @@ pub(crate) mod gate {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Test provider: a sync provider whose `create_label` panics, for the
-// handler-panic-recovery scenario. Zero production change — registered via the
-// existing `add_sync_provider_for_test` hook. Only `create_label` is exercised;
-// the other required methods are never reached in that scenario.
-// ---------------------------------------------------------------------------
 
 struct PanicOnCreateLabel {
     account_id: AccountId,
@@ -314,17 +292,12 @@ impl MailSyncProvider for PanicOnCreateLabel {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Harnesses: the connection-acquisition seam every scenario runs over.
-// ---------------------------------------------------------------------------
-
 /// A source of connected `(server end, client end, peer)` triples. The scenario
 /// drives the client end; the server end feeds `serve_client_connection`; the
 /// peer is threaded into the dispatch context. Carriers build a pair directly;
 /// transports go through the real `bind`/`accept`/`connect` path.
 #[async_trait]
 trait Harness: Send + Sync + Sized + 'static {
-    /// Set up the harness (bind the listener, for transport variants).
     async fn start() -> Self;
 
     /// One connected connection: `(server end for serve, client end for the
@@ -342,7 +315,6 @@ trait Harness: Send + Sync + Sized + 'static {
     }
 }
 
-/// The corpus's fixed TCP token. A real secret in production; a constant here.
 const CORPUS_TOKEN: &str = "corpus-conformance-token";
 
 /// A Unix `socketpair(2)` — the real fd / kernel path, no bind/accept.
@@ -402,8 +374,6 @@ impl Harness for UdsTransportHarness {
     }
 
     async fn connect(&self) -> (BoxedIo, BoxedIo, PeerInfo) {
-        // Dial first: the client connect completes into the kernel backlog, so
-        // the subsequent accept returns without a rendezvous deadlock.
         let client = self.connector.connect().await.unwrap();
         let (server, peer) = self.listener.lock().await.accept().await.unwrap();
         (server, client, peer)
@@ -451,7 +421,6 @@ impl Harness for TcpTokenHarness {
     async fn start() -> Self {
         let transport = TcpServerTransport::new("127.0.0.1:0".parse().unwrap());
         let listener = transport.bind().await.unwrap();
-        // The kernel-assigned port is reported in the listener endpoint string.
         let endpoint = listener.endpoint();
         let addr = endpoint
             .strip_prefix("tcp://")
@@ -479,11 +448,6 @@ impl Harness for TcpTokenHarness {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Client helpers.
-// ---------------------------------------------------------------------------
-
-/// Hot/Bulk lane semaphores at the daemon's real production sizes.
 fn lanes() -> (Arc<Semaphore>, Arc<Semaphore>) {
     (
         Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT)),
@@ -640,9 +604,6 @@ async fn serve_with_kind<H: Harness>(
     let token = harness.expected_token();
     let (client, server) = spawn_server(harness, state, hot, bulk, prep).await;
     let mut client = Framed::new(client, IpcCodec::new());
-    // Token transports (TCP) gate every request; authenticate the framed client
-    // up front so the shared scenario bodies run unchanged. Implicit-trust
-    // transports advertise no token and skip this.
     if let Some(token) = token {
         authenticate_framed(&mut client, &token).await;
     }
@@ -655,7 +616,6 @@ impl Served {
         self.client.send(request(id, req)).await.unwrap();
     }
 
-    /// Read the next frame within `timeout`, asserting one arrives and decodes.
     async fn recv_within(&mut self, timeout: Duration) -> IpcMessage {
         tokio::time::timeout(timeout, self.client.next())
             .await
@@ -664,12 +624,10 @@ impl Served {
             .expect("frame should decode")
     }
 
-    /// Read the next frame within the default timeout.
     async fn recv(&mut self) -> IpcMessage {
         self.recv_within(RECV_TIMEOUT).await
     }
 
-    /// Read frames, skipping unsolicited events, until the `Response` for `id`.
     async fn recv_response(&mut self, id: u64) -> IpcMessage {
         self.recv_response_within(id, RECV_TIMEOUT).await
     }
@@ -792,8 +750,6 @@ async fn expect_raw_closed<S: AsyncRead + Unpin>(stream: &mut S) {
         .await
         .expect("close should be observed before timeout");
     match result {
-        // A clean EOF (`Ok(0)`) and a connection reset (`Err`) are both "the
-        // daemon dropped us"; only more frame bytes would be wrong.
         Ok(0) | Err(_) => {}
         Ok(n) => panic!(
             "expected the daemon to close, got {n} bytes: {:?}",
@@ -817,10 +773,6 @@ async fn assert_daemon_alive<H: Harness>(
     assert!(pong(&response), "daemon should still answer Ping");
     close(probe).await;
 }
-
-// ---------------------------------------------------------------------------
-// Scenario corpus.
-// ---------------------------------------------------------------------------
 
 /// Scenario 1 — request/response id correlation. Client-chosen ids are echoed;
 /// several requests in flight on one connection each get their own response.
@@ -860,14 +812,11 @@ async fn scenario_02_out_of_order_completion<H: Harness>() {
     let h = H::start().await;
     let mut served = serve(&h, state.clone(), hot, bulk).await;
 
-    // Bulk request (id 1) enters the gate and blocks there.
     served.send(1, Request::RebuildAnalytics).await;
     gate.wait_until_entered(1).await;
 
-    // Hot request (id 2) is issued while the bulk one is still in flight.
     served.send(2, Request::Ping).await;
 
-    // The fast Hot response arrives first, correlated to its id.
     let first = served.recv().await;
     assert_eq!(
         first.id, 2,
@@ -875,7 +824,6 @@ async fn scenario_02_out_of_order_completion<H: Harness>() {
     );
     assert!(pong(&first));
 
-    // Releasing the gate lets the bulk response follow, matched by its id.
     gate.open();
     let second = served.recv_response(1).await;
     assert_eq!(second.id, 1);
@@ -884,7 +832,6 @@ async fn scenario_02_out_of_order_completion<H: Harness>() {
         IpcPayload::Response(Response::Ok { .. })
     ));
 
-    // Release the serial gate lock before the (slower) teardown.
     drop(gate);
     finish(&state, served).await;
 }
@@ -904,12 +851,7 @@ async fn scenario_03_lane_saturation_queues<H: Harness>() {
         served.send(id, Request::RebuildAnalytics).await;
     }
 
-    // The bulk lane admits exactly its limit; the remainder are blocked on a
-    // permit (or unread) — the daemon caps concurrency, it does not reject.
     gate.wait_until_entered(BULK_CONCURRENCY_LIMIT).await;
-    // Permit exhaustion deterministically proves the Bulk lane is the limiter
-    // (and catches any misrouting of the sentinel to the Hot lane): all
-    // BULK_CONCURRENCY_LIMIT permits are held, so a further request cannot run.
     assert_eq!(
         bulk.available_permits(),
         0,
@@ -921,7 +863,6 @@ async fn scenario_03_lane_saturation_queues<H: Harness>() {
         "no more than the lane limit may run concurrently while gated"
     );
 
-    // Release: the queued requests drain, none having failed.
     gate.open();
     let mut seen = std::collections::BTreeSet::new();
     for _ in 1..=total {
@@ -960,8 +901,6 @@ async fn scenario_04_broadcast_reaches_every_client<H: Harness>() {
     let mut b = serve(&h, state.clone(), hot.clone(), bulk.clone()).await;
     let mut c = serve(&h, state.clone(), hot.clone(), bulk.clone()).await;
 
-    // Real production emitter — the frame's `source` is whatever the daemon
-    // actually stamps, so the assertions below pin production behavior.
     emit(&state);
 
     for client in [&mut a, &mut b, &mut c] {
@@ -998,17 +937,14 @@ async fn scenario_05_event_interleaves_with_inflight_request<H: Harness>() {
     let h = H::start().await;
     let mut served = serve(&h, state.clone(), hot, bulk).await;
 
-    // Hold a request in flight.
     served.send(1, Request::RebuildAnalytics).await;
     gate.wait_until_entered(1).await;
 
-    // An event pushed now must reach the client while the request is pending.
     emit(&state);
     let event = served.recv().await;
     assert_eq!(event.id, 0, "the interleaved event keeps id 0");
     assert!(matches!(event.payload, IpcPayload::Event(_)));
 
-    // The in-flight request still completes, correlated to its own id.
     gate.open();
     let response = served.recv_response(1).await;
     assert_eq!(response.id, 1);
@@ -1025,7 +961,6 @@ async fn scenario_06_event_only_connection<H: Harness>() {
     let h = H::start().await;
     let mut served = serve(&h, state.clone(), hot, bulk).await;
 
-    // No request is ever sent on this connection.
     emit(&state);
 
     let frame = served.recv().await;
@@ -1046,9 +981,6 @@ async fn scenario_07_events_lagged_resync_and_survive<H: Harness>() {
     let (hot, bulk) = lanes();
     let h = H::start().await;
 
-    // Overflow the channel (cap 256) after the receiver subscribes but before
-    // the serve loop drains it, so the first recv() lags. Synthetic filler is
-    // fine here — the content is irrelevant; scenario 4 pins emitter output.
     let mut served = serve_with_prep(&h, state.clone(), hot, bulk, |s| {
         for _ in 0..400u32 {
             let _ = s.event_tx.send(daemon_event(sample_event()));
@@ -1056,7 +988,6 @@ async fn scenario_07_events_lagged_resync_and_survive<H: Harness>() {
     })
     .await;
 
-    // The first frame is the resync signal, not a silently-truncated stream.
     let frame = served.recv().await;
     match frame.payload {
         IpcPayload::Event(DaemonEvent::EventsLagged { skipped }) => {
@@ -1065,8 +996,6 @@ async fn scenario_07_events_lagged_resync_and_survive<H: Harness>() {
         other => panic!("expected EventsLagged, got {other:?}"),
     }
 
-    // The connection survives: a request issued after the lag still round-trips
-    // (skipping any remaining buffered events).
     served.send(9, Request::Ping).await;
     let response = served.recv_response(9).await;
     assert!(pong(&response), "connection should survive an events lag");
@@ -1082,9 +1011,6 @@ async fn scenario_08_frame_size_edges<H: Harness>() {
     let (hot, bulk) = lanes();
     let h = H::start().await;
 
-    // -- near the limit round-trips ----------------------------------------
-    // A DeleteLabel with a ~15.5 MiB name: both the request frame and the
-    // (NotFound) response frame sit just under the 16 MiB cap and round-trip.
     let big_name = "A".repeat(15 * 1024 * 1024 + 512 * 1024);
     let msg = request(
         1,
@@ -1105,22 +1031,18 @@ async fn scenario_08_frame_size_edges<H: Harness>() {
     assert_eq!(response.id, 1, "a near-limit frame round-trips its id");
     close(served).await;
 
-    // -- oversized frame errors without killing the daemon ------------------
     let (mut raw_client, server) =
         spawn_server(&h, state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
-    let oversized = u32::try_from(MAX_FRAME_LEN).unwrap() + 1; // one byte over the cap
+    let oversized = u32::try_from(MAX_FRAME_LEN).unwrap() + 1;
     raw_client
         .write_all(&oversized.to_be_bytes())
         .await
         .unwrap();
     raw_client.flush().await.unwrap();
-    // The daemon rejects the length prefix and closes this connection.
     expect_raw_closed(&mut raw_client).await;
     drop(raw_client);
     join_server(server).await;
 
-    // A separate connection still works: the oversized frame killed one
-    // connection, not the daemon.
     assert_daemon_alive(&h, &state, hot, bulk).await;
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
@@ -1138,7 +1060,6 @@ async fn scenario_09_malformed_json_closes_connection<H: Harness>() {
         spawn_server(&h, state.clone(), hot.clone(), bulk.clone(), |_| {}).await;
     write_raw_frame(&mut raw_client, b"{ this is not valid json ]").await;
 
-    // No response frame is returned; the connection is simply closed.
     expect_raw_closed(&mut raw_client).await;
     drop(raw_client);
     join_server(server).await;
@@ -1156,13 +1077,11 @@ async fn scenario_10_truncated_frame_cleanup<H: Harness>() {
     let h = H::start().await;
 
     let (mut raw_client, server) = spawn_server(&h, state.clone(), hot, bulk, |_| {}).await;
-    // Header claims 1000 bytes; send only 10, then disconnect mid-frame.
     raw_client.write_all(&1000u32.to_be_bytes()).await.unwrap();
     raw_client.write_all(&[0u8; 10]).await.unwrap();
     raw_client.flush().await.unwrap();
     drop(raw_client);
 
-    // The connection task terminates cleanly (no leak / no hang).
     tokio::time::timeout(JOIN_TIMEOUT, server)
         .await
         .expect("serve task should terminate after a mid-frame disconnect")
@@ -1189,10 +1108,8 @@ async fn scenario_11_disconnect_with_inflight_request_frees_permit<H: Harness>()
         "the in-flight bulk request should hold one permit"
     );
 
-    // Disconnect while the request is still gated in flight.
     drop(served.client);
 
-    // Release the gated handler; its task completes and drops its permit.
     gate.open();
     tokio::time::timeout(JOIN_TIMEOUT, served.server)
         .await
@@ -1221,7 +1138,6 @@ async fn scenario_12_handler_panic_recovers<H: Harness>() {
     let h = H::start().await;
     let mut served = serve(&h, state.clone(), hot, bulk).await;
 
-    // The panicking handler yields an Error response, correlated to its id.
     served
         .send(
             1,
@@ -1243,7 +1159,6 @@ async fn scenario_12_handler_panic_recovers<H: Harness>() {
         other => panic!("expected a kinded Error response, got {other:?}"),
     }
 
-    // The connection is still usable.
     served.send(2, Request::Ping).await;
     let after = served.recv_response(2).await;
     assert!(pong(&after), "connection should survive a handler panic");
@@ -1259,7 +1174,6 @@ async fn scenario_13_shutdown_closes_connections<H: Harness>() {
     let h = H::start().await;
     let mut served = serve(&h, state.clone(), hot, bulk).await;
 
-    // Signal shutdown on an idle connection.
     state.request_shutdown();
 
     let status = state
@@ -1280,7 +1194,6 @@ async fn scenario_13_shutdown_closes_connections<H: Harness>() {
         other => panic!("expected the shutdown notice, got {other:?}"),
     }
 
-    // No duplicate notice, dangling frame or I/O error may replace clean EOF.
     served.expect_eof().await;
     join_server(served.server).await;
 
@@ -1375,7 +1288,6 @@ async fn scenario_14_local_transport_needs_no_auth<H: Harness>() {
     );
     let mut served = serve(&h, state.clone(), hot, bulk).await;
 
-    // No auth handshake — straight to a request.
     served.send(1, Request::Ping).await;
     let response = served.recv_response(1).await;
     assert!(
@@ -1431,7 +1343,6 @@ mod auth_matrix {
         let (client, server) = spawn_server(&h, state.clone(), hot, bulk, |_| {}).await;
         let mut client = Framed::new(client, IpcCodec::new());
 
-        // Straight to a Ping — no Authenticate first.
         client.send(request(1, Request::Ping)).await.unwrap();
         let response = tokio::time::timeout(RECV_TIMEOUT, client.next())
             .await
@@ -1491,7 +1402,6 @@ mod auth_matrix {
             .expect("frame decodes");
         assert_auth_error(&rejected);
 
-        // Still gated: a subsequent request is refused.
         client.send(request(2, Request::Ping)).await.unwrap();
         let still_gated = tokio::time::timeout(RECV_TIMEOUT, client.next())
             .await
@@ -1508,7 +1418,6 @@ mod auth_matrix {
         state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
     }
 
-    /// The good token authenticates; declaration then enables ordinary requests.
     #[tokio::test]
     async fn good_token_unlocks_the_connection() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -1542,7 +1451,6 @@ mod auth_matrix {
         );
 
         super::declare_framed(&mut client, mxr_protocol::ClientKind::Cli).await;
-        // Now a normal request round-trips.
         client.send(request(2, Request::Ping)).await.unwrap();
         let pong = tokio::time::timeout(RECV_TIMEOUT, client.next())
             .await
@@ -1570,7 +1478,6 @@ mod auth_matrix {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let (hot, bulk) = super::lanes();
         let h = TcpTokenHarness::start().await;
-        // Daemon-side token is None despite the peer being TokenRequired.
         let (client, server) =
             spawn_server_with_auth(&h, state.clone(), hot, bulk, None, |_| {}).await;
         let mut client = Framed::new(client, IpcCodec::new());
@@ -1608,7 +1515,6 @@ mod auth_matrix {
         let token: Arc<str> = Arc::from(CORPUS_TOKEN);
         let h = TcpTokenHarness::start().await;
 
-        // Connection A: authenticate successfully.
         let (client_a, server_a) = spawn_server_with_auth(
             &h,
             state.clone(),
@@ -1639,7 +1545,6 @@ mod auth_matrix {
             })
         ));
 
-        // Connection B: never authenticates. A being authed must not help it.
         let (client_b, server_b) =
             spawn_server_with_auth(&h, state.clone(), hot, bulk, Some(token), |_| {}).await;
         let mut b = Framed::new(client_b, IpcCodec::new());
@@ -1671,7 +1576,6 @@ mod auth_matrix {
         let token: Arc<str> = Arc::from(CORPUS_TOKEN);
         let h = TcpTokenHarness::start().await;
 
-        // Emit an event BEFORE the client authenticates.
         let (client, server) =
             spawn_server_with_auth(&h, state.clone(), hot, bulk, Some(token), |s| {
                 super::emit(s);
@@ -1679,13 +1583,11 @@ mod auth_matrix {
             .await;
         let mut client = Framed::new(client, IpcCodec::new());
 
-        // No event may arrive while unauthenticated.
         match tokio::time::timeout(Duration::from_millis(300), client.next()).await {
-            Err(_) => {} // timed out — correct, nothing delivered pre-auth
+            Err(_) => {}
             Ok(frame) => panic!("no frame may arrive before auth, got {frame:?}"),
         }
 
-        // Authentication alone leaves the event buffered until declaration.
         client
             .send(request(
                 1,
@@ -1806,10 +1708,6 @@ mod auth_matrix {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Transport matrix: run every scenario over all four harnesses.
-// ---------------------------------------------------------------------------
-
 /// Instantiate each scenario as four `#[tokio::test]`s — one per harness — so
 /// the corpus runs unchanged over the socketpair and duplex carriers AND over
 /// the real UDS and in-memory transports (through `bind`/`accept`/`connect`).
@@ -1844,8 +1742,6 @@ macro_rules! run_on_all_transports {
                         super::super::$scenario::<super::super::MemoryTransportHarness>().await;
                     }
 
-                    // The auth half of the trait: the identical scenario runs
-                    // over the REAL TCP token transport, post-`Authenticate`.
                     #[tokio::test]
                     async fn tcp_token() {
                         super::super::$scenario::<super::super::TcpTokenHarness>().await;
@@ -2013,8 +1909,6 @@ mod scoped_events {
             .unwrap();
         served.recv_response(1).await;
 
-        // No await between sends: the serve task can't drain, so the
-        // 256-slot channel overflows for this connection.
         for _ in 0..400u32 {
             let _ = state.event_tx.send(daemon_event(sample_event()));
         }
@@ -2053,7 +1947,6 @@ mod scoped_events {
         ));
     }
 
-    /// Declared CLI event consumers retain their ordinary event stream.
     #[tokio::test]
     async fn a_declared_cli_event_only_connection_receives_events() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -2086,7 +1979,6 @@ mod queued_events {
     use tokio::sync::broadcast;
     use tokio_util::codec::FramedWrite;
 
-    /// Frames one flush wrote, read back from the other end of a duplex pipe.
     async fn flushed(
         sender_capacity: usize,
         queued: usize,
@@ -2128,7 +2020,6 @@ mod queued_events {
 
     #[tokio::test]
     async fn a_lagged_receiver_gets_one_resync_signal_and_the_flush_stops() {
-        // Ten positions in a channel that holds four: `len()` says ten.
         let (ok, frames) = flushed(4, 10, 256).await;
         assert!(ok);
         assert_eq!(frames.len(), 1, "{frames:?}");
@@ -2229,9 +2120,6 @@ mod queued_events {
             event_rx,
             shutdown_rx,
         ));
-        // The client stays connected and listening: only the daemon's writes
-        // fail. The quick run queues its progress events and finishes without
-        // yielding, so the flush is the first write the daemon attempts.
         let mut client = Framed::new(client_io, IpcCodec::new());
         declare_framed(&mut client, ClientKind::Cli).await;
         fail.store(true, std::sync::atomic::Ordering::Release);

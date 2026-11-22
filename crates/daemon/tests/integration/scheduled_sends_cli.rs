@@ -166,7 +166,6 @@ fn an_unreadable_remind_after_sends_nothing() {
         "nothing may be sent"
     );
 
-    // The stored draft still exists, so it was never sent.
     let drafts = env.json(&["drafts", "--format", "json"]);
     let text = drafts.to_string();
     assert!(text.contains(&draft_id), "draft must remain: {drafts:#}");

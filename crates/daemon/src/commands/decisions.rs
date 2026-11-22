@@ -78,7 +78,6 @@ fn print_rebuild(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Print a single decision row (or "not found" + nonzero exit).
 fn print_detail(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
     match resp {
         Response::Ok {

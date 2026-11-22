@@ -10,8 +10,6 @@ use std::io::{IsTerminal, Read};
 
 pub async fn run(action: Option<LlmAction>, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let action = action.unwrap_or(LlmAction::Status);
-    // Read the key before any daemon work, so a terminal or empty stdin fails
-    // fast and nothing is sent.
     let key = match &action {
         LlmAction::Key {
             action: LlmKeyAction::Set { provider, .. },
@@ -94,7 +92,6 @@ fn read_key_from_stdin(provider: LlmProviderData) -> anyhow::Result<mxr_protocol
             provider.key()
         );
     }
-    // One byte over the limit tells "too long" from "exactly the limit".
     let mut raw = String::new();
     stdin
         .lock()
@@ -159,7 +156,6 @@ fn render_status(snapshot: &LlmStatusSnapshot, format: OutputFormat) -> anyhow::
     Ok(())
 }
 
-/// One line per feature: its model, then where requests go.
 fn features_table(features: &[LlmFeatureStatusData]) -> String {
     let name_width = features.iter().map(|f| f.feature.len()).max().unwrap_or(0);
     let model_width = features.iter().map(|f| f.model.len()).max().unwrap_or(0);
@@ -206,7 +202,6 @@ fn features_table(features: &[LlmFeatureStatusData]) -> String {
     out
 }
 
-/// `base_url` first, then the fallback's routes, and which is in use.
 fn chain_label(endpoint: &LlmEndpointStatusData, feature: &LlmFeatureStatusData) -> String {
     let mut parts = vec![format!(
         "{}: {}",

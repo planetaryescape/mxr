@@ -183,7 +183,6 @@ async fn declaration_and_ping_byte_identical_over_real_process() {
     stdin.write_all(&declaration_frame()).await.unwrap();
     stdin.write_all(&ping_frame()).await.unwrap();
     stdin.flush().await.unwrap();
-    // stdin EOF -> child half-closes the socket -> fake closes -> child exits 0.
     drop(stdin);
 
     let mut out = Vec::new();
@@ -221,8 +220,6 @@ async fn daemon_closing_first_exits_without_waiting_on_stdin() {
     stdin.write_all(&declaration_frame()).await.unwrap();
     stdin.write_all(&ping_frame()).await.unwrap();
     stdin.flush().await.unwrap();
-    // Deliberately keep stdin OPEN. The daemon closes first; the proxy must exit
-    // anyway. If it waited on the stdin direction, these bounded waits trip.
 
     let mut out = Vec::new();
     tokio::time::timeout(BOUND, stdout.read_to_end(&mut out))
@@ -253,8 +250,6 @@ async fn downstream_write_error_exits_nonzero() {
     let _server = spawn_fake_daemon(&iso.sock, false);
     let mut child = spawn_dial_stdio(&iso.envs);
     let mut stdin = child.stdin.take().unwrap();
-    // Close our read end of the child's stdout so its setup reply hits EPIPE.
-    // Keep stdin OPEN: a clean stdin EOF must not be the reason it exits.
     drop(child.stdout.take().unwrap());
 
     stdin.write_all(&declaration_frame()).await.unwrap();
@@ -279,7 +274,7 @@ async fn downstream_write_error_exits_nonzero() {
 async fn unstartable_instance_exits_nonzero_with_empty_stdout() {
     let dir = tempfile::tempdir().unwrap();
     let blocker = dir.path().join("blocker");
-    std::fs::write(&blocker, b"x").unwrap(); // a FILE used as a dir root -> ENOTDIR
+    std::fs::write(&blocker, b"x").unwrap();
 
     let envs = [
         (

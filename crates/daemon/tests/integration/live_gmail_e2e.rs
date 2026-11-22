@@ -53,18 +53,15 @@ async fn live_gmail_sync_populates_store_and_label_junction() {
         );
     };
 
-    // 1. Build a Gmail provider authenticated via the long-lived refresh token.
     let auth = GmailAuth::with_refresh_token(client_id, client_secret, refresh_token);
     let account_id = AccountId::new();
     let client = GmailClient::new(auth);
     let provider = GmailProvider::new(account_id.clone(), client);
 
-    // 2. Stand up an in-memory store + search.
     let store = Arc::new(Store::in_memory().await.unwrap());
     let (search, _ingest) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
     let engine = SyncEngine::new(store.clone(), search);
 
-    // 3. Insert the account so FK-constrained writes succeed.
     let account = mxr_core::Account {
         id: account_id.clone(),
         name: "live-gmail-test".to_string(),
@@ -81,16 +78,11 @@ async fn live_gmail_sync_populates_store_and_label_junction() {
     };
     store.insert_account(&account).await.unwrap();
 
-    // 4. Run one sync cycle. Limited blast radius: this is a single delta
-    //    iteration against the live API, not a continuous loop.
     let outcome = engine
         .sync_account_with_outcome(&provider)
         .await
         .expect("real Gmail sync must succeed end-to-end");
 
-    // 5. Labels — the regression class. Provider must hand at least the
-    //    standard system labels and they must land in the store under their
-    //    own ids without UNIQUE-constraint failure.
     let labels = store
         .list_labels_by_account(&account_id)
         .await
@@ -101,19 +93,11 @@ async fn live_gmail_sync_populates_store_and_label_junction() {
         labels.iter().map(|l| &l.provider_id).collect::<Vec<_>>()
     );
 
-    // 6. Re-run the sync. The 0.4.52 bug surfaces on the SECOND label
-    //    upsert (the first run inserted the rows, the second hits UNIQUE).
-    //    This iteration would fail with `UNIQUE constraint failed:
-    //    labels.account_id, labels.provider_id` on the buggy code path.
     engine
         .sync_account_with_outcome(&provider)
         .await
         .expect("second sync must not regress on label upsert");
 
-    // 7. Junction sanity — at least one INBOX message should exist with a
-    //    junction row pointing at the INBOX label. This rejects the silent
-    //    junction-loss class of bug (CASCADE on re-upsert) the engine has
-    //    backfill logic for.
     if outcome.synced_count > 0 {
         let inbox = labels
             .iter()

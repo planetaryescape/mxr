@@ -99,9 +99,6 @@ async fn assist(
         model: args.model.clone(),
         revise: args.revise.clone(),
     };
-    // The model sets the pace and a local one can take minutes, so this takes
-    // the no-deadline path. Stage lines go to stderr, leaving stdout for the
-    // proposal.
     let response = client
         .request_with_events(request, |event| {
             if let DaemonEvent::OperationProgress {
@@ -169,7 +166,6 @@ async fn apply(
     }
 }
 
-/// Which draft the request is about, from the flags.
 async fn target(
     client: &mut IpcClient,
     args: &ComposeAssistArgs,
@@ -221,7 +217,6 @@ fn explicit_action(args: &ComposeAssistArgs) -> Option<AssistActionData> {
     }
 }
 
-/// The text from a file, or from stdin for `-`.
 fn read_text(path: &str) -> anyhow::Result<String> {
     if path == "-" {
         let mut text = String::new();
@@ -258,7 +253,6 @@ async fn stored_text(client: &mut IpcClient, draft_id: &DraftId) -> anyhow::Resu
     }
 }
 
-/// `START..END` as byte offsets.
 fn parse_selection(raw: &str) -> anyhow::Result<TextRangeData> {
     let (start, end) = raw
         .split_once("..")

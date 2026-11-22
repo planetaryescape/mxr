@@ -62,8 +62,6 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
 
-    // Resolve the account id (CLI accepts the configured `key` or
-    // falls back to the only/default account if not specified).
     let account_id = resolve_account(&mut client, account.as_deref()).await?;
 
     let resp = client

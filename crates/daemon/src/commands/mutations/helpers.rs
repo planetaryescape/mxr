@@ -93,7 +93,6 @@ pub(super) async fn resolve_mutation_selection_with_limit(
 }
 
 impl MutationSelection {
-    /// For the commands that take `--all`: the cap notice then says so.
     #[must_use]
     pub(super) fn offering_all(mut self) -> Self {
         self.capped = self.capped.map(CappedSelection::offering_all);
@@ -340,7 +339,6 @@ pub(super) fn print_dry_run_output(
     Ok(())
 }
 
-/// Formats with no room for extra fields get the cap notice on stderr.
 fn announce_cap_on_stderr(selection: &MutationSelection) -> anyhow::Result<()> {
     if let Some(capped) = selection.capped {
         capped.announce(&mut std::io::stderr())?;
@@ -476,7 +474,6 @@ pub(super) fn confirm_selection(
     confirm_selection_to(action, selection, destructive, yes, &mut std::io::stderr())
 }
 
-/// Confirms a mutation whose preview the caller has already rendered as lines.
 pub(super) fn confirm_prompt(preview_lines: &[String]) -> anyhow::Result<()> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         anyhow::bail!(
@@ -1062,8 +1059,6 @@ mod tests {
             ["search", "envelopes", NOTICE, "mutation"],
             "the user is told about the cap after the selection and before anything changes"
         );
-        // The run changes exactly the messages the selection holds, which are
-        // the ones the dry run lists.
         let requests = daemon.requests.lock().unwrap().clone();
         let Some(Request::StartMutationJob {
             mutation: MutationCommand::Trash { message_ids },
@@ -1111,8 +1106,6 @@ mod tests {
             )
             .unwrap()
         );
-        // The dry run says so in its own output, not through the notice, and
-        // changes nothing.
         assert_eq!(
             daemon.events.lock().unwrap().clone(),
             ["search", "envelopes"]
@@ -1153,7 +1146,6 @@ mod tests {
             capped: Some(CappedSelection::new(1_000)),
         };
 
-        // The same lines are the dry-run table and the confirmation prompt.
         let lines = render_selection_preview_lines("trash", &selection);
 
         assert!(
@@ -1181,7 +1173,6 @@ mod tests {
             &"More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.".to_owned()
         ));
 
-        // The same sentence goes to stderr with `--yes`.
         let mut notices = Vec::new();
         let capped = selection().offering_all();
         confirm_selection_to("archive", &capped, false, true, &mut notices).unwrap();
@@ -1189,7 +1180,6 @@ mod tests {
             String::from_utf8(notices).unwrap(),
             "More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.\n"
         );
-        // An uncapped selection offers nothing.
         let mut uncapped = selection();
         uncapped.capped = None;
         assert!(uncapped.offering_all().capped.is_none());

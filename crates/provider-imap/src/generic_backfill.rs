@@ -107,8 +107,6 @@ impl ImapProvider {
             next_cursor,
             has_more,
             threads_changed: vec![],
-            // UIDs are sparse and EXISTS counts the whole mailbox, so neither
-            // gives an honest "left to fetch".
             remaining_estimate: None,
         })
     }
@@ -143,8 +141,6 @@ impl ImapProvider {
         if restart {
             let mut uid_next = info.uid_next;
             if uid_next == 0 && info.exists > 0 {
-                // Server omitted UIDNEXT on SELECT; derive the horizon from
-                // the highest UID so the walk has a top to start from.
                 let uids = session
                     .uid_search("ALL")
                     .await
@@ -167,7 +163,6 @@ impl ImapProvider {
             };
             folder.min_failed_uid = None;
         } else if info.exists == 0 {
-            // Everything left to fetch was deleted since the last page.
             folder.next_high = 0;
         }
 
@@ -223,8 +218,6 @@ async fn discover_uids(
             .uid_search(&format!("UID {low}:{window_high}"))
             .await
             .map_err(mxr_core::error::MxrError::from)?;
-        // Servers only return UIDs in range; filtering keeps the walk correct
-        // against one that does not.
         uids.retain(|uid| (low..=window_high).contains(uid));
         uids.sort_unstable_by(|a, b| b.cmp(a));
         uids.dedup();
@@ -232,8 +225,6 @@ async fn discover_uids(
 
         if found.len() >= room {
             found.truncate(room);
-            // Everything above the lowest kept UID has been seen; the rest of
-            // this window below it stays for the next page.
             let lowest = found.last().copied().unwrap_or(low);
             return Ok((found, lowest - 1));
         }

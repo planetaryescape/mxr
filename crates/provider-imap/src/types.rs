@@ -22,7 +22,6 @@ pub struct ImapCapabilities {
     pub x_gm_ext_1: bool,
 }
 
-/// A single fetched message from IMAP FETCH.
 #[derive(Debug, Clone)]
 pub struct FetchedMessage {
     pub uid: u32,
@@ -40,7 +39,6 @@ pub struct FetchedMessage {
     pub gmail_thread_id: Option<u64>,
 }
 
-/// Parsed IMAP ENVELOPE structure.
 #[derive(Debug, Clone)]
 pub struct ImapEnvelope {
     pub date: Option<String>,
@@ -53,14 +51,12 @@ pub struct ImapEnvelope {
     pub in_reply_to: Option<String>,
 }
 
-/// An address from IMAP ENVELOPE.
 #[derive(Debug, Clone)]
 pub struct ImapAddress {
     pub name: Option<String>,
     pub email: String,
 }
 
-/// IMAP folder info from LIST response.
 #[derive(Debug, Clone, Default)]
 pub struct FolderInfo {
     pub name: String,

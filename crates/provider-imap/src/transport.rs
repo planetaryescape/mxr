@@ -74,7 +74,6 @@ impl TransportMode {
 /// contain `127.` (`127.0.0.1.example.com`) and `0.0.0.0` are not loopback.
 pub fn is_loopback_host(host: &str) -> bool {
     let host = host.trim();
-    // `[::1]` is how a literal IPv6 host is written in a URL-like host field.
     let literal = host
         .strip_prefix('[')
         .and_then(|rest| rest.strip_suffix(']'))
@@ -95,8 +94,6 @@ fn is_loopback_ip(ip: IpAddr) -> bool {
 fn is_mapped_loopback(v6: Ipv6Addr) -> bool {
     v6.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
 }
-
-// -- Certificate pinning --------------------------------------------------------
 
 /// SHA-256 of a server's leaf certificate (DER).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -177,9 +174,6 @@ enum Verify {
     InspectOnly,
 }
 
-// -- Stream ---------------------------------------------------------------------
-
-/// Either a TLS stream or, for loopback bridges, the bare socket.
 pub(crate) enum ImapStream {
     Plain(TcpStream),
     Tls(async_native_tls::TlsStream<TcpStream>),
@@ -241,8 +235,6 @@ pub(crate) enum Greeting {
     PreAuth,
 }
 
-// -- Connecting -----------------------------------------------------------------
-
 /// Open a connection that is secured per the account config and positioned
 /// right after the server greeting, ready for LOGIN / AUTHENTICATE.
 pub(crate) async fn connect(
@@ -251,8 +243,6 @@ pub(crate) async fn connect(
     let mode = TransportMode::resolve(&config.host, config.port, config.use_tls)?;
     let verify = match config.pinned_fingerprint()? {
         Some(_) if mode == TransportMode::Plaintext => {
-            // A pin on an unencrypted connection would look like protection
-            // and protect nothing.
             return Err(ImapProviderError::Connection(
                 "tls_cert_sha256 is set but use_tls = false: a certificate pin only applies to \
                  a TLS connection. Remove the pin, or set use_tls = true."
@@ -274,7 +264,6 @@ async fn connect_mode(
     let tcp = tcp_connect(host, port).await?;
     match mode {
         TransportMode::Plaintext => {
-            // `localhost` is a name, so check where it really led.
             let peer = tcp
                 .peer_addr()
                 .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
@@ -347,8 +336,6 @@ async fn tls_handshake(
 ) -> Result<async_native_tls::TlsStream<TcpStream>> {
     let mut connector = async_native_tls::TlsConnector::new();
     if !matches!(verify, Verify::System) {
-        // Verification is replaced by the pin comparison below (or, for
-        // InspectOnly, skipped because nothing secret is sent).
         connector = connector
             .danger_accept_invalid_certs(true)
             .danger_accept_invalid_hostnames(true);
@@ -416,8 +403,6 @@ async fn answers_in_plaintext(host: &str, port: u16) -> bool {
     let read = async_std::future::timeout(PLAINTEXT_PROBE_TIMEOUT, tcp.read_exact(&mut head)).await;
     matches!(read, Ok(Ok(()))) && &head == b"* OK"
 }
-
-// -- STARTTLS -------------------------------------------------------------------
 
 /// Run the plaintext half of STARTTLS and hand back the socket, ready for the
 /// TLS handshake. Refuses (never falls back to plaintext) when the greeting is
@@ -516,8 +501,6 @@ fn advertises_starttls(untagged: &[String]) -> bool {
             && tokens.any(|t| t.eq_ignore_ascii_case("STARTTLS"))
     })
 }
-
-// -- Fingerprint probe ----------------------------------------------------------
 
 /// Connect the way the account would and report the SHA-256 of the server's
 /// leaf certificate, trusted or not, so a user can copy it into

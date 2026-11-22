@@ -27,7 +27,6 @@ pub(super) fn kept(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
                 .join(", ")
         )
     };
-    // Whole sentences: a typed sentence embedded in a changed one is not kept.
     let draft_sentences: HashSet<String> = sentences(output.text).into_iter().collect();
     let draft_words: HashSet<String> = words(output.text).into_iter().collect();
     let mut problems = Vec::new();
@@ -128,8 +127,6 @@ fn is_answered(
         .enumerate()
         .filter(|(_, clause)| holds_subject(clause, answer.subject))
         .any(|(index, _)| {
-            // "Priya will join, but she can't stay long" says yes: the
-            // "can't" is about staying, so no phrase near Priya makes it a no.
             if answer.polarity == AnswerPolarity::Negative && says_yes(draft_clauses, index, answer)
             {
                 return false;
@@ -138,8 +135,6 @@ fn is_answered(
             let literal: Vec<&[String]> = scope.iter().map(|c| c.words.as_slice()).collect();
             let without: Vec<Vec<String>> =
                 scope.iter().map(|c| without_idioms(&c.words)).collect();
-            // "no problem" can be the positive answer itself, but it never
-            // supplies the "no" of a negative one.
             let stated = |phrase: &&str| match answer.polarity {
                 AnswerPolarity::Negative => without.iter().any(|w| contains_phrase(w, phrase)),
                 _ => literal.iter().any(|w| contains_phrase(w, phrase)),
@@ -244,8 +239,6 @@ fn subject_clause_end(clauses: &[Clause], index: usize, subject: &[&str]) -> usi
             return end;
         }
     }
-    // "Priya? No." puts the answer in the sentence after a bare subject, but
-    // "Priya? Sam can't make it." is about someone else.
     if is_bare
         && end == index + 1
         && clause.opened_by == Boundary::Sentence
@@ -507,7 +500,6 @@ pub(super) fn length(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
 /// ordinary email sentence such as "Sure, here is the deck you asked for"
 /// or "Sure, thanks for the draft roadmap" is part of the email.
 fn is_preamble(line: &str) -> bool {
-    // Models and keyboards differ on the apostrophe, so "Here’s" counts.
     let lower = line.trim().to_lowercase().replace('\u{2019}', "'");
     let leads = [
         "sure",
@@ -583,8 +575,6 @@ pub(super) fn leftovers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
     if let Some(subject) = subject {
         problems.push(format!("subject line: \"{subject}\""));
     }
-    // Read from the raw output, so a preamble that clean-up would also have
-    // stripped still counts, and one it would keep is caught too.
     if let Some(line) = output
         .raw
         .lines()
@@ -682,7 +672,6 @@ mod tests {
             detail.contains("missing: \"i'll bring the deck\""),
             "{detail}"
         );
-        // Most of the words survive, so the sentence is changed, not gone.
         let changed = run(
             &requirements,
             "Hi Alex,\n\nFriday at two pm works for me.\n\nAlex",
@@ -724,7 +713,6 @@ mod tests {
         let requirements = req("", &[], &["price"]);
         let with_gap = run(&requirements, "The rate is [[?: price per seat]].");
         assert_eq!(with_gap.passed(Check::Gaps), Some(true));
-        // A gap for something else, or a guessed number, does not count.
         let guessed = run(&requirements, "The rate is [[?: date]] and £500.");
         assert_eq!(guessed.passed(Check::Gaps), Some(false));
         let no_gap = run(&requirements, "The rate is £500.");
@@ -816,7 +804,6 @@ mod tests {
         let report = run(&requirements, recap);
         assert_eq!(report.passed(Check::Leftovers), Some(false));
         assert!(report.grades[5].detail.contains("copies the thread back"));
-        // Eight words, so a reply can reuse a short phrase from the thread.
         let short = "Friday at 2pm works for me, and I can bring the Q3 numbers.";
         assert_eq!(
             run(&requirements, short).passed(Check::Leftovers),
@@ -843,8 +830,6 @@ mod tests {
 
     #[test]
     fn a_grade_never_depends_on_the_case_order_of_its_lists() {
-        // Each check reads the whole list, so reordering the answers or gaps
-        // cannot change which one fails.
         let first = Answer {
             question: "when",
             any_of: &["friday"],
@@ -869,7 +854,6 @@ mod tests {
 
     #[test]
     fn a_typed_sentence_inside_a_changed_sentence_is_not_kept() {
-        // The sentence survives as words, but it now says the opposite.
         let requirements = req("Paid today, thanks.", &[], &[]);
         let report = run(&requirements, "Hi Alex,\n\nNot paid today, thanks.\n\nAlex");
         assert_eq!(report.passed(Check::Kept), Some(false));
@@ -1145,7 +1129,6 @@ mod tests {
                 "{draft}"
             );
         }
-        // After a bare "3pm?" the "No." answers 3pm, so Priya is unanswered.
         let report = run(&requirements, "3pm? No. Priya is travelling.");
         let grade = report
             .grades
@@ -1157,8 +1140,6 @@ mod tests {
 
     #[test]
     fn a_preamble_is_a_leftover_even_when_clean_up_would_keep_it() {
-        // clean_draft keeps this line (it ends in a full stop, not a colon), so
-        // only the raw output shows it.
         let requirements = req("", &[], &[]);
         let text = "Sure, here's a draft of your reply.\n\nHi Alex,\n\nFriday works.\n\nAlex";
         let report = grade(&requirements, &Output { raw: text, text });
@@ -1210,8 +1191,6 @@ mod tests {
 
     #[test]
     fn ordinary_email_sentences_are_not_preambles() {
-        // The shapes a broad phrase match would have flagged: a lead word, then
-        // a phrase that also appears in email text.
         let requirements = req("", &[], &[]);
         for line in [
             "Sure, here is the deck you asked for.",

@@ -56,9 +56,6 @@ impl ServerTransport for UdsServerTransport {
 
     async fn bind(&self) -> Result<Box<dyn TransportListener>> {
         let endpoint = unix_endpoint(&self.path);
-        // The daemon holds the exclusive index lock before calling bind, so any
-        // socket file present now is genuinely stale (left by a fully-exited
-        // daemon); clear it and bind ours.
         let _ = std::fs::remove_file(&self.path);
         let listener = UnixListener::bind(&self.path).map_err(|source| TransportError::Bind {
             endpoint: endpoint.clone(),
@@ -68,19 +65,9 @@ impl ServerTransport for UdsServerTransport {
             endpoint: endpoint.clone(),
             source,
         })?;
-        // Remember which socket file is OURS. During an upgrade restart a
-        // successor daemon can re-bind this path while we are still draining;
-        // cleanup must not delete the successor's socket. Capturing the
-        // identity is mandatory — we just created this socket, so a `stat`
-        // failing immediately after bind is exceptional; fail the bind rather
-        // than fall back to an unconditional (successor-clobbering) unlink.
         let identity = match socket_file_identity(&self.path) {
             Some(identity) => identity,
             None => {
-                // We created this socket file microseconds ago and are about to
-                // drop the listener (closing the fd) without handing it back —
-                // so no one downstream will clean it up. Unlink it now, or the
-                // failed bind leaks a stale socket with no listener behind it.
                 let _ = std::fs::remove_file(&self.path);
                 return Err(TransportError::Bind {
                     endpoint,
@@ -121,14 +108,9 @@ impl TransportListener for UdsListener {
                 "listener has stopped accepting",
             ))
         })?;
-        // Fail closed on missing peer credentials: rather than fabricate an
-        // identity, drop the offending connection and keep serving others.
         // tokio's `peer_cred` is cross-platform (`SO_PEERCRED` on Linux,
         // `getpeereid` on macOS / the BSDs) and does not fail benignly on a
         // connected AF_UNIX socket, so a failure signals a genuine anomaly —
-        // and phase-5 policy must never see a fake `UnixPeer`. Dropping one bad
-        // connection is safe; propagating the error would tear down the whole
-        // accept loop.
         loop {
             let (stream, _addr) = listener.accept().await.map_err(TransportError::Accept)?;
             match stream.peer_cred() {
@@ -151,9 +133,6 @@ impl TransportListener for UdsListener {
     }
 
     async fn stop_accepting(&mut self) {
-        // Close the listening fd so new connects are refused promptly. Does NOT
-        // release the socket file — `cleanup` does that, after in-flight
-        // connections drain, so a successor that re-bound the path is safe.
         self.listener = None;
     }
 
@@ -253,10 +232,7 @@ fn remove_socket_if_owned(path: &Path, owned: (u64, u64, i64, i64)) {
                 "leaving IPC socket in place: the path was re-bound by a successor daemon"
             );
         }
-        None => {
-            // Already gone (e.g. a successor's own cleanup removed it); nothing
-            // to do.
-        }
+        None => {}
     }
 }
 
@@ -276,7 +252,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("mxr.sock");
 
-        // Same inode -> removed (normal shutdown).
         std::fs::write(&path, b"ours").unwrap();
         let ours = socket_file_identity(&path).expect("stat freshly-written file");
         remove_socket_if_owned(&path, ours);
@@ -285,8 +260,6 @@ mod tests {
         // Path re-created by a successor -> left alone. ext4 can recycle the
         // freed inode AND Linux stamps files from the kernel's coarse clock
         // (~ms ticks), so a same-tick re-create can be byte-identical to ours.
-        // Sleep past the tick — in production the two binds are separated by a
-        // full daemon startup.
         std::fs::write(&path, b"ours").unwrap();
         let ours = socket_file_identity(&path).expect("stat freshly-written file");
         std::fs::remove_file(&path).unwrap();
@@ -295,8 +268,6 @@ mod tests {
         remove_socket_if_owned(&path, ours);
         assert!(path.exists(), "successor's socket must survive our cleanup");
 
-        // A missing file is a no-op (a successor's own cleanup may have removed
-        // it already); it must not error or resurrect anything.
         std::fs::remove_file(&path).unwrap();
         remove_socket_if_owned(&path, ours);
         assert!(!path.exists(), "missing socket stays gone");
@@ -320,13 +291,11 @@ mod tests {
             .unwrap();
 
         let connector = UnixConnector::new(path.clone());
-        // `BoxedIo` isn't `Debug`, so assert on Ok-ness rather than unwrapping.
         assert!(
             connector.connect().await.is_ok(),
             "reachable while accepting"
         );
 
-        // Stop accepting: new connects are refused, socket file still present.
         listener.stop_accepting().await;
         assert!(
             path.exists(),
@@ -344,7 +313,6 @@ mod tests {
             Err(other) => panic!("expected a Connect error, got {other:?}"),
         }
 
-        // cleanup performs the ownership-guarded unlink.
         listener.cleanup().await.unwrap();
         assert!(!path.exists(), "cleanup must unlink the socket file");
     }

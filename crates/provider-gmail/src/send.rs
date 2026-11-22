@@ -22,7 +22,6 @@ use mxr_outbound::render::render_markdown;
 use std::path::PathBuf;
 use std::time::Instant;
 
-/// Build an RFC 5322 message from a Draft and return the raw bytes.
 pub fn build_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
     let message =
         build_message(draft, from, true).map_err(|err| GmailSendError::Build(err.to_string()))?;
@@ -88,8 +87,6 @@ fn build_draft_rfc2822_with_attachments(
     inline_assets: &[LoadedInlineAsset],
 ) -> Result<Vec<u8>, GmailSendError> {
     let started_at = Instant::now();
-    // Both body kinds land here. An HTML draft passes its document through
-    // untouched; rendering markdown for it would have stored an empty draft.
     let (plain, html) = match &draft.content {
         DraftContent::Markdown { source } => {
             let rendered = render_markdown(source);
@@ -198,7 +195,6 @@ pub(crate) fn normalize_message_id(value: &str) -> String {
         .to_string()
 }
 
-/// Encode an RFC 5322 message as base64url for Gmail API.
 pub fn encode_for_gmail(rfc2822: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(rfc2822)
 }

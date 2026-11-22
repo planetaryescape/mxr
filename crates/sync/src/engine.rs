@@ -63,7 +63,6 @@ pub enum SyncProgress {
 /// the sink across await points.
 pub type ProgressSink<'a> = &'a (dyn Fn(SyncProgress) + Send + Sync);
 
-/// Discards every milestone. Used by callers that only want the outcome.
 fn ignore_progress(_: SyncProgress) {}
 
 /// No-op lookup used when the engine is constructed without an explicit
@@ -187,10 +186,6 @@ impl SyncEngine {
                     decision.route_label.as_deref(),
                 );
             }
-            // Reading and Paper trail are views over the inbox, so their
-            // mail keeps INBOX like allowed mail: dropping it here would
-            // sweep the sender's new mail out of the place the user just
-            // moved them to.
             ScreenerDisposition::Allow
             | ScreenerDisposition::Feed
             | ScreenerDisposition::PaperTrail => {
@@ -219,8 +214,6 @@ impl SyncEngine {
             .apply_screener_decision(synced.envelope.clone(), screened)
             .await?;
 
-        // The store keeps the id an existing row already has, so everything
-        // written after this — body, labels, search index — has to follow it.
         let stored_id = self
             .store
             .upsert_envelope_with_direction(&envelope, direction)
@@ -231,9 +224,6 @@ impl SyncEngine {
             body.set_message_id(stored_id);
         }
 
-        // Slice 9: forward-populate `reply_pairs`. If the parent isn't in the
-        // store yet (out-of-order delivery), park the reply for the
-        // reconciler to pick up later.
         if synced.envelope.in_reply_to.is_some() {
             let resolved = self
                 .store
@@ -329,13 +319,7 @@ impl SyncEngine {
     ) -> Result<SyncOutcome, MxrError> {
         let account_id = provider.account_id();
         let mut recovered_expired_cursor = false;
-        // Phase F: accumulate thread_ids touched this sync run. Populated
-        // from each upserted envelope plus any (old, canonical) pair
-        // returned by `rethread_account`. Drained into
-        // `outcome.threads_changed` just before returning.
         let mut touched_threads: HashSet<ThreadId> = HashSet::new();
-        // Outside the loop: a pass that restarts from an empty cursor has
-        // already committed the deletes of the batch before the restart.
         let mut deleted = DeletedMessages::default();
         tracing::debug!(account = %account_id, "sync_account_with_outcome: starting");
 
@@ -347,7 +331,6 @@ impl SyncEngine {
                 .map_err(|e| MxrError::Store(e.to_string()))?
                 .unwrap_or_default();
 
-            // Sync labels — skip during backfill to avoid slowing down pagination
             if !provider.is_backfill_cursor(&cursor) {
                 let labels = provider.sync_labels().await?;
                 tracing::debug!(count = labels.len(), "synced labels from provider");
@@ -359,7 +342,6 @@ impl SyncEngine {
                 }
             }
 
-            // Sync messages
             tracing::info!(cursor = ?cursor, "sync_account: dispatching with cursor");
             let mut batch = match provider.sync_messages(&cursor).await {
                 Ok(batch) => batch,
@@ -396,23 +378,11 @@ impl SyncEngine {
             });
             let mut lexical_batch = SearchUpdateBatch::default();
 
-            // Core sync guarantee: after this batch, SQLite has the
-            // envelope/body pair and Tantivy has the same message's lexical
-            // corpus. Semantic chunk prep is intentionally deferred to the
-            // daemon's post-sync platform step so mail sync/read/search
-            // correctness does not depend on semantic enablement.
-            //
-            // The writes go through the store's batched path: one
-            // transaction per chunk of messages rather than ~8 commits per
-            // message through the single writer connection.
             let label_ids_by_provider_id = if batch.upserted.is_empty() {
                 HashMap::new()
             } else {
                 self.label_ids_by_provider_id(account_id).await?
             };
-            // Consumed, not borrowed: holding the provider's page alongside
-            // the upserts would keep two copies of every body alive.
-            // The final initial page is history too, even if it is recent.
             let live_arrivals = !cursor.is_empty()
                 && !provider.is_backfill_cursor(&cursor)
                 && self
@@ -438,14 +408,10 @@ impl SyncEngine {
                     .apply_screener_decision(synced.envelope, screened)
                     .await?;
 
-                // Derive link-density inputs from the normalized body so the
-                // tri-state link indicator and `has:link*` search filters work.
                 let link_metrics = crate::links::body_link_metrics(&body);
                 envelope.link_count = link_metrics.link_count;
                 envelope.body_word_count = link_metrics.body_word_count;
 
-                // Deduplicated: `message_labels` has a composite primary key,
-                // and a provider is free to repeat a label id.
                 let mut label_ids: Vec<LabelId> = Vec::new();
                 for provider_id in &envelope.label_provider_ids {
                     if let Some(label_id) = label_ids_by_provider_id.get(provider_id) {
@@ -455,8 +421,6 @@ impl SyncEngine {
                     }
                 }
 
-                // Phase F: record the touched thread so the outcome's
-                // `threads_changed` list reflects this upsert.
                 touched_threads.insert(envelope.thread_id.clone());
                 upserts.push(SyncUpsert {
                     envelope,
@@ -467,11 +431,6 @@ impl SyncEngine {
                 });
             }
 
-            // A message the provider moved between threads leaves its old
-            // thread behind. The upsert overwrites `thread_id`, so the store
-            // is the only place that still knows which thread was vacated —
-            // it joins the touched set so the outcome reports it, tombstoned
-            // if the move emptied it.
             let vacated_threads = self
                 .store
                 .apply_sync_upserts(&mut upserts)
@@ -482,18 +441,11 @@ impl SyncEngine {
                 messages: synced_count,
             });
 
-            // Read the ids back off the page rather than off what the provider
-            // handed us: the store keeps the id an existing row already has,
-            // and the search index, reply pairs and everything the daemon does
-            // with this list must name the same id the rows are under.
             let upserted_message_ids = upserts
                 .iter()
                 .map(|upsert| upsert.envelope.id.clone())
                 .collect::<Vec<_>>();
 
-            // Reply pairs resolve against committed rows, so they run after
-            // the batch: a reply whose parent arrived in the same batch now
-            // pairs up directly instead of going through the pending queue.
             for upsert in &upserts {
                 if upsert.envelope.in_reply_to.is_none() {
                     continue;
@@ -530,7 +482,6 @@ impl SyncEngine {
                     .delete_messages_and_derived(account_id, &batch.deleted_provider_ids)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
-                // The thread lists the delete changed, tombstoned if emptied.
                 touched_threads.extend(batch_deleted.thread_ids.iter().cloned());
                 lexical_batch
                     .removed_message_ids
@@ -540,7 +491,6 @@ impl SyncEngine {
                 deleted.counterparties.extend(batch_deleted.counterparties);
             }
 
-            // Apply label changes from delta sync (previously dead code)
             for change in &batch.label_changes {
                 if let Some(message_id) = self
                     .store
@@ -603,9 +553,6 @@ impl SyncEngine {
                 }
             }
 
-            // Commit lexical search for this batch before counts/threading/cursor
-            // maintenance. Startup repair can rebuild this index from SQLite if
-            // it ever drifts.
             if !lexical_batch.entries.is_empty() || !lexical_batch.removed_message_ids.is_empty() {
                 let lexical_queue_started = std::time::Instant::now();
                 self.search.apply_batch(lexical_batch).await?;
@@ -619,7 +566,6 @@ impl SyncEngine {
                 messages: synced_count,
             });
 
-            // Recalculate label counts every batch (including during backfill)
             self.store
                 .recalculate_label_counts(account_id)
                 .await
@@ -630,14 +576,11 @@ impl SyncEngine {
                 touched_threads.extend(rethread_touched);
             }
 
-            // Update cursor
             tracing::info!(next_cursor = ?batch.next_cursor, "sync_account: saving cursor");
             self.store
                 .set_sync_cursor(account_id, &batch.next_cursor)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
-            // The last page of history is in: from here on, stored mail is
-            // news (arrivals), not backfill.
             if !batch.has_more {
                 self.store
                     .mark_initial_sync_done(account_id)
@@ -645,10 +588,6 @@ impl SyncEngine {
                     .map_err(|e| MxrError::Store(e.to_string()))?;
             }
 
-            // Recover empty junctions from a completed steady-state poll (the
-            // old INSERT OR REPLACE cascade bug). Initial/refetch pages already
-            // rebuild associations: even their last page must keep its cursor
-            // when no labels resolve, rather than start another full refetch.
             let junction_count = self
                 .store
                 .count_message_labels_by_account(account_id)
@@ -679,12 +618,6 @@ impl SyncEngine {
                 continue;
             }
 
-            // Phase F: hydrate `threads_changed` from the touched set.
-            // Live threads (i.e. those with at least one member row) come
-            // back from `get_threads_batch`; ids present in the touched
-            // set but absent from the result are merged-away thread
-            // tombstones — we synthesise an empty-`message_ids` Thread
-            // so clients can drop their cached metadata.
             let touched_vec: Vec<ThreadId> = touched_threads.iter().cloned().collect();
             let live_threads = self
                 .store
@@ -788,12 +721,6 @@ impl SyncEngine {
             })
             .collect();
 
-        // Phase F: track every (old, canonical) thread_id pair that a
-        // mail-threading merge touches so the sync outcome can emit a
-        // `threads_changed` slice. The loser's id stays in the set
-        // even after every member is reassigned — `get_threads_batch`
-        // returns nothing for it, and the caller synthesises an
-        // empty-`message_ids` tombstone Thread.
         let mut touched: HashSet<ThreadId> = HashSet::new();
 
         for thread in thread_messages(&threading_input) {
@@ -830,7 +757,6 @@ impl SyncEngine {
         Ok(touched)
     }
 
-    /// Read body from store. Bodies are always available after sync.
     pub async fn get_body(&self, message_id: &MessageId) -> Result<MessageBody, MxrError> {
         self.store
             .get_body(message_id)

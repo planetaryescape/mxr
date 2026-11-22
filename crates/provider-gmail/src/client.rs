@@ -54,7 +54,6 @@ pub struct GmailClient {
     http: reqwest::Client,
     auth: GmailAuth,
     base_url: String,
-    /// Named in the rate-limit warning. Set by `GmailProvider::new`.
     account: String,
     requests: RequestLog,
     gate: RateLimitGate,
@@ -151,7 +150,6 @@ impl GmailClient {
         self
     }
 
-    /// Override base URL (used for testing with wiremock).
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;
         self
@@ -163,16 +161,11 @@ impl GmailClient {
             .access_token()
             .await
             .map_err(|error| match error {
-                // Typed so the daemon can size its backoff from the hint. It is
-                // reported before any mail request exists, so a send is never
-                // retried because of it.
                 AuthError::RefreshRateLimited { retry_after_secs } => GmailError::RateLimited {
                     retry_after_secs,
                     detail: None,
                 },
                 AuthError::RefreshUnavailable(_) => GmailError::AuthTemporary,
-                // Not an authorization failure: keep it out of the "Auth error"
-                // label so sync health does not prescribe signing in again.
                 error @ AuthError::TokenCacheWrite(_) => GmailError::Other(error.into()),
                 other => GmailError::Auth(other.to_string()),
             })?;
@@ -312,8 +305,6 @@ impl GmailClient {
     ) -> Result<Vec<GmailMessage>, GmailError> {
         let mut messages = Vec::with_capacity(message_ids.len());
 
-        // Fetch in small chunks to avoid rate limits.
-        // 10 concurrent requests per chunk is conservative.
         for chunk in message_ids.chunks(10) {
             let futs: Vec<_> = chunk
                 .iter()
@@ -359,7 +350,6 @@ impl GmailClient {
         Ok(resp.json().await?)
     }
 
-    /// Modify labels on a single message.
     pub async fn modify_message(
         &self,
         message_id: &str,
@@ -384,7 +374,6 @@ impl GmailClient {
         Ok(())
     }
 
-    /// Batch modify labels on multiple messages.
     pub async fn batch_modify_messages(
         &self,
         message_ids: &[String],
@@ -410,7 +399,6 @@ impl GmailClient {
         Ok(())
     }
 
-    /// Trash a message.
     pub async fn trash_message(&self, message_id: &str) -> Result<(), GmailError> {
         let url = format!("{}/messages/{message_id}/trash", self.base_url);
 
@@ -505,7 +493,6 @@ impl GmailClient {
         Ok(draft_id)
     }
 
-    /// Replace a Gmail draft's message while preserving the stable draft ID.
     pub async fn update_draft(
         &self,
         draft_id: &str,
@@ -827,7 +814,6 @@ impl GmailApi for GmailClient {
     }
 }
 
-/// URL encoding helper — minimal, just for query params.
 mod urlencoding {
     pub fn encode(input: &str) -> String {
         let mut encoded = String::with_capacity(input.len());
@@ -855,13 +841,6 @@ mod tests {
     use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    // For tests, we need a GmailClient that doesn't need real OAuth.
-    // We'll intercept at the HTTP level via wiremock.
-    // The auth will fail, but wiremock won't check the Authorization header
-    // unless we tell it to. However, the auth.access_token() call in the client
-    // will fail because there's no authenticator set up.
-    //
-    // Solution: Create a special test client that bypasses auth.
     struct TestGmailClient {
         http: reqwest::Client,
         base_url: String,
@@ -950,7 +929,6 @@ mod tests {
             return;
         };
 
-        // 401 Unauthorized
         Mock::given(method("GET"))
             .and(path("/messages"))
             .respond_with(ResponseTemplate::new(401).set_body_string("Unauthorized"))
@@ -965,7 +943,6 @@ mod tests {
 
         server.reset().await;
 
-        // 404 Not Found
         Mock::given(method("GET"))
             .and(path("/messages"))
             .respond_with(ResponseTemplate::new(404).set_body_string("message not found"))
@@ -978,7 +955,6 @@ mod tests {
 
         server.reset().await;
 
-        // 429 Rate Limited
         Mock::given(method("GET"))
             .and(path("/messages"))
             .respond_with(
@@ -1169,8 +1145,6 @@ mod tests {
         client.trash_message("msg-123").await.unwrap();
     }
 
-    /// Storage holding an expired token; `fail_writes` makes saving a refreshed
-    /// one fail.
     #[derive(Clone)]
     struct ExpiredTokens {
         fail_writes: bool,
@@ -1248,8 +1222,6 @@ mod tests {
                 }
             ));
         }
-        // The throttle is reported, never retried: three calls, three token
-        // requests, and no mail request (a send included) ever left the client.
         assert_eq!(token_server.received_requests().await.unwrap().len(), 3);
         assert!(mail_server.received_requests().await.unwrap().is_empty());
     }
@@ -1374,15 +1346,12 @@ mod tests {
         let history = resp.history.unwrap();
         assert_eq!(history.len(), 3);
 
-        // Verify added
         let added = history[0].messages_added.as_ref().unwrap();
         assert_eq!(added[0].message.id, "new-msg-1");
 
-        // Verify deleted
         let deleted = history[1].messages_deleted.as_ref().unwrap();
         assert_eq!(deleted[0].message.id, "old-msg-1");
 
-        // Verify label changes
         let labels_added = history[2].labels_added.as_ref().unwrap();
         assert_eq!(labels_added[0].label_ids.as_ref().unwrap()[0], "STARRED");
         let labels_removed = history[2].labels_removed.as_ref().unwrap();
@@ -1443,7 +1412,6 @@ mod tests {
             return;
         };
 
-        // Page 1 (no pageToken param)
         Mock::given(method("GET"))
             .and(path("/messages"))
             .and(query_param("maxResults", "2"))
@@ -1460,7 +1428,6 @@ mod tests {
             .mount(&server)
             .await;
 
-        // Page 2
         Mock::given(method("GET"))
             .and(path("/messages"))
             .and(query_param("pageToken", "page2token"))
@@ -1476,7 +1443,6 @@ mod tests {
             .mount(&server)
             .await;
 
-        // Page 3 (last)
         Mock::given(method("GET"))
             .and(path("/messages"))
             .and(query_param("pageToken", "page3token"))
@@ -1493,7 +1459,6 @@ mod tests {
 
         let client = TestGmailClient::new(server.uri());
 
-        // Paginate through all pages
         let mut all_ids = Vec::new();
         let mut page_token: Option<String> = None;
 
@@ -1611,8 +1576,6 @@ mod tests {
             return;
         };
         labels_refusal(&server, "900").await;
-        // Mounted only so a request that slips through is a 404 NotFound, not
-        // a silent pass. None of these may be reached.
         Mock::given(method("GET"))
             .and(path("/messages"))
             .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
@@ -1693,7 +1656,6 @@ mod tests {
             return;
         };
         let client = gated_client(&server);
-        // A wait that ended a second ago, as if Gmail had asked for it long ago.
         let long_ago = Instant::now() - Duration::from_secs(60);
         client.gate.refused(long_ago, 1, Some("old".into()));
 

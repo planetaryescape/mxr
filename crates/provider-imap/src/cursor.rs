@@ -39,7 +39,6 @@ pub(crate) enum ImapCursor {
     V2(ImapCursorV2),
 }
 
-/// Per-folder newest-first backfill state, in the order folders are fetched.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ImapCursorV2 {
     #[serde(default)]
@@ -220,8 +219,6 @@ impl ImapCursor {
     }
 }
 
-// --- legacy shim ------------------------------------------------------------
-
 enum LegacyOutcome {
     Initial,
     Cursor(LegacyImap),
@@ -244,11 +241,6 @@ struct LegacyImap {
 
 impl LegacyImap {
     fn into_v1(mut self) -> ImapCursor {
-        // The old shape kept scalar uid_validity/uid_next alongside
-        // (possibly empty) mailboxes for backward compat. If the
-        // mailboxes vec is empty, reconstruct a singleton INBOX entry
-        // from the scalar fields — same shim that previously lived in
-        // sync_messages dispatch.
         if self.mailboxes.is_empty() {
             self.mailboxes.push(ImapMailboxCursor {
                 mailbox: "INBOX".to_string(),
@@ -305,7 +297,6 @@ mod tests {
 
     #[test]
     fn legacy_imap_tagged_without_mailboxes_synthesises_inbox() {
-        // The very old shape had only scalar fields and no mailboxes vec.
         let legacy =
             SyncCursor::from_bytes(br#"{"Imap":{"uid_validity":7,"uid_next":999}}"#.to_vec());
         let decoded = ImapCursor::decode(&legacy).unwrap().unwrap();
@@ -336,7 +327,6 @@ mod tests {
         assert!(matches!(err, MxrError::SyncCursorExpired { .. }));
     }
 
-    /// The enum as the previous release shipped it: only `"1"`.
     #[derive(Deserialize)]
     #[serde(tag = "v")]
     enum PreviousReleaseCursor {
@@ -368,8 +358,6 @@ mod tests {
     fn in_progress_backfill_is_undecodable_by_the_previous_release() {
         let encoded = in_progress_backfill().encode();
         assert_eq!(previous_release_decode(encoded.as_bytes()), None);
-        // The previous release then tries its legacy shim, which also rejects
-        // it, so it reports SyncCursorExpired and runs a full resync.
         assert!(decode_legacy(encoded.as_bytes()).is_none());
     }
 

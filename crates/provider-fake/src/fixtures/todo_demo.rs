@@ -97,7 +97,6 @@ pub(super) fn todo_demo_messages(
         built.push((envelope, body));
     };
 
-    // Three statements over 80 days: a biller you have a history with.
     for days in [120, 80, 40] {
         let mut statement = message(
             camden.clone(),

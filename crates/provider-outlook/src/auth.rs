@@ -6,12 +6,9 @@ use std::path::PathBuf;
 /// Build with `OUTLOOK_CLIENT_ID` env var set, or users provide their own in config.
 pub const BUNDLED_CLIENT_ID: Option<&str> = option_env!("OUTLOOK_CLIENT_ID");
 
-/// Whether this Outlook account is a personal Microsoft account or a work/org account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutlookTenant {
-    /// Personal @outlook.com / @hotmail.com / @live.com — uses /consumers endpoint.
     Personal,
-    /// Work / Microsoft 365 / Exchange Online — uses /organizations endpoint.
     Work,
 }
 
@@ -31,7 +28,6 @@ impl OutlookTenant {
     }
 }
 
-/// Scopes needed for IMAP sync and SMTP send.
 const SCOPES: &str =
     "https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access";
 
@@ -77,7 +73,6 @@ fn oauth_http_client() -> reqwest::Client {
 pub struct OutlookTokens {
     pub access_token: String,
     pub refresh_token: String,
-    /// Unix timestamp (seconds) when the access token expires.
     pub expires_at: i64,
 }
 
@@ -210,10 +205,6 @@ impl OutlookAuth {
                 ])
                 .send()
                 .await;
-            // Transient transport failures (incl. the request timeout added
-            // for hang-safety) must not abandon a device code the user is
-            // mid-way through approving — keep polling; the server tells us
-            // definitively when the code is dead (`expired_token`).
             let resp = match sent {
                 Ok(response) => match response.json::<TokenResponse>().await {
                     Ok(resp) => {
@@ -254,7 +245,6 @@ impl OutlookAuth {
                     });
                 }
                 Some("authorization_pending") => {
-                    // Normal — user hasn't completed auth yet, keep polling
                     continue;
                 }
                 Some("slow_down") => {
@@ -276,7 +266,6 @@ impl OutlookAuth {
         }
     }
 
-    /// Refresh an expired access token using the stored refresh token.
     pub async fn refresh_access_token(
         &self,
         tokens: &OutlookTokens,
@@ -303,7 +292,6 @@ impl OutlookAuth {
         let access_token = resp
             .access_token
             .ok_or_else(|| OutlookError::OAuth2("no access_token in refresh response".into()))?;
-        // Use new refresh_token if provided, otherwise keep the existing one
         let refresh_token = resp
             .refresh_token
             .unwrap_or_else(|| tokens.refresh_token.clone());
@@ -361,7 +349,6 @@ mod tests {
         let directory = tempfile::tempdir()?;
         let auth = OutlookAuth::new("client".into(), "work".into(), OutlookTenant::Work)
             .with_token_root(directory.path().to_path_buf());
-        // A directory at the destination lets the temporary file be written and then fails the rename.
         std::fs::create_dir(directory.path().join("work.json"))?;
 
         assert!(auth.save_tokens(&sample_tokens()).is_err());

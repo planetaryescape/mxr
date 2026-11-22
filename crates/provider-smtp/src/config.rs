@@ -96,7 +96,6 @@ impl SmtpConfig {
         Ok(())
     }
 
-    /// Retrieve the SMTP password through the daemon-provided credential resolver.
     pub fn resolve_password(&self) -> Result<String, SmtpError> {
         self.password_cache
             .get_or_try_init(|| (self.password_reader)(&self.password_ref, &self.username))

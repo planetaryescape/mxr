@@ -206,7 +206,6 @@ pub fn stats() -> Stats {
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    // A panic elsewhere must not turn every later parse into a fallback.
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -262,8 +261,6 @@ impl Supervisor {
         if html.len() > max_html_bytes {
             return self.fallback(kind, FallbackReason::Oversize);
         }
-        // Hashing a large document costs a millisecond or two, so the set is
-        // only consulted once it has anything in it.
         if self.is_known_bad(kind, params, html) {
             return self.fallback(kind, FallbackReason::KnownBad);
         }
@@ -288,8 +285,6 @@ impl Supervisor {
                 Exchange::Timeout => {
                     self.retire(helper);
                     self.counters.timeouts.fetch_add(1, Ordering::Relaxed);
-                    // Slowness is a property of the input, so a retry would
-                    // spend the whole timeout again.
                     lock(&self.poison).insert(fingerprint(kind, params, html));
                     tracing::warn!(
                         kind,
@@ -303,10 +298,6 @@ impl Supervisor {
                     self.retire(helper);
                     self.counters.deaths.fetch_add(1, Ordering::Relaxed);
                     deaths += 1;
-                    // One retry on a fresh helper tells a bad input from a
-                    // helper the OS killed for some other reason. Dying twice
-                    // is the input, and it is remembered so it is not tried
-                    // again.
                     if deaths >= 2 {
                         lock(&self.poison).insert(fingerprint(kind, params, html));
                         tracing::warn!(
@@ -342,7 +333,6 @@ impl Supervisor {
                 if helper.is_alive() {
                     return Ok(helper);
                 }
-                // It died while idle. The slot is free to start another.
                 pool.live -= 1;
                 pool.awaiting_replacement += 1;
                 self.counters.deaths.fetch_add(1, Ordering::Relaxed);
@@ -366,8 +356,6 @@ impl Supervisor {
                         tracing::warn!(%error, "html helper could not be started; parsing falls back for a while");
                         *lock(&self.spawn_retry_at) = Some(Instant::now() + SPAWN_BACKOFF);
                         lock(&self.pool).live -= 1;
-                        // Every waiter, not one: each of them would find the
-                        // same backoff and give up, but only if it wakes.
                         self.available.notify_all();
                         Err(())
                     }
@@ -440,8 +428,6 @@ impl Helper {
         let mut command = Command::new(&config.program);
         command
             .args(&config.args)
-            // The helper needs nothing from the environment but its limits, and
-            // a parser has no business reading anything else.
             .env_clear()
             .env(
                 ENV_MEMORY_HEADROOM,
@@ -453,8 +439,6 @@ impl Helper {
             .stderr(Stdio::null());
         // Its own process group, so a Ctrl-C, Ctrl-Z or hangup aimed at the
         // terminal's foreground group reaches the parent and not the helper.
-        // The helper ends when its stdin closes, which is what a dying parent
-        // does.
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut command, 0);
         let mut child = command.spawn()?;
@@ -465,9 +449,6 @@ impl Helper {
         };
         let (request_tx, request_rx) = mpsc::channel::<Vec<u8>>();
         let (reply_tx, reply_rx) = mpsc::channel::<Reply>();
-        // One thread per helper does the pipe I/O so the caller can wait with a
-        // timeout. It ends when the helper's pipes close (the helper was killed
-        // or exited) or when the requests channel is dropped.
         let spawned = std::thread::Builder::new()
             .name("html-helper-io".to_string())
             .spawn(move || {
@@ -568,8 +549,6 @@ impl Helper {
 
 impl Drop for Helper {
     fn drop(&mut self) {
-        // Killing unblocks the I/O thread (its pipes close) and reaps the
-        // child so no zombie outlives the request that failed.
         let _ = self.child.kill();
         let _ = self.child.wait();
     }

@@ -29,7 +29,6 @@ pub fn todo_demo_promise_provider_id() -> String {
 }
 
 fn reading_demo_provider_id(position: usize) -> String {
-    // Reading's mail comes after every other seeded mode's.
     let first = DELIVERY_DEMO_MESSAGE_COUNT
         + todo_demo::TODO_DEMO_MESSAGE_COUNT
         + modes_demo::MODES_DEMO_MESSAGE_COUNT
@@ -129,7 +128,6 @@ pub fn generate_fixtures(
     let mut bodies = HashMap::new();
     let now = Utc::now();
 
-    // -- Labels ---------------------------------------------------------------
     let labels = vec![
         make_label(account_id, "Inbox", LabelKind::System, "INBOX"),
         make_label(account_id, "Sent", LabelKind::System, "SENT"),
@@ -143,7 +141,6 @@ pub fn generate_fixtures(
 
     let mut msg_num = 1;
 
-    // Thread 1: Deployment plan (4 messages)
     let t1 = ThreadId::new();
     let people = [
         ("Alice Chen", "alice@work.com"),
@@ -196,7 +193,6 @@ pub fn generate_fixtures(
         );
     }
 
-    // Thread 2: Q1 Report (3 messages)
     let t2 = ThreadId::new();
     for i in 0..3 {
         let (from_name, from_email) = match i {
@@ -214,22 +210,20 @@ pub fn generate_fixtures(
                 from_name,
                 from_email,
                 subject: if i == 0 {
-                "Q1 Report review"
-            } else {
-                "Re: Q1 Report review"
-            },
+                    "Q1 Report review"
+                } else {
+                    "Re: Q1 Report review"
+                },
                 snippet: &format!("Q1 report snippet part {}", i + 1),
                 body_text: &format!("Q1 report body text section {}. Revenue up 12% QoQ.", i + 1),
                 date: now - Duration::days(5) + Duration::hours(i as i64 * 3),
                 flags: MessageFlags::READ,
                 has_attachments: i == 0,
-                unsubscribe: // first msg has attachment
-            UnsubscribeMethod::None,
+                unsubscribe: UnsubscribeMethod::None,
             },
         );
     }
 
-    // Thread 3: Rust newsletter (1 message)
     let t3 = ThreadId::new();
     push_msg(
         &mut envelopes,
@@ -252,7 +246,6 @@ pub fn generate_fixtures(
         },
     );
 
-    // Thread 4: Invoice (2 messages)
     let t4 = ThreadId::new();
     for i in 0..2 {
         push_msg(
@@ -299,7 +292,6 @@ pub fn generate_fixtures(
         );
     }
 
-    // Thread 5: Team standup (3 messages)
     let t5 = ThreadId::new();
     for i in 0..3 {
         let names = [
@@ -331,7 +323,6 @@ pub fn generate_fixtures(
         );
     }
 
-    // Thread 6: Summer trip (2 messages, personal)
     let t6 = ThreadId::new();
     for i in 0..2 {
         push_msg(
@@ -374,7 +365,6 @@ pub fn generate_fixtures(
         );
     }
 
-    // Thread 7: PR review (5 messages, work, starred)
     let t7 = ThreadId::new();
     let pr_people = [
         ("Mia Engineer", "mia@work.com"),
@@ -420,7 +410,6 @@ pub fn generate_fixtures(
         );
     }
 
-    // Thread 8: HN Weekly Digest (1 message)
     let t8 = ThreadId::new();
     push_msg(
         &mut envelopes,
@@ -443,7 +432,6 @@ pub fn generate_fixtures(
         },
     );
 
-    // Thread 9: RustConf invite (2 messages, personal)
     let t9 = ThreadId::new();
     for i in 0..2 {
         push_msg(
@@ -486,7 +474,6 @@ pub fn generate_fixtures(
         );
     }
 
-    // Thread 10: CI pipeline (3 messages, work)
     let t10 = ThreadId::new();
     for i in 0..3 {
         push_msg(
@@ -520,7 +507,6 @@ pub fn generate_fixtures(
         );
     }
 
-    // Thread 11: Changelog newsletter (1 message)
     let t11 = ThreadId::new();
     push_msg(
         &mut envelopes,
@@ -544,9 +530,6 @@ pub fn generate_fixtures(
         },
     );
 
-    // Thread 12: Fill remaining to reach 55 total
-    // Currently: 4+3+1+2+3+2+5+1+2+3+1 = 27 messages
-    // Need: 55 - 27 = 28 more
     let filler_subjects = [
         "Weekly sync agenda",
         "Database migration plan",
@@ -737,10 +720,6 @@ impl DemoFixtureStream {
                 .collect()
         });
 
-        // Seed the personal account with shipping mail so the Deliveries
-        // surface is populated. These occupy the first indices; the
-        // generated threads top up to `target_count`, so the total
-        // message count is unchanged.
         let delivery_count = if profile.email == "alex@demo.mxr.local" && profile.target_count >= 16
         {
             curated_head_len()
@@ -794,9 +773,6 @@ impl DemoFixtureStream {
         let mut produced = self.delivery_count;
         let mut thread_num = 0usize;
         while produced < self.profile.target_count && produced < end {
-            // `thread_len` drives dates and the "last message in thread"
-            // rules, so the message builder always sees the thread's full
-            // length even when the target count truncates the tail.
             let thread_len = scenarios::bulk_thread_len(thread_num);
             let emitted = thread_len.min(self.profile.target_count - produced);
             for reply_idx in 0..emitted {
@@ -847,8 +823,6 @@ impl DemoFixtureStream {
     ) -> (Envelope, MessageBody) {
         let rendered =
             scenarios::render_bulk(&self.self_addr, self.now, thread_num, reply_idx, thread_len);
-        // Messages of a thread occupy consecutive indices, so the parent
-        // and root headers follow from this message's own index.
         let (in_reply_to, references) = if reply_idx == 0 || !rendered.reply_headers {
             (None, Vec::new())
         } else {
@@ -1048,9 +1022,6 @@ fn generate_curated_demo_fixtures(
 
     let mut msg_num = 1usize;
     let mut thread_num = 0usize;
-    // Personal account gets shipping mail so the curated showcase includes the
-    // Deliveries surface. Injected before the filler loop tops up to
-    // `target_count`, keeping the curated count stable.
     if profile.email == "alex@demo.mxr.local" && profile.target_count >= 16 {
         push_delivery_demo_threads(
             &mut envelopes,
@@ -1390,9 +1361,8 @@ fn delivery_demo_messages(
 ) -> Vec<(Envelope, MessageBody)> {
     let mut messages = Vec::with_capacity(DELIVERY_DEMO_MESSAGE_COUNT);
 
-    // --- Amazon: full lifecycle in one thread → resolves to delivered. ---
     let order = "112-7480913-6624530";
-    let tracking = "TBA619632698000"; // Amazon Logistics (valid format)
+    let tracking = "TBA619632698000";
     let amazon = Address {
         name: Some("Amazon.com".to_string()),
         email: "shipment-tracking@amazon.com".to_string(),
@@ -1457,7 +1427,6 @@ fn delivery_demo_messages(
         ));
     }
 
-    // --- UPS: a single in-transit shipment from a boutique merchant. ---
     messages.push(build_demo_msg(
         4,
         account_id,
@@ -1485,7 +1454,6 @@ fn delivery_demo_messages(
         },
     ));
 
-    // --- USPS: a single out-for-delivery shipment. ---
     messages.push(build_demo_msg(
         5,
         account_id,
@@ -1578,8 +1546,6 @@ fn build_demo_msg(
     } = message;
     let current_num = msg_num;
     let provider_id = format!("demo-msg-{current_num}");
-    // Derived, not random: the same index must regenerate the same message
-    // so a later page or a `fetch_message` sees identical ids.
     let msg_id = MessageId::from_scoped_provider_id(account_id, "fake", &provider_id);
     let message_id_header = demo_message_id_header(current_num);
 
@@ -1591,8 +1557,6 @@ fn build_demo_msg(
         flags,
         has_attachments,
     );
-    // Only reference an inline image the message actually carries: a
-    // `cid:` with no matching part renders as a broken image in every client.
     let has_inline_part = attachments
         .iter()
         .any(|attachment| attachment.content_id.is_some());
@@ -1626,8 +1590,6 @@ fn build_demo_msg(
         link_count: 0,
         body_word_count: 0,
         label_provider_ids,
-        // Seed one fixture with a sample keyword so the keyword
-        // round-trip is exercised by the conformance test path.
         keywords: std::collections::BTreeSet::from(["$Forwarded".to_string()]),
     };
 
@@ -1664,11 +1626,6 @@ fn demo_attachments(
         let attachment_index = attachments.len() + 1;
         let provider_id = format!("demo-att-{current_num}-{attachment_index}");
         attachments.push(AttachmentMeta {
-            // Derived so regenerating a message yields the same attachment
-            // ids, and scoped to the account because both demo accounts
-            // number their messages from 1: an unscoped id would collide
-            // across accounts, and `attachments.id` is the primary key, so
-            // the second account to sync would steal the first's row.
             id: AttachmentId::from_scoped_provider_id(account_id, "fake", &provider_id),
             message_id: message_id.clone(),
             filename,

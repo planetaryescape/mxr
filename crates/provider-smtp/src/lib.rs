@@ -61,7 +61,6 @@ impl SmtpSendProvider {
         Ok(())
     }
 
-    /// Resolve SMTP credentials, or `None` when the server needs no auth.
     fn resolve_credentials(&self) -> Result<Option<Credentials>, SmtpError> {
         if self.config.auth_required {
             let password = self.config.resolve_password()?;
@@ -77,8 +76,6 @@ impl SmtpSendProvider {
     async fn build_transport(&self) -> Result<AsyncSmtpTransport<Tokio1Executor>, SmtpError> {
         // Defense-in-depth: lettre does not gate AUTH on encryption, so a
         // plaintext transport would happily send AUTH PLAIN/LOGIN in the clear.
-        // Refuse before we ever attach credentials. `validate()` also enforces
-        // this at config-load time.
         if self.config.auth_required && !self.config.use_tls {
             return Err(SmtpError::Transport(
                 "refusing to send SMTP credentials over an unencrypted connection (auth_required with use_tls=false)".into(),
@@ -240,7 +237,6 @@ fn is_retryable(is_transient: bool, is_timeout: bool) -> bool {
 fn map_send_error(retryable: bool, error: impl std::fmt::Display) -> MxrError {
     if retryable {
         // SMTP carries no Retry-After hint; 60s is a sane default backoff so the
-        // daemon can reschedule the send instead of hard-failing it.
         MxrError::RateLimited {
             retry_after_secs: 60,
             detail: None,

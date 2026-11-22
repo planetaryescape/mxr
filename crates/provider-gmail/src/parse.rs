@@ -83,8 +83,6 @@ pub fn gmail_message_to_envelope(
         cc: parsed_headers.cc,
         bcc: parsed_headers.bcc,
         subject: parsed_headers.subject,
-        // Gmail's internalDate is the canonical received timestamp and matches
-        // Gmail mailbox ordering better than arbitrary sender-controlled Date headers.
         date: internal_date.unwrap_or(parsed_headers.date),
         flags,
         snippet: msg.snippet.clone().unwrap_or_default(),
@@ -94,8 +92,6 @@ pub fn gmail_message_to_envelope(
         link_count: 0,
         body_word_count: 0,
         label_provider_ids: msg.label_ids.clone().unwrap_or_default(),
-        // Gmail has no native keyword surface; the adapter advertises
-        // mutate.custom_keywords=false and synthesises an empty set.
         keywords: std::collections::BTreeSet::new(),
     })
 }
@@ -112,12 +108,6 @@ fn parse_internal_date(
         .map_err(|_| ParseError::InvalidDate(internal_date.to_string()))?;
     match Utc.timestamp_millis_opt(millis).single() {
         Some(date) => Ok(Some(date)),
-        // An out-of-range / ambiguous millis value is almost never real for
-        // Gmail, but silently stamping the message with `Utc::now()` would
-        // corrupt sort order and threading with no trail. Return `None` so
-        // the caller falls back to the parsed `Date:` header (a real
-        // timestamp — see the `internal_date.unwrap_or(parsed_headers.date)`
-        // call site), and log it.
         None => {
             tracing::warn!(
                 internal_date,
@@ -247,7 +237,6 @@ fn check_has_attachments(payload: Option<&GmailPayload>) -> bool {
         return true;
     }
 
-    // Recurse into child parts
     if let Some(ref parts) = payload.parts {
         for part in parts {
             if check_has_attachments(Some(part)) {
@@ -268,7 +257,6 @@ struct ExtractedBodyData {
     calendar: Option<mxr_core::types::CalendarMetadata>,
 }
 
-/// Extract text_plain and text_html from a GmailMessage payload.
 pub fn extract_body(msg: &GmailMessage) -> (Option<String>, Option<String>, Vec<AttachmentMeta>) {
     let account_id = AccountId::from_provider_id("gmail", "legacy");
     let body_data = extract_body_data(msg, &account_id);
@@ -311,7 +299,6 @@ fn walk_parts(
         find_header_value(payload.headers.as_deref(), "Content-Location").map(str::to_string);
     // Gmail returns the part's original bytes untranscoded, so decode using the
     // charset declared in this part's Content-Type header (defaulting to UTF-8)
-    // rather than assuming UTF-8 and dropping non-UTF-8 bodies.
     let charset = charset_from_content_type(find_header_value(
         payload.headers.as_deref(),
         "Content-Type",
@@ -344,7 +331,6 @@ fn walk_parts(
         });
     }
 
-    // Leaf text node
     match mime {
         "text/plain"
             if body_data.text_plain.is_none()
@@ -371,7 +357,6 @@ fn walk_parts(
         _ => {}
     }
 
-    // Recurse into child parts
     if let Some(ref parts) = payload.parts {
         for (index, part) in parts.iter().enumerate() {
             walk_parts(
@@ -482,7 +467,6 @@ fn find_header_value<'a>(headers: Option<&'a [GmailHeader]>, name: &str) -> Opti
         .map(|header| header.value.as_str())
 }
 
-/// Parse iCalendar metadata from raw `.ics` attachment bytes.
 pub(crate) fn calendar_metadata_from_attachment_bytes(bytes: &[u8]) -> Option<CalendarMetadata> {
     let text = std::str::from_utf8(bytes).ok()?;
     calendar_metadata_from_text(text)
@@ -589,9 +573,7 @@ mod tests {
                 .single()
                 .unwrap()
         );
-        // UNREAD present → not read
         assert!(!env.flags.contains(MessageFlags::READ));
-        // Deterministic IDs
         assert_eq!(
             env.id,
             MessageId::from_scoped_provider_id(&account_id, "gmail", "msg-001")
@@ -652,15 +634,12 @@ mod tests {
 
     #[test]
     fn labels_to_flags_all_combinations() {
-        // No UNREAD → READ
         let flags = labels_to_flags(&["INBOX".to_string()]);
         assert!(flags.contains(MessageFlags::READ));
 
-        // UNREAD present → not READ
         let flags = labels_to_flags(&["UNREAD".to_string()]);
         assert!(!flags.contains(MessageFlags::READ));
 
-        // All special labels
         let flags = labels_to_flags(&[
             "STARRED".to_string(),
             "DRAFT".to_string(),
@@ -668,7 +647,7 @@ mod tests {
             "TRASH".to_string(),
             "SPAM".to_string(),
         ]);
-        assert!(flags.contains(MessageFlags::READ)); // no UNREAD
+        assert!(flags.contains(MessageFlags::READ));
         assert!(flags.contains(MessageFlags::STARRED));
         assert!(flags.contains(MessageFlags::DRAFT));
         assert!(flags.contains(MessageFlags::SENT));
@@ -685,7 +664,6 @@ mod tests {
 
     #[test]
     fn parse_list_unsubscribe_multi_uri_prefers_one_click() {
-        // Multiple URIs: mailto + https with one-click header
         let headers = make_headers(&[
             (
                 "List-Unsubscribe",
@@ -694,7 +672,6 @@ mod tests {
             ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
         ]);
         let result = parse_list_unsubscribe(&headers);
-        // With one-click header, prefers the HTTPS URL for OneClick
         assert!(matches!(
             result,
             UnsubscribeMethod::OneClick { ref url } if url == "https://unsub.example.com/oneclick"
@@ -719,7 +696,6 @@ mod tests {
 
     #[test]
     fn parse_deeply_nested_mime() {
-        // multipart/mixed containing multipart/alternative
         let msg = GmailMessage {
             raw: None,
             id: "msg-nested".to_string(),
@@ -745,7 +721,7 @@ mod tests {
                                 body: Some(GmailBody {
                                     attachment_id: None,
                                     size: Some(5),
-                                    data: Some("SGVsbG8".to_string()), // "Hello"
+                                    data: Some("SGVsbG8".to_string()),
                                 }),
                                 parts: None,
                                 filename: None,
@@ -890,9 +866,6 @@ mod tests {
 
     #[test]
     fn gmail_envelope_falls_back_to_header_date_when_internal_date_out_of_range() {
-        // An out-of-range internalDate must NOT silently stamp the message
-        // with `Utc::now()` (which would corrupt sort order / threading) —
-        // it falls back to the real `Date:` header instead.
         let mut msg = make_test_message();
         msg.internal_date = Some(i64::MAX.to_string());
         msg.payload.as_mut().unwrap().headers = Some(make_headers(&[
@@ -932,7 +905,6 @@ mod tests {
                         body: Some(GmailBody {
                             attachment_id: None,
                             size: Some(5),
-                            // "Hello" in URL-safe base64 no padding
                             data: Some("SGVsbG8".to_string()),
                         }),
                         parts: None,
@@ -944,7 +916,6 @@ mod tests {
                         body: Some(GmailBody {
                             attachment_id: None,
                             size: Some(12),
-                            // "<b>Hello</b>" in URL-safe base64 no padding
                             data: Some("PGI-SGVsbG88L2I-".to_string()),
                         }),
                         parts: None,
@@ -1145,11 +1116,7 @@ mod tests {
 
     #[test]
     fn extract_body_decodes_windows_1252_instead_of_dropping() {
-        // Regression: Gmail hands back the part's ORIGINAL bytes untranscoded.
-        // A `charset=windows-1252` body with an accented byte (0xE9 = `é`) and
-        // a smart-quote byte (0x92 = `’`) is not valid UTF-8. The old strict
-        // `from_utf8` turned the whole body into `None`, silently losing it.
-        let raw: &[u8] = b"Caf\xe9 co\x92ee"; // windows-1252: "Café co’ee"
+        let raw: &[u8] = b"Caf\xe9 co\x92ee";
         let msg = GmailMessage {
             raw: None,
             id: "msg-win1252".to_string(),
@@ -1189,9 +1156,7 @@ mod tests {
 
     #[test]
     fn extract_body_decodes_quoted_charset_label() {
-        // The charset parameter may be quoted; quotes must be stripped so the
-        // label resolves. iso-8859-1 0xE9 also decodes to `é`.
-        let raw: &[u8] = b"r\xe9sum\xe9"; // iso-8859-1: "résumé"
+        let raw: &[u8] = b"r\xe9sum\xe9";
         let msg = GmailMessage {
             raw: None,
             id: "msg-latin1".to_string(),
@@ -1225,9 +1190,6 @@ mod tests {
 
     #[test]
     fn extract_body_decodes_declared_utf8_multibyte_unchanged() {
-        // UTF-8 / ASCII path must stay byte-identical: a declared UTF-8 body
-        // with multibyte characters decodes to exactly the same text (no
-        // double-decode, no mangling).
         let text = "Café déjà vu — 日本語";
         let msg = GmailMessage {
             raw: None,
@@ -1261,8 +1223,6 @@ mod tests {
     }
     #[test]
     fn sole_supplied_verdict_and_migrated_dates_are_not_receiver_proof() {
-        // An insert/import can carry this ordinary header and a chosen date;
-        // the response has no attestation that Gmail authored either value.
         for headers in [
             vec![],
             vec![GmailHeader {

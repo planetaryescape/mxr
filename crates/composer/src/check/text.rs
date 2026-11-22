@@ -95,7 +95,6 @@ pub(super) fn clauses(text: &str) -> Vec<Clause> {
         for token in spaced.split_whitespace() {
             let word = token.trim_matches(not_alphanumeric);
             let tail = &token[token.trim_end_matches(not_alphanumeric).len()..];
-            // ", however," is an aside: the clause around it carries on.
             if CLAUSE_WORDS.contains(&word)
                 && words.is_empty()
                 && opened_by == Boundary::Soft
@@ -308,7 +307,6 @@ fn known_keys(known: &str) -> HashSet<String> {
 /// unit, so it stays apart from "12pm".
 fn number_key(token: &str) -> String {
     let key = token.replace(',', "").to_lowercase();
-    // "1200.00" is the amount 1200, as "£1,200.00" is "£1,200".
     if let Some((whole, fraction)) = key.split_once('.') {
         if !fraction.is_empty() && fraction.chars().all(|c| c == '0') {
             return whole.to_string();
@@ -363,7 +361,6 @@ mod tests {
             invented_numbers("see you at 3 pm", known),
             Vec::<String>::new()
         );
-        // Still apart: a different time, or a different amount with a cent part.
         assert_eq!(invented_numbers("at 2 pm", known), vec!["2pm"]);
         assert_eq!(invented_numbers("£1,200.50", known), vec!["1,200.50"]);
     }
@@ -382,7 +379,6 @@ mod tests {
 
     #[test]
     fn the_replay_rule_is_unchanged_and_still_matches_digits_inside_a_number() {
-        // `--set mine` keeps the rule it has always reported under.
         assert_eq!(
             replay_invented_numbers("£200", "£1,200"),
             Vec::<String>::new()

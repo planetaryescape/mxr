@@ -323,9 +323,6 @@ impl std::error::Error for HtmlValidationError {}
 /// throw-away copy covers the difference; see
 /// `orphan_table_element_issues`.
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
-    // The parses run in the HTML helper process. A document the helper timed
-    // out or died on is refused like one over the budget; one it never saw,
-    // because no helper would start, is refused with a retry.
     VALIDATE
         .try_call(html, &())
         .unwrap_or_else(|reason| Err(unchecked(unchecked_kind(reason))))
@@ -363,10 +360,6 @@ static VALIDATE: Job<(), Result<(), HtmlValidationError>> =
     });
 
 fn validate_html_in_process(html: &str) -> Result<(), HtmlValidationError> {
-    // Over the parser budget the document is refused, not checked by a weaker
-    // pass: a linear scan cannot see through attribute counts or entities, so
-    // every check is missed for such a document. The nested parses below run on
-    // parts of this same document, so they are within budget too.
     if !crate::html_limits::within_budget(html) {
         return Err(too_complex_to_check());
     }
@@ -403,13 +396,8 @@ fn validate_html_in_process(html: &str) -> Result<(), HtmlValidationError> {
             }
             Node::Comment(comment) => {
                 // Conditional comments are markup to Outlook. Scan them with
-                // the same rules rather than trusting the `<!--`.
                 let body = comment.comment.as_ref();
 
-                // Collected apart from `issues` so the orphan scan below
-                // deduplicates against this comment's own findings and nothing
-                // else. Deduplicating against the whole document would let an
-                // identical offence elsewhere suppress this one.
                 let mut found = Vec::new();
 
                 for tag in forbidden_tags_in(body) {
@@ -423,8 +411,6 @@ fn validate_html_in_process(html: &str) -> Result<(), HtmlValidationError> {
 
                 // Outlook runs the handlers, URLs and `<style>` bodies in
                 // there too, so they get the same treatment as real markup.
-                // Comments inside the fragment are ignored rather than
-                // recursed into — HTML comments do not nest.
                 let inner = Html::parse_fragment(body);
                 for node in inner.tree.nodes() {
                     if let Node::Element(element) = node.value() {
@@ -435,7 +421,6 @@ fn validate_html_in_process(html: &str) -> Result<(), HtmlValidationError> {
                 let orphans = orphan_table_element_issues(body, html, &found);
                 found.extend(orphans);
 
-                // Stamped last, so the scans above compared like with like.
                 for issue in &mut found {
                     issue.origin = IssueOrigin::Comment(comments_seen);
                 }
@@ -446,11 +431,8 @@ fn validate_html_in_process(html: &str) -> Result<(), HtmlValidationError> {
         }
     }
 
-    // `<style>` is allowed — media queries are the whole point of a responsive
-    // template — but its contents still get checked for active constructs.
     issues.extend(unsafe_style_blocks(&document, html));
 
-    // Last, because it needs to know what the document parse already found.
     let orphans = orphan_table_element_issues(html, html, &issues);
     issues.extend(orphans);
 
@@ -467,8 +449,6 @@ fn validate_html_in_process(html: &str) -> Result<(), HtmlValidationError> {
 /// (`crates/reader/src/html.rs`), so the text a recipient gets matches what
 /// mxr itself would show. Reads the HTML; never mutates it.
 pub fn generate_text_alternative(html: &str) -> String {
-    // A sent message always gets its text, even if it is rougher: over the
-    // budget, on a panic, or with the HTML helper lost, the tag strip stands in.
     TEXT_ALTERNATIVE
         .call(html, &())
         .flatten()
@@ -477,7 +457,6 @@ pub fn generate_text_alternative(html: &str) -> String {
 
 /// The render, which runs in the HTML helper process. `None` is the tag-strip
 /// fallback.
-//
 // Guarded like the reader's call (html2text panics on some malformed tables).
 // mxr-outbound cannot depend on mxr-reader, so the bounds, the span clamp and
 // the fallback are local copies (`html_limits`). Bounded input first: an
@@ -543,8 +522,6 @@ fn attribute_issues(element: &scraper::node::Element, html: &str) -> Vec<HtmlIss
                 line: locate_line(html, &attribute),
                 detail: truncate(value, 60),
                 kind: HtmlIssueKind::EventHandler { attribute },
-                // Callers scanning a comment body overwrite this with the
-                // comment's index; the document scan leaves it as-is.
                 origin: IssueOrigin::Document,
             });
             continue;
@@ -555,8 +532,6 @@ fn attribute_issues(element: &scraper::node::Element, html: &str) -> Vec<HtmlIss
             continue;
         }
 
-        // `srcset` and `imagesrcset` hold a list of candidates, so each one is
-        // a URL and the value as a whole is not.
         let urls: Vec<&str> = if attribute == "srcset" || attribute == "imagesrcset" {
             srcset_candidates(value).collect()
         } else if URL_ATTRIBUTES.contains(&attribute.as_str()) {
@@ -742,8 +717,6 @@ fn without_table_end_tags(markup: &str) -> String {
         let start = cursor + offset;
         let after_name = start + END_TAG.len();
         match lowered[after_name..].find('>').map(|at| after_name + at) {
-            // Only whitespace may sit between the name and the `>`, so
-            // `</tablet>` is a different tag and stays.
             Some(close) if markup[after_name..close].trim().is_empty() => {
                 kept.push_str(&markup[cursor..start]);
                 cursor = close + 1;
@@ -814,10 +787,8 @@ fn unsafe_url(url: &str) -> Option<UnsafeUrl> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
     {
-        // Not a scheme at all — a colon inside a relative path or query.
         return None;
     }
-    // A `/`, `?` or `#` before the colon means the colon belongs to the path.
     if cleaned[..colon].contains(['/', '?', '#']) {
         return None;
     }
@@ -828,7 +799,6 @@ fn unsafe_url(url: &str) -> Option<UnsafeUrl> {
         return None;
     }
     if scheme == "data" {
-        // Not lowercased: base64 is case-sensitive, and this is the payload.
         let rest = &cleaned[colon + 1..];
         let declared = rest
             .split([';', ','])
@@ -865,11 +835,9 @@ fn unsafe_url(url: &str) -> Option<UnsafeUrl> {
 /// An unreadable payload is allowed through; see `FORGIVING_BASE64`.
 fn data_url_payload_is_markup(rest: &str) -> bool {
     let Some((parameters, payload)) = rest.split_once(',') else {
-        // No comma means no payload: not a usable data URL, nothing to sniff.
         return false;
     };
 
-    // The base64 flag is the last parameter. Whitespace is already gone.
     let decoded = if parameters.to_ascii_lowercase().ends_with(";base64") {
         decode_base64_prefix(payload)
     } else {
@@ -888,19 +856,13 @@ fn data_url_payload_is_markup(rest: &str) -> bool {
 /// Empty when the prefix does not decode, which the caller treats as "not
 /// markup" rather than as a refusal.
 fn decode_base64_prefix(payload: &str) -> Vec<u8> {
-    // Four base64 characters carry three bytes.
     let wanted = DATA_URL_SNIFF_BYTES.div_ceil(3) * 4;
-    // Sliced as bytes: a payload may hold arbitrary UTF-8, and a character
-    // boundary is not something to trip over while looking at a prefix.
     let bytes = payload.as_bytes();
     let mut prefix = &bytes[..bytes.len().min(wanted)];
 
-    // Padding is only ever final, so anything from the first `=` is the tail.
     if let Some(pad) = prefix.iter().position(|byte| *byte == b'=') {
         prefix = &prefix[..pad];
     }
-    // A lone trailing character is not a whole quantum. Dropping it costs
-    // nothing: the byte it half-encodes lies beyond the prefix anyway.
     if prefix.len() % 4 == 1 {
         prefix = &prefix[..prefix.len() - 1];
     }
@@ -962,7 +924,6 @@ fn forbidden_tags_in(comment: &str) -> BTreeSet<String> {
     FORBIDDEN_ELEMENTS
         .iter()
         .filter(|tag| {
-            // `<script` or `<script ` / `<script>`, not `<scripted`.
             lowered
                 .match_indices(&format!("<{tag}"))
                 .any(|(index, matched)| {
@@ -1117,8 +1078,6 @@ mod tests {
 
     #[test]
     fn a_refused_document_is_handed_back_intact_for_the_caller_to_fix() {
-        // Refusing rather than sanitising is the contract: the caller still
-        // holds their exact source and can go fix it.
         let source = String::from("<p>keep me</p>\n<script>alert(1)</script>\n<p>®</p>");
         let before = source.clone();
 
@@ -1325,7 +1284,6 @@ mod tests {
                 error.issues
             );
         }
-        // Every issue reaches the message the user actually sees.
         assert_eq!(
             error.to_string().matches("\n  - ").count(),
             error.issues.len()
@@ -1511,8 +1469,6 @@ mod tests {
 
     #[test]
     fn a_stray_table_end_tag_does_not_hide_the_orphan_that_follows_it() {
-        // The second parse wraps a copy in `<table>`; an unmatched `</table>`
-        // in the source would otherwise close that wrapper.
         for markup in [
             r#"<div></table><td onclick="steal()">x"#,
             r#"<div></TABLE><td onclick="steal()">x"#,
@@ -1640,8 +1596,6 @@ mod tests {
             );
         }
 
-        // Double quotes cannot survive inside a double-quoted attribute, so the
-        // two forms are checked where each is actually written.
         refusal(r#"<style>.a{background:url("data:image/svg+xml;base64,PHN2Zz4=")}</style>"#);
         refusal(
             r#"<p style="background:url(&quot;data:image/svg+xml;base64,PHN2Zz4=&quot;)">x</p>"#,
@@ -1693,9 +1647,6 @@ mod tests {
 
     #[test]
     fn each_candidate_in_a_srcset_is_checked_not_the_whole_value() {
-        // `srcset` is a comma-separated list of `url [descriptor]` candidates.
-        // Scheme-checking the whole value finds nothing at all in the second
-        // case: the comma disqualifies everything before the colon.
         for markup in [
             r#"<img srcset="javascript:steal() 1x">"#,
             r#"<img srcset="hero.png 1x, javascript:steal() 2x">"#,
@@ -1720,9 +1671,6 @@ mod tests {
 
     #[test]
     fn svg_animation_elements_are_refused_outright() {
-        // `<animate attributeName="href" values="javascript:...">` reaches
-        // script through indirection no attribute-by-attribute rule can follow,
-        // and animation has no legitimate use in a mail template.
         for (markup, tag) in [
             (
                 r#"<svg><animate attributeName="href" values="javascript:steal()"></svg>"#,
@@ -1752,9 +1700,6 @@ mod tests {
 
     #[test]
     fn foreign_object_is_refused_outright() {
-        // `<foreignObject>` embeds arbitrary XHTML inside `<svg>`. Refusing the
-        // element beats reasoning about what it carries, exactly as with the
-        // SVG animation elements.
         for markup in [
             "<svg><foreignObject><p>x</p></foreignObject></svg>",
             "<svg><foreignobject><p>x</p></foreignobject></svg>",
@@ -1801,24 +1746,15 @@ mod tests {
     #[test]
     fn a_data_image_url_whose_payload_is_markup_is_refused_whatever_it_claims_to_be() {
         for markup in [
-            // <svg xmlns="..."><script>steal()</script></svg>
             r#"<img src="data:image/png;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzY3JpcHQ+c3RlYWwoKTwvc2NyaXB0Pjwvc3ZnPg==">"#,
-            // <?xml version="1.0"?><svg/>
             r#"<img src="data:image/gif;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2Zy8+">"#,
-            // <!DOCTYPE html><html></html>
             r#"<img src="data:image/jpeg;base64,PCFET0NUWVBFIGh0bWw+PGh0bWw+PC9odG1sPg==">"#,
-            // <html><body>x</body></html>
             r#"<img src="data:image/webp;base64,PGh0bWw+PGJvZHk+eDwvYm9keT48L2h0bWw+">"#,
-            // "   \n <svg/>" — whitespace before the signature, which a
-            // sniffing client skips.
             r#"<img src="data:image/png;base64,ICAgCiA8c3ZnLz4=">"#,
-            // Percent-encoded rather than base64.
             r#"<img src="data:image/png,%3Csvg%2F%3E">"#,
             r#"<img src="data:image/png,%20%20%3Csvg%2F%3E">"#,
-            // The same dodge routed through CSS.
             r#"<p style="background:url(data:image/png;base64,PHN2Zz4=)">x</p>"#,
             r#"<style>.a{background:url(data:image/png;base64,PHN2Zz4=)}</style>"#,
-            // And hidden in a conditional comment.
             r#"<!--[if mso]><img src="data:image/png;base64,PHN2Zz4="><![endif]-->"#,
         ] {
             refusal(markup);
@@ -1837,17 +1773,12 @@ mod tests {
     #[test]
     fn a_raster_data_url_still_passes_and_an_unreadable_payload_is_not_refused() {
         for markup in [
-            // A real 1x1 PNG, wrapped across lines the way a template does it.
             "<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB\n  CAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABV81f1QAAAABJRU5ErkJggg==\">",
             r#"<img src="data:image/jpeg;base64,/9j/4AAQ">"#,
             r#"<img src="data:image/gif;base64,R0lGOD">"#,
             r#"<img src="data:image/webp;base64,UklGRg==">"#,
-            // Formats the validator knows no signature for. Allowed: it is only
-            // looking for markup, not vouching for the declared type.
             r#"<img src="data:image/avif;base64,AAAAIGZ0eXBhdmlm">"#,
             r#"<img src="data:image/x-icon;base64,AAABAAEAEBA=">"#,
-            // Undecodable, empty and comma-less payloads: nothing to sniff, and
-            // refusing what cannot be read would refuse legitimate mail.
             r#"<img src="data:image/png;base64,****">"#,
             r#"<img src="data:image/png;base64,">"#,
             r#"<img src="data:image/png">"#,

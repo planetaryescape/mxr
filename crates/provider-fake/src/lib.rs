@@ -515,9 +515,6 @@ impl MailSyncProvider for FakeProvider {
         } else {
             match page_offset(cursor) {
                 Some(offset) => offset,
-                // Any other non-empty cursor means the initial sync
-                // already finished: steady state returns only what a test
-                // dropped in the spool since the last sync.
                 None => {
                     return Ok(SyncBatch {
                         upserted: self
@@ -537,9 +534,6 @@ impl MailSyncProvider for FakeProvider {
         };
 
         let total = self.dataset.len();
-        // Exact, not an estimate: the dataset size is known up front and pages
-        // are taken by offset. The clamp only stops the count wrapping —
-        // `MAX_DEMO_MESSAGE_COUNT` is far below `u32::MAX`.
         let remaining_estimate = u32::try_from(total.saturating_sub(offset)).unwrap_or(u32::MAX);
         let upserted = self.dataset.page(offset, self.page_size);
         let next_offset = offset.saturating_add(upserted.len());
@@ -872,8 +866,6 @@ impl MailSendProvider for FakeProvider {
                 .as_ref()
                 .is_some_and(spool::Spool::send_uncertain)
         {
-            // Provider errors can echo the recipient. Tests use this to check
-            // that callers never surface it.
             let recipients: Vec<&str> = draft.to.iter().map(|a| a.email.as_str()).collect();
             return Err(MxrError::Provider(format!(
                 "timed out waiting for the provider (fake) PROVIDER-TEXT rejected {}",
@@ -1087,7 +1079,6 @@ mod tests {
         let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
         assert_eq!(batch.upserted.len(), 55);
         assert!(!batch.has_more);
-        // Bodies are eagerly fetched during sync
         assert!(batch.upserted[0].body.text_plain.is_some());
     }
 
@@ -1095,8 +1086,6 @@ mod tests {
     /// and only the last page may report `has_more == false`.
     #[tokio::test]
     async fn demo_dataset_pages_until_complete() {
-        // A non-demo account id keeps the whole target on one provider
-        // (the two known demo accounts split it 45/55).
         const PAGE: usize = 200;
         let total = PAGE * 2 + 37;
         let provider =
@@ -1137,7 +1126,6 @@ mod tests {
                 .collect::<Vec<_>>()
         );
 
-        // Steady state: the completed cursor yields empty batches.
         let delta = provider.sync_messages(&cursor).await.unwrap();
         assert!(delta.upserted.is_empty());
         assert!(!delta.has_more);
@@ -1237,7 +1225,6 @@ mod tests {
         };
         assert_eq!(ids(&second), ids(&resumed));
 
-        // And a single message fetched by provider id matches its page copy.
         let sample = &second.upserted[7];
         let fetched = provider
             .fetch_message(&sample.envelope.provider_id)

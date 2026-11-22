@@ -83,7 +83,6 @@ impl ImapProvider {
         }
     }
 
-    /// Constructor that accepts a custom session factory (e.g. XOAuth2ImapSessionFactory).
     pub fn with_session_factory(
         account_id: AccountId,
         config: ImapConfig,
@@ -110,11 +109,6 @@ impl ImapProvider {
         mailboxes: Vec<ImapMailboxCursor>,
         capabilities: &ImapCapabilities,
     ) -> SyncCursor {
-        // The opaque-cursor refactor (MSP Phase B) moved the per-folder
-        // state plus the capability snapshot into a private versioned
-        // envelope owned by this crate. The legacy scalar fallback
-        // (uid_validity/uid_next reflecting INBOX) is now only relevant
-        // when decoding pre-Phase-B persisted cursors — see cursor.rs.
         ImapCursor::new(mailboxes, Some(Self::capability_state(capabilities))).encode()
     }
 
@@ -425,7 +419,6 @@ impl ImapProvider {
         // Bare EXPUNGE deletes EVERY \Deleted message in the mailbox, not just
         // the one we marked. Refuse to delete unless the server advertises
         // UIDPLUS (RFC 4315) so we can target a specific UID. Callers should
-        // route deletes through `move_selected_message` when MOVE is available.
         if !capabilities.uidplus {
             return Err(mxr_core::MxrError::Provider(
                 "IMAP delete refused: server does not advertise UIDPLUS (RFC 4315). \
@@ -460,11 +453,6 @@ impl ImapProvider {
                 .await
                 .map_err(mxr_core::error::MxrError::from)?;
         } else {
-            // Without MOVE we emulate it as COPY + delete. But the delete needs
-            // UIDPLUS to target a single UID; without it, delete would fail
-            // AFTER the COPY already landed, leaving a duplicate in the target
-            // that piles up on every daemon retry. Refuse up front, before any
-            // COPY, so no partial move is left behind.
             if !capabilities.uidplus {
                 return Err(mxr_core::error::MxrError::Provider(
                     "IMAP move refused: server advertises neither MOVE (RFC 6851) nor \
@@ -513,7 +501,6 @@ impl ImapProvider {
         Ok(())
     }
 
-    /// Initial sync: first page of the newest-first backfill (see `generic_backfill`).
     async fn initial_sync(&self) -> mxr_core::provider::Result<SyncBatch> {
         debug!("Starting IMAP initial sync for account {}", self.account_id);
 
@@ -680,9 +667,6 @@ impl ImapProvider {
         } else {
             let mut completed_mailbox = mailbox;
             if fixed_end_uid.is_some() {
-                // Do not advance beyond the frozen backfill horizon. Messages
-                // that arrive while an initial All Mail backfill is paginating
-                // must be picked up by the next delta run instead of skipped.
                 completed_mailbox.uid_next = end_uid.saturating_add(1);
             }
             Self::build_imap_cursor(vec![completed_mailbox], &capabilities)
@@ -695,15 +679,10 @@ impl ImapProvider {
             next_cursor,
             has_more,
             threads_changed: vec![],
-            // The backfill walks a UID range, and UIDs are sparse — the
-            // remaining count would need a SEARCH over `page_end+1:end_uid`
-            // per page. `EXISTS` is cheap but counts the whole mailbox, not
-            // what is left, so it would be the wrong denominator.
             remaining_estimate: None,
         })
     }
 
-    /// Delta sync: fetch new messages per mailbox since the last known UIDNEXT.
     async fn delta_sync(
         &self,
         old_mailboxes: &[ImapMailboxCursor],
@@ -951,14 +930,9 @@ impl ImapProvider {
                         // A timeout leaves the QRESYNC response mid-flight on
                         // the wire; issuing SELECT on the same session would
                         // parse the late untagged responses as SELECT's reply
-                        // and corrupt the folder cursor. Fail the sync instead
-                        // — the next tick retries on a fresh session.
                         Err(error) if error.is_timeout() => {
                             return Err(mxr_core::error::MxrError::from(error));
                         }
-                        // Tagged NO/BAD replies leave the connection in a
-                        // consistent state, so falling back to a plain SELECT
-                        // on the same session is safe.
                         Err(error) => {
                             warn!(
                                 mailbox = %folder.name,
@@ -1029,9 +1003,6 @@ impl ImapProvider {
         // reports expunges; CONDSTORE's CHANGEDSINCE returns changed/new
         // messages but NOT deletions. So every non-QRESYNC path (including
         // CONDSTORE-only servers like Dovecot, and the first delta after a
-        // legacy cursor) must issue `UID SEARCH ALL` and diff against the UIDs
-        // we believed lived in this mailbox last sync (1..old.uid_next-1). The
-        // extra search is cheap and dedup-safe.
         if !qresync_used
             && mailbox_info.uid_validity
                 == old_mailbox
@@ -1059,8 +1030,6 @@ impl ImapProvider {
         let query = if mailbox_info.uid_next == 0 {
             // UIDNEXT unknown (server omitted it on SELECT). A stored/observed
             // 0 can never satisfy `new > old`, so trusting it wedges the folder
-            // (it would never fetch new mail). Rescan `1:*` instead; seen_uids
-            // plus the store's upsert keep it dedup-safe.
             (mailbox_info.exists > 0).then(|| "1:*".to_string())
         } else {
             match old_mailbox.as_ref() {
@@ -1088,8 +1057,6 @@ impl ImapProvider {
 
         if let Some(query) = query {
             let min_uid = match old_mailbox.as_ref() {
-                // With an unknown UIDNEXT we cannot trust the old cursor to gate
-                // by UID, so fetch from the start and let seen_uids/upsert dedup.
                 Some(old_mailbox)
                     if mailbox_info.uid_next != 0
                         && mailbox_info.uid_validity == old_mailbox.uid_validity =>
@@ -1156,15 +1123,7 @@ impl MailSyncProvider for ImapProvider {
                 batch_operations: false,
                 custom_keywords: true,
             },
-            // No `search_remote` is implemented for IMAP (all search goes
-            // through the local index), so advertising server-side search
-            // would be a lie: the core default `search_remote` errors. Report
-            // false so the daemon never routes a remote search here and the
-            // capability matches Gmail's honest reporting.
             search: SearchCaps { server_side: false },
-            // IMAP has an IDLE watcher. Per-server availability is
-            // checked when `idle_watch()` opens the dedicated session;
-            // non-IDLE servers return `Ok(None)` and stay on polling.
             push: PushCaps { streaming: true },
         }
     }
@@ -1488,7 +1447,6 @@ impl MailSyncProvider for ImapProvider {
             return Ok(None);
         };
 
-        // Mark the copy \Seen — a message you sent is already read.
         let uid = session
             .uid_append(&sent_mailbox, &["\\Seen"], rfc822)
             .await
@@ -1530,7 +1488,6 @@ impl ImapProvider {
 
         let uid_str = uid.to_string();
 
-        // Map label names to IMAP flag operations
         let add_flags: Vec<&str> = add.iter().filter_map(|l| label_to_flag(l)).collect();
         let remove_flags: Vec<&str> = remove.iter().filter_map(|l| label_to_flag(l)).collect();
 
@@ -1550,7 +1507,6 @@ impl ImapProvider {
                 .map_err(mxr_core::error::MxrError::from)?;
         }
 
-        // Handle folder moves (labels that are actually folder names)
         let add_folders: Vec<String> = add
             .iter()
             .filter(|l| label_to_flag(l).is_none())
@@ -1719,9 +1675,6 @@ impl ImapProvider {
         // Keyword atoms are interpolated verbatim into `+FLAGS (...)` /
         // `-FLAGS (...)` and handed to `uid_store`, which does NOT validate
         // them. A crafted keyword (e.g. `x) (\Deleted` or one containing CRLF)
-        // would inject extra IMAP command tokens — silently flagging \Deleted
-        // or worse. Reject the whole mutation before touching the server if any
-        // atom is not a safe RFC 3501 flag atom.
         for keyword in add.iter().chain(remove.iter()) {
             if !is_valid_imap_keyword(keyword) {
                 return Err(mxr_core::error::MxrError::Provider(format!(
@@ -1887,7 +1840,6 @@ mod tests {
     }
 
     fn make_fetched_message(uid: u32, subject: &str, from_email: &str) -> FetchedMessage {
-        // Build raw RFC822 message for full body parsing
         let raw = format!(
             "From: {from_email}\r\nTo: me@test.com\r\nSubject: {subject}\r\nDate: Mon, 1 Jan 2024 12:00:00 +0000\r\nMessage-ID: <msg{uid}@test.com>\r\nContent-Type: text/plain\r\n\r\nBody of {subject}"
         );
@@ -2129,8 +2081,6 @@ mod tests {
             .into_mailboxes()
     }
 
-    // -- sync_labels ----------------------------------------------------------
-
     #[tokio::test]
     async fn sync_labels_returns_mapped_folders() {
         let factory = MockImapSessionFactory::new(
@@ -2174,8 +2124,6 @@ mod tests {
                 folder_info("Trash", Some("\\Trash")),
             ],
         )
-        // Conformance asserts trash succeeds; servers without UIDPLUS now refuse,
-        // so advertise UIDPLUS (and MOVE for the COPY-then-delete fast path).
         .with_capabilities(ImapCapabilities {
             uidplus: true,
             move_ext: true,
@@ -2228,8 +2176,6 @@ mod tests {
         assert_eq!(labels[0].unread_count, 7);
         assert_eq!(labels[0].total_count, 12);
     }
-
-    // -- sync_messages: initial -----------------------------------------------
 
     #[tokio::test]
     async fn initial_sync_isolates_malformed_fetch_literals() {
@@ -2284,7 +2230,6 @@ mod tests {
         let messages = (1..=101)
             .map(|uid| make_fetched_message(uid, &format!("Message {uid}"), "alice@example.com"))
             .collect::<Vec<_>>();
-        // Newest-first chunks of 100 UIDs: 101..=2, then 1.
         let factory = MockImapSessionFactory::new(
             mailbox_info(1, 102, 101),
             vec![messages[1..].to_vec(), messages[..1].to_vec()],
@@ -2513,8 +2458,6 @@ mod tests {
         assert_eq!(overlap.max_active_fetches.load(Ordering::SeqCst), 1);
     }
 
-    // -- sync_messages: delta -------------------------------------------------
-
     #[tokio::test]
     async fn gmail_delta_without_all_mail_cursor_starts_canonical_backfill() {
         let mut archived_only = make_fetched_message(50, "Archived upgrade", "alice@example.com");
@@ -2624,32 +2567,25 @@ mod tests {
 
     #[tokio::test]
     async fn delta_sync_uid_validity_changed_falls_back_to_initial() {
-        // UID validity changed: server returns uid_validity=2, cursor has 1
-        // The delta_sync detects the mismatch and falls back to initial_sync.
-        // initial_sync creates a new session, so we need the factory to handle two sessions.
-        // First session (delta): SELECT returns uid_validity=2 (mismatch)
-        // Second session (initial fallback): SELECT returns uid_validity=2, exists=1
-
         let msg = make_fetched_message(1, "After reset", "alice@example.com");
 
         let factory = MockImapSessionFactory::new(
             MailboxInfo {
-                uid_validity: 2, // Changed from 1
+                uid_validity: 2,
                 uid_next: 2,
                 exists: 1,
                 highest_modseq: None,
             },
-            vec![vec![msg]], // Used by the initial_sync fallback
+            vec![vec![msg]],
             vec![],
         );
 
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let cursor = imap_cursor(1, 100); // Old value
+        let cursor = imap_cursor(1, 100);
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
-        // Should have fallen back to initial sync and got messages
         assert_eq!(batch.upserted.len(), 1);
         assert_eq!(batch.upserted[0].envelope.subject, "After reset");
 
@@ -2661,7 +2597,7 @@ mod tests {
         // IMAP returns uid 3 when we ask for "4:*" and there are no new messages
         // (server returns the highest existing UID). We should filter it out.
         let old_msg = FetchedMessage {
-            uid: 3, // Below our uid_next of 4
+            uid: 3,
             flags: vec![],
             envelope: None,
             body: Some(b"From: alice@example.com\r\nSubject: Old message\r\nDate: Mon, 1 Jan 2024 12:00:00 +0000\r\nContent-Type: text/plain\r\n\r\nOld body".to_vec()),
@@ -2673,11 +2609,10 @@ mod tests {
             gmail_thread_id: None,
         };
 
-        // uid_next > old_uid_next so delta path is taken, but the fetch returns only old UIDs
         let factory = MockImapSessionFactory::new(
             MailboxInfo {
                 uid_validity: 1,
-                uid_next: 5, // > old_uid_next of 4
+                uid_next: 5,
                 exists: 3,
                 highest_modseq: None,
             },
@@ -2691,14 +2626,11 @@ mod tests {
         let cursor = imap_cursor(1, 4);
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
-        // The old message should be filtered out
         assert!(batch.upserted.is_empty());
     }
 
     #[tokio::test]
     async fn delta_sync_uid_diff_fallback_detects_deletes_without_qresync_or_condstore() {
-        // Server only knows UIDs 1, 3, 4 — UID 2 was deleted server-side since
-        // last sync (which thought uid_next was 5, so it knew about 1..=4).
         let factory = MockImapSessionFactory::new(
             MailboxInfo {
                 uid_validity: 1,
@@ -2706,7 +2638,6 @@ mod tests {
                 exists: 3,
                 highest_modseq: None,
             },
-            // No FLAGS+BODY fetch since uid_next did not advance.
             vec![],
             vec![],
         )
@@ -2900,8 +2831,6 @@ mod tests {
             .any(|command| command.contains("CHANGEDSINCE 10")));
     }
 
-    // -- mutations ------------------------------------------------------------
-
     #[tokio::test]
     async fn set_read_sends_correct_flags() {
         let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
@@ -3087,11 +3016,8 @@ mod tests {
             .unwrap();
 
         let commands = log.lock().unwrap().commands.clone();
-        // STARRED maps to \Flagged flag
         assert!(commands.contains(&"UID STORE 42 +FLAGS (\\Flagged)".to_string()));
-        // READ maps to \Seen flag removal
         assert!(commands.contains(&"UID STORE 42 -FLAGS (\\Seen)".to_string()));
-        // Archive is a folder, should be COPY'd
         assert!(commands.contains(&"UID COPY 42 Archive".to_string()));
     }
 
@@ -3143,8 +3069,6 @@ mod tests {
         assert!(err.to_string().contains("system folders"));
     }
 
-    // -- fetch_attachment -----------------------------------------------------
-
     #[tokio::test]
     async fn fetch_attachment_extracts_bytes() {
         let raw = concat!(
@@ -3187,12 +3111,9 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        // Part index 2 should be the attachment (0=root multipart, 1=text, 2=attachment)
         let bytes = provider.fetch_attachment("INBOX:10", "2").await.unwrap();
         assert!(!bytes.is_empty());
     }
-
-    // -- incompatible cursor --------------------------------------------------
 
     #[test]
     fn is_backfill_cursor_is_true_only_for_the_generic_in_progress_cursor() {
@@ -3223,9 +3144,6 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        // Gmail-shaped legacy cursor reaching the IMAP adapter must
-        // surface as SyncCursorExpired so the daemon's Phase A.2
-        // recovery path runs a clean full sync.
         let result = provider
             .sync_messages(&SyncCursor::from_bytes(
                 br#"{"Gmail":{"history_id":1}}"#.to_vec(),
@@ -3237,14 +3155,11 @@ mod tests {
         ));
     }
 
-    // -- integration: full sync flow ------------------------------------------
-
     #[tokio::test]
     async fn full_sync_flow_initial_then_delta_then_fetch_and_mutate() {
         let account_id = AccountId::new();
         let config = test_config();
 
-        // Phase 1: Initial sync — 3 messages
         let initial_messages = vec![
             make_fetched_message(1, "First", "alice@example.com"),
             make_fetched_message(2, "Second", "bob@example.com"),
@@ -3265,7 +3180,6 @@ mod tests {
 
         let cursor1 = batch1.next_cursor;
 
-        // Phase 2: Delta sync — 1 new message
         let new_msg = make_fetched_message(4, "Fourth", "dave@example.com");
         let factory2 =
             MockImapSessionFactory::new(mailbox_info(1, 5, 4), vec![vec![new_msg]], vec![]);
@@ -3279,7 +3193,6 @@ mod tests {
         let batch2 = provider2.sync_messages(&cursor1).await.unwrap();
         assert_eq!(batch2.upserted.len(), 1);
         assert_eq!(batch2.upserted[0].envelope.subject, "Fourth");
-        // Body is eagerly fetched during sync
         assert!(batch2.upserted[0]
             .body
             .text_plain
@@ -3287,7 +3200,6 @@ mod tests {
             .unwrap_or("")
             .contains("Body of Fourth"));
 
-        // Phase 3: Mutate — star the message
         let factory3 = MockImapSessionFactory::new(mailbox_info(1, 5, 4), vec![], vec![]);
         let log3 = factory3.log.clone();
 
@@ -3307,11 +3219,6 @@ mod tests {
         assert!(cmds.contains(&"UID STORE 4 +FLAGS (\\Flagged)".to_string()));
     }
 
-    /// Phase 3.1 / Behavior 4: a factory whose `create_idle_watcher`
-    /// returns `Ok(None)` (the default — IDLE not enabled / not
-    /// supported) means the provider's `idle_watch` returns None,
-    /// signalling the daemon to stay poll-only. Catches "watcher
-    /// spawned for non-IDLE servers" regressions.
     #[tokio::test]
     async fn idle_watch_returns_none_when_factory_does_not_enable_idle() {
         let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
@@ -3324,10 +3231,6 @@ mod tests {
         );
     }
 
-    /// Phase 3.1 / Behavior 1: when IDLE is enabled on the factory and
-    /// the test fires the trigger, the watcher's `next_event` returns
-    /// Ok(()) within the timeout. End-to-end test of the IMAP
-    /// provider's IDLE path through the trait abstraction.
     #[tokio::test]
     async fn idle_watch_returns_watcher_that_wakes_on_trigger() {
         let mut factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
@@ -3342,20 +3245,14 @@ mod tests {
             .expect("idle_watch ok")
             .expect("idle enabled, watcher should be Some");
 
-        // The mock factory logs an `IDLE_WATCH SELECT INBOX` line on
-        // create. Confirms the provider opened a dedicated IDLE
-        // session — RFC 2177 requires it separate from the sync session.
         let cmds = log.lock().unwrap().commands.clone();
         assert!(
             cmds.iter().any(|c| c == "IDLE_WATCH SELECT INBOX"),
             "create_idle_watcher must SELECT INBOX on a fresh session; got {cmds:?}"
         );
 
-        // Spawn the watcher's next_event in the background so we can
-        // race a trigger fire against a timeout.
         let event_handle = tokio::spawn(async move { watcher.next_event().await });
 
-        // Give the spawn a moment to enter `notified()` then fire.
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         trigger.notify_one();
 
@@ -3366,13 +3263,8 @@ mod tests {
         assert!(result.is_ok(), "next_event must return Ok on trigger");
     }
 
-    // -- audit-finding regressions --------------------------------------------
-
     #[tokio::test]
     async fn delta_sync_detects_deletes_on_condstore_only_server() {
-        // Regression (fix 1): CONDSTORE's CHANGEDSINCE never reports expunges,
-        // so a CONDSTORE-only server (no QRESYNC) must still run UID SEARCH ALL
-        // to detect deletions. UID 2 was expunged; the server now has 1, 3, 4.
         let factory = MockImapSessionFactory::new(
             MailboxInfo {
                 uid_validity: 1,
@@ -3393,8 +3285,6 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        // Same highest_modseq as the server → no CHANGEDSINCE fetch, which
-        // isolates the deletion-detection path under test.
         let cursor = imap_cursor_mailboxes(vec![ImapMailboxCursor {
             mailbox: "INBOX".into(),
             uid_validity: 1,
@@ -3414,8 +3304,6 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_attachment_uses_peek_to_avoid_marking_seen() {
-        // Regression (fix 2): attachment download must use BODY.PEEK[] so it
-        // does not implicitly set \Seen on an unread message.
         let raw = concat!(
             "From: alice@example.com\r\n",
             "To: bob@example.com\r\n",
@@ -3463,8 +3351,6 @@ mod tests {
 
     #[tokio::test]
     async fn set_keywords_rejects_injection_atoms() {
-        // Regression (fix 3): a keyword with command-injection characters or
-        // CRLF must be refused before any UID STORE reaches the server.
         for bad in ["x) (\\Deleted", "safe\r\n() (\\Deleted)"] {
             let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
             let log = factory.log.clone();
@@ -3500,7 +3386,6 @@ mod tests {
 
     #[tokio::test]
     async fn set_keywords_applies_valid_atoms() {
-        // Guards the happy path: legitimate custom keywords still round-trip.
         let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
         let log = factory.log.clone();
         let provider =
@@ -3525,8 +3410,6 @@ mod tests {
 
     #[tokio::test]
     async fn delta_sync_fetches_when_uidnext_unknown() {
-        // Regression (fix 5): a SELECT that omits UIDNEXT maps to uid_next=0.
-        // The folder must fall back to a 1:* rescan instead of wedging forever.
         let factory = MockImapSessionFactory::new(
             MailboxInfo {
                 uid_validity: 1,
@@ -3563,9 +3446,6 @@ mod tests {
 
     #[tokio::test]
     async fn move_refuses_before_copy_without_move_or_uidplus() {
-        // Regression (fix 6): a move with neither MOVE nor UIDPLUS must error
-        // BEFORE issuing COPY, so no orphaned copy is left to duplicate on the
-        // daemon's retry.
         let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
         let log = factory.log.clone();
         let provider =
@@ -3601,8 +3481,6 @@ mod tests {
 
     #[tokio::test]
     async fn delta_sync_floors_cursor_to_unparsed_uid() {
-        // Regression (fix 7): when a message fails to parse, the persisted
-        // uid_next must not advance past it, so the next delta re-fetches it.
         let good_a = make_fetched_message(4, "Parses A", "a@example.com");
         let unparseable = FetchedMessage {
             uid: 5,
@@ -3648,12 +3526,8 @@ mod tests {
         );
     }
 
-    // -- append_sent ----------------------------------------------------------
-
     #[tokio::test]
     async fn append_sent_returns_mailbox_uid_when_server_reports_appenduid() {
-        // A UIDPLUS server (simulated via with_append_uid) reports UID 42 for
-        // the APPEND, so append_sent returns the "mailbox:uid" provider id.
         let factory = MockImapSessionFactory::new(
             mailbox_info(1, 1, 0),
             vec![],
@@ -3689,9 +3563,6 @@ mod tests {
 
     #[tokio::test]
     async fn append_sent_without_appenduid_returns_none_but_still_appends() {
-        // A server that does not report the UID (default append_uid = None)
-        // still files the message; append_sent returns Ok(None) so the daemon
-        // falls back to the local-only SENT copy.
         let factory = MockImapSessionFactory::new(
             mailbox_info(1, 1, 0),
             vec![],
@@ -3723,8 +3594,6 @@ mod tests {
 
     #[tokio::test]
     async fn append_sent_returns_none_when_no_sent_folder() {
-        // No Sent folder on the server: append_sent must skip (Ok(None)), not
-        // error and not target a synthetic "SENT" mailbox.
         let factory = MockImapSessionFactory::new(
             mailbox_info(1, 1, 0),
             vec![],

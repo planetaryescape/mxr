@@ -252,8 +252,6 @@ mod tests {
 
     #[test]
     fn a_cid_that_could_end_a_header_line_is_refused() {
-        // The cid is written straight into `Content-ID: <...>`. Anything that
-        // can end the line can append headers of the sender's choosing.
         for hostile in [
             "logo\r\nBcc: evil@example.com",
             "logo\nBcc: evil@example.com",
@@ -283,7 +281,6 @@ mod tests {
 
     #[test]
     fn the_documented_cid_charset_is_accepted() {
-        // Letters, digits, and `. _ - +`.
         for cid in [
             "logo",
             "notto-logo",

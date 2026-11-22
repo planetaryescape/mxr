@@ -30,7 +30,6 @@ pub(crate) enum GmailCursor {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GmailCursorV1 {
     pub(crate) history_id: u64,
-    /// Present iff a multi-page initial backfill is mid-flight.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) page_token: Option<String>,
 }
@@ -50,8 +49,6 @@ impl GmailCursor {
         })
     }
 
-    /// Encode this cursor for persistence. Infallible — `serde_json`
-    /// cannot fail on owned plain-data types.
     pub(crate) fn encode(&self) -> SyncCursor {
         let bytes = serde_json::to_vec(self).expect("GmailCursor serialises infallibly");
         SyncCursor::from_bytes(bytes)
@@ -122,8 +119,6 @@ fn truncate_token(token: &str) -> String {
     }
 }
 
-// --- legacy shim ------------------------------------------------------------
-
 enum LegacyOutcome {
     Initial,
     Cursor(LegacyGmailVariant),
@@ -154,17 +149,12 @@ impl LegacyGmailVariant {
 }
 
 fn decode_legacy(bytes: &[u8]) -> Option<LegacyOutcome> {
-    // Old `SyncCursor::Initial` serialised as the bare JSON string "Initial".
     if let Ok(s) = serde_json::from_slice::<String>(bytes) {
         if s == "Initial" {
             return Some(LegacyOutcome::Initial);
         }
         return None;
     }
-    // Old tagged enum: {"Gmail":{...}} or {"GmailBackfill":{...}}. Imap
-    // variants are intentionally unrecognised here — they'd indicate a
-    // store corruption (Gmail provider receiving an IMAP-shape cursor)
-    // and the SyncCursorExpired path is the right response.
     serde_json::from_slice::<LegacyGmailVariant>(bytes)
         .ok()
         .map(LegacyOutcome::Cursor)
@@ -227,8 +217,6 @@ mod tests {
 
     #[test]
     fn imap_legacy_shape_surfaces_expired() {
-        // If somehow an IMAP-tagged cursor reaches the Gmail adapter,
-        // the daemon's SyncCursorExpired recovery is the right answer.
         let legacy = SyncCursor::from_bytes(
             br#"{"Imap":{"uid_validity":1,"uid_next":2,"mailboxes":[]}}"#.to_vec(),
         );

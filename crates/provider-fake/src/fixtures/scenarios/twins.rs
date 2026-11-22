@@ -330,7 +330,6 @@ impl Builder {
             items: scenario.items,
             outbound: scenario.outbound,
             sender: if scenario.outbound {
-                // The owner writes as a person.
                 SenderKind::Person
             } else {
                 sender_kind(scenario.expect.who, &placed.from_email)

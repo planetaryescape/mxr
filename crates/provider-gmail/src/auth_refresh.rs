@@ -14,8 +14,6 @@ use crate::auth::{AuthError, GMAIL_SCOPES, TOKEN_HTTP_TIMEOUT};
 pub(crate) struct CachedTokenSource {
     client: reqwest::Client,
     secret: yup_oauth2::ApplicationSecret,
-    // Serialize cache lookup + refresh + persistence so simultaneous API calls
-    // reuse the new token instead of refreshing the same grant in parallel.
     storage: Mutex<Box<dyn TokenStorage>>,
 }
 
@@ -45,7 +43,6 @@ struct TokenResponse {
     error: Option<String>,
 }
 
-/// A successful token-endpoint response that has passed validation.
 pub(crate) struct RefreshedToken {
     pub(crate) access_token: String,
     pub(crate) expires_in: u32,
@@ -59,8 +56,6 @@ impl CachedTokenSource {
         secret: yup_oauth2::ApplicationSecret,
     ) -> Result<Self, AuthError> {
         let client = reqwest::Client::builder()
-            // Unlike yup-oauth2's HTTP timeout, this covers the response body
-            // as well as DNS, connection establishment and response headers.
             .timeout(TOKEN_HTTP_TIMEOUT)
             .connect_timeout(Duration::from_secs(10))
             .redirect(reqwest::redirect::Policy::none())
@@ -103,8 +98,6 @@ impl CachedTokenSource {
         storage
             .set(GMAIL_SCOPES, refreshed)
             .await
-            // The grant is intact and the new token already sits in the live
-            // cache; only persistence failed, which no sign-in can fix.
             .map_err(|error| AuthError::TokenCacheWrite(error.to_string()))?;
         Ok(access_token)
     }
@@ -158,7 +151,6 @@ pub(crate) async fn read_refreshed_token(
         // reqwest reports a timeout while reading the body as a decode error
         // too, so the timeout has to be ruled out first.
         Err(error) if error.is_decode() && !error.is_timeout() => {
-            // Neither a revoked grant nor a usable token: say what arrived.
             return Err(AuthError::RefreshUnavailable(format!(
                 "token endpoint returned an unreadable HTTP {status} response"
             )));
@@ -167,7 +159,6 @@ pub(crate) async fn read_refreshed_token(
     };
     if !status.is_success() {
         return Err(match body.error.as_deref().and_then(oauth_error_code) {
-            // Only these codes are proof the endpoint rejected the grant or client.
             Some(code) if REJECTION_CODES.contains(&code) => AuthError::OAuth2(code.to_string()),
             Some(code) => AuthError::RefreshUnavailable(format!(
                 "token endpoint returned {code} (HTTP {status})"
@@ -423,7 +414,6 @@ mod tests {
 
     #[tokio::test]
     async fn text_that_is_not_an_oauth_code_stays_out_of_diagnostics() {
-        // The field is remote text; anything but a code stays out of diagnostics.
         let (untrusted, _) = refresh_error(
             ResponseTemplate::new(400)
                 .set_body_json(serde_json::json!({"error": format!("Bad {BODY_MARKER}")})),
@@ -562,7 +552,6 @@ mod tests {
 
     #[tokio::test]
     async fn transport_failures_report_a_category_without_the_url() {
-        // Connection refused: bind to learn a free port, then release it.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
@@ -576,7 +565,6 @@ mod tests {
             "{refused:?}"
         );
 
-        // A peer that is not speaking TLS behind an https URL.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let peer = tokio::spawn(async move {
@@ -630,13 +618,6 @@ mod tests {
         }
     }
 
-    // Measured 2026-10-21 with a 600ms blocked `set` and a 10ms heartbeat task:
-    // a current-thread runtime stalled for 610ms; a two-worker multi-thread
-    // runtime (the daemon's flavor) kept a 13ms maximum gap. The outer
-    // acquisition guard did not preempt the blocked write on either: a 100ms
-    // `timeout` around `access_token()` returned the token after 602ms. This
-    // pins the part that holds: other tasks keep running while one write is
-    // stuck, so a hung keychain call costs one worker, not the daemon.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_blocked_cache_write_leaves_the_rest_of_the_runtime_running() {
         let server = endpoint_responding(ResponseTemplate::new(200).set_body_json(

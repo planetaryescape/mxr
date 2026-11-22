@@ -24,8 +24,6 @@ fn promo_look(_: usize) -> usize {
     11
 }
 
-// Variant i is written by NEWSLETTER_SENDERS[i % 4]: Terminal Dispatch,
-// Local First Weekly, SQLite Notes, then Ops Digest.
 pub(super) static NEWSLETTER: Family = Family {
     id: "newsletter",
     senders: Senders::ByVariant(&NEWSLETTER_SENDERS),
@@ -83,8 +81,6 @@ pub(super) static NEWSLETTER: Family = Family {
     ],
 };
 
-// Variant i is written by PROMO_SENDERS[i % 4]: Cloud Deals, Desk Gear
-// Outlet, Flight Fare Drop, then Conference Passes.
 pub(super) static PROMOTION: Family = Family {
     id: "promotion",
     senders: Senders::ByVariant(&PROMO_SENDERS),

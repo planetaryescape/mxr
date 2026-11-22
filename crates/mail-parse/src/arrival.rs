@@ -5,7 +5,6 @@
 use chrono::{DateTime, Utc};
 use mxr_core::{ArrivalEvidence, SenderCheck, UnverifiedReason};
 
-/// What an adapter knows about its provider's verdict.
 #[derive(Debug, Clone, Copy)]
 pub enum VerdictPolicy<'a> {
     /// Caller has independently authenticated these results. The string pin
@@ -15,7 +14,6 @@ pub enum VerdictPolicy<'a> {
     Unavailable(UnverifiedReason),
 }
 
-/// The arrival record for one fetched message.
 pub fn arrival_evidence(
     policy: VerdictPolicy<'_>,
     auth_results: &[String],
@@ -42,7 +40,6 @@ pub fn arrival_evidence(
     }
 }
 
-/// The From host, lowercased, without a trailing dot.
 pub fn from_host(from_email: &str) -> Option<String> {
     let host = from_email
         .trim()
@@ -277,7 +274,6 @@ mod tests {
             reason(check(&[lookalike], "a@evil.example")),
             UnverifiedReason::NoVerdictHeader
         );
-        // A forged header does not spoil the provider's genuine pass either.
         assert!(matches!(
             check(&[forged, PASS], "no-reply@accounts.google.com"),
             SenderCheck::Verified { .. }

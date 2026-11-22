@@ -38,8 +38,6 @@ impl RequestSummary {
 
 impl RequestLog {
     fn lock(&self) -> MutexGuard<'_, VecDeque<(Instant, &'static str)>> {
-        // A panic while holding this lock cannot leave the counts wrong in a
-        // way that matters, so keep counting rather than poisoning every request.
         self.entries.lock().unwrap_or_else(PoisonError::into_inner)
     }
 

@@ -308,7 +308,6 @@ mod tests {
             sender_kind(Who::Machine, "billing@thameswater.co.uk"),
             SenderKind::Organisation
         );
-        // A look-alike suffix is not a subdomain.
         assert_eq!(
             sender_kind(Who::Machine, "x@notgithub.com"),
             SenderKind::Organisation

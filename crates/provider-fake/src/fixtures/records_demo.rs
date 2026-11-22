@@ -106,7 +106,6 @@ pub(super) fn records_demo_messages(
         built.push((envelope, body));
     };
 
-    // Dell: one order, three emails.
     let ordered = now - Duration::days(40);
     let dell = address("Dell", "orders@dell.co.uk");
     let order_text = "Thanks for your order.\nOrder number: 402-118\nXPS 14 laptop\nOrder total: £1,249.00\nYour invoice is attached.";
@@ -156,7 +155,6 @@ pub(super) fn records_demo_messages(
         None,
     );
 
-    // Lisbon: a trip of three bookings, three days away.
     let flight_out = now + Duration::days(3);
     let booked = now - Duration::days(60);
     let lisbon = r#"{"@type":"PostalAddress","addressLocality":"Lisbon","addressCountry":"PT"}"#;
@@ -217,7 +215,6 @@ pub(super) fn records_demo_messages(
         None,
     );
 
-    // Octopus Energy: three months of bills, a series.
     for (months_back, amount) in [(3u32, "118.20"), (2, "121.75"), (1, "128.40")] {
         let date = now
             .checked_sub_months(Months::new(months_back))

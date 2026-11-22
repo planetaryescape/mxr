@@ -27,7 +27,6 @@ const TRACKER_HOSTNAME_SUFFIXES: &[&str] = &[
     "open.",
     "pixel.",
     "beacon.",
-    // Common ESP infrastructure:
     "sendgrid.",
     "mailgun.",
     "mailchimp.",
@@ -41,9 +40,7 @@ const TRACKER_HOSTNAME_SUFFIXES: &[&str] = &[
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BodyLinkMetrics {
-    /// External URLs that survived the deny-list filter.
     pub link_count: u32,
-    /// Whitespace-split word count of the plain-text body (or stripped HTML).
     pub body_word_count: u32,
 }
 
@@ -93,7 +90,6 @@ fn count_external_urls(text: &str) -> u32 {
             continue;
         };
         let host_start = start + scheme_len;
-        // Find the end of the host (first delimiter).
         let host_end = lower[host_start..]
             .find(|ch: char| {
                 ch.is_ascii_whitespace()
@@ -169,7 +165,6 @@ mod tests {
              Real link: https://docs.example.com/page",
         );
         let metrics = body_link_metrics(&body);
-        // Only the real link survives the deny list.
         assert_eq!(metrics.link_count, 1);
     }
 

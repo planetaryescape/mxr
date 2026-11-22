@@ -15,7 +15,6 @@ use std::sync::Arc;
 
 type TokenFn = Arc<dyn Fn() -> BoxFuture<'static, anyhow::Result<String>> + Send + Sync>;
 
-/// SMTP send provider using XOAUTH2 for Microsoft Outlook/Exchange.
 pub struct OutlookSmtpSendProvider {
     host: String,
     port: u16,
@@ -40,7 +39,6 @@ impl OutlookSmtpSendProvider {
 
         let creds = Credentials::new(self.username.clone(), token);
 
-        // Port 465 = implicit TLS, port 587 = STARTTLS.
         let builder = if self.port == 465 {
             AsyncSmtpTransport::<Tokio1Executor>::relay(&self.host).map_err(|e| e.to_string())?
         } else {

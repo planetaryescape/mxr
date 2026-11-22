@@ -11,7 +11,6 @@ use async_std::net::TcpListener;
 use mxr_provider_imap::config::ImapConfig;
 use mxr_provider_imap::session::{ImapSessionFactory, RealImapSessionFactory};
 
-/// A bridge that greets, accepts any LOGIN and then idles.
 async fn spawn_plain_bridge() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();

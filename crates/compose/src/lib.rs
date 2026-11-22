@@ -22,7 +22,6 @@ pub use mxr_mail_parse::subject::{prefix_subject, strip_reply_forward_prefixes, 
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-/// The kind of compose action.
 pub enum ComposeKind {
     New {
         to: String,
@@ -32,12 +31,10 @@ pub enum ComposeKind {
         reply_all: bool,
         in_reply_to: String,
         references: Vec<String>,
-        /// Provider-native thread hint (e.g. Gmail thread id).
         thread_id: Option<String>,
         to: String,
         cc: String,
         subject: String,
-        /// Reader-mode-cleaned thread content for context block.
         thread_context: String,
     },
     Forward {
@@ -54,7 +51,6 @@ pub struct ComposeSignature {
     pub body: String,
 }
 
-/// Create a draft file on disk and return its path + the cursor line.
 pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usize), ComposeError> {
     create_draft_file_with_signature(kind, from, None)
 }
@@ -218,7 +214,6 @@ fn build_draft_file(
 
     let content = frontmatter::render_compose_file(&fm, &body, context.as_deref())?;
 
-    // Calculate cursor line: first empty line after frontmatter closing ---
     let cursor_line = content
         .lines()
         .enumerate()
@@ -274,7 +269,6 @@ fn signature_block(signature_body: &str) -> String {
     }
 }
 
-/// Validate a parsed draft before sending.
 pub fn validate_draft(frontmatter: &ComposeFrontmatter, body: &str) -> Vec<ComposeValidation> {
     validate_draft_with_mode(frontmatter, body, ComposeValidationMode::Send)
 }
@@ -314,7 +308,6 @@ fn validate_draft_with_mode(
         }
     }
 
-    // Validate email addresses
     for addr in frontmatter
         .to
         .split(',')
@@ -329,8 +322,6 @@ fn validate_draft_with_mode(
         }
     }
 
-    // A non-empty From must be a syntactically valid address, in every mode —
-    // a bad value must never silently fall through to the account primary.
     if crate::draft_codec::parse_from_field(&frontmatter.from).is_err() {
         issues.push(ComposeValidation::Error(format!(
             "Invalid from address: {}",
@@ -505,7 +496,6 @@ mod tests {
             "a non-empty unparseable from must be a hard error: {:?}",
             issue_messages(&issues)
         );
-        // An empty from is fine (send from primary).
         let ok = ComposeFrontmatter {
             to: "alice@example.com".into(),
             subject: "Test".into(),
@@ -698,7 +688,6 @@ mod tests {
         assert!(!path.exists());
     }
 
-    /// Plan 005: draft files land in the private scratch dir with 0600 perms.
     #[cfg(unix)]
     #[test]
     fn create_draft_file_with_signature_uses_private_dir_and_0600_perms() {
@@ -715,13 +704,11 @@ mod tests {
         )
         .unwrap();
 
-        // File should be inside the private scratch dir.
         assert!(
             path.starts_with(&scratch),
             "draft path {path:?} should be inside private scratch dir {scratch:?}"
         );
 
-        // File should have 0600 permissions.
         let meta = std::fs::metadata(&path).expect("metadata");
         let mode = meta.permissions().mode() & 0o777;
         assert_eq!(

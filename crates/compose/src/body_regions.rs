@@ -3,7 +3,6 @@
 /// The line that opens the forwarded part of a body (`mxr-compose` writes it).
 pub const FORWARD_HEADER: &str = "---------- Forwarded message ----------";
 
-/// A body split into the user's text and what follows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BodyRegions<'a> {
     /// The blank space before the text, as it was written.
@@ -54,7 +53,6 @@ impl BodyRegions<'_> {
     /// it written back as it was stored: the lead, the text, the original gap
     /// (the body's trailing blank space when nothing follows) and the rest.
     pub fn with_text(&self, text: &str) -> String {
-        // A body that began with its signature has no blank space to keep.
         let gap = if self.gap.is_empty() && !self.rest.is_empty() {
             "\n\n"
         } else {

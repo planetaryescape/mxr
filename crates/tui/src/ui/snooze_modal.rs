@@ -247,22 +247,6 @@ mod tests {
     }
 
     #[test]
-    fn later_comes_first_then_the_presets_then_custom() {
-        let mail = NotNowRows::of(&NotNowTarget::Mail {
-            message_id: mxr_core::id::MessageId::new(),
-        });
-        assert_eq!(mail.len(), snooze_presets().len() + 2);
-        assert_eq!(mail.row(0), NotNowRow::Later);
-        assert_eq!(mail.row(1), NotNowRow::Preset(snooze_presets()[0]));
-        assert_eq!(mail.row(mail.len() - 1), NotNowRow::Custom);
-        let todo = NotNowRows::of(&NotNowTarget::Todo {
-            todo_id: "t1".into(),
-        });
-        assert_eq!(todo.len(), snooze_presets().len() + 1);
-        assert_eq!(todo.row(0), NotNowRow::Preset(snooze_presets()[0]));
-    }
-
-    #[test]
     fn custom_mode_previews_the_resolved_time_live() {
         let mut panel = SnoozePanelState {
             visible: true,

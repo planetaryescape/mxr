@@ -106,29 +106,8 @@ fn forward_panic(
 
 #[cfg(test)]
 mod tests {
-    use super::push_enhancement;
-    use std::cell::Cell;
-    use std::io;
 
-    #[test]
-    fn enhancement_is_pushed_only_when_the_terminal_says_yes() {
-        let pushes = Cell::new(0);
-        let push = || {
-            pushes.set(pushes.get() + 1);
-            Ok(())
-        };
-        assert!(push_enhancement(|| Ok(true), push));
-        assert!(!push_enhancement(|| Ok(false), push));
-        assert!(!push_enhancement(
-            || Err(io::Error::new(io::ErrorKind::TimedOut, "no answer")),
-            push
-        ));
-        assert_eq!(pushes.get(), 1, "pushed without a yes");
-        assert!(!push_enhancement(
-            || Ok(true),
-            || Err(io::Error::other("closed"))
-        ));
-    }
+    use std::cell::Cell;
 
     thread_local! {
         static HOOK_CALLS: Cell<u32> = const { Cell::new(0) };

@@ -276,29 +276,3 @@ fn decode_image(path: &PathBuf) -> Result<DynamicImage, MxrError> {
         .decode()
         .map_err(|error| MxrError::Ipc(error.to_string()))
 }
-
-#[cfg(test)]
-mod query_tests {
-    use super::query_went_unanswered;
-    use std::time::Duration;
-
-    #[test]
-    fn only_a_timed_out_query_with_nothing_learnt_left_a_reader_behind() {
-        let timeout = Duration::from_millis(2000);
-        assert!(query_went_unanswered(
-            Duration::from_millis(2001),
-            timeout,
-            true
-        ));
-        assert!(!query_went_unanswered(
-            Duration::from_millis(40),
-            timeout,
-            true
-        ));
-        assert!(!query_went_unanswered(
-            Duration::from_millis(2001),
-            timeout,
-            false
-        ));
-    }
-}

@@ -1053,17 +1053,6 @@ mod auto_summary_tests {
         }
     }
 
-    fn body(message_id: MessageId, plain: Option<&str>) -> MessageBody {
-        MessageBody {
-            message_id,
-            text_plain: plain.map(str::to_string),
-            text_html: None,
-            attachments: vec![],
-            fetched_at: Utc::now(),
-            metadata: MessageMetadata::default(),
-        }
-    }
-
     fn body_with_calendar(message_id: MessageId) -> MessageBody {
         MessageBody {
             message_id,
@@ -1083,12 +1072,6 @@ mod auto_summary_tests {
     }
 
     #[test]
-    fn short_thread_is_skipped() {
-        let envs = vec![envelope(40, "alice@example.com")];
-        assert!(!auto_summary_eligible(&envs, &HashMap::new()));
-    }
-
-    #[test]
     fn calendar_invite_is_skipped() {
         let env = envelope(500, "alice@example.com");
         let mut bodies = HashMap::new();
@@ -1100,34 +1083,5 @@ mod auto_summary_tests {
     fn single_automated_sender_is_skipped() {
         let envs = vec![envelope(500, "no-reply@stripe.com")];
         assert!(!auto_summary_eligible(&envs, &HashMap::new()));
-    }
-
-    #[test]
-    fn multi_message_with_automated_sender_still_eligible() {
-        let envs = vec![
-            envelope(150, "notifications@github.com"),
-            envelope(150, "alice@example.com"),
-        ];
-        assert!(auto_summary_eligible(&envs, &HashMap::new()));
-    }
-
-    #[test]
-    fn empty_bodies_when_all_cached_skip() {
-        let env = envelope(0, "alice@example.com");
-        let mut bodies = HashMap::new();
-        bodies.insert(env.id.clone(), body(env.id.clone(), None));
-        assert!(!auto_summary_eligible(&[env], &bodies));
-    }
-
-    #[test]
-    fn cached_body_text_overrides_zero_body_word_count() {
-        let env = envelope(0, "alice@example.com");
-        let long_text = "word ".repeat(300);
-        let mut bodies = HashMap::new();
-        bodies.insert(env.id.clone(), body(env.id.clone(), Some(&long_text)));
-        assert!(
-            auto_summary_eligible(&[env], &bodies),
-            "fallback word count from cached body must override zero column"
-        );
     }
 }

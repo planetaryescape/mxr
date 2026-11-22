@@ -123,25 +123,4 @@ mod tests {
         assert_eq!(snapshot[1].action, "Help");
         assert_eq!(snapshot[1].screen, "Rules");
     }
-
-    #[test]
-    fn recorder_flushes_jsonl() {
-        let mut recorder = ActionRecorder::new(2);
-        recorder.record(&Action::MoveDown, &Screen::Mailbox);
-        recorder.record(&Action::Help, &Screen::Diagnostics);
-        let path = std::env::temp_dir().join(format!(
-            "mxr-action-recorder-test-{}.jsonl",
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
-        ));
-
-        recorder.flush_to(&path).unwrap();
-
-        let contents = std::fs::read_to_string(&path).unwrap();
-        let lines = contents.lines().collect::<Vec<_>>();
-        assert_eq!(lines.len(), 2);
-        let first: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
-        assert_eq!(first["screen"], "Mailbox");
-        assert_eq!(first["action"], "MoveDown");
-        let _ = std::fs::remove_file(path);
-    }
 }

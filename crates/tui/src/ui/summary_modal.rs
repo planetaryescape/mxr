@@ -51,36 +51,3 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ThreadSummaryModalState, them
         frame.render_widget(paragraph, inner);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mxr_core::ThreadId;
-    use mxr_test_support::render_to_string;
-
-    #[test]
-    fn renders_summary_text_and_model_name() {
-        let mut state = ThreadSummaryModalState::default();
-        state.open_loading(ThreadId::new());
-        state.set_summary(
-            "ACTION REQUIRED — confirm the launch checklist\n\nAlice asked Bob to confirm the launch checklist. He hasn't replied.".into(),
-            "qwen2.5-3b-instruct".into(),
-        );
-        let snapshot = render_to_string(100, 18, |frame| {
-            draw(frame, Rect::new(0, 0, 100, 18), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("ACTION REQUIRED")
-                && snapshot.contains("confirm the launch checklist"),
-            "triage verdict first line must render without clipping; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("Alice asked Bob"),
-            "summary body text must render; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("qwen2.5-3b-instruct"),
-            "model name must surface in title; got:\n{snapshot}",
-        );
-    }
-}

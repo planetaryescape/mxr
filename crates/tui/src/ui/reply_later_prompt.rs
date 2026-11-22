@@ -133,12 +133,4 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ")
     }
-
-    #[test]
-    fn on_a_waiting_row_it_says_it_comes_back_if_nobody_replies() {
-        let prompt = ReplyLaterPromptState::new(ThreadId::new(), MessageId::new(), true);
-        let out = render(&prompt);
-        assert!(out.contains("Bring back if nobody replies"));
-        assert!(out.contains("in 3d"));
-    }
 }

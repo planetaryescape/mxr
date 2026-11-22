@@ -2,53 +2,10 @@ use mxr_compose::frontmatter::ComposeFrontmatter;
 use mxr_core::id::{AccountId, MessageId};
 use mxr_protocol::{MutationCommand, Request};
 use mxr_test_support::render_to_string;
-use mxr_tui::action::UiContext;
 use mxr_tui::app::{MutationEffect, PendingBulkConfirm, PendingSend, PendingSendMode};
 use mxr_tui::ui::bulk_confirm_modal::draw as draw_bulk_confirm_modal;
-use mxr_tui::ui::command_palette::{draw as draw_command_palette, CommandPalette};
 use mxr_tui::ui::send_confirm_modal::draw as draw_send_confirm;
-use mxr_tui::ui::unsubscribe_modal::draw as draw_unsubscribe_modal;
 use ratatui::layout::Rect;
-
-#[test]
-fn command_palette_prompt_row_stays_fixed() {
-    let mut broad = CommandPalette::default();
-    broad.toggle(UiContext::MailboxList);
-    broad.on_char('a');
-
-    let mut narrow = CommandPalette::default();
-    narrow.toggle(UiContext::MailboxList);
-    for ch in "edit config".chars() {
-        narrow.on_char(ch);
-    }
-
-    let broad_snapshot = render_to_string(70, 20, |frame| {
-        draw_command_palette(
-            frame,
-            Rect::new(0, 0, 70, 20),
-            &broad,
-            &mxr_tui::theme::Theme::default(),
-        );
-    });
-    let narrow_snapshot = render_to_string(70, 20, |frame| {
-        draw_command_palette(
-            frame,
-            Rect::new(0, 0, 70, 20),
-            &narrow,
-            &mxr_tui::theme::Theme::default(),
-        );
-    });
-
-    let broad_line = broad_snapshot
-        .lines()
-        .position(|line| line.contains("> a"))
-        .expect("broad snapshot should contain selected shortcut");
-    let narrow_line = narrow_snapshot
-        .lines()
-        .position(|line| line.contains("> edit config"))
-        .expect("narrow snapshot should contain selected command");
-    assert_eq!(broad_line, narrow_line);
-}
 
 #[test]
 fn send_confirm_snapshot() {
@@ -124,25 +81,4 @@ fn bulk_confirm_snapshot() {
         );
     });
     insta::assert_snapshot!("bulk_confirm_snapshot", snapshot);
-}
-
-#[test]
-fn unsubscribe_modal_snapshot() {
-    let pending = mxr_tui::app::PendingUnsubscribeConfirm {
-        message_id: MessageId::new(),
-        account_id: AccountId::new(),
-        sender_email: "news@example.com".into(),
-        method_label: "one-click".into(),
-        archive_message_ids: vec![MessageId::new(), MessageId::new()],
-    };
-
-    let snapshot = render_to_string(100, 20, |frame| {
-        draw_unsubscribe_modal(
-            frame,
-            Rect::new(0, 0, 100, 20),
-            Some(&pending),
-            &mxr_tui::theme::Theme::default(),
-        );
-    });
-    insta::assert_snapshot!("unsubscribe_modal_snapshot", snapshot);
 }

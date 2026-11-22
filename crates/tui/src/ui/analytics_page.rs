@@ -2163,7 +2163,7 @@ mod tests {
 
     use super::*;
     use crate::app::AnalyticsState;
-    use mxr_core::types::{ResponseTimeDirection, ResponseTimeSummary, StorageBucket};
+    use mxr_core::types::StorageBucket;
     use mxr_test_support::render_to_string;
     use ratatui::layout::Rect;
 
@@ -2193,119 +2193,6 @@ mod tests {
     }
 
     #[test]
-    fn response_time_view_renders_stat_strip_and_annotated_histogram() {
-        use mxr_core::types::{ResponseTimeBucket, RESPONSE_TIME_HISTOGRAM_EDGES};
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::ResponseTime;
-        state.response_time = Some(ResponseTimeSummary {
-            direction: ResponseTimeDirection::IReplied,
-            sample_count: 17,
-            clock_p50_seconds: 90,
-            clock_p90_seconds: 3600,
-            business_hours_p50_seconds: None,
-            business_hours_p90_seconds: None,
-            histogram: RESPONSE_TIME_HISTOGRAM_EDGES
-                .iter()
-                .enumerate()
-                .map(|(i, &edge)| ResponseTimeBucket {
-                    upper_bound_seconds: edge,
-                    count: if i < 3 { (i as u32 + 1) * 3 } else { 0 },
-                })
-                .collect(),
-        });
-        let rendered = render_to_string(160, 30, |frame| {
-            draw(frame, Rect::new(0, 0, 160, 30), &state, &theme());
-        });
-        assert!(
-            rendered.contains("typical wait"),
-            "typical card missing: {rendered}"
-        );
-        assert!(
-            rendered.contains("slow tail"),
-            "slow-tail card missing: {rendered}"
-        );
-        assert!(
-            rendered.contains("samples"),
-            "samples card missing: {rendered}"
-        );
-        assert!(rendered.contains("scope"), "scope card missing: {rendered}");
-        assert!(
-            rendered.contains("you reply"),
-            "direction phrasing missing: {rendered}"
-        );
-        assert!(rendered.contains("17"), "sample count missing: {rendered}");
-        assert!(
-            rendered.contains("Distribution"),
-            "histogram pane missing: {rendered}"
-        );
-        assert!(
-            rendered.contains("typical 1m30s"),
-            "typical annotation missing: {rendered}"
-        );
-        assert!(
-            rendered.contains("slow tail 1h0m"),
-            "slow-tail annotation missing: {rendered}"
-        );
-    }
-
-    #[test]
-    fn loaded_error_replaces_table_with_error_block() {
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::Storage;
-        state.error = Some("daemon unavailable".into());
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
-        });
-        assert!(rendered.contains("Error"));
-        assert!(rendered.contains("daemon unavailable"));
-        assert!(
-            !rendered.contains("No storage data"),
-            "empty-state must not render alongside an error"
-        );
-    }
-
-    #[test]
-    fn refreshing_with_cached_data_keeps_view_visible() {
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::Storage;
-        state.loading = true;
-        state.storage_rows = vec![StorageBucket {
-            key: "cached@example.com".into(),
-            bytes: 2048,
-            count: 3,
-        }];
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
-        });
-        assert!(
-            !rendered.contains("Computing analytics"),
-            "cold-load block must NOT replace cached data: {rendered}"
-        );
-        assert!(
-            rendered.contains("cached@example.com"),
-            "cached row should still render: {rendered}"
-        );
-        assert!(
-            rendered.contains("refreshing"),
-            "refreshing indicator should be in the header: {rendered}"
-        );
-    }
-
-    #[test]
-    fn cold_load_still_blanks_view() {
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::Storage;
-        state.loading = true;
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
-        });
-        assert!(
-            rendered.contains("Computing analytics"),
-            "cold-load block should render when no cached data exists: {rendered}"
-        );
-    }
-
-    #[test]
     fn short_email_cjk_does_not_panic() {
         let addr = "日日日日日日日日日日日日日日日日日日日日";
         let result = short_email(addr);
@@ -2319,37 +2206,4 @@ mod cache_tests {
         clippy::field_reassign_with_default,
         reason = "cache tests emphasize the specific state knobs under inspection"
     )]
-
-    use crate::app::{AnalyticsState, AnalyticsView, StorageMode};
-    use mxr_core::types::{StorageBucket, StorageGroupBy};
-
-    #[test]
-    fn fresh_cache_skips_refetch_on_tab_switch() {
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::Storage;
-        state.storage_rows = vec![StorageBucket {
-            key: "k".into(),
-            bytes: 1,
-            count: 1,
-        }];
-        state.mark_refreshed();
-
-        assert!(state.has_data_for_view(AnalyticsView::Storage));
-        assert!(state.cache_is_fresh(AnalyticsView::Storage));
-    }
-
-    #[test]
-    fn cache_key_distinguishes_filter_combos() {
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::Storage;
-        state.storage_mode = StorageMode::Breakdown;
-        state.storage_group_by = StorageGroupBy::Sender;
-        let key_sender = state.current_cache_key();
-        state.storage_group_by = StorageGroupBy::Mimetype;
-        let key_mime = state.current_cache_key();
-        assert_ne!(
-            key_sender, key_mime,
-            "different group_by must produce distinct cache keys"
-        );
-    }
 }

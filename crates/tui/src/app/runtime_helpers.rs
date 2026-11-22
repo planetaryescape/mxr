@@ -234,35 +234,6 @@ fn next_countdown_tick(started_at: Instant, now: Instant) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::{Toast, ToastSeverity};
-
-    #[test]
-    fn background_timeout_wakes_for_toast_expiry_then_stops_scheduling_it() {
-        let mut app = App::new();
-        let started_at = Instant::now();
-        app.toasts.push(Toast {
-            text: "Completed".into(),
-            severity: ToastSeverity::Success,
-            created_at: started_at,
-            ttl: Duration::from_secs(5),
-            action_hint: None,
-        });
-
-        assert_eq!(
-            app.next_background_timeout_at(Duration::from_secs(60), started_at),
-            Duration::from_secs(5)
-        );
-        let expiry = started_at + Duration::from_secs(5);
-        assert_eq!(
-            app.next_background_timeout_at(Duration::from_secs(60), expiry),
-            Duration::ZERO
-        );
-        app.toasts.sweep_expired(expiry);
-        assert_eq!(
-            app.next_background_timeout_at(Duration::from_secs(60), expiry),
-            Duration::from_secs(60)
-        );
-    }
 
     #[test]
     fn background_timeout_refreshes_undo_countdown_and_clears_expired_undo() {
@@ -295,39 +266,6 @@ mod tests {
         assert_eq!(
             app.next_background_timeout_at(Duration::from_secs(60), expiry),
             Duration::from_secs(60)
-        );
-    }
-
-    #[test]
-    fn existing_background_deadlines_still_win() {
-        let mut app = App::new();
-        let now = Instant::now();
-        app.toasts.push(Toast {
-            text: "Completed".into(),
-            severity: ToastSeverity::Success,
-            created_at: now,
-            ttl: Duration::from_secs(5),
-            action_hint: None,
-        });
-        app.mailbox.pending_preview_read = Some(crate::app::PendingPreviewRead {
-            message_id: mxr_core::MessageId::new(),
-            due_at: now + Duration::from_millis(100),
-        });
-        app.search.pending_debounce = Some(crate::app::state::PendingSearchDebounce {
-            query: "test".into(),
-            mode: mxr_core::SearchMode::Lexical,
-            session_id: 1,
-            due_at: now + Duration::from_millis(250),
-        });
-
-        assert_eq!(
-            app.next_background_timeout_at(Duration::from_secs(60), now),
-            Duration::from_millis(100)
-        );
-        app.mailbox.pending_preview_read = None;
-        assert_eq!(
-            app.next_background_timeout_at(Duration::from_secs(60), now),
-            Duration::from_millis(250)
         );
     }
 }

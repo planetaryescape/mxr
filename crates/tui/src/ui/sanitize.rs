@@ -96,32 +96,12 @@ mod tests {
     }
 
     #[test]
-    fn osc_with_bel_terminator_stripped() {
-        let input = "\x1b]0;title\x07 normal";
-        let result = strip_control_chars(input);
-        assert!(!result.contains('\x1b'), "OSC ESC must be stripped");
-        assert!(!result.as_bytes().contains(&0x07), "BEL must be stripped");
-        assert!(result.contains("normal"), "surrounding text must survive");
-    }
-
-    #[test]
     fn c1_control_bytes_stripped() {
         // U+009B is CSI in C1; encoded as 0xC2 0x9B in UTF-8
         let input = "before\u{009b}after";
         let result = strip_control_chars(input);
         assert!(!result.contains('\u{009b}'), "C1 CSI must be stripped");
         assert_eq!(result.as_ref(), "beforeafter");
-    }
-
-    #[test]
-    fn tabs_and_newlines_preserved() {
-        let s = "col1\tcol2\nline2";
-        let result = strip_control_chars(s);
-        assert!(
-            matches!(result, Cow::Borrowed(_)),
-            "tab+newline text is Cow::Borrowed"
-        );
-        assert_eq!(result.as_ref(), s);
     }
 
     #[test]

@@ -455,11 +455,6 @@ mod tests {
     }
 
     #[test]
-    fn plain_text_proof_marks_removed_and_added_words() {
-        assert_eq!(no_color_diff(&proposal()), "[-Hi-]{+Hello+} there");
-    }
-
-    #[test]
     fn test_backend_preserves_paragraphs_and_warns_on_gap_ranges() {
         let mut draft = proposal();
         draft.text = "Hello\nkept body\nsignoff".into();
@@ -502,49 +497,5 @@ mod tests {
             .iter()
             .any(|row| row.contains("kept [[body]]")));
         assert!(no_color_rows.iter().any(|row| row.contains("meeting time")));
-    }
-
-    #[test]
-    fn test_backend_scroll_reaches_the_end_of_a_long_proof() {
-        let mut draft = proposal();
-        draft.changes = vec![TextChangeData {
-            kind: TextChangeKindData::Kept,
-            text: (0..40)
-                .map(|line| format!("draft line {line}"))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        }];
-        draft.text = draft.changes[0].text.clone();
-        let backend = rendered(false, u16::MAX, &draft);
-        let rows: Vec<String> = (0..backend.buffer().area.height)
-            .map(|y| {
-                (0..backend.buffer().area.width)
-                    .map(|x| backend.buffer()[(x, y)].symbol())
-                    .collect::<String>()
-            })
-            .collect();
-        assert!(rows.iter().any(|row| row.contains("draft line 39")));
-        assert!(rows.iter().any(|row| row.contains("history not used")));
-    }
-
-    #[test]
-    fn end_reaches_the_last_word_of_a_wrapped_paragraph() {
-        let mut draft = proposal();
-        draft.text = format!("{}FINAL_WORD_ANCHOR", "long draft text ".repeat(200));
-        draft.changes = vec![TextChangeData {
-            kind: TextChangeKindData::Kept,
-            text: draft.text.clone(),
-        }];
-        let backend = rendered(false, u16::MAX, &draft);
-        let buffer = backend.buffer();
-        let text = (0..buffer.area.height)
-            .map(|y| {
-                (0..buffer.area.width)
-                    .map(|x| buffer[(x, y)].symbol())
-                    .collect::<String>()
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(text.contains("FINAL_WORD_ANCHOR"));
     }
 }

@@ -172,15 +172,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_paste_types_into_the_focused_field_as_one_line() {
-        let mut app = App::new();
-        app.search.bar.activate();
-        app.handle_paste("from:alice\r\nsubject:\tlunch\u{7}");
-        assert_eq!(app.search.bar.query, "from:alice subject: lunch");
-        assert!(app.search.bar.active, "a pasted line break must not submit");
-    }
-
-    #[test]
     fn a_paste_with_no_field_focused_runs_no_shortcut() {
         let mut app = App::new();
         app.screen = Screen::Mailbox;

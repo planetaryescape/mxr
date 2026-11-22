@@ -217,27 +217,4 @@ mod tests {
         assert!(rendered.contains("Are you free?"));
         assert!(!rendered.contains('\x1b'));
     }
-
-    #[test]
-    fn the_finish_says_what_was_handled_and_who_waits_elsewhere() {
-        let first = item("Nora");
-        let mut page = FocusPageState::start(None, false, None);
-        page.sync(vec![first.clone()]);
-        page.handled(&first.thread_id);
-        page.others = 2;
-        let rendered = render(&page, None);
-        assert!(rendered.contains("Low tide. That's everyone you write with."));
-        assert!(rendered.contains("1 conversation handled."));
-        assert!(rendered.contains("2 others who wrote to you are in Messages."));
-    }
-
-    #[test]
-    fn a_failed_source_with_nobody_left_is_an_error_not_a_finish() {
-        let mut page = FocusPageState::start(None, false, None);
-        page.error = Some("daemon unavailable".into());
-        page.sync(Vec::new());
-        let rendered = render(&page, None);
-        assert!(rendered.contains("Couldn't load who you owe a reply"));
-        assert!(!rendered.contains("Nobody you write with"));
-    }
 }

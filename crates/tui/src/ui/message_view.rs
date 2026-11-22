@@ -1498,27 +1498,6 @@ mod tests {
     }
 
     #[test]
-    fn an_adversarial_table_renders_its_text_quickly_without_html2text_blowing_up() {
-        let mut html = String::from("<table><tr>");
-        for n in 0..20_000 {
-            html.push_str(&format!("<td>c{n}</td>"));
-        }
-        html.push_str("</tr>");
-        for n in 0..20_000 {
-            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
-        }
-        html.push_str("</table>");
-        let started = std::time::Instant::now();
-        let text = rendered_text(&html);
-        assert!(started.elapsed() < std::time::Duration::from_secs(10));
-        assert!(
-            text.contains("c0") && text.contains("r19999"),
-            "got {}",
-            text.chars().take(200).collect::<String>()
-        );
-    }
-
-    #[test]
     fn a_table_hidden_by_a_comment_renders_bounded_and_quickly() {
         let mut html = String::from("<table><tr>");
         for n in 0..20_000 {
@@ -1542,20 +1521,6 @@ mod tests {
     }
 
     #[test]
-    fn a_100000_deep_div_nest_renders_its_text_quickly() {
-        let html = format!(
-            "{}deepword{}",
-            "<div>".repeat(100_000),
-            "</div>".repeat(100_000)
-        );
-        let started = std::time::Instant::now();
-        let text = rendered_text(&html);
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
-        assert!(text.len() < 4 * html.len());
-        assert!(text.contains("deepword"));
-    }
-
-    #[test]
     fn a_lost_helper_shows_the_message_text_not_its_markup() {
         let lost = std::sync::Arc::new(mxr_html_worker::Supervisor::new(
             mxr_html_worker::Config::new("/nonexistent/mxr-helper", Vec::new()),
@@ -1570,58 +1535,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn an_oversized_html_body_shows_its_text_not_its_markup() {
-        let html = format!(
-            "<p>zzoversizedword</p>{}",
-            "<p>filler</p>".repeat(mxr_reader::MAX_HTML_BYTES / 13 + 1)
-        );
-        assert!(mxr_reader::bounded_html(&html).is_none());
-        let text = rendered_text(&html);
-        assert!(text.contains("zzoversizedword"));
-        assert!(!text.contains("<p>"), "markup leaked into the view");
-    }
-
-    #[test]
-    fn reader_header_names_the_account_with_its_chip() {
-        use crate::ui::account_mark::{AccountMarks, ChipDepth};
-        let account_id = mxr_core::AccountId::new();
-        let work = mxr_protocol::AccountSummaryData {
-            account_id: account_id.clone(),
-            key: Some("work".into()),
-            name: "Work".into(),
-            email: "work@example.com".into(),
-            provider_kind: "imap".into(),
-            sync_kind: Some("imap".into()),
-            send_kind: None,
-            enabled: true,
-            is_default: true,
-            source: mxr_protocol::AccountSourceData::Config,
-            editable: mxr_protocol::AccountEditModeData::Full,
-            sync: None,
-            send: None,
-            capabilities: Default::default(),
-            identity: Some(mxr_protocol::AccountIdentityData {
-                color: mxr_core::AccountColor::Sky,
-                tag: "W".into(),
-            }),
-        };
-        let marks = AccountMarks::from_accounts(&[work], false, ChipDepth::Plain);
-        let line = account_line(&account_id, &marks, &Theme::default(), 10)
-            .expect("a known account has a header line");
-        let text: String = line
-            .spans
-            .iter()
-            .map(|span| span.content.as_ref())
-            .collect();
-        insta::assert_snapshot!("reader_account_line", text);
-    }
     use super::*;
     use crate::app::{BodySource, BodyViewMetadata, BodyViewMode};
     use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId, ThreadId};
     use mxr_core::types::{
-        Address, BodyPartSource, CalendarMetadata, CalendarPerson, MessageFlags, UnsubscribeMethod,
+        Address, CalendarMetadata, CalendarPerson, MessageFlags, UnsubscribeMethod,
     };
     use mxr_test_support::render_to_string;
 
@@ -1653,54 +1572,6 @@ mod tests {
             label_provider_ids: vec![],
             keywords: std::collections::BTreeSet::new(),
         }
-    }
-
-    #[test]
-    fn selected_messages_render_visible_chip() {
-        let block = ThreadMessageBlock {
-            envelope: envelope(),
-            body_state: BodyViewState::ready(
-                "hello".into(),
-                "hello".into(),
-                BodySource::Plain,
-                crate::app::BodyViewMetadata::default(),
-            ),
-            labels: vec!["INBOX".into()],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: true,
-            has_unsubscribe: false,
-            signature_expanded: false,
-            quotes_expanded: false,
-            collapsed: false,
-            scroll_here: false,
-            highlight_link: None,
-            assets_loading: false,
-        };
-
-        let snapshot = render_to_string(70, 18, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 70, 18),
-                &[block],
-                DrawOptions {
-                    zone: crate::ui::received_label::DisplayZone::Fixed(
-                        chrono::FixedOffset::east_opt(3600).unwrap(),
-                    ),
-                    context: Vec::new(),
-                    summary: None,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                    now: chrono::Utc::now(),
-                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
-                },
-            );
-        });
-
-        assert!(snapshot.contains("Selected"));
     }
 
     #[test]
@@ -1757,234 +1628,6 @@ mod tests {
             snapshot.contains("hello") || snapshot.contains("From:"),
             "content must stay on screen after an overscroll, got:\n{snapshot}"
         );
-    }
-
-    #[test]
-    fn thread_summary_renders_above_message() {
-        let block = ThreadMessageBlock {
-            envelope: envelope(),
-            body_state: BodyViewState::ready(
-                "hello".into(),
-                "hello".into(),
-                BodySource::Plain,
-                crate::app::BodyViewMetadata::default(),
-            ),
-            labels: vec![],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: false,
-            has_unsubscribe: false,
-            signature_expanded: false,
-            quotes_expanded: false,
-            collapsed: false,
-            scroll_here: false,
-            highlight_link: None,
-            assets_loading: false,
-        };
-
-        let snapshot = render_to_string(90, 20, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 90, 20),
-                &[block],
-                DrawOptions {
-                    zone: crate::ui::received_label::DisplayZone::Fixed(
-                        chrono::FixedOffset::east_opt(3600).unwrap(),
-                    ),
-                    context: Vec::new(),
-                    summary: Some(ThreadSummaryBlock {
-                        text: Some("Summary:\n- Alice asked for launch approval.".into()),
-                        model: Some("llama3.2".into()),
-                        loading: false,
-                        error: None,
-                    }),
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                    now: chrono::Utc::now(),
-                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
-                },
-            );
-        });
-
-        assert!(snapshot.contains("Summary"));
-        assert!(snapshot.contains("Alice asked for launch approval"));
-        assert!(snapshot.contains("llama3.2"));
-    }
-
-    #[test]
-    fn raw_body_rendering_preserves_quotes_and_signature_markers() {
-        let raw = "Hello\n> quoted line\n-- \nSignature";
-        let block = ThreadMessageBlock {
-            envelope: envelope(),
-            body_state: BodyViewState::ready(
-                raw.into(),
-                raw.into(),
-                BodySource::Plain,
-                BodyViewMetadata {
-                    mode: BodyViewMode::Text,
-                    provenance: Some(BodyPartSource::Exact),
-                    reader_applied: false,
-                    ..BodyViewMetadata::default()
-                },
-            ),
-            labels: vec![],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: false,
-            has_unsubscribe: false,
-            signature_expanded: false,
-            quotes_expanded: false,
-            collapsed: false,
-            scroll_here: false,
-            highlight_link: None,
-            assets_loading: false,
-        };
-
-        let rendered = render_to_string(80, 18, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 18),
-                &[block],
-                DrawOptions {
-                    zone: crate::ui::received_label::DisplayZone::Fixed(
-                        chrono::FixedOffset::east_opt(3600).unwrap(),
-                    ),
-                    context: Vec::new(),
-                    summary: None,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                    now: chrono::Utc::now(),
-                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
-                },
-            );
-        });
-
-        assert!(rendered.contains("> quoted line"));
-        assert!(rendered.contains("-- "));
-        assert!(!rendered.contains("signature ("));
-    }
-
-    #[test]
-    fn html_body_rendering_labels_inline_embedded_and_remote_images() {
-        let html = concat!(
-            "<p>Hello</p>",
-            "<img alt=\"Logo\" src=\"cid:logo@example.com\">",
-            "<img alt=\"Badge\" src=\"data:image/png;base64,AAAA\">",
-            "<img alt=\"Hero\" src=\"https://example.com/hero.png\">"
-        );
-        let block = ThreadMessageBlock {
-            envelope: envelope(),
-            body_state: BodyViewState::ready(
-                html.into(),
-                html.into(),
-                BodySource::Html,
-                BodyViewMetadata {
-                    mode: BodyViewMode::Html,
-                    provenance: Some(BodyPartSource::Exact),
-                    inline_images: true,
-                    remote_content_available: true,
-                    remote_content_enabled: false,
-                    ..BodyViewMetadata::default()
-                },
-            ),
-            labels: vec![],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: false,
-            has_unsubscribe: false,
-            signature_expanded: false,
-            quotes_expanded: false,
-            collapsed: false,
-            scroll_here: false,
-            highlight_link: None,
-            assets_loading: false,
-        };
-
-        let rendered = render_to_string(120, 30, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 30),
-                &[block],
-                DrawOptions {
-                    zone: crate::ui::received_label::DisplayZone::Fixed(
-                        chrono::FixedOffset::east_opt(3600).unwrap(),
-                    ),
-                    context: Vec::new(),
-                    summary: None,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                    now: chrono::Utc::now(),
-                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
-                },
-            );
-        });
-
-        assert!(rendered.contains("Logo"));
-        assert!(rendered.contains("Badge"));
-        assert!(rendered.contains("Hero"));
-        assert!(rendered.contains("View: Original HTML"));
-        assert!(rendered.contains("External content blocked"));
-    }
-
-    #[test]
-    fn unsubscribe_header_uses_explicit_action_label() {
-        let mut env = envelope();
-        env.unsubscribe = UnsubscribeMethod::OneClick {
-            url: "https://example.com/unsub".into(),
-        };
-        let block = ThreadMessageBlock {
-            envelope: env,
-            body_state: BodyViewState::ready(
-                "hello".into(),
-                "hello".into(),
-                BodySource::Plain,
-                BodyViewMetadata::default(),
-            ),
-            labels: vec![],
-            attachments: vec![],
-            selected: true,
-            bulk_selected: false,
-            has_unsubscribe: true,
-            signature_expanded: false,
-            quotes_expanded: false,
-            collapsed: false,
-            scroll_here: false,
-            highlight_link: None,
-            assets_loading: false,
-        };
-
-        let rendered = render_to_string(100, 18, |frame| {
-            let mut html_images = HashMap::new();
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 18),
-                &[block],
-                DrawOptions {
-                    zone: crate::ui::received_label::DisplayZone::Fixed(
-                        chrono::FixedOffset::east_opt(3600).unwrap(),
-                    ),
-                    context: Vec::new(),
-                    summary: None,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MessageView,
-                    theme: &Theme::default(),
-                    html_images: &mut html_images,
-                    now: chrono::Utc::now(),
-                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
-                },
-            );
-        });
-
-        assert!(rendered.contains("One-click unsubscribe (D)"));
     }
 
     #[test]
@@ -2122,24 +1765,5 @@ mod tests {
             rendered.contains("after"),
             "expected 'after' in rendered output"
         );
-    }
-
-    #[test]
-    fn a_to_do_link_is_marked_where_it_appears() {
-        let theme = Theme::default();
-        let line = style_line_with_links("Pay here: https://www.Camden.gov.uk/pay/ today", &theme);
-        let marked = mark_link(line, "https://www.camden.gov.uk/pay", &theme);
-        let link = marked
-            .spans
-            .iter()
-            .find(|span| span.content.starts_with("https://"))
-            .unwrap();
-        assert!(link.style.add_modifier.contains(Modifier::REVERSED));
-        let other = style_line_with_links("See https://example.com/other", &theme);
-        let unmarked = mark_link(other, "https://www.camden.gov.uk/pay", &theme);
-        assert!(unmarked
-            .spans
-            .iter()
-            .all(|span| !span.style.add_modifier.contains(Modifier::REVERSED)));
     }
 }

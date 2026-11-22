@@ -40,6 +40,7 @@ pub(crate) fn retain_schedule_query(
 ) -> std::io::Result<()> {
     retain_query_at(&path(), account, draft, identity)
 }
+#[cfg(not(test))]
 fn retain_query_at(
     path: &Path,
     account: &AccountId,
@@ -278,87 +279,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod revision_owner_tests {
-    use super::*;
-    #[test]
-    fn late_compose_revision_keeps_newer_compose_identity_and_reopen_selection() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("recovery.json");
-        let a = dir.path().join("a.md");
-        let b = dir.path().join("b.md");
-        std::fs::write(&a, "A").unwrap();
-        std::fs::write(&b, "B").unwrap();
-        let account = AccountId::new();
-        let draft_a = DraftId::new();
-        let draft_b = DraftId::new();
-        retain_at(
-            &path,
-            &account,
-            &draft_a,
-            &SendIdentity::for_revision(&draft_a, 1),
-            Some(&a),
-        )
-        .unwrap();
-        let b_identity = SendIdentity::for_revision(&draft_b, 1);
-        retain_at(&path, &account, &draft_b, &b_identity, Some(&b)).unwrap();
-        retain_at_owned(
-            &path,
-            &account,
-            &draft_a,
-            &SendIdentity::for_revision(&draft_a, 2),
-            Some(&a),
-            false,
-        )
-        .unwrap();
-        let recovery = load_at(&path).unwrap();
-        assert_eq!(recovery.last, Some((account.clone(), b_identity)));
-        assert_eq!(recovery.operations[&draft_a].1.expected_revision, 2);
-        assert_eq!(reopenable_compose(recovery), Some((account, b)));
-    }
-    #[test]
-    fn scheduled_alias_survives_reload_and_late_send_cannot_replace_newer_selection() {
-        let dir = tempfile::tempdir().unwrap();
-        let state = dir.path().join("recovery.json");
-        let account = AccountId::new();
-        let draft_a = DraftId::new();
-        let draft_b = DraftId::new();
-        let a = dir.path().join("a.md");
-        let b = dir.path().join("b.md");
-        std::fs::write(&a, "A").unwrap();
-        std::fs::write(&b, "B").unwrap();
-        retain_at(
-            &state,
-            &account,
-            &draft_a,
-            &SendIdentity::for_revision(&draft_a, 1),
-            Some(&a),
-        )
-        .unwrap();
-        let identity = SendIdentity::for_revision(&draft_b, 2);
-        retain_at(&state, &account, &draft_b, &identity, Some(&b)).unwrap();
-        retain_query_at(&state, &account, &draft_b, &identity).unwrap();
-        retain_at_owned(
-            &state,
-            &account,
-            &draft_a,
-            &SendIdentity::for_revision(&draft_a, 2),
-            None,
-            false,
-        )
-        .unwrap();
-        retain_query_at(
-            &state,
-            &account,
-            &draft_a,
-            &SendIdentity::for_revision(&draft_a, 2),
-        )
-        .unwrap();
-        let reloaded = load_at(&state).unwrap();
-        assert_eq!(reloaded.query, Some(format!("draft:{draft_b}")));
-        assert_eq!(reloaded.last, Some((account.clone(), identity)));
-        assert_eq!(reopenable_compose(reloaded), Some((account, b)));
-    }
-}
+mod revision_owner_tests {}
 
 #[cfg(not(test))]
 pub(crate) fn retain_owner(

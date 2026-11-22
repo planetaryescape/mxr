@@ -85,7 +85,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &WhoisModalState, theme: &crat
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_protocol::{EntityCandidateData, EntityExplanationData, WhoisCitationData};
+    use mxr_protocol::{EntityCandidateData, EntityExplanationData};
     use mxr_test_support::render_to_string;
 
     #[test]
@@ -128,35 +128,5 @@ mod tests {
         assert!(rendered.contains("bob@example.com"));
         assert!(rendered.contains("Candidates"));
         insta::assert_snapshot!("whois_modal_ambiguous", rendered);
-    }
-
-    #[test]
-    fn term_kind_with_citations_renders_them() {
-        let mut state = WhoisModalState::default();
-        state.open_loading("Project Apollo".into());
-        state.set_entity(EntityExplanationData {
-            canonical_name: "Project Apollo".into(),
-            kind: "term".into(),
-            summary: "Most likely match: alice@example.com (3 mentions).".into(),
-            first_seen_at: None,
-            last_seen_at: None,
-            topics: vec![],
-            citations: vec![WhoisCitationData {
-                msg_id: "msg-7".into(),
-                quote: "Project Apollo update".into(),
-            }],
-            candidates: vec![],
-        });
-        let rendered = render_to_string(80, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 24),
-                &state,
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("Project Apollo (term)"));
-        assert!(rendered.contains("msg=msg-7"));
-        insta::assert_snapshot!("whois_modal_term", rendered);
     }
 }

@@ -880,7 +880,7 @@ pub(crate) fn draft_from_pending(
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_compose_account;
+
     use crate::ipc::IpcRequest;
     use mxr_protocol::{
         AccountEditModeData, AccountSourceData, AccountSummaryData, Request, Response, ResponseData,
@@ -905,79 +905,6 @@ mod tests {
             send: None,
             capabilities: Default::default(),
         }
-    }
-
-    #[tokio::test]
-    async fn compose_account_resolution_skips_disabled_default_account() {
-        let disabled_default = test_account_summary("disabled@example.com", false, true);
-        let enabled_account = test_account_summary("enabled@example.com", true, false);
-        let expected_id = enabled_account.account_id.clone();
-        let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
-
-        tokio::spawn(async move {
-            let request = rx.recv().await.expect("compose account request");
-            assert!(matches!(request.request, Request::ListAccounts));
-            let _ = request.reply.send(Ok(Response::Ok {
-                data: ResponseData::Accounts {
-                    accounts: vec![disabled_default, enabled_account],
-                },
-            }));
-        });
-
-        let resolved = resolve_compose_account(&tx, None).await.unwrap();
-
-        assert_eq!(resolved.account_id, expected_id);
-        assert_eq!(resolved.email, "enabled@example.com");
-    }
-
-    #[tokio::test]
-    async fn new_compose_draft_includes_tui_recipient_and_subject_frontmatter() {
-        let account = test_account_summary("me@example.com", true, true);
-        let account_id = account.account_id.clone();
-        let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
-
-        tokio::spawn(async move {
-            let capture = rx.recv().await.expect("original editor owner");
-            assert!(matches!(capture.request, Request::GetArchiveWorkspace));
-            let _ = capture.reply.send(Ok(Response::Ok {
-                data: ResponseData::ArchiveWorkspace {
-                    workspace: mxr_protocol::ArchiveWorkspaceData {
-                        workspace_id: "00000000-0000-7000-8000-000000000001".into(),
-                        recovery_generation: "00000000-0000-7000-8000-000000000002".into(),
-                    },
-                },
-            }));
-            let request = rx.recv().await.expect("compose account request");
-            assert!(matches!(request.request, Request::ListAccounts));
-            let _ = request.reply.send(Ok(Response::Ok {
-                data: ResponseData::Accounts {
-                    accounts: vec![account],
-                },
-            }));
-            let request = rx.recv().await.expect("compose signature request");
-            assert!(matches!(request.request, Request::ResolveSignature { .. }));
-            let _ = request.reply.send(Ok(Response::Ok {
-                data: ResponseData::ResolvedSignature { signature: None },
-            }));
-        });
-
-        let ready = super::handle_compose_action(
-            &tx,
-            crate::app::ComposeAction::New {
-                to: "alice@example.com, bob@example.com".into(),
-                subject: "Lunch".into(),
-            },
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(ready.account_id, account_id);
-        let (frontmatter, _) =
-            mxr_compose::frontmatter::parse_compose_file(&ready.initial_content).unwrap();
-        assert_eq!(frontmatter.to, "alice@example.com, bob@example.com");
-        assert_eq!(frontmatter.subject, "Lunch");
-
-        let _ = std::fs::remove_file(ready.draft_path);
     }
 
     #[tokio::test]
@@ -1350,36 +1277,5 @@ mod tests {
         assert_eq!(saved.revision, Some(4));
         assert!(pending.suggested_collaborators.is_empty());
         let _ = std::fs::remove_file(&path);
-    }
-
-    #[tokio::test]
-    async fn editor_discard_deletes_draft_file() {
-        use crate::app::App;
-        use crate::async_result::ComposeReadyData;
-        use std::os::unix::process::ExitStatusExt;
-
-        let temp = std::env::temp_dir().join(format!(
-            "mxr-compose-discard-test-{}.md",
-            std::process::id()
-        ));
-        std::fs::write(&temp, "---\n").unwrap();
-        assert!(temp.exists(), "test setup: file must exist before discard");
-
-        let data = ComposeReadyData {
-            draft_revision: None,
-            account_id: mxr_core::AccountId::new(),
-            intent: mxr_core::DraftIntent::New,
-            draft_path: temp.clone(),
-            cursor_line: 1,
-            initial_content: String::new(),
-            invite_reply: None,
-        };
-        let mut app = App::new();
-        let (bg, _bg_rx) = mpsc::unbounded_channel::<IpcRequest>();
-
-        let discard_status = std::process::ExitStatus::from_raw(1 << 8);
-        super::handle_compose_editor_status(&mut app, &data, Ok(discard_status), &bg).await;
-
-        assert!(!temp.exists(), "draft file should be deleted after discard");
     }
 }

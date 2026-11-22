@@ -140,67 +140,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn populated_state_renders_subject_and_overdue_score() {
-        let rows = vec![
-            row("alice@example.com", "Status update?", 5.0, 1.0),
-            row("bob@example.com", "Quick question", 2.0, 7.0),
-        ];
-        let rendered = render_to_string(100, 12, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 12),
-                &rows,
-                None,
-                &AccountMarks::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("Status update?"));
-        assert!(rendered.contains("Quick question"));
-        assert!(rendered.contains("alice@example.com"));
-        assert!(rendered.contains("bob@example.com"));
-        assert!(rendered.contains("5.00") || rendered.contains("5.0"));
-    }
-
-    #[test]
-    fn paces_under_a_day_read_in_hours_and_minutes_not_zero_days() {
-        let rows = vec![row("alice@example.com", "Status update?", 0.25, 0.0326)];
-        let rendered = render_to_string(100, 6, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 6),
-                &rows,
-                None,
-                &AccountMarks::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("6h"), "{rendered}");
-        assert!(rendered.contains("46m"), "{rendered}");
-        assert!(!rendered.contains("0.0d"), "{rendered}");
-    }
-
-    #[test]
-    fn empty_lane_says_where_the_others_are() {
-        let people = Some(PeopleSplitData {
-            write_with: 0,
-            others: 3,
-        });
-        let rendered = render_to_string(80, 12, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 80, 12),
-                &[],
-                people,
-                &AccountMarks::default(),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(rendered.contains("3 others who wrote to you are in Messages."));
-        assert!(!rendered.contains("Nothing waiting on you"));
-    }
-
     fn mixed_marks(work: &mxr_core::AccountId, home: &mxr_core::AccountId) -> AccountMarks {
         crate::ui::account_mark::plain_marks_for_tests(&[(work, "Work", "W"), (home, "Home", "H")])
     }

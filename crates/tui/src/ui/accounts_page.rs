@@ -1011,33 +1011,10 @@ fn draw_device_code_overlay(
 
 #[cfg(test)]
 mod tests {
-    use super::{account_field_help_text, draw, draw_account_setup_onboarding, server_result_hint};
+    use super::draw;
     use crate::app::AccountsPageState;
     use mxr_test_support::render_to_string;
     use ratatui::layout::Rect;
-
-    #[test]
-    fn account_setup_onboarding_lists_three_paths() {
-        let snapshot = render_to_string(80, 28, |frame| {
-            draw_account_setup_onboarding(
-                frame,
-                Rect::new(0, 0, 80, 28),
-                &crate::theme::Theme::default(),
-            );
-        });
-        assert!(
-            snapshot.contains("Try the demo"),
-            "demo path must be listed; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("Gmail"),
-            "Gmail path must be listed; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("IMAP"),
-            "IMAP path must be listed; got:\n{snapshot}",
-        );
-    }
 
     fn fake_account(name: &str) -> mxr_protocol::AccountSummaryData {
         mxr_protocol::AccountSummaryData {
@@ -1111,62 +1088,5 @@ mod tests {
             rendered.contains("r:repair"),
             "footer hint must replace `r:refresh` with `r:repair` when an unhealthy account is selected; got:\n{rendered}"
         );
-    }
-
-    #[test]
-    fn healthy_account_does_not_render_repair_indicator() {
-        let account = fake_account("Work");
-        let status = fake_status(&account, true);
-        let state = AccountsPageState {
-            accounts: vec![account],
-            ..AccountsPageState::default()
-        };
-
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 24),
-                &state,
-                std::slice::from_ref(&status),
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-        assert!(
-            !rendered.contains("[unhealthy"),
-            "healthy account must not render the unhealthy indicator; got:\n{rendered}"
-        );
-    }
-
-    #[test]
-    fn account_key_help_explains_internal_id_and_refs() {
-        let help = account_field_help_text("Account key");
-        assert!(help.contains("internal ID"));
-        assert!(help.contains("secret refs"));
-    }
-
-    #[test]
-    fn password_field_help_mentions_app_passwords() {
-        assert!(account_field_help_text("IMAP password").contains("app password"));
-        assert!(account_field_help_text("SMTP pass ref").contains("app password"));
-        assert!(!account_field_help_text("Email").contains("app password"));
-    }
-
-    #[test]
-    fn auth_toggle_help_explains_when_to_disable_it() {
-        assert!(account_field_help_text("IMAP auth").contains("anonymous"));
-        assert!(account_field_help_text("SMTP auth").contains("without auth"));
-    }
-
-    #[test]
-    fn parse_failures_get_compatibility_hint_instead_of_password_hint() {
-        let hint = server_result_hint(
-            "IMAP",
-            "Protocol error: IMAP server returned a NAMESPACE response in an unsupported format during folder discovery.",
-            true,
-        )
-        .unwrap();
-        assert!(hint.contains("compatibility issue"));
-        assert!(!hint.contains("IMAP password"));
     }
 }

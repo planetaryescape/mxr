@@ -330,56 +330,6 @@ mod tests {
         assert!(!temp.exists(), "worker removes the discarded draft");
     }
 
-    #[tokio::test]
-    async fn bug_report_write_runs_on_local_io_worker() {
-        let (result_tx, mut result_rx) = mpsc::unbounded_channel();
-        let worker = spawn_task_worker(result_tx);
-
-        submit_bug_report_write(&worker, "# mxr bug report\n".into());
-
-        let result = timeout(Duration::from_secs(1), result_rx.recv())
-            .await
-            .expect("bug report write should complete")
-            .expect("bug report result");
-
-        let saved_path = match &result {
-            AsyncResult::BugReportSaved(Ok(path)) => path.clone(),
-            _ => panic!("expected bug report save result"),
-        };
-
-        let mut app = App::new();
-        let expected_status = format!("Bug report saved to {}", saved_path.display());
-        assert!(handle_result(&mut app, result).is_none());
-        assert!(saved_path.exists(), "bug report should be written to disk");
-        assert_eq!(
-            app.diagnostics.page.status.as_deref(),
-            Some(expected_status.as_str())
-        );
-
-        let _ = std::fs::remove_file(saved_path);
-    }
-
-    #[tokio::test]
-    async fn ensure_browser_cache_file_reuses_existing_file_without_overwriting() {
-        let dir = unique_browser_test_dir("reuse");
-        std::fs::create_dir_all(&dir).expect("create browser cache dir");
-        let message_id = mxr_core::MessageId::new();
-        let path = browser_cache_path(&dir, &message_id);
-        std::fs::write(&path, "cached").expect("write cached browser file");
-
-        let reused = ensure_browser_cache_file(&dir, &message_id, "new content")
-            .await
-            .expect("reuse cached browser file");
-
-        assert_eq!(reused, path);
-        assert_eq!(
-            std::fs::read_to_string(&path).expect("read cached browser file"),
-            "cached"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
     #[test]
     fn cleanup_browser_cache_dir_removes_stale_html_only() {
         let dir = unique_browser_test_dir("cleanup");

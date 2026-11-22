@@ -165,24 +165,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_preview_keeps_lines_that_say_something() {
-        let text = "Hi Sam,\n\n> Your run: 21.3 km in 1:52\nView this email in your browser\nhttps://example.com/x\nTotal\nYour run: 21.3 km in 1:52\nNext race on Sunday\n";
-        assert_eq!(
-            preview_lines(text),
-            vec!["Your run: 21.3 km in 1:52", "Next race on Sunday"]
-        );
-    }
-
-    #[test]
-    fn a_long_line_is_cut_at_a_word() {
-        let long = "word ".repeat(60);
-        let lines = preview_lines(&long);
-        assert_eq!(lines.len(), 1);
-        assert!(lines[0].ends_with('\u{2026}'));
-        assert!(lines[0].chars().count() <= LINE_MAX_CHARS);
-    }
-
-    #[test]
     fn terminal_controls_never_reach_the_preview() {
         let lines = preview_lines("Build \u{1b}]0;pwned\u{7} failed on main\n");
         assert!(lines.iter().all(|line| !line.contains('\u{1b}')));

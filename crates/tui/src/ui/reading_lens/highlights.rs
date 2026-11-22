@@ -1,6 +1,3 @@
-//! The `H` panel: the open item's highlights with their notes, and the
-//! three things you can do to the selected one. Pure render; the keys live
-//! in `app/reading_highlights.rs`.
 
 use crate::app::{HighlightStep, ReadingPageState};
 use crate::ui::sanitize::{one_line, truncate};

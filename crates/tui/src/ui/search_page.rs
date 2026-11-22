@@ -20,12 +20,10 @@ pub struct SearchPageView<'a> {
     pub preview_scroll: u16,
     pub html_images: &'a mut HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
     pub now: chrono::DateTime<chrono::Utc>,
-    /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
     pub account_marks: &'a crate::ui::account_mark::AccountMarks,
 }
 
-/// Returns the preview's scroll, clamped to its content, when it drew one.
 pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &Theme) -> Option<u16> {
     let SearchPageView {
         state,
@@ -42,7 +40,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        // One more row when the notice may need a second line to fit.
         .constraints([
             Constraint::Length(if state.degraded.is_some() { 5 } else { 4 }),
             Constraint::Min(0),
@@ -124,7 +121,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
                     mode: mail_list_mode,
                     loading_message: None,
                     loading_throbber: None,
-                    // Search results are not a triage list: no gists here.
                     row_gists: &crate::app::RowGists::new(),
                     account_marks,
                 },
@@ -209,8 +205,6 @@ fn query_status_line(
         SearchUiStatus::Error => "search failed / adjust query and retry".to_string(),
     };
 
-    // The count stays in the results title; this line is where a limited
-    // answer says so, in the daemon's own words.
     if let Some(degraded) = state.degraded.as_ref().filter(|_| {
         matches!(
             state.ui_status,

@@ -1,5 +1,3 @@
-//! Slice 5.4 (C2.8 cont): renders the expert-finder modal —
-//! ranks people who have answered similar questions before.
 
 use super::centered_rect;
 use crate::app::ExpertModalState;

@@ -102,7 +102,6 @@ pub fn draw(
     }
 }
 
-/// The same confirm the saved-search delete shows, naming the rule.
 fn draw_delete_confirm(
     frame: &mut Frame,
     area: Rect,

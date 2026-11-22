@@ -11,18 +11,12 @@ use std::borrow::Cow;
 /// Returns `Cow::Borrowed` when nothing needs stripping so the common
 /// (safe) path is allocation-free.
 pub(crate) fn strip_control_chars(input: &str) -> Cow<'_, str> {
-    // Fast path: scan for any ASCII-range byte that needs stripping before
-    // allocating. We check only bytes < 0x80 here because multi-byte UTF-8
-    // sequences use bytes 0x80..=0xFF as continuation/lead bytes — those
-    // are safe and must not trigger stripping. C1 controls (U+0080–U+009F)
-    // are encoded as two-byte sequences in valid UTF-8; we catch them in
-    // the char-level slow path below.
     let needs_strip = input.bytes().any(|b| {
         matches!(b,
-            0x00..=0x08   // C0: NUL–BS (skip \t 0x09)
-            | 0x0B..=0x0D // C0: VT, FF, CR (skip \n 0x0A)
-            | 0x0E..=0x1F // C0: SO–US
-            | 0x7F        // DEL
+            0x00..=0x08
+            | 0x0B..=0x0D
+            | 0x0E..=0x1F
+            | 0x7F
         )
     }) || input
         .chars()
@@ -32,15 +26,14 @@ pub(crate) fn strip_control_chars(input: &str) -> Cow<'_, str> {
         return Cow::Borrowed(input);
     }
 
-    // Slow path: rebuild keeping only safe chars.
     let mut out = String::with_capacity(input.len());
     for c in input.chars() {
         let cp = c as u32;
         let keep = match cp {
-            0x09 | 0x0A => true,  // tab, newline — always keep
-            0x00..=0x1F => false, // C0 controls (excl. tab/LF above)
-            0x7F => false,        // DEL
-            0x80..=0x9F => false, // C1 controls
+            0x09 | 0x0A => true,
+            0x00..=0x1F => false,
+            0x7F => false,
+            0x80..=0x9F => false,
             _ => !is_bidi_control(c),
         };
         if keep {
@@ -65,7 +58,6 @@ pub(crate) fn one_line(text: &str) -> String {
     strip_control_chars(text).replace(['\n', '\t', '\r'], " ")
 }
 
-/// At most `max` characters, with an ellipsis when cut.
 pub(crate) fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
@@ -102,7 +94,6 @@ mod tests {
         let input = "\x1b]0;title\x07 normal";
         let result = strip_control_chars(input);
         assert!(!result.contains('\x1b'), "OSC ESC must be stripped");
-        // BEL (0x07) is also a C0 control and must be stripped
         assert!(!result.as_bytes().contains(&0x07), "BEL must be stripped");
         assert!(result.contains("normal"), "surrounding text must survive");
     }

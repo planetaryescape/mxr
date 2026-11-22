@@ -1,13 +1,3 @@
-//! The Archive lens: records built from mail under an answer box, never a
-//! list of emails.
-//!
-//! Renders `Request::ListRecords` as a ledger by month with each month's
-//! count and totals, one row per record (date, issuer, what, amount,
-//! reference, PDF), and `Request::AnswerFromRecords` as one answer line
-//! with the field asked for and where it came from. The header line and
-//! the empty state come from the daemon's mode guide and ledger; hints show
-//! in the status line (`app/hints.rs`). Pure render; wiring lives in
-//! `app/records_actions.rs`.
 
 use mxr_protocol::{RecordData, RecordExportData, RecordMonthData};
 use ratatui::prelude::*;
@@ -24,16 +14,11 @@ pub struct RecordsView<'a> {
     pub page: &'a RecordsPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
-    /// "Now" for relative and absolute arrival times, passed in so the render
-    /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
-    /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
     pub account_marks: crate::ui::account_mark::AccountMarks,
 }
 
-/// "03 Mar". Record days are stored at midday UTC, so UTC reads the same
-/// day the daemon meant in every zone.
 fn day(at: chrono::DateTime<chrono::Utc>) -> String {
     at.format("%d %b").to_string()
 }
@@ -42,7 +27,6 @@ fn date_long(at: chrono::DateTime<chrono::Utc>) -> String {
     at.format("%-d %b %Y").to_string()
 }
 
-/// The amount as the ledger shows it, with `·?` while nobody confirmed it.
 fn amount_cell(record: &RecordData) -> String {
     let Some(amount) = &record.amount else {
         return String::new();
@@ -58,9 +42,6 @@ fn amount_cell(record: &RecordData) -> String {
     )
 }
 
-/// Column widths from the lens width alone, so amounts line up down a
-/// month. The reference and the issuer give way first as the lens
-/// narrows; the date, what and the amount stay.
 struct Columns {
     issuer: usize,
     title: usize,
@@ -77,7 +58,6 @@ impl Columns {
     const TITLE_MIN: usize = 12;
 
     fn for_width(width: usize) -> Self {
-        // Marker, date and the gaps between columns.
         let mut left = width.saturating_sub(2 + Self::DATE + 2 + Self::AMOUNT + 1);
         let pdf = left > Self::TITLE_MIN + 6;
         if pdf {
@@ -119,7 +99,6 @@ fn row_line(
         .title
         .as_deref()
         .unwrap_or(record.kind_label.as_str());
-    // Records open with their date, so the chip sits ahead of it.
     let mut spans = vec![Span::raw(marker)];
     spans.extend(chip.unwrap_or_default());
     spans.push(Span::styled(
@@ -190,7 +169,6 @@ impl Body {
     }
 }
 
-/// "── 2025 · March ──────── 3 records  £1,412.40"
 fn month_line(
     label: &str,
     count: u32,
@@ -239,7 +217,6 @@ fn chips_line(page: &RecordsPageState, theme: &crate::theme::Theme) -> Line<'sta
             }),
         ));
     }
-    // Only the narrowing that is on: "[ ] year" and "p issuer" say how.
     let mut narrowed = Vec::new();
     if let Some(year) = page.filter.year {
         narrowed.push(format!("year: {year}"));
@@ -456,8 +433,6 @@ fn ledger_body(view: &RecordsView<'_>, width: usize, theme: &crate::theme::Theme
     }
     body.lines.push(Line::from(""));
     answer_lines(&mut body, page, width, theme, view.now, view.zone);
-    // A list answer stands in for the ledger: the kind chips and the
-    // issuer filter don't narrow it.
     if let Some(list) = page.listed_matches() {
         month_rows(&mut body, &list.records, &list.months, view, width, theme);
         if (list.count as usize) > list.records.len() {
@@ -600,8 +575,6 @@ fn month_rows(
     }
 }
 
-/// The footer's keys in `width`. Help always shows (except while typing,
-/// when `?` types); the other keys go last-first when space runs short.
 fn keys_line(page: &RecordsPageState, width: usize) -> String {
     if page.asking {
         return truncate(
@@ -626,8 +599,6 @@ fn keys_line(page: &RecordsPageState, width: usize) -> String {
                 .filter(|key| !matches!(key.key.as_str(), "e" | "u" | "?" | "t"))
                 .map(|key| format!("{} {}", key.key, key.verb))
                 .collect(),
-            // Before the daemon's guide arrives, the compiled-in copy names
-            // actions by id; show their keys, as the guide would.
             None => mxr_protocol::ARCHIVE_GUIDE
                 .keys
                 .iter()
@@ -717,8 +688,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &RecordsView<'_>, theme: &crate
     }
 }
 
-/// The record card: every field with where it came from, its documents
-/// and the emails it was built from.
 pub(crate) fn card_text(
     record: &RecordData,
     width: usize,
@@ -741,7 +710,6 @@ pub(crate) fn card_text(
         if matches!(field.field.as_str(), "issuer" | "title") {
             continue;
         }
-        // An open dot: money or a date nobody has confirmed.
         let dot = if field.checked { " " } else { "\u{25cb}" };
         let evidence = field
             .evidence
@@ -904,8 +872,6 @@ fn draw_export_preview(
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-/// The `,` prompt and the `T` pass menu, drawn over any screen: `T` works
-/// from the mail list and the reader.
 pub fn draw_overlays(
     frame: &mut Frame,
     area: Rect,

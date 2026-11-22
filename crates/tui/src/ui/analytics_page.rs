@@ -113,11 +113,6 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
 }
 
 fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
-    // Cold load: no cached data and a request is in flight. Only here
-    // do we replace the pane with a "Computing analytics..." block.
-    // When stale data exists for the active view we fall through and
-    // keep rendering it; the refreshing indicator in the header tells
-    // the user a background refresh is running.
     if state.should_show_cold_load() {
         let block = Block::default()
             .title(" Loading ")
@@ -151,12 +146,6 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         return;
     }
 
-    // Each view (other than Wrapped, which has its own contextual
-    // header) gets a small "What you're seeing" explainer block
-    // above the per-view body. The text answers three questions in
-    // three lines: what this view is, what the numbers mean, and what
-    // to do with it. Pulled out of the views so every tab gets the
-    // same shape.
     let body_area = match view_explainer_lines(state, theme) {
         Some(lines) => {
             let split = Layout::default()
@@ -196,10 +185,6 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
     }
 }
 
-/// Three-line explainer for the active view. Line 1 is the headline
-/// (what this is), line 2 the gloss (what the numbers mean), line 3
-/// the action (what to do with it). Returns `None` for Wrapped, which
-/// already has its own redesigned header.
 fn view_explainer_lines<'a>(
     state: &'a AnalyticsState,
     theme: &crate::theme::Theme,
@@ -266,10 +251,6 @@ fn view_explainer_lines<'a>(
     ])
 }
 
-/// Standard tabular-tab layout: a 3-up "stat strip" of cards on top
-/// and a detail table below. The strip is 4 rows; the table takes
-/// the rest. We deliberately do NOT include a chart pane between —
-/// charts that just illustrate a sorted column duplicate the table.
 fn strip_and_table(area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -278,10 +259,6 @@ fn strip_and_table(area: Rect) -> (Rect, Rect) {
     (chunks[0], chunks[1])
 }
 
-/// Layout for tabs whose tail is a real distribution chart, not a
-/// redundant bar list. Strip on top, chart in the middle, table at
-/// the bottom. Used by Contacts Decay (the only tab with a genuine
-/// distribution to render).
 fn strip_chart_table(area: Rect, chart_h: u16) -> (Rect, Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -369,9 +346,6 @@ fn draw_storage(
         false,
     );
 
-    // `Share` (% of total bytes) replaces the redundant bar chart —
-    // it answers "which keys disproportionately eat the mailbox?"
-    // inline, in the same row as the count.
     let header = Row::new(vec!["Key", "Bytes", "Count", "Share"])
         .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
@@ -453,9 +427,6 @@ fn draw_stale(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         false,
     );
 
-    // No age-distribution histogram: the active filter
-    // (older_than_days .. within_days) collapses every row into a
-    // single bucket. The strip already says "oldest / median".
     let header = Row::new(vec!["Subject", "Counterparty", "Days Stale", "Latest"])
         .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
@@ -550,11 +521,8 @@ fn draw_asymmetry(
         theme,
         false,
     );
-    let _ = max_asym; // surfaced via table column; one_sided is the more actionable summary
+    let _ = max_asym;
 
-    // No bar chart: the table is already sorted by asymmetry, and
-    // a bar of `total_inbound` next to `total_inbound` is just
-    // visual duplication.
     let header = Row::new(vec!["Email", "Inbound", "Outbound", "Asymmetry"])
         .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
@@ -615,10 +583,6 @@ fn draw_response_time(
         return;
     }
 
-    // Stats on top, histogram below. The "What you're seeing"
-    // explainer is now rendered by the dispatcher (`draw_table`)
-    // above this view alongside every other tab's, so we no longer
-    // bake one in here.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(4), Constraint::Min(0)])
@@ -668,9 +632,6 @@ fn draw_response_time(
     };
     stat_card(frame, cards[3], "scope", &scope_value, theme, false);
 
-    // Distribution histogram with typical/slow-tail callouts in the title — a
-    // chart with an annotation that puts the percentiles where they
-    // sit on the distribution. Bars containing p50/p90 are bolded.
     let p50_idx = histogram_bucket_index(summary.clock_p50_seconds);
     let p90_idx = histogram_bucket_index(summary.clock_p90_seconds);
     let p50_bucket = summary
@@ -719,9 +680,6 @@ fn histogram_bucket_label(upper_bound_seconds: u32) -> String {
     }
 }
 
-/// Find which response-time histogram bucket a duration falls in,
-/// using the same edges (`RESPONSE_TIME_HISTOGRAM_EDGES`) the store
-/// uses to populate the histogram. Clamped to the last bucket.
 fn histogram_bucket_index(seconds: u32) -> usize {
     use mxr_core::types::RESPONSE_TIME_HISTOGRAM_EDGES;
     for (i, edge) in RESPONSE_TIME_HISTOGRAM_EDGES.iter().enumerate() {
@@ -732,8 +690,6 @@ fn histogram_bucket_index(seconds: u32) -> usize {
     RESPONSE_TIME_HISTOGRAM_EDGES.len().saturating_sub(1)
 }
 
-/// Truncate an email for display in tight spaces (stat cards, badges).
-/// Keeps the local-part if possible, otherwise truncates with ellipsis.
 fn short_email(email: &str) -> String {
     if email.chars().count() <= 18 {
         return email.to_string();
@@ -781,8 +737,6 @@ fn render_table<'a>(
     frame.render_stateful_widget(table, area, &mut state);
 }
 
-/// Slice 3: Storage in `LargestMessages` mode renders a table of
-/// individual messages by size, mirroring `mxr storage --by message`.
 fn draw_largest_messages(
     frame: &mut Frame,
     area: Rect,
@@ -871,11 +825,6 @@ fn draw_largest_messages(
     );
 }
 
-/// Slice 4: Contacts in `Decay` mode lists going-cold relationships
-/// (inbound newer than outbound by a threshold). `last_outbound_at`
-/// is `Option<DateTime<Utc>>` so the column renders `-` when the
-/// counterparty has never been written back to (guards against a
-/// silent `unwrap_or(0)` rendering "0 days" for never-replied).
 fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     if state.decay_rows.is_empty() {
         empty_state(frame, area, "No decaying contacts in this window.", theme);
@@ -926,9 +875,6 @@ fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         false,
     );
 
-    // Decay buckets ARE genuinely a distribution (the threshold is
-    // a floor, not a window — gaps spread across a long tail).
-    // Keep the histogram; it's not redundant with the table.
     let mut buckets = [0u64; 4];
     for r in &state.decay_rows {
         let d = r.days_since_inbound;
@@ -1124,11 +1070,6 @@ fn format_ts_day(timestamp: Option<i64>) -> String {
         .map_or_else(|| "-".into(), |dt| dt.format("%Y-%m-%d").to_string())
 }
 
-/// Slice 6: Subscriptions table. Default sort matches the daemon's
-/// `latest date DESC`. The `subscriptions_rank` toggle re-sorts
-/// locally by open-rate ASC (ties broken by archived_unread DESC) and
-/// swaps the rightmost columns to surface the ranking columns the
-/// CLI's `--rank` mode shows.
 fn draw_subscriptions(
     frame: &mut Frame,
     area: Rect,
@@ -1219,9 +1160,6 @@ fn draw_subscriptions(
                 .then_with(|| rb.archived_unread_count.cmp(&ra.archived_unread_count))
         });
     }
-    // Open % replaces the redundant top-by-volume bar — it
-    // surfaces the engagement question ("which lists am I ignoring?")
-    // inline against the message count, where the answer lives.
     let (header, widths): (Row<'_>, [Constraint; 6]) = if state.subscriptions_rank {
         (
             Row::new(vec![
@@ -1322,20 +1260,6 @@ fn unsubscribe_method_label(method: &mxr_core::types::UnsubscribeMethod) -> &'st
     }
 }
 
-/// Wrapped year-in-review dashboard. A compact 4-row header (window
-/// label + range + totals) sits above a 2×3 tile grid — Volume,
-/// When, Contacts, Reply discipline, Storage, Newsletters. Each
-/// tile answers ONE question with the most direct rendering for
-/// that data shape:
-/// * Volume: in:out ratio + split bar + longest-thread footer.
-/// * When: busiest day-of-week + 24h sparkline + AM/PM split.
-/// * Contacts: top-1 + share gauge + most-ghosted footer.
-/// * Reply: p50/p90 + named fastest/slowest.
-/// * Storage: top mime + share gauge + heaviest message.
-/// * Newsletters: top list + opened gauge (or zeroed empty state).
-///
-/// Tile selection (`wrapped_selected_tile`, 0..=5) draws the focused
-/// border around the selected tile.
 fn draw_wrapped(
     frame: &mut Frame,
     area: Rect,
@@ -1352,9 +1276,6 @@ fn draw_wrapped(
         return;
     };
 
-    // Story header + a 2x3 tile grid. On normal terminals the header
-    // gets enough room for big text and a narrative; cramped terminals
-    // fall back to the compact two-line header.
     let header_height = if area.height >= 28 { 7 } else { 4 };
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -1507,8 +1428,6 @@ fn wrapped_story_lines<'a>(
     ]
 }
 
-/// Compact label for the header — `"2026 year-to-date"` becomes
-/// `"2026 YTD"`, `"last 90 days"` becomes `"LAST 90D"`.
 fn wrapped_short_label(label: &str) -> String {
     let upper = label.to_uppercase();
     upper
@@ -1532,13 +1451,6 @@ fn draw_wrapped_volume(
     theme: &crate::theme::Theme,
     focused: bool,
 ) {
-    // Volume's story is the *ratio*: am I lurking or participating?
-    // Render it three ways that reinforce each other — a centred
-    // headline ratio, a coloured split bar showing the proportion
-    // visually, and the raw counts beneath. The longest-thread
-    // superlative tags on as a footer because it's a volume statistic
-    // ("biggest single conversation in the window") and used to live
-    // in its own dedicated strip that left lots of empty space.
     let block = wrapped_tile_block("Volume", theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1574,9 +1486,6 @@ fn draw_wrapped_volume(
         chunks[0],
     );
 
-    // Split bar visualising in:out proportion. Always shows both
-    // sides — pads each to ≥1 cell so a 33:1 ratio doesn't render
-    // outbound as zero-width and look broken.
     render_split_bar(
         frame,
         chunks[1],
@@ -1625,9 +1534,6 @@ fn draw_wrapped_volume(
     }
 }
 
-/// Render a single-row coloured split bar across `area` representing
-/// `a` vs `b`. Both sides are clamped to ≥1 cell when the data is
-/// non-zero so the smaller side never disappears entirely.
 fn render_split_bar(
     frame: &mut Frame,
     area: Rect,
@@ -1646,7 +1552,6 @@ fn render_split_bar(
     let width = area.width as u64;
     let mut a_w = (a * width) / total;
     let mut b_w = width.saturating_sub(a_w);
-    // Floor each non-zero side to 1 cell so a tiny side stays visible.
     if a > 0 && a_w == 0 {
         a_w = 1;
         b_w = b_w.saturating_sub(1);
@@ -1668,10 +1573,6 @@ fn render_split_bar(
     frame.render_widget(Paragraph::new(line), area);
 }
 
-/// Pretty-print a ratio between two counts. Big sides get the
-/// scale; equal counts collapse to "1:1". Zero on either side is
-/// rendered explicitly as the count followed by ":0" or "0:" so
-/// the reader doesn't see a confusing infinity.
 fn ratio_label(a: u32, b: u32) -> String {
     if a == 0 && b == 0 {
         return "0:0".into();
@@ -1703,10 +1604,6 @@ fn draw_wrapped_when(
         .map_or_else(|| "—".into(), |h| format!("{h:02}:00 UTC"));
     let title = format!("When · peak {peak}");
 
-    // 24-hour sparkline + AM/PM split + busiest day-of-week headline.
-    // The curve answers "when do messages land" at a glance; the
-    // named DOW + AM/PM split turn that shape into a sentence
-    // ("Mondays, mostly afternoon").
     let block = wrapped_tile_block(&title, theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1742,7 +1639,6 @@ fn draw_wrapped_when(
         ])
         .split(inner);
 
-    // Headline row: busiest day-of-week, e.g. "Mondays · 988 msgs".
     let dow_line = match (
         pat.busiest_day_of_week.as_deref(),
         pat.busiest_day_of_week_count,
@@ -1793,13 +1689,6 @@ fn draw_wrapped_contacts(
     theme: &crate::theme::Theme,
     focused: bool,
 ) {
-    // Top-1 with share % beats listing 5 senders next to bars
-    // that duplicate the count. The interesting fact is the
-    // *concentration* (one sender = X% of inbound). A Gauge
-    // visualises the percentage so the empty middle of the tile
-    // stops looking like dead space, and the most-ghosted
-    // superlative tags on as a footer for the same reason as the
-    // longest-thread footer in Volume.
     let block = wrapped_tile_block("Who filled your inbox", theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1838,7 +1727,6 @@ fn draw_wrapped_contacts(
         ])
         .split(inner);
 
-    // Headline: sender + count line.
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(Span::styled(
@@ -1856,8 +1744,6 @@ fn draw_wrapped_contacts(
         chunks[0],
     );
 
-    // Gauge for the top-1 share. Uses a clamped ratio so 100%+ never
-    // overflows the widget; muted label shows the raw percent.
     let ratio = (pct / 100.0).clamp(0.0, 1.0);
     frame.render_widget(
         Gauge::default()
@@ -1867,7 +1753,6 @@ fn draw_wrapped_contacts(
         chunks[1],
     );
 
-    // Top-5 share as a hint underneath the gauge.
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
             format!("top 5 = {top5_pct:.0}% of inbound"),
@@ -1897,10 +1782,6 @@ fn draw_wrapped_reply(
     theme: &crate::theme::Theme,
     focused: bool,
 ) {
-    // Typical/slow-tail waits + the named fastest/slowest extremes that
-    // already exist in WrappedReplyDiscipline. Names anchor stats —
-    // "you replied in 12s to bob@x.com" lands harder than a gauge
-    // bar that's 100% full because it's scaled to its own max.
     let Some(reply) = summary.reply_discipline.as_ref() else {
         let block = wrapped_tile_block("Reply discipline", theme, focused);
         frame.render_widget(
@@ -1923,10 +1804,6 @@ fn draw_wrapped_reply(
         return;
     }
 
-    // Business-hours stats are filled by the Slice-14 reconciler once
-    // it's run. Until then the tuple is (None, None) — drop the line
-    // entirely rather than render a "(business-hours pending)" filler
-    // that looks like an empty slot.
     let biz_line = match (
         reply.business_hours_p50_seconds,
         reply.business_hours_p90_seconds,
@@ -1947,7 +1824,6 @@ fn draw_wrapped_reply(
         .constraints([Constraint::Length(header_height), Constraint::Min(0)])
         .split(inner);
 
-    // Top: typical · slow tail, plus the biz row when present.
     let mut p50p90 = vec![Line::from(vec![
         Span::styled("typical ", theme.muted_style()),
         Span::styled(
@@ -1966,7 +1842,6 @@ fn draw_wrapped_reply(
     }
     frame.render_widget(Paragraph::new(p50p90).wrap(Wrap { trim: false }), chunks[0]);
 
-    // Bottom: fastest / slowest with names attached.
     let mut extremes = Vec::new();
     if let Some(f) = reply.fastest.as_ref() {
         extremes.push(Line::from(vec![
@@ -2018,8 +1893,6 @@ fn draw_wrapped_storage(
         return;
     }
 
-    // Empty-state when there's nothing to show — a "Top mime share"
-    // gauge with 0% and no label is just a broken-looking box.
     let no_top = storage.top_mimetype.is_none();
     let no_heaviest = storage.heaviest_message.is_none();
     if no_top && no_heaviest {
@@ -2030,10 +1903,6 @@ fn draw_wrapped_storage(
         return;
     }
 
-    // Layout: top-mime header (2 rows) → gauge → spacer → heaviest
-    // (2 rows). The Gauge gives the share an immediate visual scale
-    // and stops the tile from looking like a stack of disconnected
-    // KV lines.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -2111,10 +1980,6 @@ fn draw_wrapped_newsletters(
         return;
     }
 
-    // Empty state: instead of a half-empty tile labelled "(no list-id
-    // headers detected)", render a stat-shape that mirrors the
-    // populated case — a centred big "0%" with a one-line gloss.
-    // Same skeleton, just zeroed out.
     if news.unique_lists == 0 && news.top_list.is_none() {
         let lines = vec![
             Line::from(""),
@@ -2133,8 +1998,6 @@ fn draw_wrapped_newsletters(
         return;
     }
 
-    // Populated layout: top-list line + count·opened% line + opened
-    // gauge that visualises the read rate.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -2308,9 +2171,6 @@ mod tests {
         crate::theme::Theme::default()
     }
 
-    /// Phase 2.5 / Behavior 1: a populated storage view renders the
-    /// table rows, the sums, and the title. Catches "renderer drops
-    /// rows from the daemon response" regressions.
     #[test]
     fn storage_view_renders_rows_from_state() {
         let mut state = AnalyticsState::default();
@@ -2332,11 +2192,6 @@ mod tests {
         assert!(rendered.contains("42"), "row count missing: {rendered}");
     }
 
-    /// Response Time view renders a 4-card stat strip (typical wait,
-    /// slow tail, samples, scope) and a histogram with callouts in
-    /// the title. No more BigText hero, no more percentile-bar
-    /// block — both were removed because they didn't add info a
-    /// number couldn't carry.
     #[test]
     fn response_time_view_renders_stat_strip_and_annotated_histogram() {
         use mxr_core::types::{ResponseTimeBucket, RESPONSE_TIME_HISTOGRAM_EDGES};
@@ -2349,7 +2204,6 @@ mod tests {
             clock_p90_seconds: 3600,
             business_hours_p50_seconds: None,
             business_hours_p90_seconds: None,
-            // Production data always has all 8 buckets.
             histogram: RESPONSE_TIME_HISTOGRAM_EDGES
                 .iter()
                 .enumerate()
@@ -2362,7 +2216,6 @@ mod tests {
         let rendered = render_to_string(160, 30, |frame| {
             draw(frame, Rect::new(0, 0, 160, 30), &state, &theme());
         });
-        // Stat strip: card labels.
         assert!(
             rendered.contains("typical wait"),
             "typical card missing: {rendered}"
@@ -2376,14 +2229,11 @@ mod tests {
             "samples card missing: {rendered}"
         );
         assert!(rendered.contains("scope"), "scope card missing: {rendered}");
-        // Direction phrasing in the samples card.
         assert!(
             rendered.contains("you reply"),
             "direction phrasing missing: {rendered}"
         );
-        // Sample count.
         assert!(rendered.contains("17"), "sample count missing: {rendered}");
-        // Histogram pane title carries the percentile annotations.
         assert!(
             rendered.contains("Distribution"),
             "histogram pane missing: {rendered}"
@@ -2398,9 +2248,6 @@ mod tests {
         );
     }
 
-    /// Phase 2.5 / Behavior 5: an error message replaces the table
-    /// instead of leaving the view in a usable but empty state, so
-    /// the user knows the request failed and isn't an empty result.
     #[test]
     fn loaded_error_replaces_table_with_error_block() {
         let mut state = AnalyticsState::default();
@@ -2417,11 +2264,6 @@ mod tests {
         );
     }
 
-    /// Phase 0 cache: when a refresh is in flight AND the active view
-    /// already has data, the renderer must keep painting that data
-    /// instead of replacing it with a "Computing analytics..." block.
-    /// Regression target: cycling tabs felt slow because every switch
-    /// blanked the screen.
     #[test]
     fn refreshing_with_cached_data_keeps_view_visible() {
         let mut state = AnalyticsState::default();
@@ -2449,14 +2291,11 @@ mod tests {
         );
     }
 
-    /// Phase 0 cache: a true cold load (loading + no data) still
-    /// shows the "Computing analytics..." block.
     #[test]
     fn cold_load_still_blanks_view() {
         let mut state = AnalyticsState::default();
         state.view = AnalyticsView::Storage;
         state.loading = true;
-        // No data populated.
         let rendered = render_to_string(120, 24, |frame| {
             draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
         });
@@ -2468,8 +2307,7 @@ mod tests {
 
     #[test]
     fn short_email_cjk_does_not_panic() {
-        // Each CJK char is 3 bytes; 20 of them → total > 18 chars, > 54 bytes.
-        let addr = "日日日日日日日日日日日日日日日日日日日日"; // 20 × '日'
+        let addr = "日日日日日日日日日日日日日日日日日日日日";
         let result = short_email(addr);
         assert_eq!(result.chars().count(), 18);
     }
@@ -2485,8 +2323,6 @@ mod cache_tests {
     use crate::app::{AnalyticsState, AnalyticsView, StorageMode};
     use mxr_core::types::{StorageBucket, StorageGroupBy};
 
-    /// Tab-switch must NOT trigger a refetch when the destination
-    /// view already has data and the cache is fresh.
     #[test]
     fn fresh_cache_skips_refetch_on_tab_switch() {
         let mut state = AnalyticsState::default();
@@ -2496,18 +2332,12 @@ mod cache_tests {
             bytes: 1,
             count: 1,
         }];
-        // Mark the Storage view as just refreshed.
         state.mark_refreshed();
 
-        // After a successful refresh, refresh_pending should be
-        // logically false (the dispatcher cleared it earlier). And
-        // the destination view should report fresh.
         assert!(state.has_data_for_view(AnalyticsView::Storage));
         assert!(state.cache_is_fresh(AnalyticsView::Storage));
     }
 
-    /// Cache key must change when filters change so freshness is
-    /// scoped per-filter-combo. Different group_by → different key.
     #[test]
     fn cache_key_distinguishes_filter_combos() {
         let mut state = AnalyticsState::default();

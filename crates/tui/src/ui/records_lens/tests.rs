@@ -268,7 +268,6 @@ pub(crate) fn lisbon_answer() -> RecordAnswerData {
     }
 }
 
-/// "octopus": two bills from one issuer, listed, the February one best.
 pub(crate) fn octopus_list() -> RecordAnswerData {
     let march = record(
         "rec_octopus_mar",
@@ -347,7 +346,6 @@ fn the_ledger_groups_records_by_month_with_counts_and_totals() {
         assert!(rendered.contains("2 records"), "{width}");
         assert!(rendered.contains("\u{a3}1,249.00"), "{width}");
         assert!(rendered.contains("XPS 14"), "{width}");
-        // An amount nobody confirmed carries its open mark.
         let apple_row = rendered
             .lines()
             .find(|line| line.contains("iCloud"))
@@ -499,7 +497,6 @@ fn the_subscription_card_has_history_price_changes_and_provenance() {
         "{text}"
     );
     assert!(text.contains("(a pattern in the email)"), "{text}");
-    // Newest charge first.
     let charges = &text[text.find("2 charges").expect("charges header")..];
     let april = charges.find("\u{a3}12.99").expect("April charge");
     let january = charges.find("\u{a3}10.99").expect("January charge");

@@ -1,8 +1,3 @@
-//! Draft Options modal: say what an AI reply should say, and choose the
-//! tone (register) and length or leave them on "Auto" to follow how you
-//! write to this person (the TUI equivalent of the web "Adjust"
-//! disclosure). Tab switches field, ←/→ cycle an option, Enter generates,
-//! Esc cancels.
 
 use super::centered_rect;
 use crate::app::{DraftOptionsField, DraftOptionsModalState};

@@ -1,8 +1,3 @@
-//! The desk lens: what needs you, not what arrived.
-//!
-//! Renders the lanes from `Request::GetDesk` (You owe, Due, Waiting on,
-//! New from people) with one cursor across all of them, and a single line
-//! of counts for everything else. Pure render; wiring lives in `app/`.
 
 use mxr_protocol::{DeskElsewhereData, DeskLaneData, DeskLaneKind, DeskRowData};
 use ratatui::prelude::*;
@@ -15,18 +10,12 @@ pub struct DeskView<'a> {
     pub desk: &'a DeskPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
-    /// Gist lines by conversation (`GetThreadGists`).
     pub row_gists: &'a RowGists,
-    /// A model is configured: every row keeps a line for its gist, so rows
-    /// don't move as gists land.
     pub gist_lines: bool,
-    /// Person mail in the inbox no lane holds, from the rail: Messages
-    /// keeps it, so the title says how many (blueprint 22, Quiet).
     pub quiet: Option<u32>,
     pub account_marks: crate::ui::account_mark::AccountMarks,
 }
 
-/// Where the "what" column starts: marker (2) + who (20) + gap (2).
 const WHAT_COLUMN: usize = 24;
 
 fn lane_title(kind: DeskLaneKind) -> &'static str {
@@ -45,7 +34,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &DeskView<'_>, theme: &crate::t
         _ => String::new(),
     };
     let block = Block::bordered()
-        // Messages is an early version built on the desk's lanes.
         .title(format!(
             " Messages \u{2500} early version: the desk's You owe, Due, Waiting on and New from people{quiet} "
         ))
@@ -107,7 +95,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &DeskView<'_>, theme: &crate::t
         }
     }
 
-    // Keep the cursor on screen; the footer takes the last line.
     let footer_height = 1u16;
     let body_height = inner.height.saturating_sub(footer_height) as usize;
     let scroll = selected_line.saturating_sub(body_height.saturating_sub(2));
@@ -150,8 +137,6 @@ fn lane_header(
     ])
 }
 
-/// What the conversation is about, under the row's "what" column; blank
-/// until the gist lands.
 fn gist_line(gist: Option<&RowGist>, width: usize, theme: &crate::theme::Theme) -> Line<'static> {
     let about = gist.map(|gist| one_line(&gist.about)).unwrap_or_default();
     Line::from(Span::styled(
@@ -173,8 +158,6 @@ fn row_line(
     theme: &crate::theme::Theme,
     chip: Option<Vec<Span<'static>>>,
 ) -> Line<'static> {
-    // Names, subjects and reasons come from mail: strip terminal controls,
-    // and keep each row on one line.
     let who = one_line(
         row.counterparty_name
             .as_deref()
@@ -185,8 +168,6 @@ fn row_line(
     } else {
         who
     };
-    // On You owe and New from people, the other person's ask says why the
-    // row is here better than the lane's reason.
     let ask = gist
         .and_then(|gist| gist.ask.as_deref())
         .filter(|_| row.shows_ask());
@@ -202,7 +183,6 @@ fn row_line(
     let age = age_cell(row);
     let marker = if selected { "\u{258c} " } else { "  " };
     let who_width = 20usize;
-    // marker (2) + who + gap (2) + what + gap (2) + age
     let what_width = width
         .saturating_sub(2 + who_width + 2 + 2 + age.chars().count())
         .max(8);
@@ -232,7 +212,6 @@ fn row_line(
     Line::from(spans)
 }
 
-/// "2d", "in 2d" for a promise not yet due, plus " · usually 4h".
 pub(crate) fn age_cell(row: &DeskRowData) -> String {
     let age = if row.age_seconds < 0 {
         format!("in {}", short_duration(-row.age_seconds))
@@ -256,10 +235,7 @@ pub(crate) fn short_duration(seconds: i64) -> String {
     }
 }
 
-/// "Everything else: Reading 7 · Deliveries 1", only the non-zero parts.
 pub(crate) fn elsewhere_line(elsewhere: &DeskElsewhereData) -> String {
-    // Reading and Paper trail counts are this week's mail, never unread
-    // counts, and say so.
     let parts: Vec<String> = [
         ("Reading", elsewhere.reading, " new this week (g r)"),
         ("Paper trail", elsewhere.paper_trail, " this week (g u)"),
@@ -370,7 +346,6 @@ mod tests {
             "{rendered}"
         );
         assert!(rendered.contains("Canary stays at 5%"), "{rendered}");
-        // The row still waiting for its gist keeps its reason and its line.
         assert!(rendered.contains("replied to your message"), "{rendered}");
         let lines: Vec<&str> = rendered.lines().collect();
         let nora = lines.iter().position(|l| l.contains("Nora")).unwrap();
@@ -379,7 +354,6 @@ mod tests {
             "{rendered}"
         );
 
-        // With no model, rows are exactly as before: no reserved lines.
         let plain = render(&desk);
         assert!(!plain.contains("Canary"));
         let lines: Vec<&str> = plain.lines().collect();

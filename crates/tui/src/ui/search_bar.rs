@@ -45,7 +45,6 @@ impl SearchBar {
 
     pub fn on_backspace(&mut self) {
         if self.cursor_pos > 0 {
-            // Find the previous char boundary
             let prev = self.query[..self.cursor_pos]
                 .char_indices()
                 .last()

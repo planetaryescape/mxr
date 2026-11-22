@@ -1,11 +1,3 @@
-//! The Updates lens: notifications as a briefing by source, read at a cut
-//! and let go in one key (blueprint 22, phase 4).
-//!
-//! Renders `Request::GetUpdatesDigest` as served: the cut, the headline,
-//! Needs a look, Changed and Routine (folded after a few lines), the
-//! "since" strip, and the hidden and expired lines all come from the
-//! daemon, and the header line, card and keys from Updates' mode guide.
-//! Pure render; wiring lives in `app/updates_actions.rs`.
 
 use chrono::{DateTime, Utc};
 use mxr_protocol::{
@@ -25,19 +17,13 @@ pub struct UpdatesView<'a> {
     pub page: &'a UpdatesPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
-    /// "Now" for relative and absolute arrival times, passed in so the render
-    /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
     pub account_marks: crate::ui::account_mark::AccountMarks,
-    /// The peeked line's latest email as plain text, once fetched.
     pub peek_body: Option<&'a str>,
 }
 
-/// What follows the fact: a delta, estimate, identity, time and "in To do".
-/// Code wrote every part of it.
 fn suffix(line: &UpdateLineData) -> String {
     let mut parts = Vec::new();
-    // A code the fact line does not already show ("MFA Login Authentication").
     if let Some(code) = line
         .code
         .as_ref()
@@ -93,9 +79,6 @@ fn suffix(line: &UpdateLineData) -> String {
     parts.join(" \u{b7} ")
 }
 
-/// One source line: a mark for its section, the source, the fact and
-/// what code says about it, the compact time of its latest email, and the
-/// count for a folded routine line.
 pub(crate) fn line_row(
     line: &UpdateLineData,
     selected: bool,
@@ -161,7 +144,6 @@ fn plural(n: u32, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-/// "── since 16:30: 4 (Notion, GitHub 2) ──".
 fn since_title(digest: &UpdatesDigestData) -> String {
     let names: Vec<String> = digest
         .since
@@ -199,7 +181,6 @@ fn body_for(
         plural(digest.message_count, "update", "updates"),
         plural(digest.source_count, "source", "sources")
     );
-    // The key hint goes first when space runs short; the footer has it.
     let let_go_hint = format!(
         "{} let go all",
         mxr_keymap::guide_key("updates.let-go-all").unwrap_or_default()
@@ -275,7 +256,6 @@ fn body_for(
                         );
                     }
                 }
-                // Hold reasons already appear in the manual suggestion.
                 if let Some(auto) = line.auto_todo.as_ref().filter(|a| a.state == "created") {
                     for text in wrap(&one_line(&auto.reason_text), width.saturating_sub(8)) {
                         body.text(format!("    {text}"), secondary);
@@ -345,8 +325,6 @@ fn body_for(
     body
 }
 
-/// The footer's keys in `width`: undo and help always, the rest in the
-/// guide's order, the last ones dropped first when space runs short.
 fn keys_line(page: &UpdatesPageState, width: usize) -> String {
     let keys: Vec<(String, String)> = match &page.guide {
         Some(guide) => guide
@@ -357,8 +335,6 @@ fn keys_line(page: &UpdatesPageState, width: usize) -> String {
         None => UPDATES_GUIDE
             .keys
             .iter()
-            // Before the daemon's guide arrives, the compiled-in copy names
-            // actions by id; show their keys, as the guide would.
             .filter_map(|(id, verb)| Some((mxr_keymap::guide_key(id)?, (*verb).to_string())))
             .collect(),
     };
@@ -378,7 +354,6 @@ fn keys_line(page: &UpdatesPageState, width: usize) -> String {
     crate::ui::key_footer::fit(&entries, "  ", width)
 }
 
-/// The selected row's why line, with where its link goes.
 fn why_line(view: &UpdatesView<'_>) -> String {
     match view.page.rows().get(view.selected_index) {
         Some(UpdatesRow::Line(line)) => {
@@ -471,9 +446,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &UpdatesView<'_>, theme: &crate
     }
 }
 
-/// Letting go of a digest, or one source in it (`title` says which), as
-/// the daemon previewed it: Enter lets go of exactly that selection.
-/// Shared with Now's Updates card.
 pub(crate) fn draw_let_go_preview(
     frame: &mut Frame,
     area: Rect,
@@ -593,9 +565,6 @@ pub(crate) mod tests {
     };
     use mxr_test_support::render_to_string;
 
-    /// The clock the view renders against. The fixture's mail is from
-    /// October 2026, and the snapshots show it as earlier this year; on the
-    /// wall clock they change on 1 January.
     fn fixture_now() -> chrono::DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap()
     }
@@ -834,7 +803,6 @@ pub(crate) mod tests {
             assert!(rendered.contains("quieter source"), "{rendered}");
             insta::assert_snapshot!(format!("updates_lens_populated_{width}"), rendered);
         }
-        // Wide enough, the delta and the To do marker show in full.
         let wide = render(&page, 120);
         assert!(wide.contains("up 12% on last week"), "{wide}");
         assert!(wide.contains("already in To do"), "{wide}");
@@ -847,7 +815,6 @@ pub(crate) mod tests {
             digest: Some(populated()),
             ..Default::default()
         };
-        // 2 needs + 2 changed + 4 routine + the fold.
         assert_eq!(page.row_count(), 9);
         assert!(matches!(page.rows()[8], UpdatesRow::MoreRoutine(2)));
         page.routine_open = true;

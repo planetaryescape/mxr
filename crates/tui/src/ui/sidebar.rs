@@ -6,21 +6,11 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
 
-/// Per-account sync state shown on the account's sidebar line. Derived
-/// from the daemon's `AccountSyncStatus` snapshots (GetSyncStatus) which
-/// refresh on sync daemon events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountSyncIndicator {
-    /// A sync is currently running — renders an animated spinner, plus the
-    /// live message count when the daemon is reporting one. Pre-formatted
-    /// here so the renderer stays a layout concern: `"3000/16500"` when the
-    /// provider could say how much is left, `"3000"` when it could not.
     Syncing { progress: Option<String> },
-    /// Last sync succeeded; carries the relative age, e.g. "2m ago".
     Synced(String),
-    /// The account is unhealthy or the last sync errored.
     Offline,
-    /// No status known yet (daemon snapshot not loaded).
     Unknown,
 }
 
@@ -30,8 +20,6 @@ pub struct AccountInfo {
     pub sync: AccountSyncIndicator,
 }
 
-/// Map a daemon sync-status row to the sidebar indicator. `None` means
-/// the snapshot hasn't loaded (or the account is missing from it).
 pub fn sync_indicator_for(
     status: Option<&mxr_protocol::AccountSyncStatus>,
     synced_age: Option<String>,
@@ -41,9 +29,6 @@ pub fn sync_indicator_for(
     };
     if status.sync_in_progress {
         return AccountSyncIndicator::Syncing {
-            // Plain digits, not thousands-separated: this shares one sidebar
-            // line with the account address and a default marker, and the
-            // separators cost width the column does not have.
             progress: status
                 .progress
                 .as_ref()
@@ -71,16 +56,12 @@ pub struct SidebarView<'a> {
     pub subscriptions_active: bool,
     pub subscription_count: usize,
     pub now_active: bool,
-    /// Now's badge from the rail: work only, the one badge on the rail.
     pub now_badge: Option<u32>,
-    /// Messages, an early version on the desk lens.
     pub messages_active: bool,
     pub todo_active: bool,
-    /// Updates, the briefing.
     pub updates_active: bool,
     pub reading_active: bool,
     pub archive_active: bool,
-    /// Rail ids (`messages`, `updates`, …) the daemon marks early.
     pub early_modes: Vec<String>,
     pub owed_active: bool,
     pub owed_count: usize,
@@ -88,17 +69,12 @@ pub struct SidebarView<'a> {
     pub calendar_invites_count: usize,
     pub accounts: Vec<AccountInfo>,
     pub accounts_expanded: bool,
-    /// Spinner state for accounts currently syncing; ticked by the app
-    /// while any account reports `sync_in_progress`.
     pub sync_throbber: Option<&'a ThrobberState>,
-    /// The More section (pages off the rail, then the system folders).
     pub system_expanded: bool,
     pub user_expanded: bool,
     pub saved_searches_expanded: bool,
     pub active_label: Option<&'a mxr_core::LabelId>,
-    /// Chips for the labels of each account, when rows are marked.
     pub account_marks: AccountMarks,
-    /// Starred has no label to name, so it is listed by role.
     pub starred_shown: bool,
     pub starred_active: bool,
 }
@@ -115,7 +91,6 @@ struct SidebarBuildState<'a> {
     starred_shown: bool,
 }
 
-/// One of the rail's entries: Now, the five modes, then Inbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RailItem {
     Now,
@@ -127,7 +102,6 @@ pub(crate) enum RailItem {
 }
 
 impl RailItem {
-    /// Rail order.
     pub(crate) const MODES: [Self; 5] = [
         Self::Messages,
         Self::Todo,
@@ -147,7 +121,6 @@ impl RailItem {
         }
     }
 
-    /// The id `GetRail` uses.
     const fn id(self) -> &'static str {
         match self {
             Self::Now => "now",
@@ -160,7 +133,6 @@ impl RailItem {
     }
 }
 
-/// Pages that moved off the rail, under More (D117).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MorePage {
     Screener,
@@ -210,8 +182,6 @@ enum SidebarEntry<'a> {
     SavedSearch(&'a SavedSearch),
 }
 
-/// The inbox is on the rail as a lens of its own, so it isn't repeated
-/// among the folders under More.
 pub fn is_inbox_label(name: &str) -> bool {
     name == "INBOX"
 }
@@ -242,7 +212,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
         .iter()
         .map(|entry| match entry {
             SidebarEntry::Separator => {
-                // Visual separator line instead of empty spacer
                 ListItem::new(Line::from(Span::styled(
                     "─".repeat(inner_width),
                     Style::default().fg(theme.text_muted),
@@ -318,8 +287,6 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
     }
 }
 
-/// A rail entry: its name, Now's badge, and a dim "early" on modes that
-/// are early versions on an existing view.
 fn render_rail_item<'a>(
     inner_width: usize,
     item: RailItem,
@@ -388,7 +355,6 @@ fn build_sidebar_entries<'a>(
         .filter(|label| label.kind != LabelKind::System)
         .copied()
         .collect();
-    // Same-name labels of different accounts sit together, in account order.
     user_labels.sort_by(|a, b| {
         a.name
             .to_lowercase()
@@ -398,7 +364,6 @@ fn build_sidebar_entries<'a>(
 
     let mut entries = Vec::new();
 
-    // Accounts section (only shown when multiple accounts exist)
     if state.accounts.len() > 1 {
         entries.push(SidebarEntry::Header {
             title: "Accounts",
@@ -414,7 +379,6 @@ fn build_sidebar_entries<'a>(
         entries.push(SidebarEntry::Separator);
     }
 
-    // The rail: Now, the five modes, then Inbox (blueprint 22).
     entries.push(SidebarEntry::Rail(RailItem::Now));
     entries.push(SidebarEntry::Separator);
     entries.extend(RailItem::MODES.into_iter().map(SidebarEntry::Rail));
@@ -486,7 +450,6 @@ fn visual_index_for_selection(
             | SidebarEntry::CalendarInvites { .. }
             | SidebarEntry::Label(_)
             | SidebarEntry::SavedSearch(_)
-            // A header holds the cursor: Enter folds its section.
             | SidebarEntry::Header { .. } => {
                 if selectable == sidebar_selected {
                     return Some(visual_index);
@@ -515,8 +478,6 @@ fn render_account_item<'a>(
     let default_marker = if is_default { " ●" } else { "" };
     let name_part = format!("  {email}{default_marker}");
 
-    // Right-aligned per-account sync state: spinner while syncing,
-    // "synced <age>" when healthy, an offline marker on errors.
     let (sync_spans, sync_width): (Vec<Span<'a>>, usize) = match sync {
         AccountSyncIndicator::Syncing { progress } => {
             let spinner = sync_throbber.map_or_else(
@@ -655,8 +616,6 @@ fn render_label_item<'a>(
         String::new()
     };
 
-    // The account's chip comes first when the view mixes accounts, so the
-    // same label name on two accounts reads apart (blueprint 33).
     let mut spans = vec![Span::raw("  ")];
     let mut prefix_width = 2;
     if let Some(chip) = account_marks.row_cell(&label.account_id, theme) {
@@ -664,7 +623,6 @@ fn render_label_item<'a>(
         spans.push(Span::raw(" "));
         prefix_width += account_marks.column_width() + 1;
     }
-    // Right-align count: name on left, count on right
     spans.push(Span::raw(display_name.to_string()));
     if !count_str.is_empty() {
         let padding = inner_width
@@ -675,7 +633,6 @@ fn render_label_item<'a>(
     let line = Line::from(spans);
 
     let style = if is_active {
-        // Full-width highlight bar for active label
         Style::default()
             .bg(theme.selection_bg)
             .fg(theme.accent)
@@ -821,10 +778,6 @@ mod tests {
         );
     }
 
-    /// A backfill runs for minutes; a bare spinner says only that something
-    /// is happening. The daemon reports how far the pass has got, so the
-    /// sidebar shows it, with a denominator when the provider could count
-    /// what was left and without one when it could not.
     #[test]
     fn sync_indicator_carries_the_live_message_count_while_syncing() {
         assert_eq!(
@@ -893,7 +846,6 @@ mod tests {
         assert!(matches!(entries[14], SidebarEntry::Owed { .. }));
         assert!(matches!(entries[15], SidebarEntry::CalendarInvites { .. }));
         assert!(matches!(entries[16], SidebarEntry::AllMail));
-        // Inbox is on the rail, so it isn't repeated among the folders.
         assert!(matches!(entries[17], SidebarEntry::Label(label) if label.name == "SENT"));
         assert!(matches!(entries[18], SidebarEntry::Separator));
         assert!(matches!(
@@ -924,17 +876,17 @@ mod tests {
             created_at: chrono::Utc::now(),
         }];
         let entries = build_sidebar_entries(&labels, &searches, &build_state());
-        assert_eq!(visual_index_for_selection(&entries, 0), Some(0)); // Now
-        assert_eq!(visual_index_for_selection(&entries, 1), Some(2)); // Messages
-        assert_eq!(visual_index_for_selection(&entries, 5), Some(6)); // Archive
-        assert_eq!(visual_index_for_selection(&entries, 6), Some(8)); // Inbox
-        assert_eq!(visual_index_for_selection(&entries, 7), Some(9)); // More header
-        assert_eq!(visual_index_for_selection(&entries, 8), Some(10)); // Screener
-        assert_eq!(visual_index_for_selection(&entries, 14), Some(16)); // All Mail
-        assert_eq!(visual_index_for_selection(&entries, 15), Some(18)); // Labels header
-        assert_eq!(visual_index_for_selection(&entries, 16), Some(19)); // Work
-        assert_eq!(visual_index_for_selection(&entries, 17), Some(21)); // Saved Searches header
-        assert_eq!(visual_index_for_selection(&entries, 18), Some(22)); // Unread
+        assert_eq!(visual_index_for_selection(&entries, 0), Some(0));
+        assert_eq!(visual_index_for_selection(&entries, 1), Some(2));
+        assert_eq!(visual_index_for_selection(&entries, 5), Some(6));
+        assert_eq!(visual_index_for_selection(&entries, 6), Some(8));
+        assert_eq!(visual_index_for_selection(&entries, 7), Some(9));
+        assert_eq!(visual_index_for_selection(&entries, 8), Some(10));
+        assert_eq!(visual_index_for_selection(&entries, 14), Some(16));
+        assert_eq!(visual_index_for_selection(&entries, 15), Some(18));
+        assert_eq!(visual_index_for_selection(&entries, 16), Some(19));
+        assert_eq!(visual_index_for_selection(&entries, 17), Some(21));
+        assert_eq!(visual_index_for_selection(&entries, 18), Some(22));
     }
 
     #[test]

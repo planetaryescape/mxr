@@ -7,9 +7,6 @@ use mxr_protocol::{
 };
 use mxr_test_support::render_to_string;
 
-/// The clock the views render against. The fixture's mail is from October
-/// 2026, and the snapshots show it as earlier this year; on the wall clock
-/// they change on 1 January.
 fn fixture_now() -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap()
 }
@@ -81,7 +78,6 @@ fn filed_reading_marker_survives_long_sources_in_edition_and_later() {
             &mut edition.bands[0].items[0]
         };
         issue.source = "A very long newsletter source name ".repeat(8);
-        // The fixed +01 test zone puts this on the next day.
         issue.source_filed_at = Some(Utc.with_ymd_and_hms(2026, 10, 7, 23, 30, 0).unwrap());
         page.later_shelf = later;
         for width in [40, 60, 120] {
@@ -351,7 +347,6 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
         crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap())
     )
     .is_some_and(|(index, p)| index == 0 && p.starts_with("We rebuilt")));
-    // Past the first paragraph and the heading, the third one is on top.
     let (_, owners) = reader_lines(
         &reading,
         READER_WIDTH,

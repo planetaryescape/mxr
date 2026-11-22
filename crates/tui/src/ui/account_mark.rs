@@ -1,6 +1,3 @@
-//! The account chip (blueprint 33): a tag in its account's colour. Email rows
-//! carry it in views that mix accounts; the reader header and compose From
-//! always show it.
 
 use crate::theme::Theme;
 use mxr_core::{AccountColor, AccountId};
@@ -8,8 +5,6 @@ use mxr_protocol::AccountSummaryData;
 use ratatui::prelude::*;
 use std::collections::HashMap;
 
-/// Cells a row's chip column takes: a four-cell fill and a gap, or a plain
-/// `[W]` padded to the same width.
 pub const CHIP_WIDTH: usize = 5;
 
 /// How the terminal can show the chip. `Plain` covers `NO_COLOR` and any
@@ -48,11 +43,6 @@ struct Entry {
     identity: Option<(AccountColor, String)>,
 }
 
-/// Every account's chip and name, and whether a list shows chips at all.
-///
-/// `shown` depends only on the accounts and whether the view is scoped to
-/// one of them, so a list never gains or loses a chip while it pages. It is
-/// false for an older daemon, whose accounts carry no identity.
 #[derive(Debug, Clone, Default)]
 pub struct AccountMarks {
     entries: HashMap<AccountId, Entry>,
@@ -88,12 +78,10 @@ impl AccountMarks {
         }
     }
 
-    /// Whether email rows carry a chip column.
     pub fn shown(&self) -> bool {
         self.shown
     }
 
-    /// Width the row's chip column takes, or zero when rows carry no chip.
     pub fn column_width(&self) -> usize {
         if self.shown {
             CHIP_WIDTH
@@ -102,9 +90,6 @@ impl AccountMarks {
         }
     }
 
-    /// The chip cell for an email row: the account's chip when rows are
-    /// marked, blank padding of the same width when the account is unknown,
-    /// and `None` when the view shows no chips.
     pub fn row_cell(&self, account_id: &AccountId, theme: &Theme) -> Option<Vec<Span<'static>>> {
         if !self.shown {
             return None;
@@ -115,14 +100,11 @@ impl AccountMarks {
         )
     }
 
-    /// The chip for an account, shown whether or not rows are marked. `None`
-    /// when the account has no identity (an older daemon).
     pub fn chip(&self, account_id: &AccountId, theme: &Theme) -> Option<Vec<Span<'static>>> {
         let (color, tag) = self.entries.get(account_id)?.identity.as_ref()?;
         Some(chip_spans(tag, *color, self.depth, &theme.account))
     }
 
-    /// The account's name and address, for the reader header and compose.
     pub fn name_and_email(&self, account_id: &AccountId) -> Option<(&str, &str)> {
         self.entries
             .get(account_id)
@@ -164,8 +146,6 @@ fn chip_spans(
     }
 }
 
-/// Marks for a view of several accounts, `(id, name, tag)` each, plain
-/// depth so a test can read the chip as text.
 #[cfg(test)]
 pub(crate) fn plain_marks_for_tests(accounts: &[(&AccountId, &str, &str)]) -> AccountMarks {
     let summaries: Vec<AccountSummaryData> = accounts

@@ -1,13 +1,3 @@
-//! The Reading lens: newsletters as an edition, with a reader beside it.
-//!
-//! Left, the edition `Request::GetReadingEdition` serves: three bands
-//! (since your last visit, earlier this week, fading), each item as a
-//! headline with source, minutes and how much you read it, a digest's
-//! links under it, and "You left off here" between what's new and what
-//! you've seen. Nothing is counted but Later. Right, the item under the
-//! cursor in a 72-column reader with a progress line and the Issue and
-//! Article texts. Also draws the let-go-of-everything and unsubscribe
-//! previews. Pure render; wiring lives in `app/reading_actions.rs`.
 
 use mxr_protocol::{
     ReadingBandData, ReadingItemData, ReadingParagraphData, ReadingUnsubscribeData,
@@ -28,22 +18,15 @@ pub struct ReadingLensView<'a> {
     pub page: &'a ReadingPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
-    /// "Now" for relative and absolute arrival times, passed in so the render
-    /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
-    /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
 }
 
-/// The reader's measure.
 pub(crate) const READER_WIDTH: usize = 72;
-/// Below this the lens shows the edition or the reader, not both.
 const TWO_PANE_MIN_WIDTH: u16 = 100;
 const PROGRESS_CELLS: usize = 20;
 const DEFAULT_WPM: u32 = 230;
 
-/// The footer's keys for the list and the reader, as action ids and words;
-/// the keys come from the definition, so a moved key moves here too.
 const LIST_KEYS: &[(&str, &str)] = &[
     ("reading.read", "read"),
     ("reading.article", "article"),
@@ -71,8 +54,6 @@ const READER_KEYS: &[(&str, &str)] = &[
     ("shell.help", "keys"),
 ];
 
-/// "key verb" entries for the footer. The first (the place's primary verb)
-/// and help always show; the rest go last-first when space runs short.
 fn footer_keys(keys: &[(&str, &str)]) -> Vec<FooterKey> {
     keys.iter()
         .enumerate()
@@ -97,7 +78,6 @@ fn dot() -> &'static str {
     " \u{b7} "
 }
 
-/// "Long Reads Weekly · 3 min · you read 8 of 10 · 6 links".
 fn meta_line(item: &ReadingItemData) -> String {
     let mut parts = vec![one_line(&item.source), format!("{} min", item.minutes)];
     if let Some(engagement) = &item.engagement {
@@ -283,8 +263,6 @@ fn edition_body(view: &ReadingLensView<'_>, width: usize, theme: &crate::theme::
     body
 }
 
-/// The Later shelf: what you kept, newest first. Later never fades; an
-/// item kept over 30 days asks once if you still want it.
 fn later_body(
     view: &ReadingLensView<'_>,
     later: &[ReadingItemData],
@@ -345,7 +323,6 @@ fn later_body(
     body
 }
 
-/// Minutes left at the reader's pace from how far down they are.
 pub(crate) fn minutes_left(words: u32, progress: f64, wpm: u32) -> u32 {
     let left = (f64::from(words) * (1.0 - progress.clamp(0.0, 1.0))).ceil();
     if left <= 0.0 {
@@ -380,7 +357,6 @@ fn progress_bar(progress: f64) -> String {
     )
 }
 
-/// The text the reader shows, as paragraphs, before wrapping.
 fn reader_paragraphs(page: &ReadingPageState) -> Vec<ReadingParagraphData> {
     let Some(detail) = &page.reader else {
         return Vec::new();
@@ -415,9 +391,6 @@ fn reader_paragraphs(page: &ReadingPageState) -> Vec<ReadingParagraphData> {
     }
 }
 
-/// The reader's wrapped lines at `width`, and which paragraph each line
-/// belongs to (`None` for the header and the end block), so a highlight
-/// takes the paragraph at the top of the view.
 pub(crate) fn reader_lines(
     page: &ReadingPageState,
     width: usize,
@@ -559,8 +532,6 @@ pub(crate) fn reader_lines(
     (lines, owners)
 }
 
-/// The paragraph at the top of the reader, for `"`: its index in the
-/// reader's paragraph list and its text.
 pub(crate) fn paragraph_at_top(
     page: &ReadingPageState,
     now: DateTime<Utc>,
@@ -581,7 +552,6 @@ pub(crate) fn paragraph_at_top(
         .and_then(|index| Some((index, paragraphs.get(index)?.text.clone())))
 }
 
-/// How many lines the reader holds, for progress.
 pub(crate) fn reader_line_count(
     page: &ReadingPageState,
     now: DateTime<Utc>,
@@ -629,7 +599,6 @@ fn draw_reader(
     frame.render_widget(block, area);
     let width = (inner.width as usize).saturating_sub(2).min(READER_WIDTH);
     let (lines, _) = reader_lines(page, width, theme, now, zone);
-    // Centre the measure in a wide pane.
     let pad = (inner.width as usize).saturating_sub(width) / 2;
     let column = Rect {
         x: inner.x + u16::try_from(pad).unwrap_or(0),
@@ -703,12 +672,10 @@ pub fn draw(
         .map(|row| one_line(&row.issue().why))
         .unwrap_or_default();
     let keys = if reading {
-        // j and k scroll in place, so no action carries them.
         let (back, rest) = READER_KEYS.split_at(1);
         let mut keys = footer_keys(back);
         keys.push(FooterKey::keep("j/k scroll"));
         keys.extend(footer_keys(rest).into_iter().map(|mut key| {
-            // `rest` starts mid-list: only help is kept there.
             key.keep = key.text.starts_with("? ");
             key
         }));

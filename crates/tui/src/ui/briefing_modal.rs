@@ -1,8 +1,3 @@
-//! Slice 5.1 / 5.2 wiring (C2.6): renders the briefing modal.
-//!
-//! The modal opens loading, replaces with body+citations on response,
-//! shows error inline on failure. Same shape as `summary_modal` /
-//! `sender_profile_modal` so the visual language is consistent.
 
 use super::centered_rect;
 use crate::app::{BriefingModalState, BriefingModalSubject};
@@ -115,7 +110,6 @@ mod tests {
     use mxr_protocol::CitationRefData;
     use mxr_test_support::render_to_string;
 
-    /// Stable ThreadId for snapshot determinism.
     fn fixed_thread_id() -> mxr_core::ThreadId {
         use std::str::FromStr;
         mxr_core::ThreadId::from_str("019e6f2a-1234-7000-8000-abcdef000001").unwrap()
@@ -155,11 +149,9 @@ mod tests {
 
     #[test]
     fn short_id_multibyte_does_not_panic() {
-        // Each '日' is 3 bytes; 13 chars total — must not panic
         let id = "日本語テスト日本語テスト日";
         let result = short_id(id);
         let chars: Vec<char> = result.chars().collect();
-        // head (4 chars) + ellipsis + tail (4 chars)
         assert!(chars.len() <= 9, "result should be 4 + ellipsis + 4");
         assert!(result.contains('…'));
     }

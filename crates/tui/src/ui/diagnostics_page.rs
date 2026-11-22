@@ -101,7 +101,6 @@ fn render_detail_layout(
     render_summary(frame, chunks[0], state, pane, theme, fullscreen);
     render_detail(frame, chunks[1], state, pane, theme, fullscreen);
     let footer_text: String = if let Some(target) = state.search_input {
-        // Active /-search input: show what the user is typing.
         let buf = match target {
             DiagnosticsPaneKind::Events => state.events_search.as_str(),
             DiagnosticsPaneKind::Logs => state.logs_search.as_str(),
@@ -733,7 +732,6 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
             }
         }
         DiagnosticsPaneKind::Logs => {
-            // Apply free-text search if present.
             let needle = state.logs_search.trim().to_lowercase();
             let lines: Vec<String> = if needle.is_empty() {
                 log_entries
@@ -778,7 +776,6 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                             job.progress.skipped,
                             job.progress.failed,
                             if job.undo_ids.is_empty() && job.undo_id_count > 0 {
-                                // A listing carries the count, not the ids.
                                 job.undo_id_count.to_string()
                             } else {
                                 job.undo_ids.join(",")
@@ -887,9 +884,6 @@ fn feature_health_label(health: &FeatureHealth) -> String {
     }
 }
 
-/// Render a single doctor finding as one or more lines: a leading
-/// "<glyph> <category>: <message>" line, then any remediation steps as
-/// indented "→ <command>" lines so the user can copy-paste.
 fn format_finding_lines(finding: &DoctorFinding) -> Vec<String> {
     let glyph = match finding.severity {
         DoctorFindingSeverity::Error => "✗",

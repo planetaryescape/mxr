@@ -1,4 +1,3 @@
-//! Rendering for the Deliveries screen.
 
 use crate::app::DeliveriesState;
 use ratatui::prelude::*;
@@ -42,11 +41,11 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &DeliveriesState, theme: &cr
     }
 
     let widths = [
-        Constraint::Length(18), // status
-        Constraint::Length(22), // merchant
-        Constraint::Length(10), // carrier
-        Constraint::Length(14), // ETA
-        Constraint::Fill(1),    // tracking / order
+        Constraint::Length(18),
+        Constraint::Length(22),
+        Constraint::Length(10),
+        Constraint::Length(14),
+        Constraint::Fill(1),
     ];
     let header = Row::new(["Status", "Merchant", "Carrier", "ETA", "Tracking"])
         .style(Style::default().fg(theme.text_muted).bold());

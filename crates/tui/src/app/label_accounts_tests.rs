@@ -1,6 +1,3 @@
-//! By-name label actions on a mailbox that spans accounts. The same name is a
-//! different label on every account, so each message gets its own account's
-//! label, and a selection with an account that lacks the label is refused.
 
 use super::*;
 use crate::test_fixtures::TestEnvelopeBuilder;
@@ -26,8 +23,6 @@ fn envelope(account_id: &AccountId) -> Envelope {
         .build()
 }
 
-/// Two accounts, A (default) and B. `b_has_work` decides whether B has a
-/// "Work" label; A always has one, with provider id "a-work".
 fn two_accounts(b_has_work: bool) -> (App, AccountId, AccountId, Vec<Envelope>) {
     let account_a = AccountId::new();
     let account_b = AccountId::new();
@@ -160,8 +155,6 @@ fn picker_offers_the_target_accounts_labels_once_per_name() {
 
 #[test]
 fn moving_a_second_account_message_to_a_system_mailbox_is_not_refused() {
-    // The label list keeps one merged entry per system mailbox, the default
-    // account's, so B has no TRASH of its own in it.
     let (mut app, a, _b, _envelopes) = two_accounts(false);
     let mut trash = label(&a, "TRASH", "TRASH");
     trash.kind = LabelKind::System;
@@ -178,8 +171,6 @@ fn moving_a_second_account_message_to_a_system_mailbox_is_not_refused() {
 
 #[test]
 fn a_name_no_loaded_label_has_is_left_to_the_daemon() {
-    // The label list may not have loaded yet, or may predate a label made
-    // in another client, so only a name another account has is refused.
     let (mut app, _a, _b, _envelopes) = two_accounts(false);
     app.mailbox.selected_index = 1;
     app.modals.pending_label_action = Some((LabelPickerMode::Apply, "Made elsewhere".into()));

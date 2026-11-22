@@ -1,7 +1,3 @@
-//! Slice 10: modal form for editing the active analytics view's
-//! filter parameters in one place. Renders as a centered popup over
-//! the analytics screen. Field navigation: Tab/Shift-Tab. Submit:
-//! Enter. Cancel: Esc.
 
 use super::centered_rect;
 use crate::app::AnalyticsFilterModalState;

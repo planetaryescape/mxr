@@ -22,10 +22,6 @@ pub fn draw(
     };
 
     let lines = modal_lines(pending, send_at_input, remind_at_input, time_preview);
-    // Size the popup to its content (accounting for wrapping at the inner
-    // width) plus the 1-row top+bottom border, capped at the available height —
-    // so the trailing action row is never clipped, whatever the content grows
-    // to (From line, safety issues, send-at / remind prompts).
     let inner_width = (u32::from(area.width) * u32::from(MODAL_WIDTH_PCT) / 100)
         .saturating_sub(2)
         .max(1) as usize;
@@ -55,8 +51,6 @@ pub fn draw(
         .iter()
         .map(|line| Line::from(line.clone()))
         .collect::<Vec<_>>();
-    // The From line leads with the chip of the account the draft sends from
-    // (blueprint 33): the one place a wrong account costs a message.
     if let (Some(index), Some(chip)) = (
         lines.iter().position(|line| line.starts_with("From: ")),
         account_marks.chip(&pending.account_id, theme),
@@ -72,9 +66,6 @@ pub fn draw(
     );
 }
 
-/// Rows a single content line occupies once word-wrapped at `width`. Splits on
-/// whitespace like ratatui's `Wrap`, so multi-word lines that break onto extra
-/// rows are counted, keeping the modal tall enough for every line.
 fn wrapped_row_count(line: &str, width: usize) -> u16 {
     if width == 0 {
         return 1;
@@ -91,7 +82,6 @@ fn wrapped_row_count(line: &str, width: usize) -> u16 {
             rows = rows.saturating_add(1);
             col = word_len;
         }
-        // A single word longer than the width wraps across several rows.
         while col > width {
             rows = rows.saturating_add(1);
             col -= width;
@@ -112,10 +102,6 @@ fn modal_lines(
         PendingSendMode::Unchanged => "Draft unchanged. Discard or keep editing?".to_string(),
     }];
 
-    // Prefer the daemon-resolved effective From (the owned override, or the
-    // account primary when `from:` was cleared) so the user sees the exact
-    // identity that will send; fall back to the raw `from:` only when the
-    // resolve couldn't run (daemon unreachable).
     if let Some(address) = pending.resolved_from.as_ref() {
         let rendered = match address.name.as_deref() {
             Some(name) if !name.trim().is_empty() => format!("{name} <{}>", address.email),
@@ -171,14 +157,11 @@ fn modal_lines(
         Some(DraftSafetyVerdict::Blocked)
     );
 
-    // `›` marks the option a bare Enter runs, as in every confirm.
     let (send, edit) = if pending.opens_on_send() {
         ("\u{203a} [s] send", "[e/Esc] edit again")
     } else {
         ("[s] send", "\u{203a} [e/Esc] edit again")
     };
-    // A stored draft is already saved: it is kept, not discarded, from here,
-    // and it sends exactly as saved, so Draft for me edits it instead.
     let stored = pending.stored_draft.is_some();
     let discard = if stored { "" } else { "   [#] discard draft" };
     let assist = if stored { "" } else { "[r] draft for me   " };
@@ -287,9 +270,6 @@ mod tests {
         }
     }
 
-    /// Phase 4: a failed pre-send safety check is no longer silent —
-    /// the modal says why no safety block is shown, so the user can
-    /// tell "checked clean" apart from "check never ran".
     #[test]
     fn failed_safety_check_renders_unavailable_warning() {
         let mut p = pending(PendingSendMode::SendOrSave);
@@ -312,8 +292,6 @@ mod tests {
         );
     }
 
-    /// And when a report did come back, the unavailable line must not
-    /// appear even if a stale failure string is set.
     #[test]
     fn safety_report_takes_precedence_over_failure_line() {
         let mut p = pending(PendingSendMode::SendOrSave);
@@ -335,13 +313,10 @@ mod tests {
         assert!(rendered.contains("Safety: SAFE"));
     }
 
-    /// The modal shows the daemon-resolved effective From — including the
-    /// primary-fallback identity when the user cleared the `from:` field — so
-    /// the sender always sees the exact address the message will send from.
     #[test]
     fn modal_shows_resolved_effective_from_when_frontmatter_cleared() {
         let mut p = pending(PendingSendMode::SendOrSave);
-        p.fm.from = String::new(); // user cleared `from:`
+        p.fm.from = String::new();
         p.resolved_from = Some(mxr_core::types::Address {
             name: Some("Demo".into()),
             email: "primary@example.com".into(),
@@ -530,9 +505,6 @@ mod tests {
         assert!(rendered.contains("no issues"));
         assert!(rendered.contains("\u{203a} [s] send"));
         assert!(!rendered.contains("override"));
-        // Snapshot lock: any visible drift forces an insta review.
-        // The contains asserts above catch specific removals; the
-        // snapshot catches additions/relayouts the asserts miss.
         insta::assert_snapshot!("safety_modal_safe", rendered);
     }
 
@@ -570,7 +542,6 @@ mod tests {
         assert!(rendered.contains("Safety: WARN"));
         assert!(rendered.contains("[warn] draft does not address: who owns rollout?"));
         assert!(rendered.contains("cite msg=msg-99 field=body"));
-        // Warnings still allow send.
         assert!(rendered.contains("[s] send"));
         assert!(!rendered.contains("override"));
         insta::assert_snapshot!("safety_modal_warn", rendered);
@@ -603,11 +574,9 @@ mod tests {
 
         assert!(rendered.contains("Safety: BLOCKED"));
         assert!(rendered.contains("[BLOCK] secret pattern detected: sk-...abcd"));
-        // Override token must be visible to user (copy-pasteable).
         assert!(rendered.contains("Override token: tok-abc-123"));
         assert!(rendered.contains("[O] override + send"));
         assert!(rendered.contains("Press O to override and send"));
-        // A tokenized blocker still exposes its one-use override path.
         assert!(!rendered.contains("[s] send"));
         insta::assert_snapshot!("safety_modal_blocker", rendered);
     }

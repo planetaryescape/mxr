@@ -15,7 +15,6 @@ pub struct SubscriptionsPageView<'a> {
         std::collections::HashMap<String, crate::terminal_images::HtmlImageEntry>,
     >,
     pub now: chrono::DateTime<chrono::Utc>,
-    /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
     pub account_marks: &'a crate::ui::account_mark::AccountMarks,
 }

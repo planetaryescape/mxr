@@ -1,12 +1,6 @@
-//! When an email arrived, as the TUI shows it on an open email: local time,
-//! never UTC and never a day alone (blueprint 27, "When an email arrived";
-//! D148). Lists keep `mail_list::format_date_relative`'s compact form.
 
 use chrono::{DateTime, Datelike, FixedOffset, Local, Utc};
 
-/// The zone the TUI shows times in. Production uses `Local`, which follows
-/// daylight saving per instant. Tests pass `Fixed` so the text is the same
-/// on any machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayZone {
     Local,
@@ -14,7 +8,6 @@ pub enum DisplayZone {
 }
 
 impl DisplayZone {
-    /// `instant` in this zone, with the offset in force at that instant.
     pub fn at(self, instant: DateTime<Utc>) -> DateTime<FixedOffset> {
         match self {
             Self::Local => instant.with_timezone(&Local).fixed_offset(),
@@ -23,8 +16,6 @@ impl DisplayZone {
     }
 }
 
-/// "Today 14:02 · 2h ago", "Tue 21 Oct 14:02", "Tue 21 Oct 2025 14:02".
-/// The clock is passed in so the render doesn't read it.
 pub fn received_label(at: DateTime<Utc>, now: DateTime<Utc>, zone: DisplayZone) -> String {
     let local = zone.at(at);
     let today = zone.at(now);
@@ -39,8 +30,6 @@ pub fn received_label(at: DateTime<Utc>, now: DateTime<Utc>, zone: DisplayZone) 
     }
 }
 
-/// "just now", "40m ago", "2h ago". An arrival after `now` (clock skew) is
-/// "just now" too.
 fn ago(elapsed: chrono::Duration) -> String {
     let minutes = elapsed.num_minutes();
     if minutes < 1 {
@@ -57,7 +46,6 @@ mod tests {
     use super::*;
     use chrono::{FixedOffset, TimeZone};
 
-    // Fixed offsets keep these tests independent of the machine's zone.
     fn zone() -> FixedOffset {
         FixedOffset::east_opt(2 * 3600).unwrap()
     }
@@ -68,7 +56,6 @@ mod tests {
 
     #[test]
     fn today_shows_local_clock_and_how_long_ago() {
-        // 12:02 UTC is 14:02 at +02:00.
         let at = utc(2026, 10, 21, 12, 2);
         let now = utc(2026, 10, 21, 14, 2);
         assert_eq!(
@@ -89,7 +76,6 @@ mod tests {
 
     #[test]
     fn the_local_date_decides_the_day_not_utc() {
-        // 23:30 UTC on the 21st is already the 22nd at +02:00.
         let at = utc(2026, 10, 21, 23, 30);
         let now = utc(2026, 10, 22, 6, 0);
         assert_eq!(

@@ -324,7 +324,6 @@ fn a_row_with_an_unsent_reply_reads_draft_in_the_accent_in_place_of_its_preview(
         rendered.contains("Draft: Reads right, one tweak"),
         "{rendered}"
     );
-    // The list column truncates, so the preview's opening words are the check.
     assert!(!rendered.contains(&preview[..20]), "{rendered}");
 }
 
@@ -456,9 +455,6 @@ fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
 
 #[test]
 fn paragraph_blocks_finds_a_crlf_break_a_naive_split_misses() {
-    // A message `new_text` returned with its own line endings kept (see
-    // `crates/reader/src/new_text.rs`): a naive `split("\n\n")` never
-    // finds "\n\n" inside "\r\n\r\n" and folds this into one paragraph.
     assert_eq!(
         paragraph_blocks("Senior Software Engineer at throxy.\r\n\r\nJack"),
         vec!["Senior Software Engineer at throxy.", "Jack"]

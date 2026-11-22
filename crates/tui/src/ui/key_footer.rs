@@ -1,13 +1,6 @@
-//! The key line under a mode. Help is how keys are found (blueprint 35,
-//! teaching), so when the line is wider than its space the entries that may
-//! go are dropped first, last listed first: each footer lists its keys in
-//! the order help does, most used first. The entries marked to keep (the
-//! place's primary verb, undo, help) stay. Only when those alone overflow is
-//! the line cut.
 
 use crate::ui::sanitize::truncate;
 
-/// One footer entry, "key verb", and whether it must stay.
 pub(crate) struct FooterKey {
     pub text: String,
     pub keep: bool,
@@ -29,8 +22,6 @@ impl FooterKey {
     }
 }
 
-/// The entries joined by `separator` in at most `width` characters,
-/// dropping optional entries from the end until they fit.
 pub(crate) fn fit(entries: &[FooterKey], separator: &str, width: usize) -> String {
     let mut shown: Vec<&FooterKey> = entries
         .iter()

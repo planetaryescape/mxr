@@ -1,14 +1,8 @@
-//! html2text's styled render of an HTML body, run in the HTML helper process.
-//!
-//! The helper answers in this module's own types, not html2text's, because
-//! those are what cross the pipe and what the message view draws from.
 
 use html2text::render::{RichAnnotation, TaggedLine};
 use mxr_html_worker::{AnyJob, Job};
 use serde::{Deserialize, Serialize};
 
-/// What a run of text is marked as. Mirrors the annotations the message view
-/// styles; anything html2text adds later becomes `Other` and draws plain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Annotation {
     Default,
@@ -24,7 +18,6 @@ pub(crate) enum Annotation {
     Other,
 }
 
-/// A run of text with one set of annotations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Piece {
     pub text: String,
@@ -36,7 +29,6 @@ pub(crate) type RichLine = Vec<Piece>;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum RichRender {
     Lines(Vec<RichLine>),
-    /// html2text rejected the document. The view shows the HTML source's text.
     Failed,
     /// Over the HTML budget, or html2text panicked: the view shows the tag
     /// strip. A helper that was lost gives the same answer.
@@ -46,7 +38,6 @@ pub(crate) enum RichRender {
 pub(crate) static RICH_LINES: Job<usize, RichRender> =
     Job::new("tui.rich_lines", |html, width| render(html, *width));
 
-/// Every parse this crate runs in the HTML helper process.
 pub fn html_jobs() -> Vec<&'static dyn AnyJob> {
     vec![&RICH_LINES]
 }

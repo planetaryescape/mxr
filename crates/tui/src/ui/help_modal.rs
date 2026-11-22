@@ -40,13 +40,8 @@ pub struct HelpModalState<'a> {
     pub scroll_offset: u16,
     pub query: &'a str,
     pub selected: usize,
-    /// The mode on screen, when it has a guide: help leads with it.
     pub mode_guide: Option<&'a mxr_protocol::ModeGuideData>,
-    /// Where keys are going, innermost first (a mode, the list, a lens):
-    /// the key definition's places whose keys help lists. Empty to list
-    /// the places of `ui_context`.
     pub key_places: Vec<&'static str>,
-    /// In a mode: the lit item's verbs, as the hint bar shows them.
     pub mode_common: Option<Vec<(String, String)>>,
     pub _marker: std::marker::PhantomData<&'a ()>,
 }
@@ -79,9 +74,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>, theme: &cr
     }
 }
 
-/// `?` in a mode starts with the mode: what it is for, what lands there,
-/// how it works, then its keys with their verbs. This is the full
-/// explanation on demand; the page itself only teaches with hints.
 fn mode_section(guide: &mxr_protocol::ModeGuideData) -> HelpSection {
     let mut entries = vec![
         ("What it's for".to_string(), guide.header.clone()),
@@ -121,7 +113,6 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
     let keys = key_rows(state);
     let places = places(state);
     let here = places.first().copied().unwrap_or("list");
-    // A tool screen leaves the shell's keys to the mail list's.
     let shell = if mxr_keymap::TUI_CONTEXTS.contains(&here) {
         here
     } else {
@@ -156,8 +147,6 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             });
         }
     }
-    // Every overlay's keys, from the definition: help can't be opened from
-    // inside one, so they are listed wherever it is.
     for overlay in mxr_keymap::OVERLAY_CONTEXTS {
         let entries = keys.rows(overlay);
         if !entries.is_empty() {
@@ -174,15 +163,11 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
     sections
 }
 
-/// An action's key in `place` and its label, from the definition; `None`
-/// where it has no key.
 fn defined_row(keys: &KeyRows<'_>, id: &str, place: &str) -> Option<(String, String)> {
     let action = mxr_keymap::defaults().get(id)?;
     Some((keys.key(id, place)?, action.label.clone()))
 }
 
-/// Task-oriented entry points. Each line answers "how do I do X" with the
-/// keys that do it, so a new user doesn't have to scan the tables first.
 fn how_do_i(keys: &KeyRows<'_>, place: &str) -> HelpSection {
     let key = |id: &str, place: &str| keys.key(id, place).unwrap_or_else(|| "palette".into());
     HelpSection {
@@ -249,8 +234,6 @@ fn how_do_i(keys: &KeyRows<'_>, place: &str) -> HelpSection {
     }
 }
 
-/// The few keys to try first here: the lit item's verbs in a mode, else
-/// the screen's main actions, with where help is and what is selected.
 fn common_entries(
     state: &HelpModalState<'_>,
     keys: &KeyRows<'_>,
@@ -293,7 +276,6 @@ fn common_entries(
                 "tui.deliveries.refresh",
             ],
         };
-        // The mailbox's keys are the list's wherever the pane is.
         let place = if matches!(
             state.ui_context,
             UiContext::MailboxSidebar | UiContext::MailboxList | UiContext::MailboxMessage
@@ -518,8 +500,6 @@ fn render_sections(sections: &[HelpSection], theme: &crate::theme::Theme) -> Vec
             section.title.clone(),
             Style::default().fg(theme.accent).bold(),
         )));
-        // The first column fits its longest entry, so a long "How do I…"
-        // question never runs into its answer.
         let column = section
             .entries
             .iter()
@@ -784,9 +764,6 @@ mod tests {
         }
     }
 
-    /// Phase 3.3 / Behavior 2: each task-oriented entry references
-    /// either a real keybinding or a real palette command. Catches
-    /// "task entry points to a binding that doesn't exist" rot.
     #[test]
     fn task_oriented_entries_reference_real_bindings_or_palette_commands() {
         let state = help_state(UiContext::MailboxList, "");
@@ -794,11 +771,6 @@ mod tests {
             .into_iter()
             .find(|section| section.title == "How do I…")
             .expect("task section");
-        // Every entry should mention something a user can actually do.
-        // We verify by checking each entry's hint contains either a
-        // concrete keybinding (single char or numeric tab) or the
-        // string "palette:" for a palette command, or "shell:" for a
-        // CLI escape hatch.
         for (label, hint) in &task_section.entries {
             let mentions_action = hint.contains("palette:")
                 || hint.contains("shell:")
@@ -850,8 +822,6 @@ mod tests {
         assert_eq!(duplicates, 1);
     }
 
-    /// Every key the definition binds in a place shows in help opened
-    /// there, with the action it runs, so help can't drift from the keys.
     #[test]
     fn every_bound_tui_key_shows_in_help_where_it_works() {
         let keymap = mxr_keymap::defaults();
@@ -894,7 +864,6 @@ mod tests {
         assert!(missing.is_empty(), "{}", missing.join("\n"));
     }
 
-    /// Analytics lists every view's keys, each under its view.
     #[test]
     fn analytics_help_lists_every_views_keys() {
         let titles: Vec<String> = help_sections(&help_state(UiContext::Analytics, ""))

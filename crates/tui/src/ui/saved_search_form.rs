@@ -33,13 +33,13 @@ pub fn draw(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Name
-            Constraint::Length(1), // Query
-            Constraint::Length(1), // Mode
-            Constraint::Length(1), // blank
-            Constraint::Length(2), // validation error (1 line + 1 spacing)
-            Constraint::Min(0),    // help hint
-            Constraint::Length(1), // footer
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(2),
+            Constraint::Min(0),
+            Constraint::Length(1),
         ])
         .split(inner);
 
@@ -206,7 +206,6 @@ mod tests {
             rendered.contains("Delete saved search 'Important'?"),
             "expected confirmation prompt with name; got:\n{rendered}"
         );
-        // It opens on Keep, so a bare Enter deletes nothing.
         assert!(
             rendered.contains("\u{203a} Keep it     Delete saved search"),
             "{rendered}"

@@ -242,20 +242,8 @@ fn draw_confirmation(
     );
 }
 
-/// Flatten a draft body into the text the detail pane shows.
-///
-/// `DraftContent::analysis_text` is empty for an HTML draft that carries no
-/// `text/plain` alternative, which would leave the pane blank on exactly the
-/// drafts the user most wants to eyeball. Routing through the reader gives
-/// every kind something readable. The stripping passes are off: this previews
-/// what the author wrote, not what the reader would trim from someone else's
-/// mail.
 fn preview_body(content: &mxr_core::DraftContent) -> String {
     let (text, html) = content.reader_input();
-    // A blank alternative is dropped rather than preferred: `--text-file`
-    // accepts an empty file, and the reader takes a supplied text over the
-    // document whenever there is one — which would blank the pane just as
-    // surely as no alternative at all.
     let text = text.filter(|text| !text.trim().is_empty());
     let Some(html) = html else {
         return text.unwrap_or_default().to_string();
@@ -365,15 +353,12 @@ mod tests {
         )]);
         assert!(state.preview_push("gmail".into()));
 
-        // 120 cols: the modal is 80% wide minus border and margin, and the
-        // explanation sentence must not wrap for the substring asserts below.
         let snapshot = render_to_string(120, 20, |frame| {
             draw(frame, Rect::new(0, 0, 120, 20), &state, &Theme::default());
         });
         assert!(snapshot.contains("Sync this draft with the provider?"));
         assert!(snapshot.contains("Provider: gmail"));
         assert!(snapshot.contains("Later edits update that same provider draft"));
-        // Syncing destroys nothing, so it opens on its action.
         assert!(
             snapshot.contains("Keep it   \u{203a} Sync with Gmail Drafts"),
             "{snapshot}"

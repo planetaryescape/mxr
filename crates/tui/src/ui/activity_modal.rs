@@ -1,6 +1,3 @@
-//! Activity log modal (Phase 5). Read-only viewer of the last day of
-//! local `user_activity` rows. Lives over whatever screen the user is on
-//! — opened via `g Y` chord or palette entry.
 
 use super::centered_rect;
 use crate::app::ActivityModalState;
@@ -58,13 +55,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ActivityModalState, theme: &T
         return;
     }
 
-    // Split: rows table on top, detail panel below.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(8), Constraint::Length(8)])
         .split(inner.inner(Margin::new(1, 1)));
 
-    // Rows table
     let rows: Vec<Row> = state
         .entries
         .iter()
@@ -133,7 +128,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &ActivityModalState, theme: &T
     );
     frame.render_widget(table, chunks[0]);
 
-    // Detail panel
     let detail_text = if let Some(entry) = state.selected() {
         let ts = chrono::DateTime::from_timestamp_millis(entry.ts)
             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())

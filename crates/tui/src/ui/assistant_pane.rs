@@ -1,7 +1,3 @@
-//! The assistant pane: the conversation, what waits for the user, and the
-//! message box. Everything in it that came from email or from the model is
-//! untrusted text: control characters are stripped and nothing in it is
-//! followed or fetched.
 
 use super::account_mark::AccountMarks;
 use super::assistant_describe::{
@@ -20,15 +16,9 @@ use ratatui::widgets::*;
 use std::time::Instant;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-/// Approvals list this many messages, then "and N more".
 const PREVIEW_ROWS: usize = 6;
-/// The key that unfolds and folds a waiting approval's full message list.
 const FULL_LIST_KEY: &str = "a";
-/// After this long on one live phrase the running line names the model, so a
-/// slow local one doesn't look stuck. Matches `SLOW_STEP_SECONDS` in
-/// apps/web/src/features/assistant/wire.ts.
 const SLOW_STEP_SECONDS: u64 = 20;
-/// The message box grows to this many lines, then shows the newest.
 const INPUT_ROWS: usize = 4;
 
 const SUGGESTIONS: [&str; 3] = [
@@ -37,7 +27,6 @@ const SUGGESTIONS: [&str; 3] = [
     "Find newsletters I never open and tidy them up",
 ];
 
-/// Draws the pane and returns how far its transcript can scroll.
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
@@ -70,11 +59,6 @@ pub fn draw(
 
     let mut card = card_lines(state, width, theme);
     let warnings = warning_lines(state, width, theme);
-    // The card can take half the pane, or all the footer leaves while the
-    // exact call is unfolded or a long approval waits (its list and the key
-    // that opens the rest must show); the footer always shows. The warning
-    // sits outside that room, so a long preview can't push it off while `y`
-    // still approves.
     let card_room = if state.exact_call_for.is_some() || !long_approvals(state).is_empty() {
         usize::from(inner.height.saturating_sub(2)).saturating_sub(footer.len())
     } else {
@@ -100,7 +84,6 @@ pub fn draw(
     let (body, max_scroll) = if let Some(models) = &state.models {
         let (lines, selected) = models_lines(models, width, theme);
         let height = usize::from(chunks[0].height);
-        // Keep the highlighted row, with its reason, in view.
         let start = selected.end.saturating_sub(height).min(selected.start);
         (lines.into_iter().skip(start).take(height).collect(), 0)
     } else if let Some(list) = &state.list {
@@ -124,9 +107,6 @@ pub fn draw(
     max_scroll
 }
 
-/// The card, its warnings and the footer cut to `height` rows from the top.
-/// The warnings go last: while `y` can approve a change that can't be
-/// undone, its warning outlasts the card and the footer's input rows.
 fn bottom_block(
     card: Vec<Line<'static>>,
     warnings: Vec<Line<'static>>,
@@ -134,7 +114,6 @@ fn bottom_block(
     height: u16,
 ) -> Vec<Line<'static>> {
     let height = usize::from(height);
-    // The keys' last row always stays, so the pane still says what y does.
     let keys = usize::from(!footer.is_empty() && height > 1);
     let warnings: Vec<_> = warnings.into_iter().take(height - keys).collect();
     let footer_room = height - warnings.len();
@@ -168,8 +147,6 @@ fn title_line(state: &AssistantState, theme: &Theme) -> Line<'static> {
     Line::from(spans)
 }
 
-/// The call ids of waiting approvals that touch more messages than the
-/// card shows folded.
 fn long_approvals(state: &AssistantState) -> Vec<&str> {
     state
         .pending()
@@ -185,10 +162,8 @@ fn long_approvals(state: &AssistantState) -> Vec<&str> {
         .collect()
 }
 
-/// The keys that work right now, in the pane's own words.
 pub fn hint_text(state: &AssistantState) -> String {
     match &state.prompt {
-        // A delete confirm can sit over the history list.
         Some(AssistantPrompt::ConfirmDelete(..)) => {
             return "Enter the lit one \u{b7} y delete \u{b7} n keep \u{b7} j/k".into();
         }
@@ -251,7 +226,6 @@ pub fn hint_text(state: &AssistantState) -> String {
     }
 }
 
-/// Words a long text into lines no wider than `width`, keeping its breaks.
 pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
     let mut out = Vec::new();
@@ -273,7 +247,6 @@ pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
                 out.push(std::mem::take(&mut line));
                 line_width = 0;
             }
-            // A word wider than the line breaks wherever it must.
             for c in word.chars() {
                 let w = c.width().unwrap_or(0);
                 if line_width + w > width {
@@ -289,7 +262,6 @@ pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
     out
 }
 
-/// `text` wrapped under `prefix`, continuation lines indented to match.
 fn push_wrapped(
     lines: &mut Vec<Line<'static>>,
     prefix: &str,
@@ -312,8 +284,6 @@ fn push_wrapped(
     }
 }
 
-/// `value` as indented JSON, `lead` before its first line. Each line
-/// wraps under its own indent so nesting stays readable when narrow.
 fn push_json(
     lines: &mut Vec<Line<'static>>,
     lead: &str,
@@ -334,7 +304,6 @@ fn push_json(
     }
 }
 
-/// The user's lines wear a bar, so a quote stays visibly theirs.
 fn push_user(lines: &mut Vec<Line<'static>>, text: &str, width: usize, theme: &Theme) {
     let text = strip_control_chars(text);
     for row in wrap(&text, width.saturating_sub(2)) {
@@ -362,8 +331,6 @@ fn state_glyph(state: AssistantCallStateData, theme: &Theme) -> Span<'static> {
     Span::styled(format!("{glyph} "), Style::default().fg(color))
 }
 
-/// A step in words: the daemon's title for its state, or, from an older
-/// daemon that sends none, the model's reason.
 fn step_label(
     tool: &str,
     reason: &str,
@@ -400,9 +367,6 @@ fn step_label(
     }
 }
 
-/// The steps a reply's `failed_call_ids` names, in words. Small models
-/// sometimes say they did what failed; the steps are mxr's record, so the
-/// reply is followed by what they say.
 fn failed_steps(items: &[AssistantItemData], failed_call_ids: &[String]) -> Vec<String> {
     items
         .iter()
@@ -427,8 +391,6 @@ fn failed_steps(items: &[AssistantItemData], failed_call_ids: &[String]) -> Vec<
         .collect()
 }
 
-/// The conversation as lines: what the user wrote, the replies, the steps
-/// between (folded once settled), and how the last turn ended.
 pub(crate) fn transcript_lines(
     state: &AssistantState,
     width: usize,
@@ -470,8 +432,6 @@ pub(crate) fn transcript_lines(
 
     let running = state.running();
     let items = &conversation.items;
-    // Only one reply numbers its links, the latest that has any, so a
-    // number always means one thing: the link `1`-`9` opens.
     let linked_reply = state.linked_reply().map(|(index, _)| index);
     let mut index = 0;
     while index < items.len() {
@@ -503,7 +463,6 @@ pub(crate) fn transcript_lines(
                         Some(detail) => format!("{}  {detail}", row.title),
                         None => row.title.clone(),
                     };
-                    // A row with no account (a person) keeps the chip column's width.
                     let chip = row
                         .account_id
                         .as_ref()
@@ -640,7 +599,6 @@ pub(crate) fn transcript_lines(
         index += 1;
     }
 
-    // The reply as it is written, until the finished one is stored.
     if let Some(AssistantProgressData::Writing { text }) = &state.progress {
         let stored = matches!(items.last(), Some(AssistantItemData::Assistant { text: last, .. }) if last == text);
         if running && !text.trim().is_empty() && !stored {
@@ -658,8 +616,6 @@ pub(crate) fn transcript_lines(
 
     if conversation.status == AssistantStatusData::Idle {
         let outcome = match conversation.last_outcome {
-            // The daemon words known failures as a sentence with what to do
-            // next and keeps the raw text in the detail.
             Some(AssistantOutcomeData::Failed) => Some((
                 match (&conversation.last_error, &conversation.last_error_detail) {
                     (Some(sentence), Some(_)) => one_line(sentence),
@@ -692,15 +648,12 @@ pub(crate) fn transcript_lines(
     lines
 }
 
-/// The daemon's warnings for the waiting changes that can't be undone, in
-/// the danger colour. Drawn after the card, right above the keys.
 fn warning_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     if state.overlay_open() {
         return lines;
     }
     let danger = Style::default().fg(theme.error).bold();
-    // Several waiting changes with the same warning say it once.
     let mut said = std::collections::HashSet::new();
     for pending in state.pending() {
         if let AssistantPendingData::Approval {
@@ -716,11 +669,9 @@ fn warning_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Lin
     lines
 }
 
-/// What waits for the user: a change to approve, or questions to answer.
 fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let muted = Style::default().fg(theme.text_muted);
-    // Over the history list the card is only the delete confirm.
     let pending: &[AssistantPendingData] = if state.overlay_open() {
         &[]
     } else {
@@ -795,7 +746,6 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                         ]));
                     }
                     if messages.len() > PREVIEW_ROWS {
-                        // The key only works from the pane's own focus.
                         let key = state.focus == AssistantFocus::Pane;
                         let text = match (expanded, key) {
                             (true, true) => format!("  {FULL_LIST_KEY} show fewer"),
@@ -846,8 +796,6 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                 if state.exact_call_for.as_deref() == Some(call_id.as_str()) {
                     lines.push(Line::from(Span::styled("EXACT CALL", label)));
                     push_json(&mut lines, &format!("{tool} "), arguments, width, muted);
-                    // A preview the card couldn't put in words shows as
-                    // the daemon returned it, as the web's does.
                     if let Some(preview) = preview.as_ref().filter(|_| messages.is_empty()) {
                         if preview_draft(preview).is_none() {
                             push_json(&mut lines, "preview ", preview, width, muted);
@@ -987,7 +935,6 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
     lines
 }
 
-/// The running line, errors, the message box and where the model runs.
 fn footer_lines(
     state: &AssistantState,
     width: usize,
@@ -997,7 +944,6 @@ fn footer_lines(
     let mut lines: Vec<Line<'static>> = Vec::new();
     let muted = Style::default().fg(theme.text_muted);
     if state.overlay_open() {
-        // A refused delete or model choice says why there.
         if let Some(error) = &state.error {
             let style = Style::default().fg(theme.error);
             push_wrapped(&mut lines, "", &one_line(error), width, style, style);
@@ -1006,7 +952,6 @@ fn footer_lines(
     }
     if state.running() {
         let doing = match &state.progress {
-            // An older daemon sends no title: its reason is all there is.
             Some(AssistantProgressData::Calling {
                 tool,
                 reason,
@@ -1111,8 +1056,6 @@ fn footer_lines(
     lines
 }
 
-/// "<model> is slow on this; <N>s" once the live phrase has lasted long
-/// enough to name the model, as the web's `slowNote` does.
 fn slow_note(state: &AssistantState, now: Instant) -> Option<String> {
     let model = state.availability.as_ref()?.model.as_deref()?;
     let seconds = now.saturating_duration_since(state.phrase_since?).as_secs();
@@ -1168,8 +1111,6 @@ fn list_lines(
     lines
 }
 
-/// The model picker: each choice with where it runs, the one in use marked,
-/// and for one that can't be picked, what to do about it.
 fn models_lines(
     models: &crate::app::AssistantModelsState,
     width: usize,
@@ -1718,7 +1659,6 @@ mod tests {
             );
         });
         assert!(screen.contains("[W]  Weekly sync  Quinn"), "{screen}");
-        // A row with no account keeps the chip column's width.
         assert!(
             screen.contains(&format!("•{}Invoice", " ".repeat(6))),
             "{screen}"

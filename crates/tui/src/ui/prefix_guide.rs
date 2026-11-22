@@ -1,26 +1,16 @@
-//! The prefix guide: a pause after `g`, `*` or `i` lists the keys that can
-//! follow (blueprint 35, "Prefixes show what can follow"; Helix's auto-info).
-//! It reads the same rows as help, so the person's remaps show and a key
-//! that no longer runs anything here doesn't. The web app's
-//! `ShortcutGuide.tsx` shows the same list.
 
 use crate::theme::Theme;
 use crate::ui::help_keys::KeyRows;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-/// One key that completes the prefix, and what it does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Continuation {
-    /// The action the key runs, from the definition.
     pub id: String,
     pub next: String,
     pub label: String,
 }
 
-/// The keys that complete `prefix` in `places` (innermost first), in the
-/// definition's order. An inner place's key hides an outer one's, as it does
-/// when pressed.
 pub(crate) fn continuations(
     keys: &KeyRows<'_>,
     places: &[&str],
@@ -30,9 +20,6 @@ pub(crate) fn continuations(
     for place in places {
         for action in &mxr_keymap::defaults().actions {
             for shown in keys.keys(action, place) {
-                // Help spells a sequence by joining its keys ("gi"), and a
-                // named key never starts with a prefix character, so what
-                // follows the prefix is the next key.
                 let Some(next) = shown.strip_prefix(prefix).filter(|next| !next.is_empty()) else {
                     continue;
                 };
@@ -53,8 +40,6 @@ pub(crate) fn continuations(
     found
 }
 
-/// Draw the guide in the bottom-right of `area`, above the status bar, in as
-/// many columns as fit. Rows that don't fit are counted in the footer.
 pub(crate) fn draw(
     frame: &mut Frame,
     area: Rect,
@@ -77,11 +62,9 @@ pub(crate) fn draw(
         .unwrap_or(1);
     let cell = (key_width + 2 + label_width.min(28)) as u16;
     let gap = 3u16;
-    // Two border columns and one column of margin from the right edge.
     let room = area.width.saturating_sub(3);
     let columns = ((room + gap) / (cell + gap)).clamp(1, 3) as usize;
     let rows_needed = choices.len().div_ceil(columns);
-    // Status bar, borders, and the footer line when rows are cut.
     let max_rows = area.height.saturating_sub(4) as usize;
     if max_rows == 0 {
         return;

@@ -1,6 +1,3 @@
-//! Slice 6.1 (C2.9): renders the whois modal — explains an entity
-//! using local evidence (sender_profile + relationship for emails,
-//! lexical-search citations for terms, candidate list for ambiguous).
 
 use super::centered_rect;
 use crate::app::WhoisModalState;

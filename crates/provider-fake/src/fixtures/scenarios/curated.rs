@@ -113,7 +113,6 @@ fn judged(spec: Spec, questions: &'static [&'static str], why: &'static str) -> 
 fn specs() -> Vec<Spec> {
     use Subject::{Any, Exact, Prefix};
     vec![
-        // --- Deliveries (fixtures.rs: delivery_demo_messages) ---
         spec(
             "delivery-order-confirmation",
             "An Amazon order confirmation: a notification from a machine that files the order",
@@ -149,7 +148,6 @@ fn specs() -> Vec<Spec> {
             Prefix("Your USPS package"),
             NOTICE,
         ),
-        // --- To do (todo_demo.rs) ---
         judged(
             spec(
                 "todo-council-statement",
@@ -237,10 +235,8 @@ fn specs() -> Vec<Spec> {
                 Exact("Please DocuSign: Tenancy renewal"),
                 ACTION,
             ),
-            // "Foxtons via DocuSign": the requester is Foxtons.
             vec![Item::asks(AskKind::Sign, "Foxtons")],
         ),
-        // The promise in the owner's sent mail (todo_demo.rs).
         outbound(
             spec(
                 "todo-promise-to-send-a-form",
@@ -251,7 +247,6 @@ fn specs() -> Vec<Spec> {
             ),
             vec![Item::promised(AskKind::Send, "Priya Shah")],
         ),
-        // --- Modes (modes_demo.rs) ---
         asking(
             spec(
                 "modes-landlord-reply",
@@ -260,7 +255,6 @@ fn specs() -> Vec<Spec> {
                 Exact("Re: Lease renewal"),
                 QUESTION,
             ),
-            // The Thursday question is Your turn, not a second item.
             vec![Item::asks(AskKind::Sign, "Sam Okafor").due(Due::AfterSent(51))],
         ),
         judged(
@@ -296,7 +290,6 @@ fn specs() -> Vec<Spec> {
             &["home"],
             "The rules disagree and Now asks 'Not sure' (D119 U1); the home is still Updates under the copied rule. The not-sure mark is not one of the four questions.",
         ),
-        // --- Messages (messages_demo.rs) ---
         judged(
             spec(
                 "messages-long-letter",
@@ -354,7 +347,6 @@ fn specs() -> Vec<Spec> {
             Exact("Offsite dates"),
             COPIED,
         ),
-        // --- Records (records_demo.rs) ---
         spec(
             "records-order-confirmation",
             "A Dell order confirmation with schema.org Order markup and an invoice PDF",
@@ -425,7 +417,6 @@ fn specs() -> Vec<Spec> {
             Exact("Your Bose order confirmation"),
             FILED,
         ),
-        // --- Reading (reading_demo.rs): every issue of a newsletter shares a label ---
         spec(
             "reading-weekly-essay",
             "An essay newsletter with List-Unsubscribe",
@@ -454,7 +445,6 @@ fn specs() -> Vec<Spec> {
             Any,
             READING,
         ),
-        // --- Updates (updates_demo.rs) ---
         spec(
             "updates-weekly-summary",
             "A fitness app's weekly summary",
@@ -532,7 +522,6 @@ fn specs() -> Vec<Spec> {
             Any,
             NOTICE,
         ),
-        // --- Subscriptions (subscriptions_demo.rs) ---
         spec(
             "subscriptions-spotify-receipt",
             "A monthly Spotify receipt (and a one-off gift card receipt)",
@@ -599,7 +588,6 @@ pub(super) fn label(messages: &[(Envelope, MessageBody)]) -> Vec<Labelled> {
                 items: spec.items.clone(),
                 outbound: spec.outbound,
                 sender: if spec.outbound {
-                    // The owner writes as a person.
                     SenderKind::Person
                 } else {
                     sender_kind(spec.expect.who, &envelope.from.email)

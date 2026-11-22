@@ -29,7 +29,6 @@ fn locate_agrees_with_walking_the_threads() {
 
 #[test]
 fn thread_lengths_and_the_mix_are_what_the_demo_always_had() {
-    // Thirteen threads, 35.5 messages on average: the old categories.
     let lens: Vec<usize> = (0..52).map(thread_len).collect();
     assert_eq!(lens.iter().sum::<usize>(), 142);
     assert_eq!(thread_len(1), 5);
@@ -87,7 +86,6 @@ fn every_variant_has_the_text_its_family_reads() {
             "{} holds nothing out",
             family.id
         );
-        // A quarter to a half of the variants are held out.
         let held = held_out::variants(family.id).len();
         assert!(
             held * 4 >= family.variant_count() && held * 2 <= family.variant_count(),
@@ -201,8 +199,6 @@ fn held_out_is_the_variants_past_the_visible_ones() {
         assert_eq!(held, index >= family.variants.len());
         assert_eq!(family.variant(index).1, held);
     }
-    // Over a long run the held-out share is the share of held-out variants,
-    // within a few points.
     let (mut held, mut total) = (0, 0);
     for thread_num in 0..50_000 {
         total += 1;
@@ -233,12 +229,9 @@ fn an_ask_is_dated_to_match_whether_its_deadline_is_open() {
         }
         let asks = !items(thread_num, 0).is_empty();
         assert!(label(thread_num, 0).is_some(), "the ask is labelled");
-        // An ask thread asks something only while its deadline is open, and
-        // not at all when its phrasing's ask is a reply.
         assert!(!asks || (asks_recent(thread_num) && family.turns[0].ask.is_some()));
     }
     assert!(recent > 4, "only {recent} live asks");
-    // The first threads, which the web e2e suite reads, carry no live ask.
     for thread_num in 0..13 * 2 {
         assert!(!asks_recent(thread_num));
     }
@@ -256,7 +249,6 @@ fn bulk_dates_follow_the_seed_clock() {
         let family = family_for(thread_num);
         let (variant, _) = variant_for(family, thread_num);
         let len = thread_len(thread_num);
-        // Only threads that add a (family, variant, position) not yet checked.
         let fresh: Vec<usize> = (0..len)
             .filter(|turn| seen.insert((family.id, variant, *turn)))
             .collect();
@@ -264,9 +256,6 @@ fn bulk_dates_follow_the_seed_clock() {
             let a = render(&me(), now, thread_num, reply_idx, len);
             let b = render(&me(), later, thread_num, reply_idx, len);
             assert_eq!(b.date - a.date, later - now);
-            // The label and the sender do not move with the clock either: the
-            // same answer, held-out flag and sender at four clocks, and the
-            // label names the sender of the mail rendered at each.
             let expected = label(thread_num, reply_idx);
             for clock in clocks() {
                 let rendered = render(&me(), clock, thread_num, reply_idx, len);
@@ -337,8 +326,6 @@ fn every_ask_thread_is_dated_to_its_label_at_every_clock() {
             continue;
         }
         let len = thread_len(thread_num);
-        // Dated live whether or not the phrasing's ask is an item (a request
-        // to confirm is a reply, so it is no item but still arrives live).
         let live = asks_recent(thread_num);
         assert!(!items(thread_num, 0).is_empty() <= live);
         for clock in clocks() {

@@ -322,7 +322,6 @@ pub(crate) fn family_for(thread_num: usize) -> &'static Family {
         0 | 1 | 4 => &people::PEOPLE_THREAD,
         2 => &lists::NEWSLETTER,
         3 => &people::DATED_REQUEST,
-        // Two receipts for every bill.
         5 if round % 3 == 2 => &commerce::BILL_DUE,
         5 => &commerce::ORDER_RECEIPT,
         6 => &notices::TRAVEL_BOOKING,
@@ -331,7 +330,6 @@ pub(crate) fn family_for(thread_num: usize) -> &'static Family {
         9 => &people::COPIED_THREAD,
         10 => &spam::SPAM_PRIZE,
         11 => &lists::PROMOTION,
-        // The demo's first suspicious inbox mail has always been thread 12.
         _ if round.is_multiple_of(2) => &spam::PHISHING,
         _ => &notices::SECURITY_NOTICE,
     }
@@ -420,7 +418,6 @@ pub(crate) fn sender_of(family: &Family, thread_num: usize, reply_idx: usize) ->
     }
     Some(match family.senders {
         Senders::People { copied: false } => counterpart(thread_num),
-        // Two colleagues talk; you are copied. They take turns.
         Senders::People { copied: true } if reply_idx.is_multiple_of(2) => {
             DEMO_PEOPLE[(thread_num + 5) % DEMO_PEOPLE.len()]
         }
@@ -468,14 +465,10 @@ fn variant_ask(family: &Family, variant_id: &str, default: AskKind) -> Option<As
         return Some(default);
     }
     match variant_id {
-        // "send me the signed form", "send the headcount numbers", "share
-        // your slides", "send me ... comments", "return it to me".
         "vendor-form" | "headcount" | "slides" | "draft-contract" | "parking-permit" => {
             Some(AskKind::Send)
         }
-        // "submit your expense report", "complete the training".
         "expenses" | "training" => Some(AskKind::Other),
-        // "confirm the customer reference call": an answer to give.
         "reference-call" => None,
         _ => Some(default),
     }
@@ -506,8 +499,6 @@ pub(crate) fn items(thread_num: usize, reply_idx: usize) -> Vec<Item> {
     }
     let body = variant.bodies[family.inbound_before(reply_idx)];
     if body.contains("{due}") {
-        // The mail writes `{due}` as the email's own date plus this many
-        // days (`render`), so the label is a number of hours, not a date.
         item = item.due(Due::AfterSent(
             24 * (family.due_days + (thread_num % 5) as i64),
         ));

@@ -227,8 +227,6 @@ struct QuickSet {
 fn quick() -> &'static QuickSet {
     static QUICK: OnceLock<QuickSet> = OnceLock::new();
     QUICK.get_or_init(|| {
-        // Provider ids and senders do not depend on the clock or the
-        // account's other mail, so any fixed seed labels the same emails.
         let account_id = account_id();
         let at = Utc
             .with_ymd_and_hms(2026, 10, 21, 12, 0, 0)
@@ -404,8 +402,6 @@ mod tests {
                     assert_eq!(label.outbound, sent, "{}", envelope.provider_id);
                     if sent {
                         promises += label.items.len();
-                        // Sent mail may promise nothing (you ask someone
-                        // for something): that is the near miss of a promise.
                         assert!(
                             label
                                 .items
@@ -486,12 +482,8 @@ mod tests {
     /// Dates the fixtures write out on purpose and that no detector can
     /// expire, matched on the email's subject and the exact date string.
     const KNOWN_FIXED_DATES: [(&str, &str); 3] = [
-        // Last year's Airbnb booking (records_demo.rs). A year-less date
-        // resolves forward from the email's own date, which is 400 days
-        // before the seed, so it always lands in the past.
         ("Booking confirmation - Porto", "14 May"),
         ("Booking confirmation - Porto", "16 May"),
-        // An essay title in reading_demo.rs: a name, not a deadline.
         ("New post: Shipping a sync engine", "2026"),
     ];
 
@@ -653,7 +645,6 @@ mod tests {
                     &envelope.thread_id,
                     &envelope.from.email,
                 );
-                // Mail you sent is labelled only for a promise, and says so.
                 assert_eq!(
                     label.as_ref().is_some_and(|label| !label.outbound),
                     !is_sent,
@@ -689,7 +680,6 @@ mod tests {
         )
         .expect("labelled");
         assert!(label.scenario.starts_with("bulk-"));
-        // Another sender, another thread, the other account, a stranger.
         assert!(full_label_for(
             &account_id(),
             &bulk.provider_id,
@@ -799,7 +789,6 @@ mod tests {
                             l.review.is_some(),
                         )
                     });
-                    // A live ask is the mail that arrived in the last hours.
                     let live_ask = label
                         .as_ref()
                         .is_some_and(|(_, _, items, ..)| !items.is_empty());

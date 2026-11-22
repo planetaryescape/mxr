@@ -86,8 +86,6 @@ pub(super) static TRAVEL_BOOKING: Family = Family {
         ),
     ],
     sent_replies: NO_SENT,
-    // Variant i is written by TRAVEL_SENDERS[i % 3]: an airline, a hotel,
-    // then a railway.
     variants: &[
         Variant {
             id: "airline-confirmation",
@@ -183,8 +181,6 @@ pub(super) static SERVICE_ALERT: Family = Family {
         NOTICE,
     )],
     sent_replies: NO_SENT,
-    // Variant i is written by ALERT_SENDERS[i % 3]: a build bot, an uptime
-    // monitor, then a pager.
     variants: &[
         Variant {
             id: "build-failed",

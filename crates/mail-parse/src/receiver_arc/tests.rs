@@ -65,7 +65,6 @@ async fn receiver_policy_rejects_passing_untrusted_sealers_and_bare_results() {
         &DkimResult::Pass
     );
     assert!(check(&raw, &dns).await.is_err());
-    // Relabelling an evil seal as Google cannot verify against Google's key.
     assert!(check(&raw.replace("d=evil.example", "d=google.com"), &dns)
         .await
         .is_err());

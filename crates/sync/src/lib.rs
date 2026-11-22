@@ -241,8 +241,6 @@ mod tests {
             caps
         }
         fn is_backfill_cursor(&self, cursor: &SyncCursor) -> bool {
-            // Like the real adapters, only continuation tokens denote backfill;
-            // an empty cursor starts it and a settled cursor denotes delta sync.
             cursor.as_bytes().starts_with(b"page-")
         }
         async fn authenticate(&mut self) -> Result<(), MxrError> {
@@ -879,9 +877,6 @@ mod tests {
 
     #[tokio::test]
     async fn imap_sent_folder_mail_from_a_denied_sender_is_outbound_and_still_trashed() {
-        // A folder named like "Projects/Sent" sets SENT by its name. The
-        // message is outbound for analytics, but its sender is not owned, so the
-        // deny decision still applies: read, out of the inbox, in TRASH.
         let (direction, flags, provider_ids) =
             ingest_denied_sent_message(vec!["INBOX".to_string()]).await;
         assert_eq!(direction, MessageDirection::Outbound);
@@ -891,8 +886,6 @@ mod tests {
 
     #[tokio::test]
     async fn gmail_send_as_mail_from_a_denied_sender_keeps_the_screener_routing() {
-        // Gmail labels send-as mail SENT. The deny routing it got before the
-        // direction rule still applies: read and TRASH, with the SENT label kept.
         let (direction, flags, provider_ids) =
             ingest_denied_sent_message(vec!["SENT".to_string()]).await;
         assert_eq!(direction, MessageDirection::Outbound);
@@ -943,18 +936,12 @@ mod tests {
             .unwrap()
             .unwrap();
         let label_ids = store.get_message_label_ids(&msg_id).await.unwrap();
-        // Reading is a view over the inbox: feed mail keeps INBOX and gains
-        // the route label.
         assert!(label_ids.contains(&inbox.id));
         assert!(label_ids.contains(&feed.id));
     }
 
     #[tokio::test]
     async fn inbound_message_from_other_accounts_address_stays_inbound() {
-        // Regression: with a global (account-flat) address set, a message
-        // received in account A whose sender is account B's *own* address was
-        // stamped Outbound and skipped the inbound screener. Direction must be
-        // scoped to the receiving account.
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
 
@@ -975,10 +962,8 @@ mod tests {
             .unwrap();
         let inbox = make_test_label(&account_a, "Inbox", "INBOX");
 
-        // Received in A, but sent from B's owned address.
         let mut cross = make_test_envelope(&account_a, "cross-acct", vec!["INBOX".to_string()]);
         cross.from.email = "b@y.com".to_string();
-        // Sent from A's own address -> genuinely outbound.
         let mut own = make_test_envelope(&account_a, "own-msg", vec!["INBOX".to_string()]);
         own.from.email = "a@x.com".to_string();
 
@@ -1015,8 +1000,6 @@ mod tests {
 
     #[tokio::test]
     async fn provider_sent_mail_from_an_unowned_sender_is_outbound() {
-        // Gmail send-as addresses are not registered in mxr, so From is not
-        // owned. The provider still filed the message as sent: that is outbound.
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
         let account_id = AccountId::new();
@@ -1101,10 +1084,8 @@ mod tests {
             }],
         );
 
-        // Initial sync
         engine.sync_account(&provider).await.unwrap();
 
-        // Verify msg has INBOX label
         let msg_id = store
             .get_message_id_by_provider_id(&account_id, &msg_provider_id)
             .await
@@ -1114,7 +1095,6 @@ mod tests {
         assert!(labels_before.contains(&inbox.id));
         assert!(!labels_before.contains(&starred.id));
 
-        // Delta sync — adds STARRED label
         engine.sync_account(&provider).await.unwrap();
 
         let labels_after = store.get_message_label_ids(&msg_id).await.unwrap();
@@ -1186,10 +1166,6 @@ mod tests {
 
     #[tokio::test]
     async fn sync_emits_threads_changed_for_upserted_envelopes() {
-        // Phase F: even when the adapter has native_threading=true and
-        // no rethread pass runs, every upserted envelope contributes
-        // its thread_id to the touched set so the outcome's
-        // threads_changed list reflects the new/changed threads.
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search);
@@ -1200,8 +1176,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Two envelopes sharing one thread_id — adapter assigned the
-        // same thread natively, no rethread merge required.
         let shared_thread = ThreadId::new();
         let m1_id = MessageId::new();
         let m2_id = MessageId::new();
@@ -1261,7 +1235,6 @@ mod tests {
         let thread = changed[0];
         assert_eq!(thread.message_count, 2);
         assert_eq!(thread.message_ids.len(), 2);
-        // Date-ascending: m1 (older, -10min) then m2 (newer).
         assert_eq!(thread.message_ids, vec![m1_id, m2_id]);
     }
 
@@ -1360,9 +1333,6 @@ mod tests {
             .unwrap();
         assert_eq!(thread.message_count, 2);
 
-        // Phase F: rethread merged two threads, so outcome.threads_changed
-        // carries the survivor (2 members, both message ids) plus the
-        // tombstone for the loser (empty message_ids).
         let survivor_id = first_env.thread_id.clone();
         let survivor = outcome
             .threads_changed
@@ -1431,8 +1401,6 @@ mod tests {
         let second_env = store.get_envelope(&second_id).await.unwrap().unwrap();
         assert_eq!(first_env.thread_id, second_env.thread_id);
 
-        // Phase F: subject-fallback rethread also emits threads_changed
-        // (survivor + tombstone) just like the message-id-driven path.
         assert!(
             outcome
                 .threads_changed
@@ -1483,7 +1451,6 @@ mod tests {
             }],
         );
 
-        // Initial sync
         engine.sync_account(&provider).await.unwrap();
 
         let msg_id = store
@@ -1497,7 +1464,6 @@ mod tests {
             "STARRED should be present after initial sync"
         );
 
-        // Delta sync — removes STARRED
         engine.sync_account(&provider).await.unwrap();
 
         let labels_after = store.get_message_label_ids(&msg_id).await.unwrap();
@@ -1530,23 +1496,19 @@ mod tests {
             vec![msg],
             labels,
             vec![LabelChange {
-                // This provider_message_id doesn't exist in our store
                 provider_message_id: "nonexistent-msg".to_string(),
                 added_labels: vec!["INBOX".to_string()],
                 removed_labels: vec![],
             }],
         );
 
-        // Initial sync
         engine.sync_account(&provider).await.unwrap();
 
-        // Delta sync — should not crash on unknown message
         engine
             .sync_account(&provider)
             .await
             .expect("delta sync should gracefully skip unknown messages");
 
-        // Existing message should remain intact after unknown-label delta event.
         let envelopes = store
             .list_envelopes_by_account(&account_id, 100, 0)
             .await
@@ -1580,14 +1542,12 @@ mod tests {
         let count = engine.sync_account(&provider).await.unwrap();
         assert_eq!(count, 55);
 
-        // Verify store
         let envelopes = store
             .list_envelopes_by_account(&account_id, 100, 0)
             .await
             .unwrap();
         assert_eq!(envelopes.len(), 55);
 
-        // Verify search
         let results = search
             .search("deployment", 10, 0, SortOrder::DateDesc)
             .await
@@ -1638,8 +1598,6 @@ mod tests {
         );
         assert_eq!(search.num_docs().await.unwrap() as usize, TOTAL);
 
-        // Spot-check a message from the last page: body, keywords and
-        // labels all landed with it.
         let envelopes = store
             .list_envelopes_by_account(&account_id, TOTAL as u32, 0)
             .await
@@ -1656,7 +1614,6 @@ mod tests {
             .contains("$Forwarded"));
         assert!(!last.label_provider_ids.is_empty());
 
-        // Re-syncing on the completed cursor is a no-op.
         let steady = engine.sync_account_with_outcome(&provider).await.unwrap();
         assert_eq!(steady.synced_count, 0);
         assert!(!steady.has_more);
@@ -1747,8 +1704,6 @@ mod tests {
             100
         );
 
-        // A fresh engine (as after a daemon restart) picks the backfill up
-        // from the stored cursor.
         let resumed = SyncEngine::new(store.clone(), search.clone());
         loop {
             let outcome = resumed.sync_account_with_outcome(&provider).await.unwrap();
@@ -1777,7 +1732,6 @@ mod tests {
         let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
-        // Get a message to snooze
         let envelopes = store
             .list_envelopes_by_account(&account_id, 1, 0)
             .await
@@ -1795,7 +1749,6 @@ mod tests {
         let woken = engine.check_snoozes().await.unwrap();
         assert_eq!(woken.len(), 1);
 
-        // Should be gone now
         let woken2 = engine.check_snoozes().await.unwrap();
         assert_eq!(woken2.len(), 0);
     }
@@ -1816,7 +1769,6 @@ mod tests {
             account_id: account_id.clone(),
         };
 
-        // Should return Err, not panic
         let result = engine.sync_account(&error_provider).await;
         assert!(
             result.is_err(),
@@ -1843,26 +1795,22 @@ mod tests {
 
         let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
 
-        // Initial sync
         engine.sync_account(&provider).await.unwrap();
 
         let labels_after_first = store.list_labels_by_account(&account_id).await.unwrap();
         let label_count_first = labels_after_first.len();
 
-        // Delta sync (should return 0 new messages)
         let delta_count = engine.sync_account(&provider).await.unwrap();
         assert_eq!(delta_count, 0, "Delta sync should return 0 new messages");
 
         let labels_after_second = store.list_labels_by_account(&account_id).await.unwrap();
 
-        // Label rows should not be duplicated
         assert_eq!(
             label_count_first,
             labels_after_second.len(),
             "Label count should not change after delta sync"
         );
 
-        // Verify each label still exists with the correct provider_id
         for label in &labels_after_first {
             let still_exists = labels_after_second
                 .iter()
@@ -1874,8 +1822,6 @@ mod tests {
             );
         }
 
-        // Verify messages are still in the store (upsert_envelope uses INSERT OR REPLACE
-        // on messages table, which is not affected by label cascade)
         let envelopes = store
             .list_envelopes_by_account(&account_id, 200, 0)
             .await
@@ -1901,7 +1847,6 @@ mod tests {
 
         let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
 
-        // Initial sync
         engine.sync_account(&provider).await.unwrap();
 
         let junction_before = store.count_message_labels().await.unwrap();
@@ -1910,7 +1855,6 @@ mod tests {
             "Junction table should be populated after initial sync"
         );
 
-        // Delta sync (labels get re-upserted, no new messages)
         let delta_count = engine.sync_account(&provider).await.unwrap();
         assert_eq!(delta_count, 0, "Delta sync should return 0 new messages");
 
@@ -1920,7 +1864,6 @@ mod tests {
             "Junction table should survive delta sync (before={junction_before}, after={junction_after})"
         );
 
-        // Verify label filtering still works
         let labels = store.list_labels_by_account(&account_id).await.unwrap();
         let inbox = labels.iter().find(|l| l.name == "Inbox").unwrap();
         let envelopes = store
@@ -1968,7 +1911,6 @@ mod tests {
         let labels_b = store.get_message_label_ids(&message_b.id).await.unwrap();
         assert_eq!(labels_b, vec![label_b.id.clone()]);
 
-        // Simulate the historical cascade bug for A only; B stays healthy.
         sqlx::query("DELETE FROM message_labels WHERE message_id IN (SELECT id FROM messages WHERE account_id = ?)")
             .bind(account_a.as_str())
             .execute(store.writer()).await.unwrap();
@@ -2057,7 +1999,6 @@ mod tests {
             pages: std::sync::Mutex::new(std::collections::VecDeque::new()),
         };
 
-        // A later ordinary poll may retry, but each full refetch must reach idle.
         for start in [b"stale-delta".as_slice(), b"settled".as_slice()] {
             provider.pages.lock().unwrap().extend([
                 (
@@ -2076,8 +2017,6 @@ mod tests {
             let progress = CollectedProgress::default();
             let mut upserted = Vec::new();
             let mut passes = 0;
-            // Drive actual per-page calls as the daemon does. Extra resets exhaust
-            // the three finite responses and fail, rather than hanging or sleeping.
             loop {
                 let outcome = engine
                     .sync_account_reporting(&provider, &progress.sink())
@@ -2417,7 +2356,6 @@ mod tests {
             .unwrap();
 
         for env in &envelopes {
-            // Extract a distinctive keyword from the subject
             let keyword = env
                 .subject
                 .split_whitespace()
@@ -2491,11 +2429,9 @@ mod tests {
             .unwrap();
         let msg_id = &envelopes[0].id;
 
-        // Body already available — stored eagerly during sync
         let body1 = engine.get_body(msg_id).await.unwrap();
         assert!(body1.text_plain.is_some(), "Body should have text_plain");
 
-        // Second read — same result from store
         let body2 = engine.get_body(msg_id).await.unwrap();
 
         assert_eq!(
@@ -2524,8 +2460,6 @@ mod tests {
             .insert_account(&test_account(account_id.clone()))
             .await
             .unwrap();
-        // Seed the store with an opaque cursor the mock provider will
-        // treat as "stale" (any non-empty bytes trigger SyncCursorExpired).
         store
             .set_sync_cursor(
                 &account_id,
@@ -2593,9 +2527,6 @@ mod tests {
 
     #[tokio::test]
     async fn engine_propagates_has_more_into_sync_outcome() {
-        // Phase C: providers signal "more pages remain" via SyncBatch.has_more;
-        // the engine must surface it through SyncOutcome so the daemon's sync
-        // loop can skip its normal sleep interval and re-poll immediately.
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
@@ -2676,8 +2607,6 @@ mod tests {
         let provider =
             mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), TOTAL);
 
-        // Seed one message the way an older release stored it: same provider
-        // id, id derived without the account scope.
         let legacy_message = provider
             .fetch_message("demo-msg-2")
             .await
@@ -2744,9 +2673,6 @@ mod tests {
         assert!(store.get_body(&legacy_id).await.unwrap().is_some());
         assert!(store.get_body(&derived_id).await.unwrap().is_none());
 
-        // One document per message: the index delete is by message id, so an
-        // entry written under the provider's id would leave the legacy
-        // document sitting beside the new one.
         assert_eq!(search.num_docs().await.unwrap() as usize, TOTAL);
         let stale = search
             .search("oldreleasesubjecttoken", 10, 0, SortOrder::DateDesc)
@@ -2776,8 +2702,6 @@ mod tests {
         let provider =
             mxr_provider_fake::FakeProvider::with_demo_dataset(account_id.clone(), TOTAL);
 
-        // Store the message under a thread of its own, the way an earlier
-        // sync (or an earlier threading pass) left it.
         let synced = provider
             .fetch_message("demo-msg-2")
             .await

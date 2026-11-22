@@ -34,7 +34,6 @@ pub fn strip_reply_forward_prefixes(subject: &str) -> String {
         else {
             break;
         };
-        // Index back into the original so casing of the remainder survives.
         current = current[current.len() - rest.len()..].trim_start();
     }
     current.to_string()
@@ -58,7 +57,6 @@ mod tests {
 
     #[test]
     fn replying_to_a_reply_does_not_stack_markers() {
-        // The reported bug: "Re: Re: Deploy plan".
         assert_eq!(
             prefix_subject(SubjectMarker::Reply, "Re: Deploy plan"),
             "Re: Deploy plan"
@@ -106,7 +104,6 @@ mod tests {
 
     #[test]
     fn a_subject_that_merely_starts_with_those_letters_is_not_stripped() {
-        // "Rebuild" must not lose its first three characters.
         assert_eq!(
             prefix_subject(SubjectMarker::Reply, "Rebuild the index"),
             "Re: Rebuild the index"

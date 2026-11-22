@@ -140,11 +140,8 @@ pub(super) fn updates_demo_messages(
     first_num: usize,
 ) -> Vec<(Envelope, MessageBody)> {
     let (previous, cut) = cut_window(now, cuts, &Local);
-    // Keep the original ordering, even when configured cuts are minutes apart.
-    // Nine is the oldest fresh offset; leave a margin after the previous cut.
     let step = Duration::hours(1).min((cut - previous) / 10);
     let before = |hours: i32| cut - step * hours;
-    // After the cut but never in the future.
     let since = cut + (now - cut) / 2;
 
     let strava = address("Strava", "no-reply@strava.com");
@@ -368,8 +365,6 @@ mod tests {
             let cuts = DemoCuts::parse(&times.map(str::to_string));
             let messages = updates_demo_messages(&account, &recipient, seed, &cuts, 1);
             assert_eq!(messages.len(), 18);
-            // The twelve fresh messages, excluding history, the expired code,
-            // and Linear's post-cut update. These bounds are the digest contract.
             for index in [1, 3, 4, 6, 7, 9, 10, 12, 14, 15, 16, 17] {
                 let envelope = &messages[index].0;
                 assert!(

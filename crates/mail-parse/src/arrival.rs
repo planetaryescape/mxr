@@ -277,7 +277,6 @@ mod tests {
             reason(check(&[lookalike], "a@evil.example")),
             UnverifiedReason::NoVerdictHeader
         );
-        // A forged header does not spoil the provider's genuine pass either.
         assert!(matches!(
             check(&[forged, PASS], "no-reply@accounts.google.com"),
             SenderCheck::Verified { .. }

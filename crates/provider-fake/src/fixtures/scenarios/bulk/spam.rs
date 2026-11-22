@@ -21,8 +21,6 @@ fn phishing_look(_: usize) -> usize {
     12
 }
 
-// Variant i is written by SPAM_SENDERS[i % 3]: Account Verification, Prize
-// Desk, then Payroll Notice.
 pub(super) static SPAM_PRIZE: Family = Family {
     id: "spam-prize",
     senders: Senders::ByVariant(&SPAM_SENDERS),
@@ -84,7 +82,6 @@ pub(super) static SPAM_PRIZE: Family = Family {
     ],
 };
 
-// Variant i is written by SPAM_SENDERS[i % 3], as above.
 pub(super) static PHISHING: Family = Family {
     id: "phishing-lookalike",
     senders: Senders::ByVariant(&SPAM_SENDERS),

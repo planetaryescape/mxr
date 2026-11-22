@@ -129,7 +129,6 @@ async fn verify_inner<C: DnsCache>(
     if n == 0 || n > MAX_SETS || msg.headers().len() > 256 {
         return Err("set/header limit");
     }
-    // Check the pin before DNS, and again against the validated chain below.
     if msg
         .arc_seals()
         .last()
@@ -169,8 +168,6 @@ async fn verify_inner<C: DnsCache>(
     if set.seal.header.d != policy.sealer || set.signature.header.d != policy.sealer {
         return Err("untrusted validated receiver");
     }
-    // Both signed clocks must be non-future. Taking their earlier time cannot
-    // freshen old evidence. A signature's absent t= is not a usable clock.
     let mut times = [set.seal.header.t, set.signature.header.t]
         .into_iter()
         .filter(|t| *t != 0);
@@ -210,9 +207,6 @@ async fn verify_inner<C: DnsCache>(
     {
         return Err("sender signature not receiver-bound");
     }
-    // A sender signature stays stable across new provider IDs and ARC reseals.
-    // Require exactly one aligned signature, including failed ones, so adding
-    // bogus signatures cannot choose a new identity for an intact replay.
     let outputs = auth
         .verify_dkim(Parameters::new(&msg).with_cache(cache))
         .await;

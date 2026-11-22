@@ -238,13 +238,11 @@ pub(super) fn messages_demo_messages(
         &iris_thread,
     );
 
-    // Only copied, never wrote in it: Updates, not Messages.
     push(
         message(&iris, &[&ruth], &[me], "Offsite dates", "Ruth, the offsite is booked for the 20th and 21st. Alex, copying you so you have the dates.", now - Duration::hours(5), false),
         &thread(account_id, "offsite"),
     );
 
-    // Samir's reply as Gmail sends it, quote and signature marked.
     if let Some((_, body)) = built.get_mut(letter) {
         body.text_html = Some(samir_html(asked));
     }

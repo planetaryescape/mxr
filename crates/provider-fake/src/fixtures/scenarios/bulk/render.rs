@@ -110,7 +110,6 @@ pub(crate) fn render(
     let (variant_index, _) = variant_for(family, thread_num);
     let (variant, _) = family.variant(variant_index);
 
-    // Whom the message is between.
     let (from, to, cc, speaker, listener) = match family.senders {
         Senders::People { copied: true } => {
             let from =

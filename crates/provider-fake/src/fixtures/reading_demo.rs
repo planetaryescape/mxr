@@ -217,9 +217,6 @@ pub(super) fn reading_demo_messages(
         built.push((envelope, body));
     };
 
-    // Newest this morning, then about weekly (a median gap of seven days,
-    // so a fourteen-day window): last week's is in the edition and the
-    // third is in its last day.
     for (i, title) in LONG_READS_TITLES.iter().enumerate() {
         let age = Duration::hours(LONG_READS_AGE_HOURS[i]);
         let paragraphs = essay_paragraphs();
@@ -274,7 +271,6 @@ pub(super) fn reading_demo_messages(
             html,
         );
     }
-    // Weekly and never opened; the newest is thirteen days and a bit old.
     for i in 0..GROWTH {
         let (html, text) = growth(88 - i);
         push(

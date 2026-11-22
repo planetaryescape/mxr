@@ -41,10 +41,8 @@ pub struct FetchPolicy {
     allow_loopback_for_tests: bool,
 }
 
-/// The content types a caller accepts from a fetch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Accept {
-    /// An article: exactly `text/html` or `application/xhtml+xml`.
     HtmlPage,
     /// A message image: any `image/*` type. SVG is stored but never served
     /// as a document by the bridge (see the web crate's inline-image route).
@@ -105,10 +103,8 @@ pub enum FetchError {
     Http { host: String, message: String },
 }
 
-/// A fetched page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fetched {
-    /// Where the page was in the end, after redirects.
     pub final_url: Url,
     /// Every host contacted, in order, without repeats.
     pub contacted: Vec<String>,
@@ -118,7 +114,6 @@ pub struct Fetched {
 /// Fetched bytes and the type the origin declared.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchedBytes {
-    /// Where the request ended up, after redirects.
     pub final_url: Url,
     /// Every host contacted, in order, without repeats.
     pub contacted: Vec<String>,
@@ -249,7 +244,6 @@ impl FetchPolicy {
         is_public_ip(ip)
     }
 
-    /// The one address this hop may connect to.
     async fn resolve(&self, url: &Url) -> Result<SocketAddr, FetchError> {
         let host = url.host_str().ok_or(FetchError::NotWeb)?;
         let port = url.port_or_known_default().ok_or(FetchError::NotWeb)?;
@@ -264,8 +258,6 @@ impl FetchPolicy {
         if addrs.is_empty() {
             return Err(FetchError::Resolve(host.to_string()));
         }
-        // Every answer must be public: a name that also resolves to a
-        // private address is refused, whichever one a retry would pick.
         if let Some(blocked) = addrs.iter().find(|addr| !self.allows(addr.ip())) {
             tracing::debug!(%host, ip = %blocked.ip(), "article fetch refused a private address");
             return Err(FetchError::PrivateAddress(host.to_string()));
@@ -351,9 +343,6 @@ async fn fetch_response(raw: &str, policy: &FetchPolicy) -> Result<FetchResponse
 /// redirects, each checked like the first.
 pub async fn fetch_page(raw: &str, policy: &FetchPolicy) -> Result<Fetched, FetchError> {
     let fetched = fetch_response(raw, policy).await?;
-    // Only HTML is read. A declared type must be exactly text/html or
-    // application/xhtml+xml; with none, the body itself must look like
-    // HTML.
     let declared = declared_content_type(&fetched.response);
     if let Some(content_type) = &declared {
         if !Accept::HtmlPage.declared_type_allowed(content_type) {
@@ -787,8 +776,6 @@ mod tests {
 
     #[tokio::test]
     async fn image_fetch_refuses_a_private_address_or_redirect_before_connecting() {
-        // No loopback allowance: the first hop is refused before a socket is
-        // opened, so an unrelated local server never sees the request.
         let policy = FetchPolicy {
             accept: Accept::Image,
             ..FetchPolicy::default()

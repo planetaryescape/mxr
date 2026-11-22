@@ -33,7 +33,6 @@ use std::collections::{BTreeMap, HashMap};
 #[derive(Debug, Clone)]
 pub struct PassConfig<Tz> {
     pub now: DateTime<Utc>,
-    /// The user's zone: an email's date is its day here.
     pub tz: Tz,
 }
 
@@ -45,7 +44,6 @@ pub struct PassSummary {
     pub bodies_read: u64,
     pub filed: u64,
     pub updated: u64,
-    /// Found again after the user said "not a record": left alone.
     pub kept_dismissed: u64,
     pub by_kind: BTreeMap<String, u64>,
 }
@@ -90,7 +88,6 @@ static WORTH_READING: Lazy<Regex> = Lazy::new(|| {
         .expect("valid worth-reading regex")
 });
 
-/// Per-sender decisions for one account, keyed by lowercase address.
 #[derive(Debug, Clone, Default)]
 pub struct Senders(HashMap<String, RecordSenderRule>);
 
@@ -131,7 +128,6 @@ impl Senders {
     }
 }
 
-/// File records from newly synced messages.
 pub async fn scan_messages<Tz>(
     store: &Store,
     cfg: &PassConfig<Tz>,
@@ -296,7 +292,6 @@ where
     Ok(summary)
 }
 
-/// The text of one message, cleaned for the rules.
 struct MessageText {
     text: String,
     html: Option<String>,
@@ -334,7 +329,6 @@ impl MessageText {
     }
 }
 
-/// The message a filing links.
 #[derive(Debug, Clone)]
 pub struct MessageRef {
     pub account_id: AccountId,
@@ -444,7 +438,6 @@ fn new_group_id() -> String {
     format!("grp_{}", uuid::Uuid::new_v4().simple())
 }
 
-/// The plan for filing one message by hand, as `kind` when given.
 pub async fn plan_manual<Tz>(
     store: &Store,
     cfg: &PassConfig<Tz>,
@@ -502,7 +495,6 @@ where
     Tz: TimeZone,
     Tz::Offset: std::fmt::Display,
 {
-    // Reviewing an inferred renewal is not proof that a contract renewed.
     if todo.dedup_key.starts_with("record-renewal|") {
         return Ok(None);
     }
@@ -541,7 +533,6 @@ where
     });
     let done_at = todo.done_at.unwrap_or(cfg.now);
     let mut todo_fields = vec![Found {
-        // The tick-off is the user's own act, so its day is checked.
         checked: true,
         ..Found::at(
             FieldName::IssuedAt,
@@ -614,7 +605,6 @@ where
     Ok(Some(store.file_record(&filing).await?))
 }
 
-/// "Pay council tax" is filed as "Council tax".
 fn strip_verb(title: &str) -> String {
     let mut words = title.splitn(2, ' ');
     let first = words.next().unwrap_or_default();
@@ -640,15 +630,12 @@ where
     Tz: TimeZone,
 {
     let mut changed = 0;
-    // Only parcels whose delivery no record carries yet: the rest were
-    // filed on an earlier tick.
     for delivery_id in store.delivered_deliveries_to_file(account_id).await? {
         let Some(delivery) = store.get_delivery(&delivery_id).await? else {
             continue;
         };
         let message_ids = store.delivery_message_ids(&delivery.id).await?;
         let rows = store.list_todo_scan_rows(&message_ids).await?;
-        // Newest first: the delivered email is the latest.
         let Some(latest) = rows.first() else { continue };
         let issuer = delivery.merchant.clone().unwrap_or_else(|| {
             crate::rules::issuer_from_sender(latest.from_name.as_deref(), &latest.from_email)
@@ -739,7 +726,6 @@ where
     Ok(changed)
 }
 
-/// Rebuilds the account's trips and series from its records.
 pub async fn regroup(
     store: &Store,
     account_id: &AccountId,

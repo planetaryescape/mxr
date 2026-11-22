@@ -11,7 +11,6 @@ pub enum GmailCredentialSource {
     Custom,
 }
 
-/// Top-level mxr configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MxrConfig {
@@ -40,8 +39,6 @@ pub struct MxrConfig {
     pub safety: SafetyConfig,
 }
 
-/// Package/delivery tracking. Detection is local-first; the optional LLM
-/// enrichment is gated by the global LLM config plus its privacy policy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DeliveriesConfig {
@@ -56,11 +53,9 @@ impl Default for DeliveriesConfig {
     }
 }
 
-/// To do: things email asked you to do. Detection is rules only and local.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TodoConfig {
-    /// Find to-dos in new mail and run the first run over history.
     pub enabled: bool,
     /// The first run's catch-up window: undated to-dos from this many days
     /// back are shown once to keep or let go; older ones are let go.
@@ -81,20 +76,15 @@ impl Default for TodoConfig {
     }
 }
 
-/// Archive: records built from mail. Detection is rules and schema.org
-/// only, and local.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RecordsConfig {
-    /// File records from new mail and read history newest first.
     pub enabled: bool,
     /// Download the PDFs of record emails ahead of time, so they open
     /// offline and their text is searchable. Off: a PDF downloads when you
     /// open it, as every other attachment does.
     pub pdf_prefetch: bool,
-    /// The most disk record PDFs may take, in megabytes.
     pub pdf_budget_mb: u64,
-    /// PDFs larger than this, in megabytes, are left until you open them.
     pub pdf_max_file_mb: u64,
 }
 
@@ -109,7 +99,6 @@ impl Default for RecordsConfig {
     }
 }
 
-/// The five modes (blueprint 22).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ModesConfig {
@@ -135,7 +124,6 @@ pub struct MessagesConfig {
     /// A thread with more recipients than this on one message, that you
     /// never wrote in, is copied: it goes to Updates, not Messages.
     pub large_thread_recipients: usize,
-    /// Messages lists conversations active this many days back.
     pub recent_days: u32,
 }
 
@@ -148,7 +136,6 @@ impl Default for MessagesConfig {
     }
 }
 
-/// Reading (blueprint 22, phase 5).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct ReadingConfig {
@@ -176,9 +163,7 @@ pub struct SafetyRecipientConfig {
     /// Domains treated as internal. An internal marker in the body, such as
     /// `INTERNAL`, paired with a recipient outside this list is a Blocker.
     pub internal_domains: Vec<String>,
-    /// Any recipient at one of these domains is a Blocker.
     pub sensitive_domains: Vec<String>,
-    /// Warn when a recipient's domain has no prior history with you.
     pub warn_on_first_time_external: bool,
 }
 
@@ -198,7 +183,6 @@ impl Default for SafetyToneConfig {
     }
 }
 
-/// Updates' digest (blueprint 22, phase 4).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UpdatesConfig {
@@ -229,7 +213,6 @@ pub struct NotificationConfig {
     pub chimes: ChimeConfig,
 }
 
-/// Audio feedback for daemon-observed events and successful user actions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ChimeConfig {
@@ -322,11 +305,8 @@ pub struct ActivityConfig {
     /// Opt-in: record `link.click` actions with the URL in `context_json`.
     /// Default `false` because URL history reveals a lot.
     pub track_link_clicks: bool,
-    /// Record subjects in `context_json`. Default `true`.
     pub track_subjects: bool,
-    /// Record email handles in context and sender-address targets. Default `true`.
     pub track_recipient_handles: bool,
-    /// Record search query text verbatim in `context_json`. Default `true`.
     pub track_search_queries: bool,
 }
 
@@ -394,7 +374,6 @@ impl Default for HumanizerConfig {
 #[serde(default)]
 pub struct LlmConfig {
     pub enabled: bool,
-    /// OpenAI-compatible base URL. Defaults to local Ollama.
     pub base_url: String,
     /// Model name (e.g. `"qwen2.5:3b-instruct"` for Ollama,
     /// `"gpt-4o-mini"` for OpenAI, `"llama-3.1-8b-instant"` for Groq).
@@ -404,9 +383,7 @@ pub struct LlmConfig {
     /// var rather than embedding the key keeps the secret out of the
     /// config file.
     pub api_key_env: String,
-    /// Context window in tokens; used to bound prompt construction.
     pub context_window: u32,
-    /// Per-request timeout in seconds. Local LLMs can be slow.
     pub request_timeout_secs: u64,
     /// Timeout in seconds for *background* LLM work (relationship
     /// summary, commitment extraction). Held tighter than
@@ -415,7 +392,6 @@ pub struct LlmConfig {
     /// foreground budget. Foreground/user-initiated LLM keeps
     /// `request_timeout_secs`.
     pub background_request_timeout_secs: u64,
-    /// Allow relationship/profile data to be sent to non-local LLM endpoints.
     pub allow_cloud_relationship_data: bool,
     /// How many list-row gists (the one line per conversation in the desk
     /// and inbox) the daemon writes at once in the background. A local
@@ -479,7 +455,6 @@ pub struct LlmFallbackConfig {
     pub context_window: Option<u32>,
 }
 
-/// The fallback model when `[llm.fallback]` names none.
 pub const DEFAULT_LLM_FALLBACK_MODEL: &str = "gpt-6-luna";
 
 impl Default for LlmFallbackConfig {
@@ -491,14 +466,10 @@ impl Default for LlmFallbackConfig {
     }
 }
 
-/// Saving config leaves the list out while it is the defaults, so a later
-/// release can improve them for everyone who never edited the list.
 fn is_default_assistant_models(models: &[String]) -> bool {
     models == DEFAULT_ASSISTANT_MODELS
 }
 
-/// What the assistant's model picker lists when config names none: one
-/// local model and four hosted ones.
 pub const DEFAULT_ASSISTANT_MODELS: [&str; 5] = [
     "gemma4:latest",
     "gpt-6-luna",
@@ -553,8 +524,6 @@ pub struct EffectiveLlmConfig {
 }
 
 impl LlmConfig {
-    /// The picker models: `models` without blanks and repeats,
-    /// or the defaults when it names none.
     pub fn assistant_model_ids(&self) -> Vec<String> {
         let mut ids: Vec<String> = Vec::new();
         for id in self.models.iter().map(|id| id.trim()) {
@@ -593,24 +562,16 @@ impl LlmConfig {
     }
 }
 
-/// HTTP bridge configuration. The bridge runs as a managed task inside
-/// `mxr daemon` by default and binds to loopback only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BridgeConfig {
-    /// When true (default), `mxr daemon` automatically starts the bridge.
-    /// Disable with `enabled = false` or `mxr daemon --no-bridge`.
     pub enabled: bool,
     /// Bind address. Defaults to `127.0.0.1`. Non-loopback serving is
     /// reserved for a future TLS-backed remote bridge decision; current
     /// daemon startup checks refuse it.
     pub bind: String,
-    /// TCP port. Default `42829`, used for the stable local web URL.
     pub port: u16,
-    /// Origins additive to the loopback CORS defaults. Empty by default.
     pub cors_allowlist: Vec<String>,
-    /// Hostnames additive to the loopback Host-header defaults. Empty
-    /// by default; reserved for future non-loopback remote bridge mode.
     pub host_allowlist: Vec<String>,
     /// Path to the bridge token file. Defaults to
     /// `~/.config/mxr/bridge-token` (resolved at runtime when `None`).
@@ -635,8 +596,6 @@ impl Default for BridgeConfig {
         Self {
             enabled: true,
             bind: "127.0.0.1".into(),
-            // High unprivileged unassigned port that doesn't clash with the
-            // common dev-server set (3000/5173/8000/8080/7777/4200).
             port: 42829,
             cors_allowlist: Vec::new(),
             host_allowlist: Vec::new(),
@@ -647,8 +606,6 @@ impl Default for BridgeConfig {
 }
 
 impl BridgeConfig {
-    /// True iff `bind` is one of the loopback addresses. Used by the
-    /// daemon's startup checks to keep managed bridge serving loopback-only.
     pub fn is_loopback_bind(&self) -> bool {
         matches!(
             self.bind.as_str(),
@@ -663,24 +620,14 @@ impl BridgeConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TransportsConfig {
-    /// The TCP-loopback + token transport. Disabled by default.
     pub tcp: TcpTransportConfig,
 }
 
-/// TCP-loopback transport settings. Off by default; when enabled the daemon
-/// binds a loopback TCP listener that requires a bearer token
-/// (`MXR_DAEMON_TOKEN` or the shared daemon token file) before serving any
-/// request. Non-loopback binds are refused.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TcpTransportConfig {
-    /// Opt-in switch. When false (default) no TCP listener is bound and UDS
-    /// remains the only transport.
     pub enabled: bool,
-    /// Loopback bind address. Defaults to `127.0.0.1`; `::1` is also accepted.
-    /// A non-loopback address is refused at daemon startup.
     pub bind: String,
-    /// TCP port. Defaults to `42830` (one above the bridge's `42829`).
     pub port: u16,
 }
 
@@ -694,7 +641,6 @@ impl Default for TcpTransportConfig {
     }
 }
 
-/// General application settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeneralConfig {
@@ -703,14 +649,8 @@ pub struct GeneralConfig {
     pub sync_interval: u64,
     pub hook_timeout: u64,
     pub attachment_dir: PathBuf,
-    /// Default destination directory for user-initiated attachment saves
-    /// (the TUI "save as..." flow). Distinct from `attachment_dir`, which
-    /// is the daemon's internal cache for opened/inline attachments.
     pub download_dir: PathBuf,
     pub safety_policy: SafetyPolicy,
-    /// IETF language tag for user-facing strings. Resolved against
-    /// `mxr_core::i18n::AVAILABLE_LOCALES`; unknown values fall back to `en`.
-    /// Override at runtime with the `MXR_LOCALE` environment variable.
     #[serde(default = "default_locale")]
     pub locale: String,
 }
@@ -741,20 +681,12 @@ impl SafetyPolicy {
     }
 }
 
-/// Local runtime authority profiles for non-human daemon clients such as
-/// agents and MCP servers. Profiles are selected by IPC `ClientKind`
-/// (`agent` or `mcp`) and enforced by the daemon before handlers touch
-/// providers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentSurfaceConfig {
     pub profiles: HashMap<String, AgentProfileConfig>,
 }
 
-/// A specific destructive action an agent profile can be allowed to
-/// perform. Used to refine the coarse `allow_destructive` gate down to
-/// individual operations (the daemon maps each destructive request to
-/// one of these).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DestructiveAction {
@@ -776,11 +708,6 @@ pub struct AgentProfileConfig {
     pub allowed_accounts: Vec<String>,
     pub allow_send: bool,
     pub allow_destructive: bool,
-    /// Optional fine-grained restriction *within* the destructive gate.
-    /// When non-empty, a destructive request is allowed only if its
-    /// mapped action is listed here (and `allow_destructive` is still
-    /// true). When empty (the default), `allow_destructive` alone gates,
-    /// preserving the previous all-or-nothing behaviour.
     pub allowed_destructive_actions: Vec<DestructiveAction>,
 }
 
@@ -796,7 +723,6 @@ impl Default for AgentProfileConfig {
     }
 }
 
-/// Configuration for a single email account.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountConfig {
     pub name: String,
@@ -805,18 +731,12 @@ pub struct AccountConfig {
     pub enabled: bool,
     pub sync: Option<SyncProviderConfig>,
     pub send: Option<SendProviderConfig>,
-    /// Overrides the colour the daemon stored for this account: one of the
-    /// eight slot names (blueprint 33). Kept as written, even when it is not a
-    /// slot name: the daemon ignores a bad value and says so, and the file keeps
-    /// it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
-    /// Overrides the tag derived from the name. One to three letters or digits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
 }
 
-/// Sync provider configuration (tagged enum).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SyncProviderConfig {
@@ -837,29 +757,20 @@ pub enum SyncProviderConfig {
         use_tls: bool,
         #[serde(default = "default_imap_max_connections")]
         max_connections: usize,
-        /// Hex SHA-256 of the server's leaf certificate. When set, only that
-        /// certificate is accepted, even self-signed (for local bridges).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tls_cert_sha256: Option<String>,
     },
     OutlookPersonal {
-        /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.
         client_id: Option<String>,
-        /// Token file reference (e.g., "mxr/adrian-outlook").
         token_ref: String,
     },
     OutlookWork {
-        /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.
         client_id: Option<String>,
-        /// Token file reference (e.g., "mxr/work-outlook").
         token_ref: String,
     },
-    /// In-memory provider used for CLI smoke tests.
-    /// Generates fixture mail on startup. Not for production use.
     Fake,
 }
 
-/// Send provider configuration (tagged enum).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SendProviderConfig {
@@ -874,20 +785,15 @@ pub enum SendProviderConfig {
         use_tls: bool,
     },
     OutlookPersonal {
-        /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         client_id: Option<String>,
-        /// Token file reference — shared with sync provider.
         token_ref: String,
     },
     OutlookWork {
-        /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         client_id: Option<String>,
-        /// Token file reference — shared with sync provider.
         token_ref: String,
     },
-    /// Records sent drafts in memory; used with the fake sync provider for tests.
     Fake,
 }
 
@@ -903,7 +809,6 @@ fn default_enabled() -> bool {
     true
 }
 
-/// HTML rendering configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RenderConfig {
@@ -913,7 +818,6 @@ pub struct RenderConfig {
     pub html_remote_content: bool,
 }
 
-/// Search configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SearchConfig {
@@ -923,7 +827,6 @@ pub struct SearchConfig {
     pub semantic: SemanticConfig,
 }
 
-/// Sort order for search results (config-local, not reusing core's).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SortOrder {
@@ -942,22 +845,16 @@ impl From<SortOrder> for mxr_core::types::SortOrder {
     }
 }
 
-/// Semantic search configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SemanticConfig {
     pub enabled: bool,
     pub auto_download_models: bool,
     pub active_profile: SemanticProfile,
-    /// Reserved/internal: parsed and persisted for a future semantic worker queue limit.
-    /// The current runtime does not enforce it.
     pub max_pending_jobs: usize,
-    /// Reserved/internal: parsed and persisted for a future dense query timeout budget.
-    /// The current runtime does not enforce it.
     pub query_timeout_ms: u64,
 }
 
-/// Snooze timing configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SnoozeConfig {
@@ -967,7 +864,6 @@ pub struct SnoozeConfig {
     pub weekend_hour: u8,
 }
 
-/// Logging / retention configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LoggingConfig {
@@ -978,7 +874,6 @@ pub struct LoggingConfig {
     pub event_retention_days: u32,
 }
 
-/// Appearance / UI configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppearanceConfig {

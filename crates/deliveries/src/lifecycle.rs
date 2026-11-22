@@ -13,11 +13,8 @@ use mxr_store::{Delivery, Store};
 /// What [`apply`] did with a signal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyOutcome {
-    /// A new delivery row was inserted.
     Created(DeliveryId),
-    /// An existing delivery was merged/advanced.
     Updated(DeliveryId),
-    /// Nothing persisted (not a `Create`, or no correlation key).
     Skipped,
 }
 
@@ -48,8 +45,6 @@ pub async fn apply(
     };
     let stage = signal.stage.unwrap_or(DeliveryStatus::InTransit);
 
-    // Correlate: try the primary key, then the order-only key — so a shipped
-    // email carrying a tracking number merges into the earlier order row.
     let mut existing = store.get_delivery_by_dedup(account_id, &primary).await?;
     if existing.is_none() {
         if let Some(secondary) = compute_dedup_key(
@@ -87,7 +82,6 @@ pub async fn apply(
     })
 }
 
-/// Build a fresh delivery row from a signal.
 pub fn build_new(
     account_id: &AccountId,
     dedup_key: String,
@@ -132,7 +126,6 @@ pub fn merge_into(
     thread_id: Option<&ThreadId>,
     now: DateTime<Utc>,
 ) {
-    // Status advances forward only; a terminal row never regresses.
     let current = DeliveryStatus::parse(&d.status);
     let advance = match current {
         Some(c) if c.is_terminal() => false,
@@ -147,7 +140,6 @@ pub fn merge_into(
         }
     }
 
-    // Migrate the key (order-only → tracking) and fill any gaps.
     d.dedup_key = primary_key.to_string();
     fill(&mut d.carrier, &signal.carrier);
     if d.tracking_number.is_none() {
@@ -264,7 +256,6 @@ mod tests {
             now(),
         );
 
-        // Shipped email gains a tracking number → advance + migrate key.
         let shipped = signal(
             DeliveryStatus::InTransit,
             Some("1Z9"),
@@ -283,7 +274,6 @@ mod tests {
         assert_eq!(d.dedup_key, "1Z9");
         assert_eq!(d.tracking_number.as_deref(), Some("1Z9"));
 
-        // Delivered email closes it out.
         let delivered = signal(
             DeliveryStatus::Delivered,
             Some("1Z9"),
@@ -315,7 +305,6 @@ mod tests {
             now(),
         );
 
-        // A late, stale "in transit" email must not reopen it.
         let stale = signal(DeliveryStatus::InTransit, Some("1Z9"), None, None);
         merge_into(
             &mut d,

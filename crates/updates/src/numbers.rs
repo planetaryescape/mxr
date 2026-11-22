@@ -9,10 +9,8 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-/// A number as the message wrote it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Quoted {
-    /// Verbatim from the message: "21.3 km", "R 4,210.00".
     pub raw: String,
     pub value: f64,
     /// The comparable unit: "km", "run", "%", or an ISO currency code.
@@ -40,7 +38,6 @@ fn glued(text: &str, start: usize, end: usize) -> bool {
         c.is_some_and(|c| c.is_alphanumeric() || extra.contains(&c))
     };
     glue(before, &['#', ':', '-', '/', '.', '_']) || glue(after, &[':', '/', '_']) || {
-        // "2026-10" or "10-07": a dash between digits is a date.
         after == Some('-')
             && text[end..]
                 .chars()
@@ -103,7 +100,6 @@ pub fn extract_numbers(text: &str, max: usize) -> Vec<Quoted> {
         if glued(text, whole.start(), whole.end()) {
             continue;
         }
-        // A year on its own is a date.
         let digits = num.as_str().replace(',', "");
         let Ok(value) = digits.parse::<f64>() else {
             continue;
@@ -123,16 +119,11 @@ pub fn extract_numbers(text: &str, max: usize) -> Vec<Quoted> {
     out
 }
 
-/// A computed change against the previous message of the same template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Delta {
-    /// The number compared, as quoted now.
     pub raw: String,
-    /// As quoted in the previous message.
     pub previous_raw: String,
-    /// Percent change; for a percentage, the change in points.
     pub change: f64,
-    /// "up 12% on last week", "down 3 points on 26 Sep", "same as yesterday".
     pub text: String,
     pub against: DateTime<Utc>,
 }
@@ -227,7 +218,6 @@ mod tests {
 
     #[test]
     fn a_dated_delta_names_the_day_in_the_users_zone() {
-        // 23:30 UTC on 5 Oct is 6 Oct in UTC+2.
         let previous = Utc.with_ymd_and_hms(2026, 10, 5, 23, 30, 0).unwrap();
         let now = previous + Duration::days(3);
         let found = delta(
@@ -283,7 +273,6 @@ mod tests {
         assert_eq!(found.raw, "3 runs");
         assert_eq!(found.text, "up 50% on last week");
 
-        // Units differ: no delta, never a guess.
         let miles = extract_numbers("You ran 13.2 mi", 8);
         let km = extract_numbers("You ran 21.3 km", 8);
         assert!(delta(&miles, &km, at, week_ago, &utc()).is_none());
@@ -291,7 +280,6 @@ mod tests {
         let dollars = extract_numbers("Balance $12", 8);
         assert!(delta(&pounds, &dollars, at, week_ago, &utc()).is_none());
 
-        // Two km now, one before: which is which? No delta.
         let two = extract_numbers("21 km and 3 km", 8);
         let one = extract_numbers("19 km", 8);
         assert!(delta(&two, &one, at, week_ago, &utc()).is_none());

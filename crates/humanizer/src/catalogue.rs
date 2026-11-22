@@ -23,13 +23,10 @@ pub struct Pattern {
     pub group: PatternGroup,
     pub instruction: &'static str,
     pub detector: Detector,
-    /// A weak-alone pattern is counted only beside another tell in its paragraph.
     pub weak_alone: bool,
     pub applies_to_email: bool,
 }
 
-/// Humanizer 3.1 catalogue. Positive instructions are shared by generation,
-/// checking and repair so the three paths cannot drift independently.
 pub const PATTERNS: [Pattern; 26] = [
     p(1,"Not X but Y",PatternGroup::A,"Say the point directly; do not contrast it with a claim nobody made.",Detector::Deterministic,false,true),
     p(2,"One-line closers and dramatic fragments",PatternGroup::A,"End on the last concrete point; remove dramatic fragments.",Detector::Deterministic,false,true),

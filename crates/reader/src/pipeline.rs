@@ -1,19 +1,14 @@
 use crate::html_quote::split_html_quote;
 use crate::{boilerplate, html, quotes, signatures, tracking};
 
-/// Configuration for the reader pipeline.
 #[derive(Debug, Clone)]
 pub struct ReaderConfig {
     /// External command for HTML-to-text conversion (e.g., "w3m -T text/html -dump").
     /// If None, uses built-in html2text.
     pub html_command: Option<String>,
-    /// Whether to strip signatures.
     pub strip_signatures: bool,
-    /// Whether to collapse quoted replies.
     pub collapse_quotes: bool,
-    /// Whether to strip boilerplate/disclaimers.
     pub strip_boilerplate: bool,
-    /// Whether to strip tracking/footer junk.
     pub strip_tracking: bool,
 }
 
@@ -29,16 +24,11 @@ impl Default for ReaderConfig {
     }
 }
 
-/// Output from the reader pipeline.
 #[derive(Debug, Clone)]
 pub struct ReaderOutput {
-    /// Cleaned content: just the human-written text.
     pub content: String,
-    /// Quoted messages that were stripped (available for expansion).
     pub quoted_messages: Vec<quotes::QuotedBlock>,
-    /// The signature that was stripped.
     pub signature: Option<String>,
-    /// Line count stats for UI display.
     pub original_lines: usize,
     pub cleaned_lines: usize,
 }
@@ -47,8 +37,6 @@ pub struct ReaderOutput {
 ///
 /// Accepts either plain text or HTML. If HTML, converts to plain text first.
 pub fn clean(text: Option<&str>, html: Option<&str>, config: &ReaderConfig) -> ReaderOutput {
-    // 1. Resolve to plain text. The clients' HTML quote and signature
-    // markers vanish in conversion, so they are removed first.
     let mut html_quote = false;
     let mut html_signature = false;
     let mut from_html = |source: &str| {
@@ -75,8 +63,6 @@ pub fn clean(text: Option<&str>, html: Option<&str>, config: &ReaderConfig) -> R
     let mut quoted_messages = Vec::new();
     let mut signature = None;
     if html_quote {
-        // The quote's text left with its markup; the label keeps the
-        // reader honest that something was there.
         content.push_str("\n\n[previous message]");
         quoted_messages.push(quotes::QuotedBlock {
             from: None,
@@ -88,31 +74,26 @@ pub fn clean(text: Option<&str>, html: Option<&str>, config: &ReaderConfig) -> R
         signature = Some(String::new());
     }
 
-    // 2. Extract and collapse quoted replies
     if config.collapse_quotes {
         let (cleaned, q) = quotes::collapse(&content);
         content = cleaned;
         quoted_messages = q;
     }
 
-    // 3. Strip signatures
     if config.strip_signatures {
         let (cleaned, sig) = signatures::strip(&content);
         content = cleaned;
         signature = sig.or(signature);
     }
 
-    // 4. Strip boilerplate
     if config.strip_boilerplate {
         content = boilerplate::strip(&content);
     }
 
-    // 5. Strip tracking junk
     if config.strip_tracking {
         content = tracking::strip(&content);
     }
 
-    // 6. Clean up excessive whitespace
     content = normalize_whitespace(&content);
 
     let cleaned_lines = content.lines().count();

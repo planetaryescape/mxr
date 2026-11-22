@@ -120,7 +120,6 @@ pub fn include_html<Tz>(
             });
             index
         }
-        // Structured evidence cannot pick between authored dates or contradict one.
         _ => return,
     };
     let unit = &answer.units[index];

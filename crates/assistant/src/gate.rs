@@ -1,5 +1,3 @@
-//! Which tool calls run straight away and which wait for the user.
-//!
 //! This is the assistant's authority boundary, enforced in code before a
 //! tool runs. The model can't talk its way past it: a call is classified
 //! from its tool name and arguments alone, and anything not listed here
@@ -8,7 +6,6 @@
 
 use serde_json::{Map, Value};
 
-/// What happens to one tool call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Gate {
     /// Reads, previews and other calls that change nothing the user would
@@ -19,12 +16,9 @@ pub enum Gate {
     Approve { preview: Option<(String, Value)> },
 }
 
-/// How a tool tells a preview from the real change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Rule {
-    /// Never changes mail, drafts, rules or settings.
     Read,
-    /// Previews unless `confirm` is `true`.
     Confirm,
     /// Changes when `confirm` is `true`, and its own preview form only
     /// says "blocked": the preview is another tool, given these fields.
@@ -32,9 +26,7 @@ enum Rule {
     /// Changes unless `dry_run` is `true`. A missing `dry_run` is the real
     /// change, so it waits.
     DryRun,
-    /// Previews without a `preview_token`; applies one with it.
     PreviewToken,
-    /// Always a change.
     Always,
 }
 
@@ -43,7 +35,6 @@ enum Rule {
 /// classified.
 const RULES: &[(&str, Rule)] = &[
     ("mxr_archive_outcome", Rule::Read),
-    // Retains a reviewed selection; dispatches nothing until submit.
     ("mxr_archive_preview", Rule::Read),
     (
         "mxr_archive_submit",
@@ -66,7 +57,6 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_copy_draft_to_provider", Rule::Confirm),
     ("mxr_corrections", Rule::Read),
     ("mxr_delete_draft", Rule::Confirm),
-    // Writes a suggestion; nothing is saved or sent.
     ("mxr_draft_assist", Rule::Read),
     ("mxr_draft_attachment_begin", Rule::Confirm),
     ("mxr_draft_attachment_chunk", Rule::Confirm),
@@ -93,7 +83,6 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_reading_edition", Rule::Read),
     ("mxr_reading_highlight", Rule::Confirm),
     ("mxr_reading_highlights", Rule::Read),
-    // `confirm` fetches the article from the web.
     ("mxr_reading_item", Rule::Confirm),
     ("mxr_reading_later", Rule::DryRun),
     ("mxr_reading_marginalia", Rule::Confirm),
@@ -107,7 +96,6 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_recovery_status", Rule::Read),
     ("mxr_rule_form", Rule::Read),
     ("mxr_rules", Rule::Read),
-    // A new local draft: nothing leaves the machine and the user can delete it.
     ("mxr_save_draft", Rule::Read),
     ("mxr_search", Rule::Read),
     (
@@ -118,7 +106,6 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_sorting_rule", Rule::PreviewToken),
     ("mxr_status", Rule::Read),
     ("mxr_sweep_preview", Rule::Read),
-    // Fetches mail the user already has; changes nothing in the mailbox.
     ("mxr_sync", Rule::Read),
     ("mxr_sync_draft_to_provider", Rule::Confirm),
     ("mxr_thread_context", Rule::Read),
@@ -127,12 +114,10 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_todo_correct", Rule::Confirm),
     ("mxr_todo_get", Rule::Read),
     ("mxr_todo_list", Rule::Read),
-    // Confirmed links and syncs can write to an external service.
     ("mxr_todo_microsoft", Rule::Confirm),
     ("mxr_todo_resolve", Rule::Confirm),
     ("mxr_todo_set_state", Rule::Confirm),
     ("mxr_todo_undo_correction", Rule::Confirm),
-    // Replaces the user's draft content.
     ("mxr_update_draft", Rule::Always),
     ("mxr_updates_digest", Rule::Read),
     ("mxr_updates_let_go_preview", Rule::Read),
@@ -140,7 +125,6 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_workspace", Rule::Read),
 ];
 
-/// Classify one call. `arguments` is what the model sent, minus `reason`.
 pub fn classify(tool: &str, arguments: &Value) -> Gate {
     let rule = RULES
         .iter()
@@ -152,8 +136,6 @@ pub fn classify(tool: &str, arguments: &Value) -> Gate {
     let flag = |key: &str| arguments.get(key);
     match rule {
         Rule::Read => Gate::Run,
-        // Only a literal `false` or nothing at all is a preview: a string
-        // "true" or any other value is treated as the real change.
         Rule::Confirm => match flag("confirm") {
             None | Some(Value::Null | Value::Bool(false)) => Gate::Run,
             Some(_) => Gate::Approve {
@@ -181,8 +163,6 @@ pub fn classify(tool: &str, arguments: &Value) -> Gate {
         Rule::PreviewToken => match flag("preview_token") {
             None | Some(Value::Null) => Gate::Run,
             Some(Value::String(token)) if token.is_empty() => Gate::Run,
-            // The token binds the selection an earlier preview showed; a
-            // fresh preview could differ, so none is shown here.
             Some(_) => Gate::Approve { preview: None },
         },
         Rule::Always => Gate::Approve { preview: None },
@@ -210,7 +190,6 @@ pub fn auto_approvable(tool: &str, arguments: &Value) -> bool {
     }
 }
 
-/// Every tool name with a gate rule.
 pub fn rule_tools() -> impl Iterator<Item = &'static str> {
     RULES.iter().map(|(name, _)| *name)
 }
@@ -237,7 +216,6 @@ pub fn commit_forms(tool: &str) -> Option<(Value, Value)> {
     }
 }
 
-/// Whether `tool` has its own gate rule (unlisted tools always wait).
 pub fn is_classified(tool: &str) -> bool {
     RULES.iter().any(|(name, _)| *name == tool)
 }

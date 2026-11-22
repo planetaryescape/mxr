@@ -15,11 +15,9 @@ use serde_json::Value;
 pub struct SchemaAmount {
     pub minor: i64,
     pub currency: String,
-    /// The value as the markup wrote it, for provenance.
     pub text: String,
 }
 
-/// A due date from markup: a calendar day, or an exact instant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemaDate {
     Day(NaiveDate),
@@ -37,13 +35,11 @@ pub enum SchemaTodo {
         due_text: Option<String>,
         url: Option<String>,
     },
-    /// An `Invoice` whose payment was declined: fix it.
     PaymentFailed {
         provider: Option<String>,
         amount: Option<SchemaAmount>,
         url: Option<String>,
     },
-    /// A `*Reservation` waiting for the user to confirm it.
     PendingReservation {
         name: Option<String>,
         provider: Option<String>,

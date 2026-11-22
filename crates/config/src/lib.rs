@@ -170,7 +170,6 @@ editor = "emacs"
 
         let config = load_config_from_str(toml_str).expect("parse partial toml");
         assert_eq!(config.general.editor.as_deref(), Some("emacs"));
-        // Rest should be defaults
         assert_eq!(config.general.sync_interval, 60);
         assert_eq!(config.general.hook_timeout, 30);
         assert_eq!(config.general.safety_policy, SafetyPolicy::Full);
@@ -213,9 +212,6 @@ model = "gemma4:latest"
         assert_eq!(retired_config_keys_in(&table), RETIRED_CONFIG_KEYS);
     }
 
-    /// The key lists the loader checks against must be the structs' fields.
-    /// A struct literal names every field, so a new field fails to compile
-    /// here until it is listed.
     #[test]
     fn override_key_lists_match_the_override_structs() {
         let setting = LlmOverrideConfig {
@@ -280,7 +276,6 @@ model = "gemma4:latest"
             Some("gemma4:latest")
         );
         let table: toml::Table = toml_str.parse().unwrap();
-        // The retired `voice_match` is reported as retired, not here.
         let mut unknown = unknown_llm_override_keys_in(&table);
         unknown.sort_unstable();
         assert_eq!(
@@ -467,8 +462,6 @@ allowed_accounts = ["personal"]
 
     #[test]
     fn daemon_token_is_separate_from_the_bridge_token() {
-        // The IPC token must never be the bridge token: the bridge hands its
-        // token to any loopback caller over HTTP.
         temp_env::with_vars(
             [
                 ("MXR_DAEMON_TOKEN_PATH", None::<&std::ffi::OsStr>),
@@ -495,7 +488,6 @@ allowed_accounts = ["personal"]
                 ("MXR_DAEMON_TOKEN", None),
             ],
             || {
-                // First resolve mints the file atomically at 0600.
                 let created = resolve_daemon_token(true)
                     .expect("create token")
                     .expect("some");
@@ -506,7 +498,6 @@ allowed_accounts = ["personal"]
                     let mode = std::fs::metadata(&token_path).unwrap().permissions().mode() & 0o777;
                     assert_eq!(mode, 0o600, "daemon token file must be 0600");
                 }
-                // A read (create=false) returns the same value.
                 let read_back = resolve_daemon_token(false)
                     .expect("read token")
                     .expect("some");
@@ -514,7 +505,6 @@ allowed_accounts = ["personal"]
             },
         );
 
-        // The env var overrides the file entirely.
         temp_env::with_vars(
             [
                 (
@@ -637,8 +627,6 @@ type = "gmail"
 
     #[test]
     fn identity_values_load_exactly_as_written() {
-        // Validation belongs to the daemon's resolver, so the config keeps
-        // what the user typed, including values the daemon will ignore.
         let config = load_config_from_str(&identity_config(
             "color = \"teal\"\ntag = \"w\"",
             "tag = \"WORK\"",

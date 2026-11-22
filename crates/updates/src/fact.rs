@@ -16,16 +16,12 @@ use crate::text::{capitalise, clip, first_informative_line, pick_link};
 use crate::window::{code_window, window, Window, WindowKind};
 use crate::Signal;
 
-/// Longest fact line, in characters.
 pub const FACT_MAX: usize = 140;
-/// Numbers kept per message.
 const NUMBERS_MAX: usize = 6;
 
-/// What one message gives the rules.
 #[derive(Debug, Clone, Copy)]
 pub struct FactInput<'a> {
     pub subject: &'a str,
-    /// Cleaned plain text of the body, when stored.
     pub body: Option<&'a str>,
     pub snippet: &'a str,
     pub from_email: &'a str,
@@ -34,13 +30,10 @@ pub struct FactInput<'a> {
     pub date: DateTime<Utc>,
 }
 
-/// Where the fact line came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FactSource {
-    /// The cleaned subject.
     Subject,
-    /// The first informative line of the body, for a generic subject.
     Body,
 }
 
@@ -82,7 +75,6 @@ impl NeedsYou {
     }
 }
 
-/// A thing with a lifecycle that mail reports on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TrackedKind {
@@ -99,7 +91,6 @@ impl TrackedKind {
     }
 }
 
-/// How a tracked thing stands: ended well, ended badly, or under way.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TrackedOutcome {
@@ -118,19 +109,16 @@ impl TrackedOutcome {
     }
 }
 
-/// The state one message reports for a tracked thing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tracked {
     pub kind: TrackedKind,
     /// The thing, across messages: the template with its state masked,
     /// so "Run failed: CI - main" and "Run succeeded: CI - main" are one.
     pub key: String,
-    /// The state word as written: "failed", "resolved".
     pub state: String,
     pub outcome: TrackedOutcome,
 }
 
-/// Everything the rules derive from one message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Fact {
     pub source_key: String,
@@ -141,11 +129,9 @@ pub struct Fact {
     pub text: String,
     pub fact_source: FactSource,
     pub numbers: Vec<Quoted>,
-    /// Needs-you or anomaly from a rule; the daemon adds history.
     pub base_signal: Option<Signal>,
     pub needs_you: Option<NeedsYou>,
     pub window: Option<Window>,
-    /// The one-time code the message gives, to copy: "482913".
     #[serde(default)]
     pub code: Option<String>,
     /// When `code` stops working: the lifetime the message states, else ten
@@ -249,7 +235,6 @@ fn tracked(subject: &str) -> Option<Tracked> {
     })
 }
 
-/// Derive one message's fact. `tz` resolves "sale ends Sunday".
 pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
     let key = source_key(input.from_email, input.list_id, input.subject);
     let name = source_name(input.from_name, input.from_email, &key);
@@ -263,7 +248,6 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
     let (text, fact_source) = match (&body_line, generic) {
         (Some(line), true) => (line.clone(), FactSource::Body),
         _ if cleaned.is_empty() => ("(no subject)".to_string(), FactSource::Subject),
-        // A state only the tag carried leads the line: "Resolved: ...".
         _ => match &tracked {
             Some(t) if !cleaned.to_lowercase().contains(&t.state) => (
                 clip(&format!("{}: {cleaned}", capitalise(&t.state)), FACT_MAX),
@@ -284,7 +268,6 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         }
     }
 
-    // Rules read the subject and the first informative line together.
     let rule_text = match &body_line {
         Some(line) => format!("{cleaned}\n{line}"),
         None => cleaned.clone(),
@@ -296,16 +279,11 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         input.date,
         tz,
     );
-    // The code's own lifetime, from anywhere in the top of the message: the
-    // window above reads only the first informative line.
     let code_life = code.as_ref().map(|_| {
         let text = format!("{cleaned}\n{}", input.body.unwrap_or(input.snippet));
         code_window(&text, input.date)
     });
     let code_expires = code_life.as_ref().map(|life| life.until);
-    // A message that gives a code lasts as long as the code: a code window
-    // read from the first line alone gives way to the whole top's reading.
-    // One with another window (a sign-in alert, a verify link) keeps it.
     let window = match window {
         Some(w) if w.kind == WindowKind::Code => code_life.or(Some(w)),
         Some(w) => Some(w),
@@ -366,7 +344,6 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
     }
 }
 
-/// The host part of an address, lowercased: "accounts.google.com".
 pub fn sender_host(from_email: &str) -> String {
     from_email
         .trim()
@@ -426,8 +403,6 @@ mod tests {
         assert_eq!(window.kind, WindowKind::Code);
         assert_eq!(window.source, "rule", "{}", window.evidence);
 
-        // A sign-in alert keeps its two days; its code lasts what it says,
-        // even when that is said below the first line.
         let alert = derive_utc(&input(
             "no-reply@accounts.example",
             Some("Accounts"),

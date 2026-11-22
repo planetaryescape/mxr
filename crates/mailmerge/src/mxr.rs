@@ -24,7 +24,6 @@ pub struct Mxr {
     binary: String,
 }
 
-/// What `mxr compose --draft --format json` reports back.
 #[derive(Debug, Clone)]
 pub struct DraftCreated {
     pub expected_workspace: crate::manifest::WorkspaceOwner,
@@ -83,8 +82,6 @@ impl Mxr {
             .with_context(|| format!("running `{} compose`", self.binary))?;
 
         if !output.status.success() {
-            // stderr may quote the rendered HTML back; keep it short and let
-            // the caller decide what to surface.
             bail!(
                 "{}",
                 first_lines(&String::from_utf8_lossy(&output.stderr), 6)
@@ -272,7 +269,6 @@ impl Mxr {
             .ok_or_else(|| anyhow::anyhow!("`mxr send-time` JSON had no proposed_at"))
     }
 
-    /// Confirm the mxr binary is reachable before a run starts.
     pub fn preflight(&self) -> anyhow::Result<()> {
         let output = Command::new(&self.binary)
             .arg("--version")
@@ -315,8 +311,6 @@ mod tests {
 
     #[test]
     fn a_single_enormous_line_is_still_truncated() {
-        // stderr may quote the rendered body back at us on one line; without a
-        // character cap the whole personalised message lands in the manifest.
         let body = "x".repeat(50_000);
         let summary = first_lines(&body, 6);
         assert!(
@@ -360,10 +354,8 @@ mod tests {
             assert_eq!(argv[0][0], "compose");
             assert!(argv[0].contains(&"--draft".to_string()), "{:?}", argv[0]);
             assert!(argv[0].contains(&"--format".to_string()));
-            // The contract that keeps drafting and sending apart.
             assert!(!argv[0].contains(&"--yes".to_string()), "{:?}", argv[0]);
             assert!(!argv[0].contains(&"--send".to_string()), "{:?}", argv[0]);
-            // Address, subject, and account reach mxr as single arguments.
             assert_eq!(stub.value_after(&argv[0], "--to"), Some("a@example.com"));
             assert_eq!(stub.value_after(&argv[0], "--subject"), Some("Your digest"));
             assert_eq!(

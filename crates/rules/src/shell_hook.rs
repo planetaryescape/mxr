@@ -16,7 +16,6 @@ const DEFAULT_HOOK_TIMEOUT: Duration = Duration::from_secs(30);
 /// a failing hook with a lingering background process is not noticeably slow.
 const STDERR_GRACE_AFTER_EXIT: Duration = Duration::from_millis(250);
 
-/// JSON payload piped to shell hook stdin.
 #[derive(Debug, Serialize)]
 pub struct ShellHookPayload {
     pub id: String,
@@ -75,9 +74,6 @@ pub async fn execute_shell_hook(
 
     let stdin = child.stdin.take();
     let mut stderr = child.stderr.take();
-    // Drain stderr while writing: a hook can fill its stderr pipe before it
-    // reads stdin. Keep ownership of the child outside the timed future so a
-    // timeout can kill and reap it, rather than merely dropping the wait.
     let execution = async {
         let write = async {
             if let Some(mut stdin) = stdin {
@@ -115,18 +111,9 @@ pub async fn execute_shell_hook(
                 }
             }
         };
-        // An unfinished stdin write is abandoned here (dropping `write` closes
-        // our end): a descendant holding the read end open would otherwise block
-        // a large payload forever, and the shell no longer wants it.
-        //
-        // Stderr is only reported for a failed hook, so a successful one returns
-        // without draining. For a failure, the shell's own output is already in
-        // the pipe buffer, so a short bounded read collects it; whatever a
-        // descendant writes later is not part of the hook's result.
         if !status.success() && stderr_open {
             let grace_end = (Instant::now() + STDERR_GRACE_AFTER_EXIT).min(deadline);
             let _ = tokio::time::timeout_at(grace_end, async {
-                // A read error here only ends collection; the exit status is the result.
                 while let Ok(n) = read_chunk(&mut stderr, &mut stderr_bytes).await {
                     if n == 0 {
                         break;
@@ -142,8 +129,6 @@ pub async fn execute_shell_hook(
             Ok(result) => result?,
             Err(_) => {
                 let _ = child.start_kill();
-                // Reaping is bounded independently; kill_on_drop is the fallback
-                // for cancellation or a platform wait that does not finish.
                 let _ = timeout(Duration::from_secs(1), child.wait()).await;
                 return Err(ShellHookError::Timeout {
                     command: command.to_string(),
@@ -232,12 +217,7 @@ mod tests {
         let mut payload = sample_payload();
         payload.body_text = Some("x".repeat(2 * 1024 * 1024));
         let pid_file = std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()));
-        // The sleep outlives the deadline, so only the timeout can end the child,
-        // and still bounds the red test when stdin has no timeout.
         let command = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
-        // The deadline must outlast spawning `sh` and running `echo` on a loaded
-        // machine, or the child dies before recording its pid. 200 ms lost that
-        // race under load.
         let deadline = Duration::from_secs(2);
         let started = std::time::Instant::now();
         let result = execute_shell_hook(&command, &payload, Some(deadline)).await;
@@ -257,8 +237,6 @@ mod tests {
             matches!(result, Err(ShellHookError::Timeout { .. })),
             "{result:?}"
         );
-        // Deadline plus the hook's 1 s reap bound, with slack. A stdin write the
-        // deadline missed would block until the 30 s sleep ends.
         assert!(
             elapsed < deadline + Duration::from_secs(3),
             "stdin exceeded the hook deadline: {elapsed:?}"
@@ -268,14 +246,11 @@ mod tests {
     #[tokio::test]
     async fn cancelling_hook_kills_owned_child() {
         let pid_file = std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()));
-        // The sleep outlives the waits below, so only the abort can end the child.
         let command = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
         let task =
             tokio::spawn(
                 async move { execute_shell_hook(&command, &sample_payload(), None).await },
             );
-        // Generous waits: `sh` can take over a second to start on a loaded
-        // machine, and a passing run returns as soon as the poll succeeds.
         let pid = timeout(Duration::from_secs(10), async {
             loop {
                 if let Ok(pid) = std::fs::read_to_string(&pid_file) {
@@ -322,7 +297,6 @@ mod tests {
 
     #[tokio::test]
     async fn hook_payload_contains_all_fields() {
-        // Extract and verify specific fields from the JSON
         execute_shell_hook(
             "python3 -c 'import sys, json; d = json.load(sys.stdin); assert d[\"from\"][\"email\"] == \"alice@example.com\"; assert d[\"subject\"] == \"Invoice #2847\"; assert len(d[\"attachments\"]) == 1'",
             &sample_payload(),
@@ -346,8 +320,6 @@ mod tests {
         std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()))
     }
 
-    // The 20 s sleeps outlive every deadline here, so only the fix can make
-    // these return before the hook timeout; the bounds are loose on purpose.
     #[tokio::test]
     async fn backgrounded_child_holding_stderr_is_not_a_timeout() {
         let pid_file = pid_file();
@@ -363,7 +335,6 @@ mod tests {
         let mut payload = sample_payload();
         payload.body_text = Some("x".repeat(2 * 1024 * 1024));
         let pid_file = pid_file();
-        // `<&0` keeps the stdin read end open without ever reading it.
         let command = format!("sleep 20 <&0 & echo $! > '{}'; exit 0", pid_file.display());
         let result = execute_shell_hook(&command, &payload, Some(Duration::from_secs(10))).await;
         kill_pid_file(&pid_file);
@@ -391,8 +362,6 @@ mod tests {
 
     #[tokio::test]
     async fn large_stderr_is_fully_read_when_shell_exits() {
-        // Well over a pipe buffer, so it only completes if stderr is drained
-        // while the shell runs and the remainder is read after it exits.
         let command = "yes x | head -c 300000 >&2; exit 2";
         let result = execute_shell_hook(command, &sample_payload(), None).await;
         match result {

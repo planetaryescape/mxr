@@ -9,9 +9,7 @@
 use crate::{clashes, is_well_formed, Contexts, Keymap, TuiBinding};
 use std::collections::BTreeMap;
 
-/// The `keys.toml` section that gives actions their own keys.
 pub const ACTIONS_SECTION: &str = "actions";
-/// The `keys.toml` setting that turns single-character shortcuts off.
 pub const SINGLE_KEYS_SETTING: &str = "single_keys";
 
 /// TUI contexts where `[actions]` changes keys: the mail list and reader,
@@ -54,7 +52,6 @@ const BROWSER_RESERVED: [(&str, &str); 26] = [
     ("F12", "developer tools"),
 ];
 
-/// Key names the TUI can receive without a modifier.
 const NAMED_KEYS: [&str; 15] = [
     "Enter",
     "Escape",
@@ -73,20 +70,15 @@ const NAMED_KEYS: [&str; 15] = [
     "+",
 ];
 
-/// The definition with a person's `[actions]` applied.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Remapped {
     pub keymap: Keymap,
-    /// The entries that applied, by action id.
     pub applied: BTreeMap<String, Vec<String>>,
-    /// Why the others didn't.
     pub problems: Vec<String>,
 }
 
-/// `single_keys` and `[actions]` from a person's `keys.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeysFile {
-    /// False turns off every shortcut made of single characters.
     pub single_keys: bool,
     /// Action id → the person's keys for it, primary first. Empty means the
     /// action has no key.
@@ -114,8 +106,6 @@ impl KeysFile {
         }
     }
 
-    /// The switch and `[actions]` of a parsed `keys.toml`, and what in them
-    /// can't be used. Unusable entries are left out.
     pub fn from_table(table: &toml::Table, keymap: &Keymap) -> (Self, Vec<String>) {
         let mut file = Self::default();
         let mut problems = Vec::new();
@@ -190,8 +180,6 @@ pub fn action_keys_problems(keymap: &Keymap, id: &str, keys: &[String]) -> Vec<S
             action.label
         )];
     }
-    // Tool screens still read their own keys, so a TUI-only
-    // action that lives only there has nothing a remap could change.
     let remaps_in_tui = action.tui.iter().any(|binding| {
         !binding.keys.is_empty()
             && binding
@@ -265,7 +253,6 @@ fn tui_key_problem(key: &str) -> Option<&'static str> {
     None
 }
 
-/// A key as the TUI spells it: terminals have no Cmd, so `Mod` is `Ctrl`.
 pub fn tui_key(key: &str) -> String {
     key.replace("Mod+", "Ctrl+")
 }
@@ -381,7 +368,6 @@ impl Keymap {
         }
     }
 
-    /// Every key clash in this definition, web and TUI.
     fn clash_list(&self) -> Vec<String> {
         let mut found = clashes(
             "web scope",
@@ -409,7 +395,6 @@ impl Keymap {
     }
 }
 
-/// The clashes `after` has that `before` didn't.
 pub fn new_clashes(before: &Keymap, after: &Keymap) -> Vec<String> {
     let old = before.clash_list();
     after
@@ -419,14 +404,10 @@ pub fn new_clashes(before: &Keymap, after: &Keymap) -> Vec<String> {
         .collect()
 }
 
-/// A change to `keys.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeysEdit {
-    /// Give an action these keys (none when empty) in every client.
     SetAction { id: String, keys: Vec<String> },
-    /// Give an action back its default keys.
     ResetAction { id: String },
-    /// Turn single-character shortcuts on or off.
     SingleKeys(bool),
 }
 
@@ -438,7 +419,6 @@ pub fn edit_keys_toml(text: &str, edit: &KeysEdit) -> Result<String, String> {
         .map_err(|error| format!("keys.toml is not valid TOML: {error}"))?;
     match edit {
         KeysEdit::SingleKeys(true) => {
-            // On is the default, so the setting goes rather than staying as noise.
             doc.remove(SINGLE_KEYS_SETTING);
         }
         KeysEdit::SingleKeys(false) => {

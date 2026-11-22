@@ -13,7 +13,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Unique identifier for a rule.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RuleId(pub String);
 
@@ -35,7 +34,6 @@ impl std::fmt::Display for RuleId {
     }
 }
 
-/// A declarative mail rule.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rule {
     pub id: RuleId,
@@ -43,7 +41,6 @@ pub struct Rule {
     pub account_id: Option<mxr_core::AccountId>,
     pub name: String,
     pub enabled: bool,
-    /// Lower number = runs first.
     pub priority: i32,
     pub conditions: Conditions,
     pub actions: Vec<RuleAction>,
@@ -56,7 +53,6 @@ pub(crate) mod tests {
     use crate::condition::MessageView;
     use chrono::{DateTime, Utc};
 
-    /// Test message implementation for condition evaluation.
     pub(crate) struct TestMessage {
         pub from: String,
         pub to: Vec<String>,

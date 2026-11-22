@@ -20,22 +20,17 @@ use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// Everything detection needs from a message.
 #[derive(Debug, Clone, Copy)]
 pub struct MessageInput<'a> {
     pub subject: &'a str,
-    /// Reader-cleaned plain text: quotes and signatures stripped.
     pub body_text: &'a str,
-    /// Raw HTML, for schema.org markup and link text.
     pub body_html: Option<&'a str>,
     pub from_name: Option<&'a str>,
     pub from_email: &'a str,
     pub sent: DateTime<Utc>,
-    /// Sent through a mailing list (`List-Id`).
     pub list_mail: bool,
 }
 
-/// Which layer found the to-do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Origin {
     Rule,
@@ -66,9 +61,7 @@ pub struct Detection {
     pub kind: TodoKind,
     pub verb: String,
     pub doc_type: Option<String>,
-    /// Verb plus object: "Pay council tax".
     pub title: String,
-    /// The object, normalised, for the dedup key.
     pub object_key: String,
     pub counterparty: Option<String>,
     pub sender_domain: Option<String>,
@@ -83,7 +76,6 @@ pub struct Detection {
     pub fields: FieldSources,
 }
 
-/// Body text past this is not read: what a to-do asks is near the top.
 const BODY_CHARS: usize = 8_000;
 
 static PAID: Lazy<Regex> = Lazy::new(|| {
@@ -180,7 +172,6 @@ static RSVP_DUE: Lazy<Regex> = Lazy::new(|| {
 });
 static EVENT_DATE: Lazy<Regex> = Lazy::new(|| trigger_regex(r"on|date|when|this"));
 
-/// Bill subjects named as the thing, not the sender: "Pay council tax".
 const BILL_THINGS: &[(&str, &str)] = &[
     ("council tax", "council tax"),
     ("water", "water bill"),
@@ -201,7 +192,6 @@ const BILL_THINGS: &[(&str, &str)] = &[
     ("tax", "tax bill"),
 ];
 
-/// Display-name fragments that are roles, not organisations.
 const NAME_NOISE: &[&str] = &[
     "no-reply",
     "noreply",
@@ -222,7 +212,6 @@ const NAME_NOISE: &[&str] = &[
     "mailer",
 ];
 
-/// Read `input` for a to-do. `tz` is the user's zone, for due dates.
 pub fn detect<Tz>(input: &MessageInput<'_>, tz: &Tz) -> Option<Detection>
 where
     Tz: TimeZone,
@@ -247,8 +236,6 @@ where
         Some(todo @ SchemaTodo::PaymentFailed { .. }) => {
             return Some(context.schema_todo(todo, tz, &anchor));
         }
-        // Markup never hides a failure the words report: a declined
-        // payment under a stale "due" or "paid" status is still a to-do.
         _ if text_says_failed => return Some(context.payment_failed(&anchor)),
         Some(todo) => return Some(context.schema_todo(todo, tz, &anchor)),
         None if schema.settled => return None,
@@ -564,7 +551,6 @@ impl Context<'_> {
                 detection.verb = "confirm".to_string();
                 detection.event_start = schema_due(starts, starts_text).map(|found| found.at);
                 if let Some(start) = detection.event_start {
-                    // Confirm before it starts: the start is the deadline.
                     self.set_due(
                         &mut detection,
                         Some(FoundDate {
@@ -605,7 +591,6 @@ impl Context<'_> {
         Self::set_amount(&mut detection, amount, FieldSource::Rule);
         let due = self.due(&[&BILL_DUE_SPECIFIC], anchor, currency.as_deref());
         self.set_due(&mut detection, due, FieldSource::Rule);
-        // Lead with the failure, not the date: that is why it's here.
         detection.reason = format!("\"{}\" (rule)", clip(evidence, 80));
         self.set_link(&mut detection, None);
         detection
@@ -728,7 +713,6 @@ impl Context<'_> {
         );
         detection.verb = verb;
         self.set_link(&mut detection, None);
-        // A verify request without its link is a notice, not a to-do.
         detection.link.as_ref()?;
         let due = find_lifetime(self.text, self.input.sent)
             .or_else(|| self.due(&[&VERIFY_DUE], anchor, None));
@@ -755,7 +739,6 @@ impl Context<'_> {
             evidence,
         );
         if let Some(event) = &event {
-            // The event's day, from its start: the window closes as it begins.
             let day = event.at.with_timezone(tz).date_naive();
             detection.event_start = Some(crate::timing::start_of_day(day, tz, 0));
             detection.fields.set(
@@ -769,7 +752,6 @@ impl Context<'_> {
     }
 }
 
-/// A to-do from a calendar invite still waiting for an answer.
 pub fn from_invite(
     summary: Option<&str>,
     organizer: Option<&str>,
@@ -828,7 +810,6 @@ fn source_label(source: FieldSource) -> &'static str {
     }
 }
 
-/// Pay link, bank transfer, or neither: picks the bill's act-by rule.
 fn pay_method(detection: &Detection, text: &str) -> &'static str {
     if bank_transfer_evidence(detection.link.is_some(), text).is_some() {
         "bill_bank"
@@ -837,7 +818,6 @@ fn pay_method(detection: &Detection, text: &str) -> &'static str {
     }
 }
 
-/// Factual payment instructions; the caller has already established the obligation.
 pub(crate) fn bank_transfer_evidence(has_pay_link: bool, text: &str) -> Option<&str> {
     if has_pay_link {
         return None;
@@ -918,7 +898,6 @@ fn short_phrase(value: &str) -> bool {
     (1..=4).contains(&words) && !value.chars().any(|c| c.is_ascii_digit() || c == '#')
 }
 
-/// Lowercase words, single spaces: the dedup key's object.
 pub fn normalise(value: &str) -> String {
     value
         .to_lowercase()

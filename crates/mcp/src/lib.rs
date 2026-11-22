@@ -129,10 +129,6 @@ async fn request_over_ipc(
             ClientError::Closed => {
                 anyhow::anyhow!("mxr daemon closed the IPC connection before responding")
             }
-            // Intentional deviation: the old loop skipped frames whose id was
-            // not 1 and kept reading; we now fail fast. A non-correlating frame
-            // means the connection is out of step, and skipping risks hanging;
-            // it is also unreachable (one request per connection, id pinned).
             error @ ClientError::UnexpectedFrame { .. } => anyhow::Error::new(error),
             other => anyhow::Error::new(other),
         })
@@ -242,8 +238,6 @@ impl MxrMcpServer {
                     "from".into(),
                     json!({"name": envelope.from.name, "email": envelope.from.email}),
                 );
-                // The same keys, and values, `mxr_list_messages` returns, so
-                // the assistant's rows can show when, a clip and unread.
                 object.insert("date".into(), json!(envelope.date));
                 object.insert("flags".into(), json!(envelope.flags));
                 object.insert("snippet".into(), json!(envelope.snippet));

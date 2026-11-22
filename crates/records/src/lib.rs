@@ -44,7 +44,6 @@ use serde::{Deserialize, Serialize};
 /// correction or a dismissal.
 pub const RULES_VERSION: i64 = 1;
 
-/// What a record is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RecordKind {
@@ -92,7 +91,6 @@ impl RecordKind {
         Self::ALL.into_iter().find(|kind| kind.as_str() == value)
     }
 
-    /// "Receipt", for labels.
     pub fn label(self) -> &'static str {
         match self {
             Self::Receipt => "Receipt",
@@ -121,7 +119,6 @@ impl RecordKind {
         }
     }
 
-    /// What the amount is called on this kind's card: "Paid", "Price".
     pub fn amount_label(self) -> &'static str {
         match self {
             Self::Receipt | Self::Order => "Paid",
@@ -137,7 +134,6 @@ impl std::fmt::Display for RecordKind {
     }
 }
 
-/// What one email said about its record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stage {
@@ -224,19 +220,13 @@ impl Stage {
     }
 }
 
-/// Where a field's value came from. Ranks decide which candidate wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Source {
-    /// schema.org markup the sender put in the email.
     Schema,
-    /// A pattern in the subject or body.
     Rule,
-    /// The delivery tracker the parcel's emails built.
     Delivery,
-    /// The to-do you ticked off.
     Todo,
-    /// You.
     User,
 }
 
@@ -270,7 +260,6 @@ impl Source {
         }
     }
 
-    /// "schema.org markup", for provenance lines.
     pub fn describe(self) -> &'static str {
         match self {
             Self::Schema => "schema.org markup",
@@ -288,7 +277,6 @@ pub fn issuer_key(issuer: &str) -> String {
     issuer.trim().to_lowercase()
 }
 
-/// A reference without spaces and with consistent case, for dedup keys.
 pub fn reference_key(reference: &str) -> String {
     reference
         .chars()

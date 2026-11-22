@@ -63,8 +63,6 @@ pub fn dispatch_record(
         Ok(None) => false,
     };
     if let Some(review) = &entry.review {
-        // A missing scheduler outcome cannot prove a lost schedule acknowledgement
-        // failed. Preserve the delivery mode and never turn it into an immediate send.
         if review.scheduled_at.is_some() && !rejected {
             entry.status = RecordStatus::ScheduleUncertain;
             entry.error = Some(FailureReason::ScheduleOutcome);
@@ -141,7 +139,6 @@ pub fn dispatch_record(
     };
     entry.error = Some(FailureReason::Outcome);
     manifest.upsert(entry.clone());
-    // This durable checkpoint must complete before the subprocess can have effects.
     manifest.save(state_dir)?;
     let submitted = client.send_draft(&draft, &review);
     if review.scheduled_at.is_some() {

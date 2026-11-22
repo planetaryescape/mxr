@@ -35,7 +35,6 @@ pub struct Moment {
     pub record_id: String,
     pub group_id: Option<String>,
     pub at: DateTime<Utc>,
-    /// "Lisbon, June 2025 · in 3 days".
     pub label: String,
 }
 
@@ -138,7 +137,6 @@ where
     out
 }
 
-/// "today", "tomorrow", "in 3 days".
 fn relative<Tz>(at: DateTime<Utc>, now: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz: TimeZone,
@@ -152,7 +150,6 @@ where
     }
 }
 
-/// "today", "tomorrow", "Wed 12 Jun".
 fn day_label<Tz>(at: DateTime<Utc>, now: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz: TimeZone,

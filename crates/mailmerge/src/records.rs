@@ -10,12 +10,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
-/// One recipient and their template properties.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Record {
-    /// Recipient address, taken from the record's `to` property.
     pub to: String,
-    /// Every property, including `to`, available to the templates.
     pub properties: BTreeMap<String, String>,
 }
 
@@ -29,9 +26,6 @@ impl Record {
         let mut hasher = Sha256::new();
         for (key, value) in &self.properties {
             hasher.update(key.as_bytes());
-            // Unit separators keep {"ab","c"} from hashing the same as
-            // {"a","bc"} — otherwise two different records could collide and
-            // one would be silently skipped as "already drafted".
             hasher.update(b"\x1f");
             hasher.update(value.as_bytes());
             hasher.update(b"\x1e");
@@ -155,8 +149,6 @@ pub fn load_records(path: &Path, format: DataFormat) -> anyhow::Result<Vec<Recor
 
         validate_address(&to, position)?;
 
-        // Duplicate recipients are caught before any draft exists, so a rerun
-        // cannot quietly double-send to someone.
         let lowered = to.to_ascii_lowercase();
         if !seen.insert(lowered) {
             bail!("record {position} duplicates recipient {to}");
@@ -218,10 +210,6 @@ fn validate_address(address: &str, position: usize) -> anyhow::Result<()> {
     if address.contains(['\r', '\n']) {
         bail!("record {position} recipient contains a line break (header injection)");
     }
-    // `mxr compose --to` takes a comma-separated list, and a display-name form
-    // hides the real address from the duplicate check. One bare address per
-    // record, or the campaign can reach someone nobody listed — or reach the
-    // same person twice under two spellings.
     if address.contains([',', ';', '<', '>']) || address.chars().any(char::is_whitespace) {
         bail!(
             "record {position} recipient `{address}` must be a single bare address \
@@ -284,9 +272,6 @@ mod tests {
 
     #[test]
     fn the_three_formats_describe_the_same_records() {
-        // Same data, three encodings: the records — and therefore the
-        // idempotency hashes — must come out identical, or resuming a campaign
-        // after switching format would re-draft everyone.
         let csv = load(
             "to,first_name\na@example.com,Dumi\nb@example.com,Sam\n",
             "records.csv",
@@ -335,8 +320,6 @@ mod tests {
 
     #[test]
     fn a_missing_to_property_fails_the_whole_batch() {
-        // Not "drafts the good rows and warns about the bad one": half a
-        // campaign is worse than none.
         let err = load(
             r#"[{"to":"a@example.com"},{"first_name":"Dumi"}]"#,
             "records.json",
@@ -383,9 +366,6 @@ mod tests {
 
     #[test]
     fn a_recipient_list_smuggled_into_one_record_is_rejected() {
-        // `mxr compose --to` is documented as comma-separated, so this would
-        // deliver to someone the operator never listed — and slip past the
-        // duplicate check while doing it.
         for smuggled in [
             "a@example.com, evil@example.com",
             "a@example.com;evil@example.com",
@@ -409,8 +389,6 @@ mod tests {
 
     #[test]
     fn a_csv_row_that_does_not_match_the_header_fails_the_batch() {
-        // A short row would otherwise drop a column silently, and the record
-        // that lost its `url` would go out with a placeholder gone missing.
         let err = load(
             "to,first_name,url\na@example.com,Dumi,https://x.example/a\nb@example.com,Sam\n",
             "records.csv",
@@ -421,7 +399,6 @@ mod tests {
 
     #[test]
     fn a_nested_property_value_fails_the_batch() {
-        // Rendering `{"id":1}` into someone's email is never what was meant.
         let err = load(
             r#"[{"to":"a@example.com","plan":{"id":1}}]"#,
             "records.json",
@@ -459,27 +436,21 @@ mod tests {
     #[test]
     fn record_hash_is_stable_across_runs() {
         let first = record(&[("to", "a@example.com"), ("plan", "pro")]);
-        // Rebuilt from scratch, as a rerun would: same bytes in, same key out.
         let second = record(&[("plan", "pro"), ("to", "a@example.com")]);
         assert_eq!(first.hash(), second.hash());
     }
 
     #[test]
     fn record_hash_distinguishes_records_that_share_a_key_boundary() {
-        // {"a":"bc"} and {"ab":"c"} concatenate to the same bytes without a
-        // separator. A collision here would silently skip one record as
-        // "already drafted" — that person never gets their email.
         assert_ne!(record(&[("a", "bc")]).hash(), record(&[("ab", "c")]).hash());
         assert_ne!(
             record(&[("to", "a@example.com")]).hash(),
             record(&[("to", "b@example.com")]).hash()
         );
-        // A changed value must change the key, or an edited record is skipped.
         assert_ne!(
             record(&[("to", "a@example.com"), ("plan", "pro")]).hash(),
             record(&[("to", "a@example.com"), ("plan", "free")]).hash()
         );
-        // An added property must change the key too.
         assert_ne!(
             record(&[("to", "a@example.com")]).hash(),
             record(&[("to", "a@example.com"), ("plan", "pro")]).hash()
@@ -500,9 +471,6 @@ mod tests {
 
     #[test]
     fn redaction_covers_every_record_in_the_batch_not_just_one() {
-        // mxr's stderr is arbitrary text: reporting record B's failure can quote
-        // back a body that was rendered for record A. A scrubber that only knew
-        // the record it was reporting on would print A's token.
         let batch = [
             record(&[("to", "a@example.com"), ("url", "https://x/?t=token-aaaa")]),
             record(&[("to", "b@example.com"), ("url", "https://x/?t=token-bbbb")]),
@@ -516,7 +484,6 @@ mod tests {
 
     #[test]
     fn redaction_does_not_leave_the_tail_of_an_overlapping_value() {
-        // Redacting the short value first would leave `-and-the-secret-part`.
         let batch = [record(&[
             ("short", "token-abc"),
             ("long", "token-abc-and-the-secret-part"),

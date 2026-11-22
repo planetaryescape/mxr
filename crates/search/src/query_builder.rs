@@ -92,10 +92,6 @@ impl QueryBuilder {
     pub fn build(&self, node: &QueryNode) -> Box<dyn Query> {
         match node {
             QueryNode::Text(text) => self.build_text_query(text),
-            // No stemmer runs on the text fields (see schema.rs), so a word
-            // already matches whole tokens only and Exact is the same lookup
-            // as Text. A future stemmed field would need an unstemmed mirror
-            // to keep this promise.
             QueryNode::Exact(text) => self.build_text_query(text),
             QueryNode::Phrase(phrase) => self.build_phrase_query(phrase),
             QueryNode::Field { field, value } => self.build_field_query(field, value),
@@ -128,7 +124,6 @@ impl QueryBuilder {
                 let inner_q = self.build(inner);
                 Box::new(BooleanQuery::new(vec![
                     (Occur::MustNot, inner_q),
-                    // BooleanQuery with only MustNot needs an all-docs clause
                     (Occur::Should, Box::new(AllQuery)),
                 ]))
             }
@@ -311,16 +306,10 @@ impl QueryBuilder {
                 let term = Term::from_field_bool(self.is_answered, true);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
-            // Mxr-specific `is:reply-later` filter routes through
-            // FilterKind::Custom now that the parser lives in the
-            // standalone mail-query crate.
             FilterKind::Custom(name) if name == FILTER_REPLY_LATER => {
                 let term = Term::from_field_bool(self.is_reply_later, true);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
-            // Phase E: `is:$forwarded` (or any `is:$foo`) is a custom
-            // keyword filter. The `$` prefix preserves the IMAP atom
-            // form we stored on the wire.
             FilterKind::Custom(name) if name.starts_with('$') => {
                 let term = Term::from_field_text(self.keywords, name);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
@@ -384,8 +373,6 @@ impl QueryBuilder {
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
             FilterKind::HasLinkHeavy => {
-                // link_density == 2 means LinkDensity::Heavy. See
-                // `mxr_core::LinkDensity::as_db_u8` for the encoding.
                 let term = Term::from_field_u64(self.link_density, 2);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
@@ -393,18 +380,8 @@ impl QueryBuilder {
                 let term = Term::from_field_bool(self.has_link, false);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
-            // Owed-reply is computed dynamically against `messages` +
-            // `contacts` + `screener_decisions`, not indexed in Tantivy.
-            // Emit AllQuery so the caller pulls in every candidate; the
-            // daemon search executor intersects against the owed thread
-            // set as a post-filter (see `is_owed_reply` handling in
-            // `crates/daemon/src/handler/diagnostics/search_execute.rs`).
             FilterKind::Custom(name) if name == FILTER_OWED_REPLY => Box::new(AllQuery),
 
-            // Unknown custom filters (a name was registered but no
-            // tantivy mapping exists) degrade to AllQuery so the daemon
-            // can either ignore them or post-filter. Future Gmail
-            // additions land here until the builder learns about them.
             FilterKind::Custom(_) => Box::new(AllQuery),
 
             // Forward-compat: mail-query may add variants in patch
@@ -597,9 +574,6 @@ fn resolve_date(date_val: &DateValue) -> NaiveDate {
         DateValue::ThisMonth => {
             NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today)
         }
-        // mail-query carries `older_than:5d` as `Relative` so the AST is
-        // `now`-pure. Resolve to a concrete date here using the local
-        // calendar.
         DateValue::Relative { amount, unit } => {
             let days = match unit {
                 RelativeUnit::Day => i64::from(*amount),
@@ -659,7 +633,6 @@ pub struct CompiledQuery {
 }
 
 impl CompiledQuery {
-    /// Parse a query string and capture the schema once.
     pub fn parse(query: &str) -> Result<Self, ParseError> {
         Ok(Self {
             schema: MxrSchema::build(),
@@ -667,7 +640,6 @@ impl CompiledQuery {
         })
     }
 
-    /// Produce a fresh Tantivy query for one search call.
     pub fn build(&self) -> Box<dyn Query> {
         QueryBuilder::new(&self.schema).build(&self.ast)
     }
@@ -720,7 +692,7 @@ mod tests {
                 "Deployment plan for v2",
                 "alice@example.com",
                 "Alice",
-                MessageFlags::empty(), // unread
+                MessageFlags::empty(),
                 false,
             ),
             make_test_envelope(
@@ -779,7 +751,6 @@ mod tests {
                 false,
             )
         };
-        // Competing mail from the same sender with only one of the words.
         let only_terms = from_alice("Terms of service update");
         let only_acme = from_alice("ACME newsletter");
         let answer = from_alice("ACME acquisition terms");
@@ -808,7 +779,6 @@ mod tests {
             .collect();
         assert_eq!(ids, vec![answer.id.as_str()]);
 
-        // No words: the filter alone.
         let query = qb.build_all_words_where("?", &from);
         let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
         assert_eq!(results.results.len(), 3);
@@ -860,7 +830,6 @@ mod tests {
         let schema = MxrSchema::build();
         let qb = QueryBuilder::new(&schema);
 
-        // All test envelopes are dated today, so after yesterday should return all
         let yesterday = Local::now().date_naive().pred_opt().unwrap();
         let node = QueryNode::DateRange {
             bound: DateBound::After,

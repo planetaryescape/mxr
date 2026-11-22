@@ -16,17 +16,12 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RecordStatus {
-    /// A local mxr draft exists for this record. Nothing has been sent.
     Drafted,
-    /// Submission identity retained; query before any further effect.
     Uncertain,
     /// Schedule acknowledgement was lost; never automatically reschedule.
     ScheduleUncertain,
-    /// `mxr send --at` accepted this draft for later delivery.
     Scheduled,
-    /// `mxr send` reported success.
     Sent,
-    /// A confirmed rejection or failure before submission; explicit retry required.
     Failed,
 }
 
@@ -40,13 +35,10 @@ pub enum RecordStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureReason {
-    /// `mxr compose` did not create a draft.
     #[serde(rename = "draft_refused")]
     Draft,
-    /// `mxr send` did not send an existing draft.
     #[serde(rename = "send_refused")]
     Send,
-    /// `mxr send --at` did not schedule an existing draft.
     #[serde(rename = "schedule_refused")]
     Schedule,
     Preview,
@@ -90,7 +82,6 @@ pub struct SendReview {
 pub struct RecordEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_workspace: Option<WorkspaceOwner>,
-    /// Hash of the record's properties — the idempotency key.
     pub record_hash: String,
     pub to: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -127,7 +118,6 @@ impl Manifest {
             .find(|entry| entry.record_hash == record_hash)
     }
 
-    /// Insert or update one record's state.
     pub fn upsert(&mut self, entry: RecordEntry) {
         match self
             .records
@@ -146,7 +136,6 @@ impl Manifest {
             .count()
     }
 
-    /// Records with a draft that has not been sent.
     pub fn pending_send(&self) -> Vec<&RecordEntry> {
         self.records
             .iter()
@@ -243,8 +232,6 @@ mod tests {
 
     #[test]
     fn upsert_replaces_rather_than_appends() {
-        // A rerun upserts every record it touches; appending would give one
-        // recipient two entries and let the second one be sent again.
         let mut manifest = Manifest::new("c1".into(), "notto".into());
         manifest.upsert(entry("h1", RecordStatus::Drafted, Some("d1")));
         manifest.upsert(entry("h2", RecordStatus::Drafted, Some("d2")));
@@ -265,7 +252,6 @@ mod tests {
         manifest.upsert(entry("h2", RecordStatus::Scheduled, Some("d2")));
         manifest.upsert(entry("h3", RecordStatus::Sent, Some("d3")));
         manifest.upsert(entry("h4", RecordStatus::Failed, None));
-        // Drafted but with no draft id: there is nothing for mxr to send.
         manifest.upsert(entry("h5", RecordStatus::Drafted, None));
 
         let pending: Vec<&str> = manifest
@@ -323,9 +309,6 @@ mod tests {
 
     #[test]
     fn the_manifest_persists_only_the_hash_address_draft_and_status() {
-        // A property may be an opaque access token, so campaign state carries a
-        // hash instead. Asserted structurally: adding a field that could hold a
-        // property value has to fail here.
         let dir = tempfile::tempdir().unwrap();
         let mut manifest = Manifest::new("c1".into(), "notto".into());
         manifest.upsert(entry("h1", RecordStatus::Drafted, Some("d1")));
@@ -373,14 +356,11 @@ mod tests {
             );
         }
 
-        // The failure reason is one of a closed set, so no amount of subprocess
-        // output can steer a token into it.
         assert_eq!(parsed["records"][1]["error"], "draft_refused");
     }
 
     #[test]
     fn an_unreadable_manifest_is_an_error_not_a_fresh_campaign() {
-        // The distinction that stops a rerun re-drafting the whole campaign.
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(Manifest::path_in(dir.path(), "c1"), "{ truncated").unwrap();
 

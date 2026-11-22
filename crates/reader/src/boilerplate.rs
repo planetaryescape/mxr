@@ -20,7 +20,6 @@ static BOILERPLATE_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     ]
 });
 
-/// Strip legal/confidentiality boilerplate from the end of the message.
 pub fn strip(text: &str) -> String {
     let lines: Vec<&str> = text.lines().collect();
 

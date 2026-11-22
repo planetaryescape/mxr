@@ -13,7 +13,6 @@ use mxr_core::natural_time::{resolve_time, TimePrefs, TimeResolveErrorKind};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// Which number comes first in a numeric date.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DateOrder {
     DayFirst,
@@ -25,9 +24,7 @@ pub struct FoundDate {
     /// End of the named day in the user's zone, or the exact instant for a
     /// lifetime ("expires in 24 hours").
     pub at: DateTime<Utc>,
-    /// The phrase, verbatim: trigger and date.
     pub words: String,
-    /// False for a numeric date that reads two ways.
     pub checked: bool,
 }
 
@@ -62,7 +59,6 @@ static LIFETIME: Lazy<Regex> = Lazy::new(|| {
     .expect("valid lifetime regex")
 });
 
-/// Build a trigger regex: any of `triggers`, then a date expression.
 pub fn trigger_regex(triggers: &str) -> Regex {
     Regex::new(&format!(
         r"(?i)\b(?:{triggers})(?:\s*(?:on|is|date|by|:|-))*\s*(?P<date>{})",
@@ -88,7 +84,6 @@ where
         .find_map(|caps| resolve_due_match(text, &caps, anchor, order))
 }
 
-/// Resolve one match against its original source so preceding tense is retained.
 pub(crate) fn resolve_due_match<Tz>(
     text: &str,
     caps: &regex::Captures<'_>,
@@ -102,7 +97,6 @@ where
     let date = caps.name("date")?;
     let whole = caps.get(0)?;
     let words = whole.as_str().trim();
-    // "was due" puts its tense before the trigger the regex matched.
     let lead_in = crate::text::floor_char_boundary(text, whole.start().saturating_sub(12));
     let intent = if PAST_INTENT.is_match(&text[lead_in..whole.end()]) {
         YearIntent::JustGone
@@ -117,7 +111,6 @@ where
     })
 }
 
-/// Which year a date without one means.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum YearIntent {
     /// A deadline or expiry ahead ("due", "renew by", "expires"): the next
@@ -135,7 +128,6 @@ static PAST_INTENT: Lazy<Regex> = Lazy::new(|| {
 static MONTH_NAME: Lazy<Regex> =
     Lazy::new(|| Regex::new(&format!(r"(?i)\b(?:{MONTHS})\b")).expect("valid month regex"));
 
-/// A stated lifetime ("expires in 24 hours") from `sent`.
 pub fn find_lifetime(text: &str, sent: DateTime<Utc>) -> Option<FoundDate> {
     let caps = LIFETIME.captures(text)?;
     let count = match caps.get(1)?.as_str().to_ascii_lowercase().as_str() {
@@ -189,8 +181,6 @@ where
     if lower == "today" {
         return Some((anchor.date_naive(), true));
     }
-    // "Friday 9 October": the date says it all, and the parser would read
-    // the weekday and the date as two days.
     let mut normalized = lower.clone();
     if let Some(caps) = WEEKDAY_PREFIX.captures(&lower) {
         if let Some(rest) = caps.get(1) {
@@ -207,10 +197,6 @@ where
     let year_guessed = !HAS_YEAR.is_match(&normalized) && MONTH_NAME.is_match(&normalized);
     let resolution = match resolve_time(&normalized, anchor, &TimePrefs::default()) {
         Ok(resolution) => resolution,
-        // The resolver only looks ahead. A date that states its year is that
-        // day even when it has passed ("was due 1 November 2026", or the
-        // email's own day after the resolver's morning hour), as a numeric
-        // date already is; read it from before any year it can name.
         Err(error)
             if error.kind == TimeResolveErrorKind::InPast && HAS_YEAR.is_match(&normalized) =>
         {
@@ -223,8 +209,6 @@ where
         Err(_) => return None,
     };
     let mut day = resolution.at.with_timezone(&anchor.timezone()).date_naive();
-    // The parser takes the next occurrence after the message; a date said
-    // to have passed means the one just gone.
     if year_guessed && intent == YearIntent::JustGone && day > anchor.date_naive() {
         day = day.with_year(day.year() - 1)?;
     }
@@ -307,10 +291,8 @@ mod tests {
                 sent(2026, 11, 4),
                 day(2026, 10, 30),
             ),
-            // The email's own day, read after the resolver's morning hour.
             ("1 December 2026", sent(2026, 12, 1), day(2026, 12, 1)),
             ("1 December 2026", sent(2027, 6, 15), day(2026, 12, 1)),
-            // Ahead of the email it was always read.
             ("1 December 2026", sent(2026, 11, 4), day(2026, 12, 1)),
         ] {
             assert_eq!(
@@ -319,7 +301,6 @@ mod tests {
                 "{text} sent {sent_on}"
             );
         }
-        // A yearless date still means the next one.
         assert_eq!(
             parse_date(
                 "1 November",
@@ -374,7 +355,6 @@ mod tests {
 
     #[test]
     fn a_deadline_without_a_year_rolls_forward_and_is_unchecked() {
-        // Sent 1 December: "expires 3 March" is next March, a guess.
         let found = find_due(
             "Your passport expires 3 March",
             &trigger_regex("expires"),
@@ -399,7 +379,6 @@ mod tests {
 
     #[test]
     fn weekday_resolves_to_the_next_one_after_sending() {
-        // 28 Sep 2026 is a Monday.
         let found = find_due(
             "Reply by Friday",
             &trigger_regex("reply by"),

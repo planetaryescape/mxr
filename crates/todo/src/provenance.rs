@@ -7,17 +7,11 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldSource {
-    /// schema.org markup the sender put in the email.
     Schema,
-    /// The calendar invite (ICS) attached to the email.
     Ics,
-    /// A pattern in the subject or body.
     Rule,
-    /// The fixed lead-time or window table for the kind.
     Table,
-    /// A model, such as the one that found a promise.
     Model,
-    /// You.
     User,
 }
 
@@ -33,7 +27,6 @@ impl FieldSource {
         }
     }
 
-    /// "schema.org markup", for sentences.
     pub fn describe(self) -> &'static str {
         match self {
             Self::Schema => "schema.org markup in the email",
@@ -102,7 +95,6 @@ impl FieldSources {
         serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
     }
 
-    /// Unreadable JSON reads as no provenance rather than failing a list.
     pub fn from_json(value: &str) -> Self {
         serde_json::from_str(value).unwrap_or_default()
     }

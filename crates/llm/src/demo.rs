@@ -67,7 +67,6 @@ enum FeatureKind {
     Briefing,
     DraftAssist,
     DraftNew,
-    /// Writing help on text the user already typed.
     ComposeFinish,
     VoiceMatch,
     HumanizeRewrite,
@@ -123,8 +122,6 @@ fn classify(req: &CompletionRequest) -> FeatureKind {
         matches!(message.role, ChatRole::User) && message.content.contains(TYPED_DRAFT_HEADING)
     });
 
-    // Order matters: more-specific phrases first so e.g. "draft a briefing"
-    // doesn't get caught by the draft branch.
     if system.contains("ghostwriting") && user_has_typed_text {
         FeatureKind::ComposeFinish
     } else if system.contains("reader gist") {
@@ -199,7 +196,6 @@ fn render(kind: FeatureKind, req: &CompletionRequest) -> String {
             .to_string(),
         FeatureKind::ComposeFinish => demo_compose_finish(user),
         FeatureKind::VoiceMatch => {
-            // Echo the user input lightly massaged so voice-match feels real.
             format!(
                 "Voice-matched draft:\n\n{}\n\n(Tone: warm, direct, low-formality — calibrated to your recent outbound register.)",
                 user.chars().take(400).collect::<String>(),

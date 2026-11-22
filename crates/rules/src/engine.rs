@@ -2,12 +2,10 @@ use crate::condition::MessageView;
 use crate::{Rule, RuleAction, RuleId};
 use serde::Serialize;
 
-/// The rule engine: evaluates rules against messages.
 pub struct RuleEngine {
     rules: Vec<Rule>,
 }
 
-/// Result of evaluating all rules against a single message.
 #[derive(Debug, Clone, Serialize)]
 pub struct EvaluationResult {
     pub message_id: String,
@@ -15,7 +13,6 @@ pub struct EvaluationResult {
     pub matched_rules: Vec<RuleId>,
 }
 
-/// Result of a dry-run evaluation.
 #[derive(Debug, Clone, Serialize)]
 pub struct DryRunResult {
     pub rule_id: RuleId,
@@ -33,7 +30,6 @@ pub struct DryRunMatch {
 
 impl RuleEngine {
     pub fn new(mut rules: Vec<Rule>) -> Self {
-        // Sort by priority (lower = first)
         rules.sort_by_key(|rule| rule.priority);
         Self { rules }
     }
@@ -96,7 +92,6 @@ impl RuleEngine {
         }
     }
 
-    /// Evaluate all enabled rules against a batch of messages.
     pub fn evaluate_batch(&self, messages: &[(&dyn MessageView, &str)]) -> Vec<EvaluationResult> {
         messages
             .iter()
@@ -105,11 +100,10 @@ impl RuleEngine {
             .collect()
     }
 
-    /// Dry-run: evaluate a specific rule against messages without applying actions.
     pub fn dry_run(
         &self,
         rule_id: &RuleId,
-        messages: &[(&dyn MessageView, &str, &str, &str)], // (msg, id, from, subject)
+        messages: &[(&dyn MessageView, &str, &str, &str)],
     ) -> Option<DryRunResult> {
         let rule = self.rules.iter().find(|r| &r.id == rule_id)?;
 
@@ -132,8 +126,6 @@ impl RuleEngine {
     }
 }
 
-// Keep the existing conservative sorting policy, including mixed-action rules,
-// identical in live evaluation and explicit previews of disabled rules.
 fn rule_matches(rule: &Rule, msg: &dyn MessageView) -> bool {
     if rule
         .actions
@@ -338,12 +330,10 @@ mod tests {
         high.conditions = Conditions::Field(FieldCondition::HasUnsubscribe);
         high.actions = vec![RuleAction::Archive];
 
-        // Insert in wrong order — engine should sort by priority
         let engine = RuleEngine::new(vec![low, high]);
         let msg = newsletter_msg();
         let result = engine.evaluate(&msg, "msg_1");
 
-        // High priority (Archive) should come first
         assert!(matches!(result.actions[0], RuleAction::Archive));
         assert!(matches!(result.actions[1], RuleAction::MarkRead));
     }
@@ -359,7 +349,6 @@ mod tests {
 
         let results = engine.evaluate_batch(&messages);
 
-        // Only the newsletter should match
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].message_id, "msg_1");
     }

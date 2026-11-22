@@ -254,11 +254,8 @@ fn a_clear_winner_or_a_single_match_is_an_answer() {
             2025,
         ),
     ];
-    // The reference (5) leads the title (2) by more than CLEAR_LEAD.
     assert_eq!(mode_of("402", &records), Mode::Answer);
-    // One match is an answer.
     assert_eq!(mode_of("xps", &records), Mode::Answer);
-    // Nothing matched: the caller falls back, it is not a list.
     assert_eq!(mode_of("boiler", &records), Mode::Answer);
 }
 

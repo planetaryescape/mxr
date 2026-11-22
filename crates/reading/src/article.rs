@@ -22,9 +22,7 @@ pub struct Article {
     pub byline: Option<String>,
     pub site_name: Option<String>,
     pub excerpt: Option<String>,
-    /// Cleaned article HTML, still to be sanitized by the client.
     pub html: String,
-    /// The same text as paragraphs, for the terminal and highlights.
     pub paragraphs: Vec<Paragraph>,
     pub words: u32,
 }
@@ -92,7 +90,6 @@ fn issue_reader_html_in_process(html: &str, issue_words: &u32) -> Option<String>
     (words * 2 >= *issue_words as usize && words > 0).then(|| article.content.to_string())
 }
 
-/// The Readability parses run in the HTML helper process.
 pub(crate) fn jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
     vec![&ARTICLE, &ISSUE_READER_HTML]
 }

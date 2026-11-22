@@ -40,7 +40,6 @@ pub struct SearchServiceHandle {
     startup_hold: Arc<std::sync::Mutex<Option<RebuildGuard>>>,
 }
 
-/// Whether the lexical index can answer a search right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndexAvailability {
     /// It can. `epoch` changes whenever a rebuild starts or ends, so a caller
@@ -67,22 +66,16 @@ pub struct RebuildGuard {
 }
 
 impl RebuildGuard {
-    /// Call once the index holds every message. Ends the rebuild as complete.
     pub fn finish(self) {
         self.incomplete.store(false, Ordering::Release);
     }
 }
 
-// One word holds both the rebuilds in progress (low bits) and an epoch (high
-// bits), so a reader sees both from a single load. The epoch moves only when
-// the count leaves zero or returns to it: overlapping rebuilds share one epoch,
-// so one guard ending while another still runs does not move it.
 const REBUILD_BITS: u32 = 16;
 const REBUILD_MASK: u64 = (1 << REBUILD_BITS) - 1;
 const START_REBUILD: u64 = (1 << REBUILD_BITS) + 1;
 const END_REBUILD: u64 = (1 << REBUILD_BITS) - 1;
 
-/// Adds a rebuild, moving the epoch if none was running.
 fn add_rebuild(word: &AtomicU64) {
     let mut current = word.load(Ordering::Acquire);
     loop {
@@ -98,7 +91,6 @@ fn add_rebuild(word: &AtomicU64) {
     }
 }
 
-/// Removes a rebuild, moving the epoch if it was the last one running.
 fn remove_rebuild(word: &AtomicU64) {
     let mut current = word.load(Ordering::Acquire);
     loop {
@@ -120,18 +112,13 @@ impl Drop for RebuildGuard {
     }
 }
 
-/// What an applied batch is, for the worker's live-update record.
 #[derive(Debug, Clone, Copy)]
 enum BatchKind {
-    /// A live update, numbered when it was created.
     Live { seq: u64 },
-    /// A page a rebuild read at `read_seq`.
     Rebuild { read_seq: u64 },
 }
 
-/// What a whole-result scan matches.
 pub enum ResolveTarget {
-    /// A compiled structured query.
     Ast(Box<dyn Query>),
     /// Free text, parsed the way the search fallback parses it.
     Text {
@@ -193,13 +180,7 @@ impl SearchServiceHandle {
         let worker_rebuilds = Arc::clone(&rebuilds);
         let handle = tokio::spawn(async move {
             let mut index = index;
-            // Newest live sequence applied per message, kept only while a
-            // rebuild runs. Only the worker touches it, so no lock is needed.
             let mut live_record: HashMap<MessageId, u64> = HashMap::new();
-            // The rebuild epoch the record was built under. The record is
-            // cleared when no rebuild is running (the last guard was dropped) and
-            // when the epoch moved, which only happens at idle-to-rebuilding and
-            // back. Overlapping guards never clear it.
             let mut record_epoch: u64 = 0;
             while let Some(command) = rx.recv().await {
                 let state = worker_rebuilds.load(Ordering::Acquire);
@@ -225,8 +206,6 @@ impl SearchServiceHandle {
                                 }
                             }
                             BatchKind::Rebuild { read_seq } => {
-                                // A message a live batch changed after this page
-                                // was read has a newer row than the page holds.
                                 let newer = |id: &MessageId| {
                                     live_record.get(id).is_some_and(|&seq| seq > read_seq)
                                 };
@@ -234,11 +213,6 @@ impl SearchServiceHandle {
                                 batch.removed_message_ids.retain(|id| !newer(id));
                             }
                         }
-                        // Indexing and committing are CPU-bound and, on an
-                        // initial sync, run for minutes. Doing that inline
-                        // parks a tokio worker thread for the whole run, so
-                        // hand it to the blocking pool and take the index
-                        // back afterwards.
                         let handle = tokio::task::spawn_blocking(move || {
                             let mut owned = index;
                             let result = apply_batch(&mut owned, batch);
@@ -250,11 +224,6 @@ impl SearchServiceHandle {
                                 let _ = resp.send(result);
                             }
                             Err(error) => {
-                                // The index went down with the panicking
-                                // task; there is nothing left to serve. Only
-                                // this one caller gets the error back, so log
-                                // it — every later request just sees the
-                                // channel closed.
                                 tracing::error!(
                                     %error,
                                     "search index worker died; search is unavailable until the daemon restarts"
@@ -295,10 +264,6 @@ impl SearchServiceHandle {
                         let _ = resp.send(index.search_ast(query, limit, offset, sort));
                     }
                     SearchCommand::Resolve { target, resp } => {
-                        // A scan of every match can take seconds on a large
-                        // index. Take a searcher here and run it on the
-                        // blocking pool, so this loop keeps serving other
-                        // commands meanwhile.
                         let resolver = index.resolver();
                         let query = match target {
                             ResolveTarget::Ast(query) => Ok(query),
@@ -353,8 +318,6 @@ impl SearchServiceHandle {
     /// [`IndexAvailability::Rebuilding`] in the meantime and can answer from
     /// SQLite instead of from a half-filled index.
     pub fn begin_rebuild(&self) -> RebuildGuard {
-        // Set before the rebuild count, so a reader that sees the count also
-        // sees the index as incomplete.
         self.incomplete.store(true, Ordering::Release);
         add_rebuild(&self.rebuilds);
         RebuildGuard {
@@ -412,7 +375,6 @@ impl SearchServiceHandle {
     }
 
     pub fn availability(&self) -> IndexAvailability {
-        // A stopped worker outranks a rebuild: waiting does not fix it.
         if self.worker_stopped() {
             return IndexAvailability::Stopped;
         }
@@ -661,8 +623,6 @@ fn apply_batch(index: &mut SearchIndex, batch: SearchUpdateBatch) -> Result<(), 
         }
     }
 
-    // A chunk commit may have already flushed everything. Still commit when
-    // the batch only removed documents — those deletes are uncommitted.
     if since_commit > 0 || !indexed_any {
         index.commit()?;
     }
@@ -698,9 +658,6 @@ mod tests {
     async fn a_worker_that_died_with_its_index_is_reported_as_stopped() {
         let (handle, worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
 
-        // Stands in for the index moving into a `spawn_blocking` job that
-        // panicked: the task ends holding the index, and every later request
-        // finds a closed channel.
         worker.abort();
         let _ = worker.await;
 
@@ -719,8 +676,6 @@ mod tests {
 
         guard.finish();
         let after = ready_epoch(&handle).unwrap();
-        // A query that straddled the rebuild must not pass for a clean one,
-        // even though the index looks ready again.
         assert_ne!(epoch, after);
         assert!(!handle.still_ready(epoch));
         assert!(handle.still_ready(after));
@@ -787,7 +742,6 @@ mod tests {
         handle.hold_startup_rebuild();
         assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
 
-        // A rebuild that runs and finishes inside the hold does not end it.
         handle.begin_rebuild().finish();
         assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
 

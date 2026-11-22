@@ -17,7 +17,6 @@ use crate::RecordKind;
 use chrono::{DateTime, Datelike, Utc};
 use mxr_store::ArchiveRecord;
 
-/// What the query asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Asked {
     Reference,
@@ -45,7 +44,6 @@ const STOPWORDS: &[&str] = &[
     "and", "or", "that", "this", "which", "where", "our", "your",
 ];
 
-/// Words that name the field asked for, longest phrases first.
 const ASKED_WORDS: &[(&str, Asked)] = &[
     ("booking ref", Asked::Reference),
     ("booking reference", Asked::Reference),
@@ -71,7 +69,6 @@ const ASKED_WORDS: &[(&str, Asked)] = &[
     ("copy", Asked::Document),
 ];
 
-/// Words that name kinds of record.
 fn kind_words(word: &str) -> Option<&'static [RecordKind]> {
     use RecordKind as K;
     Some(match word {
@@ -103,7 +100,6 @@ pub fn parse(text: &str) -> Query {
             if asked == Asked::Any {
                 asked = *field;
             }
-            // "booking ref" asks for a reference and names a kind.
             for word in phrase.split_whitespace() {
                 for kind in kind_words(word).unwrap_or_default() {
                     if !kinds.contains(kind) {
@@ -152,15 +148,12 @@ pub fn parse(text: &str) -> Query {
     }
 }
 
-/// A record and the words around it that a query may match.
 #[derive(Debug, Clone, Copy)]
 pub struct Candidate<'a> {
     pub record: &'a ArchiveRecord,
-    /// The trip or series it belongs to.
     pub group_title: Option<&'a str>,
 }
 
-/// When a record starts and its ledger date.
 type TieBreak = (Option<DateTime<Utc>>, Option<DateTime<Utc>>);
 
 #[derive(Debug, Clone, PartialEq)]
@@ -190,7 +183,6 @@ fn matches(term: &str, haystack: &[String]) -> bool {
 /// term's best field (reference 5, issuer 3, place 2.5, group 2, title 2),
 /// plus 1.5 for a named kind, which also filters.
 pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
-    // Each match with (when it starts, its ledger date) for tie-breaks.
     let mut ranked: Vec<(Ranked, TieBreak)> = Vec::new();
     for (index, candidate) in candidates.iter().enumerate() {
         let record = candidate.record;
@@ -211,8 +203,6 @@ pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
         }
         let kind = RecordKind::parse(&record.kind);
         let kind_hit = kind.is_some_and(|kind| query.kinds.contains(&kind));
-        // A named kind is a filter: "octopus bill" is never Octopus Travel's
-        // hotel.
         if !query.kinds.is_empty() && !kind_hit {
             continue;
         }
@@ -260,8 +250,6 @@ pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
         }
         ranked.push((Ranked { index, score }, (record.span_start, date)));
     }
-    // Ties go to what starts first (a trip's flight before its hotel: what
-    // the desk asks for first), then to the newest record.
     ranked.sort_by(|a, b| {
         let (a_id, b_id) = (
             &candidates[a.0.index].record.id,
@@ -277,19 +265,14 @@ pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
                 (None, None) => std::cmp::Ordering::Equal,
             })
             .then_with(|| b.1 .1.cmp(&a.1 .1))
-            // Last, the id: the same answer whatever order the store
-            // returned the records in.
             .then_with(|| b_id.cmp(a_id))
     });
     ranked.into_iter().map(|(ranked, _)| ranked).collect()
 }
 
-/// How the answer box shows what matched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// One record on an answer card.
     Answer,
-    /// Every match, as the ledger lists them.
     List,
 }
 
@@ -311,7 +294,6 @@ pub fn mode(query: &Query, ranked: &[Ranked]) -> Mode {
     }
 }
 
-/// Which field the answer card leads with.
 pub fn answer_field(asked: Asked, record: &ArchiveRecord) -> AnswerField {
     match asked {
         Asked::Reference if record.reference.is_some() => AnswerField::Reference,

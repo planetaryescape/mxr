@@ -8,18 +8,14 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-/// The kinds of update that carry a window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowKind {
     /// A one-time code: its stated lifetime, else 10 minutes (NIST SP
     /// 800-63B's maximum).
     Code,
-    /// A verify or confirm link: its stated expiry, else 3 days.
     VerifyLink,
-    /// A sign-in or security alert: 2 days.
     SignIn,
-    /// A sale or offer: its stated end, else 7 days.
     Offer,
 }
 
@@ -43,7 +39,6 @@ impl WindowKind {
         })
     }
 
-    /// "one-time code", for the expired list.
     pub const fn label(self) -> &'static str {
         match self {
             Self::Code => "one-time code",
@@ -63,7 +58,6 @@ impl WindowKind {
     }
 }
 
-/// When an update stops mattering.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Window {
     pub kind: WindowKind,
@@ -228,7 +222,6 @@ mod tests {
     use chrono::FixedOffset;
 
     fn at() -> DateTime<Utc> {
-        // Wednesday 7 October 2026, 10:00 UTC.
         Utc.with_ymd_and_hms(2026, 10, 7, 10, 0, 0).unwrap()
     }
 
@@ -251,13 +244,11 @@ mod tests {
         .unwrap();
         assert_eq!(stated.until, at() + Duration::minutes(15));
         assert_eq!(stated.source, "rule");
-        // A sign-in code is a code, not a sign-in alert.
         assert_eq!(kind_of("Your sign-in code", ""), Some(WindowKind::Code));
     }
 
     #[test]
     fn a_sign_in_alert_mentioning_a_code_keeps_its_two_days() {
-        // The alert names a security code in its body: still a sign-in.
         let alert = window(
             "New sign-in to your account",
             "If this wasn't you, your security code is below. It expires in 10 minutes.",
@@ -267,7 +258,6 @@ mod tests {
         .unwrap();
         assert_eq!(alert.kind, WindowKind::SignIn);
         assert_eq!(alert.until, at() + Duration::days(2));
-        // A code only in the body is not a code: the subject must say so.
         assert_eq!(
             kind_of("Your account", "Your verification code is 1234"),
             None

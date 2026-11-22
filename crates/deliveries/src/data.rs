@@ -38,7 +38,6 @@ pub const CARRIER_DOMAINS: &[&str] = &[
     "shipment-tracking.amazon.com",
 ];
 
-/// E-commerce / marketplace sender domains (medium signal).
 pub const ECOMMERCE_DOMAINS: &[&str] = &[
     "amazon.com",
     "amazon.co.uk",
@@ -60,7 +59,6 @@ pub const ECOMMERCE_DOMAINS: &[&str] = &[
     "shopifyemail.com",
 ];
 
-/// Map a sender domain to a normalized carrier code, if it is a known carrier.
 pub fn carrier_from_domain(domain: &str) -> Option<&'static str> {
     let d = domain.trim_start_matches("www.");
     let table: &[(&str, &str)] = &[
@@ -212,7 +210,6 @@ pub const STAGE_KEYWORDS: &[(DeliveryStatus, &[&str])] = &[
     ),
 ];
 
-/// Promotional / marketing vocabulary — strong negative.
 pub const PROMO_KEYWORDS: &[&str] = &[
     "% off",
     " sale",
@@ -233,7 +230,6 @@ pub const PROMO_KEYWORDS: &[&str] = &[
     "gift guide",
 ];
 
-/// Non-physical receipts / subscriptions — negative (no parcel).
 pub const SUBSCRIPTION_KEYWORDS: &[&str] = &[
     "subscription",
     "renewed",

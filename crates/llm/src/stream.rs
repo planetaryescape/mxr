@@ -12,7 +12,6 @@ use crate::tool_chat::{TokenUsage, ToolCall, ToolChatResponse};
 use crate::LlmError;
 use serde_json::{json, Value};
 
-/// Called with the whole reply text so far, each time it grows.
 pub type TextSink<'a> = crate::TextCallback<'a>;
 
 /// Server-sent events split out of arbitrary byte chunks.
@@ -25,7 +24,6 @@ impl SseBuffer {
     /// Feed bytes; return each complete event's data (multi-line data
     /// joined with newlines).
     fn push(&mut self, chunk: &str) -> Vec<String> {
-        // Normalised over the whole buffer: a CRLF can straddle two chunks.
         self.pending.push_str(chunk);
         if self.pending.contains('\r') {
             self.pending = self.pending.replace("\r\n", "\n");
@@ -52,7 +50,6 @@ pub(crate) async fn read_events(
     mut fold: impl FnMut(&str) -> Result<(), AttemptError>,
 ) -> Result<(), AttemptError> {
     let mut buffer = SseBuffer::default();
-    // Bytes of a UTF-8 character split across chunks wait for the rest.
     let mut carry: Vec<u8> = Vec::new();
     loop {
         let chunk = response.chunk().await.map_err(|error| {
@@ -80,7 +77,6 @@ pub(crate) async fn read_events(
             fold(&data)?;
         }
     }
-    // A last event without its blank line still counts.
     for data in buffer.push("\n\n") {
         fold(&data)?;
     }
@@ -96,8 +92,6 @@ fn unreadable(detail: String) -> AttemptError {
         },
     )
 }
-
-// --- OpenAI chat-completions ---------------------------------------------
 
 #[derive(Default)]
 pub(crate) struct OpenAiStream {
@@ -169,7 +163,6 @@ impl OpenAiStream {
         Ok(())
     }
 
-    /// The streamed thinking so far, for the trace.
     #[cfg(feature = "langfuse")]
     pub(crate) fn thinking(&self) -> Option<String> {
         (!self.reasoning.trim().is_empty()).then(|| self.reasoning.clone())
@@ -182,7 +175,6 @@ impl OpenAiStream {
             .enumerate()
             .filter(|(_, (_, name, _))| !name.is_empty())
             .map(|(index, (id, name, arguments))| ToolCall {
-                // Some servers leave the id out of streamed calls.
                 id: if id.is_empty() {
                     format!("call_{index}")
                 } else {
@@ -210,13 +202,10 @@ impl OpenAiStream {
     }
 }
 
-// --- Anthropic Messages --------------------------------------------------
-
 #[derive(Default)]
 pub(crate) struct AnthropicStream {
     model: String,
     blocks: Vec<Value>,
-    /// Tool inputs arrive as JSON text in pieces.
     partial_inputs: Vec<String>,
     stop_reason: Option<String>,
     usage: TokenUsage,
@@ -339,7 +328,6 @@ impl AnthropicStream {
             .collect()
     }
 
-    /// The reply in the shape the Messages API returns it unstreamed.
     pub(crate) fn finish(self) -> Value {
         json!({
             "model": self.model,

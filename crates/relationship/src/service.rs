@@ -55,8 +55,6 @@ impl RelationshipServiceHandle {
                 while let Some((account_id, email)) = pending.pop_front() {
                     pending_keys.remove(&(account_id.as_str(), email.clone()));
                     sleep(Duration::from_millis(250)).await;
-                    // Reserve background-DB headroom for the whole
-                    // per-contact unit (style + summary).
                     let _bg_permit = background_db.acquire().await;
                     if let Err(error) = rebuild_contact_style(&store, &account_id, &email).await {
                         tracing::warn!(%account_id, %email, %error, "relationship profile refresh failed");

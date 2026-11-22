@@ -18,8 +18,6 @@ use crate::{Client, KeyAction, Keymap, TuiBinding};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The places both clients have, with the web scopes live in each,
-/// innermost first.
 const SHARED_PLACES: [(&str, &[&str]); 11] = [
     ("list", &["list", "global"]),
     ("reader", &["reader", "global"]),
@@ -31,7 +29,6 @@ const SHARED_PLACES: [(&str, &[&str]); 11] = [
     ("updates", &["updates", "global"]),
     ("reading", &["reading", "global"]),
     ("focus", &["focus", "global"]),
-    // The TUI's screener is a modal that takes every key.
     ("screener", &["screener"]),
 ];
 
@@ -88,8 +85,6 @@ pub fn tui_cannot_deliver(key: &str) -> bool {
     })
 }
 
-/// The web's `Mod` is Cmd or Ctrl; a terminal has no Cmd, so the TUI's is
-/// Ctrl.
 fn tui_spelling(web_key: &str) -> String {
     web_key.replace("Mod+", "Ctrl+")
 }
@@ -116,7 +111,6 @@ struct TuiKey<'a> {
 }
 
 impl Keymap {
-    /// What the web binds in `place`, keyed by the TUI's spelling.
     fn web_keys_in(&self, scopes: &[&str]) -> BTreeMap<String, WebKey<'_>> {
         let mut keys = BTreeMap::new();
         for scope in scopes.iter().rev() {
@@ -157,8 +151,6 @@ impl Keymap {
             .map_or(&[], |(_, scopes)| scopes)
     }
 
-    /// True when the TUI waits after `key` in `place` only so a retired
-    /// sequence starting with it can say where it went.
     fn held_for_a_move(&self, place: &str, key: &str) -> bool {
         let start = format!("{key} ");
         self.actions
@@ -168,7 +160,6 @@ impl Keymap {
             .any(|moved| moved.key.starts_with(&start) && moved.contexts.iter().any(|c| c == place))
     }
 
-    /// The pass-through that lets `id`'s TUI `key` work in `place`.
     fn passes_through(&self, place: &str, key: &str, id: &str) -> Option<usize> {
         self.tui_pass_through.iter().position(|pass| {
             pass.from.iter().any(|from| from == place)
@@ -183,8 +174,6 @@ impl Keymap {
         })
     }
 
-    /// Every place where the web app and the TUI differ and the definition
-    /// doesn't say why, as sentences.
     pub fn client_differences(&self) -> Vec<String> {
         let mut problems = Vec::new();
         let mut used_passes = BTreeSet::new();
@@ -200,8 +189,6 @@ impl Keymap {
                 let (w, t) = (web.get(key), tui.get(key));
                 let explained = match (w, t) {
                     (Some(w), Some(t)) if w.action.id == t.action.id => true,
-                    // The TUI specialises a key the web only inherits from
-                    // everywhere, for a feature only the TUI has here.
                     (Some(w), Some(t)) => {
                         !w.action.web_scopes().contains(&place) && !t.action.is_for(Client::Web)
                     }

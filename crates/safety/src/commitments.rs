@@ -147,9 +147,6 @@ mod tests {
 
     #[test]
     fn dedup_does_not_double_count_same_phrase() {
-        // The follow-up phrase regex is a subset of the first-person
-        // promise regex; impl should not emit two candidates for the
-        // same span.
         let body = "I'll follow up tomorrow.";
         let issues = detect_candidates(&draft_with(body));
         assert_eq!(

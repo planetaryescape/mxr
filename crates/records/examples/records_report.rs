@@ -100,7 +100,6 @@ async fn main() -> anyhow::Result<()> {
     let mut seen = std::collections::HashSet::new();
     let (mut checked, mut unchecked) = (0, 0);
     for (record_id, field) in &fields {
-        // Winners only: the store orders candidates best first.
         if !seen.insert((record_id.as_str(), field.field.as_str())) {
             continue;
         }

@@ -22,15 +22,12 @@ pub fn email_domain(email: &str) -> Option<String> {
     registrable_domain(email.trim().rsplit_once('@')?.1.trim_end_matches('>'))
 }
 
-/// The stream a message belongs to.
 pub fn source_key(from_email: &str, list_id: Option<&str>, subject: &str) -> String {
     let domain = email_domain(from_email).unwrap_or_else(|| from_email.trim().to_ascii_lowercase());
     if let Some(repo) = REPO_TAG.captures(subject).and_then(|c| c.get(1)) {
         return format!("{domain}/{}", repo.as_str().to_ascii_lowercase());
     }
     match list_id.map(list_label).filter(|label| !label.is_empty()) {
-        // A list on the sender's own domain names a stream of that sender
-        // ("alerts.stripe.com"); a list elsewhere is part of its key.
         Some(label) if label != domain && !label.ends_with(&format!(".{domain}")) => {
             format!("{domain}#{label}")
         }
@@ -67,7 +64,6 @@ pub fn source_name(from_name: Option<&str>, from_email: &str, key: &str) -> Stri
     }
 }
 
-/// "GitHub" from "GitHub Notifications", "Strava" from "Strava Alerts".
 fn strip_notification_suffix(name: &str) -> String {
     const SUFFIXES: &[&str] = &[
         " notifications",

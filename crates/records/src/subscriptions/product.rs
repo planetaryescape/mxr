@@ -8,7 +8,6 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// Words that say what kind of email it is, not what was bought.
 const NOT_PRODUCT: &[&str] = &[
     "a",
     "an",

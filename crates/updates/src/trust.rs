@@ -9,25 +9,21 @@
 use crate::NeedsYou;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 
-/// Earlier inbound messages a host needs before it is "a source you know".
 pub const MIN_HISTORY_MESSAGES: u32 = 3;
 /// How long before the alert the host's oldest earlier message must be.
 pub const MIN_HISTORY_DAYS: i64 = 30;
 /// An alert older than this (by the receiver's authenticated handling time) never creates.
 pub const FRESH_HOURS: i64 = 24;
 
-/// What the store holds about the host's earlier mail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct History {
     pub messages: u32,
     pub oldest: Option<DateTime<Utc>>,
 }
 
-/// Everything the decision reads.
 #[derive(Debug, Clone)]
 pub struct AlertInput<'a> {
     pub kind: NeedsYou,
-    /// `[updates] auto_todo_alerts`.
     pub enabled: bool,
     /// The provider vouched for this host (a DMARC pass for the From host).
     pub verified_host: Option<&'a str>,
@@ -39,21 +35,16 @@ pub struct AlertInput<'a> {
     pub in_inbox: bool,
     pub is_live: bool,
     pub unread: bool,
-    /// Sent through a mailing list: the list's host carries someone else's words.
     pub list_mail: bool,
-    /// When a sign-in alert stops mattering.
     pub window_until: Option<DateTime<Utc>>,
     pub history: History,
-    /// Hosts this account has real history with, and how much.
     pub established: &'a [(String, u32)],
 }
 
-/// The claim a created to-do holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Claim {
     pub host: String,
     pub kind: NeedsYou,
-    /// `alert|host|kind|YYYY-MM-DD`, the day being the user's local day.
     pub key: String,
 }
 
@@ -63,9 +54,7 @@ pub enum Held {
     SwitchedOff,
     /// The provider did not vouch for the sender; carries the reason code.
     SenderNotVerified(String),
-    /// A parcel is read from several emails, none of them tied to it.
     ParcelNotTied,
-    /// Opened, archived or not in the inbox: the user has dealt with it.
     Seen,
     TooOld,
     Backfill,
@@ -81,7 +70,6 @@ pub enum Decision {
 }
 
 impl Held {
-    /// Stable code for JSON.
     pub fn code(&self) -> String {
         match self {
             Self::SwitchedOff => "switched_off".into(),
@@ -342,7 +330,6 @@ mod tests {
             oldest: None,
         };
         assert_eq!(held(&input), Held::ThinHistory);
-        // Two earlier messages are not three; three recent ones are not 30 days.
         input.history = History {
             messages: 2,
             oldest: Some(at("2026-01-02T00:00:00Z")),
@@ -396,9 +383,7 @@ mod tests {
                 Decision::Hold(held) => std::panic::resume_unwind(Box::new(held.code())),
             }
         };
-        // 23:50Z and 00:10Z are 01:50 and 02:10 on 7 November in UTC+2.
         assert_eq!(key("2026-11-06T23:50:00Z"), key("2026-11-07T00:10:00Z"));
-        // The next local day is a new claim.
         assert_ne!(key("2026-11-07T00:10:00Z"), key("2026-11-07T22:30:00Z"));
     }
 
@@ -418,15 +403,12 @@ mod tests {
             "rnail.stripe.com",
         ] {
             let found = lookalike_of(fake, 4, &established);
-            // Subdomain tricks keep their registrable domain: only the
-            // domain itself is compared.
             let expect = !matches!(fake, "rnail.stripe.com");
             assert_eq!(found.is_some(), expect, "{fake}: {found:?}");
         }
         assert_eq!(lookalike_of("github.com", 4, &established), None);
         assert!(lookalike_of("accounts.xn--ggle-55da.com", 4, &established).is_some());
         assert!(lookalike_of("gооgle.com", 4, &established).is_some());
-        // A host with more history than the imitated one is not held for it.
         assert_eq!(lookalike_of("stripe.co", 31, &established), None);
     }
 

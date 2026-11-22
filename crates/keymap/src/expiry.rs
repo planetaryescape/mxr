@@ -11,7 +11,6 @@
 
 use crate::{Client, KeyAction, Keymap, MovedKey};
 
-/// This build's version, the one [`crate::defaults`] expires moves at.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 impl Keymap {
@@ -52,7 +51,6 @@ impl Keymap {
     }
 }
 
-/// True while a build at `version` still announces `moved`.
 fn is_live(moved: &MovedKey, version: &str) -> bool {
     older_than(version, &moved.until)
 }
@@ -83,8 +81,6 @@ pub fn prune_expired_moves(text: &str, version: &str) -> Result<String, toml_edi
             emptied.push(false);
             continue;
         };
-        // An entry without a readable `until` doesn't parse as a keymap at
-        // all, so it stays for the definition check to report.
         moved.retain(|entry| {
             entry
                 .get("until")
@@ -102,7 +98,6 @@ pub fn prune_expired_moves(text: &str, version: &str) -> Result<String, toml_edi
     Ok(doc.to_string())
 }
 
-/// [`is_empty_tui_action`] for an `[[action]]` table.
 fn is_empty_tui_table(action: &toml_edit::Table) -> bool {
     let tui_only = action
         .get("clients")
@@ -117,7 +112,6 @@ fn is_empty_tui_table(action: &toml_edit::Table) -> bool {
     tui_only && !bindings
 }
 
-/// True when version `a` comes before `b` (`0.6.149` < `0.6.152`).
 pub(crate) fn older_than(a: &str, b: &str) -> bool {
     let parts = |v: &str| -> Vec<u64> { v.split('.').map(|p| p.parse().unwrap_or(0)).collect() };
     parts(a) < parts(b)

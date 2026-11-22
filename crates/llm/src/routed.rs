@@ -52,13 +52,11 @@ pub(crate) fn with_thinking_headroom(max_tokens: Option<u32>) -> u32 {
 const BACKGROUND_BUDGET_SHARE: f64 = 0.9;
 
 pub struct RoutedProviderConfig {
-    /// The hosted model as configured, e.g. `claude-haiku-5-5`.
     pub model: String,
     /// In the order they are tried. See [`crate::routes_for_model`]. May be
     /// empty when `endpoint` is set: the endpoint alone, with route health
     /// (a feature whose data must stay off the cloud).
     pub routes: Vec<Route>,
-    /// The hosted model's context window.
     pub context_window: u32,
     /// The user's own endpoint, tried before `routes`, with its own key and
     /// context window. `None` for a hosted model on its own.
@@ -123,7 +121,6 @@ impl RoutedProvider {
                 .map(|route| {
                     OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
                         base_url: base_url.to_string(),
-                        // The key is read per request and passed in.
                         api_key: None,
                         model: route.model.clone(),
                         context_window: config.context_window,
@@ -158,7 +155,6 @@ impl RoutedProvider {
         &self.routes
     }
 
-    /// The user's endpoint tried before the hosted routes, if any.
     pub fn endpoint(&self) -> Option<&EndpointRoute> {
         match &self.endpoint.as_ref()?.key {
             RouteKey::Endpoint(endpoint) => Some(endpoint),
@@ -181,7 +177,6 @@ impl RoutedProvider {
         }
     }
 
-    /// One call on one route, recording what it says about the route.
     async fn attempt<T, Fut>(
         &self,
         target: &Target<'_>,
@@ -195,16 +190,11 @@ impl RoutedProvider {
         match call.await {
             Ok(mut response) => {
                 ticket.succeeded();
-                // The user's endpoint keeps the label it always had; a
-                // hosted answer names who served it.
                 match target {
                     Target::Hosted(route, _) => {
                         let model = model_of(&mut response);
                         *model = answered_by(route.provider, model, &route.model);
                     }
-                    // The label says which side answered, so an endpoint
-                    // reporting a name that reads as a hosted answer gets its
-                    // configured name instead.
                     Target::Endpoint(endpoint) => {
                         let model = model_of(&mut response);
                         if hosted_answer(model) {
@@ -218,7 +208,6 @@ impl RoutedProvider {
                 error,
                 class: ErrorClass::Request,
             }) => {
-                // The provider answered; this request was the problem.
                 ticket.succeeded();
                 Attempt::Done(Err(error))
             }
@@ -302,8 +291,6 @@ impl RoutedProvider {
         req: CompletionRequest,
         kind: CallKind,
     ) -> Result<CompletionResponse, LlmError> {
-        // The user's endpoint gets the request as the caller wrote it, as
-        // it did before a fallback stood behind it.
         let endpoint_req = self.endpoint.is_some().then(|| req.clone());
         let req = self.prepare(req);
         let endpoint_req = endpoint_req.as_ref().unwrap_or(&req);
@@ -403,8 +390,6 @@ impl RoutedProvider {
         if targets.is_empty() {
             return Err(LlmError::Other(no_key_message(&self.routes)));
         }
-        // This target's share of what is left of the background budget, so
-        // every route still worth trying gets a turn.
         let share = |index: usize| {
             background_budget.map(|total| {
                 let remaining = total.saturating_sub(started.elapsed());
@@ -453,8 +438,6 @@ impl RoutedProvider {
         }
 
         if failed.is_empty() {
-            // Every route is out. Background work waits for the soonest one
-            // to come back instead of spending a request on a known failure.
             let soonest = skipped
                 .iter()
                 .enumerate()
@@ -468,7 +451,6 @@ impl RoutedProvider {
                     retry_after_secs: view.retry_in.as_secs().max(1),
                 });
             }
-            // A person is waiting: try the soonest-recovering route once.
             let (target, _) = skipped.remove(index);
             let ticket = self.health.force(target.key());
             return match self
@@ -484,7 +466,6 @@ impl RoutedProvider {
         }
 
         if failed.len() + skipped.len() == 1 {
-            // One route in play: its own error says it best.
             if let Some(error) = last_error {
                 return Err(error);
             }
@@ -517,10 +498,6 @@ impl RoutedProvider {
     ) -> ProbeOutcome {
         let timeout = share.map_or(PROBE_TIMEOUT, |share| share.min(PROBE_TIMEOUT));
         match endpoint.client.probe_attempt(timeout).await {
-            // The listing answers, which says the server is up, not that
-            // completions work. The real request keeps the probe's ticket, so
-            // its outcome decides: a completion that still fails doubles the
-            // wait instead of starting it over at a minute.
             Ok(()) => ProbeOutcome::Up(ticket),
             Err(AttemptError {
                 error,
@@ -529,7 +506,6 @@ impl RoutedProvider {
                 ticket.failed(failure);
                 ProbeOutcome::Down { error, failure }
             }
-            // The check itself couldn't run; the real request is the check.
             Err(AttemptError {
                 class: ErrorClass::Request,
                 ..
@@ -537,7 +513,6 @@ impl RoutedProvider {
         }
     }
 
-    /// Whether a request would be sent to `target` now.
     fn is_available(&self, target: &Target<'_>) -> bool {
         matches!(
             self.health.view(target.key()).state,
@@ -546,14 +521,12 @@ impl RoutedProvider {
     }
 }
 
-/// The user's endpoint as one of the routes.
 struct EndpointLeg {
     key: RouteKey,
     context_window: u32,
     client: OpenAiCompatibleProvider,
 }
 
-/// One place this request may go.
 #[derive(Clone)]
 enum Target<'a> {
     Endpoint(&'a EndpointLeg),
@@ -578,7 +551,6 @@ impl Target<'_> {
 }
 
 enum ProbeOutcome {
-    /// It answers: send the request with this ticket.
     Up(Ticket),
     Down {
         error: LlmError,
@@ -626,8 +598,6 @@ impl LlmProvider for RoutedProvider {
     }
 
     fn capabilities(&self) -> LlmCapabilities {
-        // Prompts are built once, before a route is chosen, so they must fit
-        // the smallest window in the chain.
         let hosted = (!self.routes.is_empty()).then_some(self.context_window);
         let endpoint = self
             .endpoint
@@ -681,7 +651,6 @@ impl LlmProvider for RoutedProvider {
         } else {
             max_tokens
         };
-        // A `gpt-*` endpoint of the user's own adds the room itself.
         let endpoint = self.endpoint.as_ref().map_or(max_tokens, |endpoint| {
             endpoint.client.answer_tokens(max_tokens)
         });
@@ -708,7 +677,6 @@ impl LlmProvider for RoutedProvider {
         if targets.iter().any(|target| self.is_available(target)) {
             return None;
         }
-        // A route being probed by another request shows zero; wait a moment.
         targets
             .iter()
             .map(|target| {
@@ -812,13 +780,11 @@ fn format_wait(wait: Duration) -> String {
     }
 }
 
-/// One route's standing, for `mxr llm status`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteStatus {
     pub route: Route,
     pub key_present: bool,
     pub view: RouteView,
-    /// The route a request would go to right now.
     pub next: bool,
 }
 
@@ -832,12 +798,10 @@ pub fn route_statuses(
     statuses_after(routes, keys, health, false)
 }
 
-/// The user's endpoint's standing, for `mxr llm status`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndpointStatus {
     pub route: EndpointRoute,
     pub view: RouteView,
-    /// A request would go here now.
     pub next: bool,
 }
 

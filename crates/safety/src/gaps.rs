@@ -14,10 +14,6 @@ use serde::{Deserialize, Serialize};
 const OPEN: &str = "[[?:";
 
 pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
-    // What is sent, not what was typed: the recipient reads the HTML part, and
-    // `&#91;&#91;?: …]]`, a marker split by tags or one broken across lines by
-    // a renderer is a gap although no serialized part holds the literal
-    // `[[?:`. Quoted text and the signature count too, since they are sent.
     let rendered_markdown = match &draft.content {
         DraftContent::Markdown { source } => {
             Some(mxr_outbound::render::render_markdown(source).html)
@@ -29,10 +25,6 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
         (_, Some(rendered)) => rendered.as_str(),
         (DraftContent::Markdown { .. }, None) => "",
     };
-    // Over the parser budget, or when the HTML helper could not read it (it
-    // timed out, died or would not start), the HTML cannot be read, so the gap
-    // check cannot run. That is a blocker with no override: a gap hidden in
-    // such HTML must not be sent.
     let views = match html_views(html) {
         Ok(views) => views,
         Err(reason) => {
@@ -93,7 +85,6 @@ fn squash(text: &str) -> String {
     text.chars().filter(|c| !c.is_whitespace()).collect()
 }
 
-/// What a parse of the draft's HTML shows.
 #[derive(Serialize, Deserialize)]
 struct HtmlViews {
     /// The text of the document as a reader sees it: entities decoded and tags
@@ -127,7 +118,6 @@ fn unchecked_message(reason: FallbackReason) -> &'static str {
     }
 }
 
-/// One parse for both views, run in the HTML helper process.
 static HTML_VIEWS: Job<(), Option<HtmlViews>> = Job::new("safety.html_views", |html, ()| {
     if !mxr_reader::within_budget(html) {
         return None;
@@ -145,7 +135,6 @@ static HTML_VIEWS: Job<(), Option<HtmlViews>> = Job::new("safety.html_views", |h
     })
 });
 
-/// Every parse this crate runs in the HTML helper process.
 pub fn html_jobs() -> Vec<&'static dyn AnyJob> {
     vec![&HTML_VIEWS]
 }
@@ -222,7 +211,6 @@ mod tests {
     #[test]
     fn a_draft_with_no_gap_is_clear() {
         assert!(check(&markdown("See you Thursday at 3pm.")).is_empty());
-        // Brackets and a question mark are not a gap.
         assert!(check(&markdown("Are we set [[ok]]? [?: no]")).is_empty());
     }
 
@@ -259,7 +247,6 @@ mod tests {
 
     #[test]
     fn a_gap_written_with_entities_or_split_by_tags_is_still_a_gap() {
-        // The text alternative is clean; the recipient's HTML view is not.
         for html in [
             "<p>&#91;&#91;?: the date]]</p>",
             "<p>&lbrack;&lbrack;?: the date]]</p>",
@@ -283,8 +270,6 @@ mod tests {
 
     #[test]
     fn a_marker_the_renderer_wraps_across_lines_still_counts() {
-        // 79 characters, then the marker: the reader's 80-column wrap would put
-        // `[` on one line and `[?:` on the next.
         let html = format!("<p>{}&#91;&#91;?: the date]]</p>", "A".repeat(79));
         let content = DraftContent::html(html, Some("Clean text.".into()));
         assert_eq!(only_message(&draft("s", content)), "1 gap left: the date");
@@ -316,7 +301,6 @@ mod tests {
         );
         let split = DraftContent::html("<p>[<b></b>[?: the date]]</p>", Some("Clean.".into()));
         assert_eq!(only_message(&draft("s", split)), "1 gap left: the date");
-        // One named and one only the whitespace-blind scan can read.
         assert_eq!(
             only_message(&markdown("[[?: the price]] and [[  ?: the date]]")),
             "2 gaps left: the price, an unnamed gap"
@@ -336,7 +320,6 @@ mod tests {
                 "{html}"
             );
         }
-        // Markdown renders an image's description into its `alt`.
         assert_eq!(
             only_message(&markdown(
                 "![&#91;&#91;?: the date&#93;&#93;](https://example.com/x.png)"
@@ -398,7 +381,6 @@ mod tests {
             mxr_core::types::DraftSafetySeverity::Blocker
         );
         assert!(issues[0].override_token.is_none());
-        // The HTML may be fine; the helper never saw it, so the fix is a retry.
         assert!(
             issues[0].message.contains("try again in a few seconds"),
             "{issues:?}"

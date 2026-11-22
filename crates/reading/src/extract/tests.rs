@@ -49,7 +49,6 @@ fn a_substack_essay_is_one_item_and_its_inline_links_are_not_a_digest() {
         standfirst.starts_with("Every sync engine I have built"),
         "{standfirst}"
     );
-    // The hidden preheader, the Like/Comment buttons and the footer are gone.
     let body = body_text(&got);
     assert!(!body.contains("fix is older than you think"));
     assert!(!body.contains("Restack"));
@@ -84,8 +83,6 @@ fn a_substack_link_roundup_is_a_digest_of_tracked_links() {
         first.blurb.as_deref(),
         Some("Why three new mail clients all keep your mailbox on your own disk, and what that buys you offline.")
     );
-    // The greeting goes; the rest of the first paragraph is the standfirst
-    // only when it is long enough.
     assert!(got
         .standfirst
         .as_deref()
@@ -116,7 +113,6 @@ fn a_mailchimp_table_layout_digest_keeps_its_headings_and_blurbs() {
         got.links[0].blurb.as_deref(),
         Some("The JSON functions got faster again, and there is a new pragma for reading the WAL from a second process.")
     );
-    // A Google redirect names its target: unwrapped, tracking stripped.
     let wal = &got.links[3];
     assert_eq!(wal.url, "https://blog.example.org/wal-checkpoints");
     assert_eq!(wal.domain, "blog.example.org");

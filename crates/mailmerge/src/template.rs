@@ -20,10 +20,7 @@ pub struct Templates {
 impl Templates {
     pub fn new() -> Self {
         let mut env = Environment::new();
-        // A missing or misspelled property fails loudly.
         env.set_undefined_behavior(UndefinedBehavior::Strict);
-        // No loader is set: template inheritance and includes cannot reach the
-        // filesystem. Left explicit so removing it is a deliberate act.
         Self { env }
     }
 
@@ -41,7 +38,6 @@ impl Templates {
         Ok(())
     }
 
-    /// Render one template against one record's properties.
     pub fn render(
         &self,
         name: &str,
@@ -53,9 +49,6 @@ impl Templates {
             .with_context(|| format!("looking up template `{name}`"))?;
 
         template.render(properties).map_err(|error| {
-            // minijinja says only "undefined value", which is no help when a
-            // campaign of 500 records dies on one misspelled column. Name the
-            // properties the template asked for and the data does not have.
             let missing: Vec<String> = if error.kind() == minijinja::ErrorKind::UndefinedError {
                 let mut names: Vec<String> = template
                     .undeclared_variables(false)
@@ -90,7 +83,6 @@ pub const SUBJECT: &str = "subject.txt";
 pub const HTML: &str = "message.html";
 pub const TEXT: &str = "message.txt";
 
-/// Tags that would pull in another file if a loader were ever installed.
 const FILE_LOADING_TAGS: [&str; 4] = ["include", "import", "extends", "from"];
 
 /// Reject a template that tries to reach outside its data.
@@ -149,7 +141,6 @@ mod tests {
 
     #[test]
     fn html_values_are_escaped_by_default() {
-        // A malicious property value must not become live markup.
         let out = render_html(
             "<p>{{ first_name }}</p>",
             &[("first_name", "<script>alert(1)</script>")],
@@ -157,8 +148,6 @@ mod tests {
         .unwrap();
         assert!(!out.contains("<script>"), "value was not escaped: {out}");
         assert!(!out.contains("</script>"), "value was not escaped: {out}");
-        // The value contributed no markup at all: the only angle brackets left
-        // are the template's own `<p>` and `</p>`.
         assert!(
             out.starts_with("<p>") && out.ends_with("</p>"),
             "template markup did not survive: {out}"
@@ -175,21 +164,15 @@ mod tests {
             &[("url", r#"https://x.example" onclick="steal()"#)],
         )
         .unwrap();
-        // The only quotes left in the output are the template's own two, so
-        // the value cannot have closed the attribute.
         assert_eq!(out.matches('"').count(), 2, "attribute escaped out: {out}");
         assert!(!out.contains("onclick=\""), "{out}");
     }
 
     #[test]
     fn a_missing_property_fails_the_batch() {
-        // The failure mode this prevents: mailing everyone "Hi ,".
         let err = render_html("<p>Hi {{ first_name }},</p>", &[]).unwrap_err();
         assert!(err.to_string().contains("first_name"), "{err}");
 
-        // The message has to name the property that is missing, and only that
-        // one: "undefined value" sends the operator hunting through every
-        // placeholder in the template.
         let err = render_html(
             "<p>Hi {{ first_name }}, your {{ frist_name }} plan</p>",
             &[("first_name", "Dumi")],
@@ -205,14 +188,11 @@ mod tests {
 
     #[test]
     fn a_missing_property_inside_a_condition_also_fails() {
-        // Strictness has to reach into control flow, or `{% if plan %}` quietly
-        // takes the else branch for every record whose column was misspelled.
         assert!(render_html("{% if plan %}pro{% endif %}", &[("plna", "pro")]).is_err());
     }
 
     #[test]
     fn the_subject_and_text_templates_do_not_html_escape() {
-        // HTML entities in a subject line would be a bug, not an escape.
         assert_eq!(
             render_as(SUBJECT, "Digest for {{ name }}", &[("name", "Ben & Co")]).unwrap(),
             "Digest for Ben & Co"
@@ -221,7 +201,6 @@ mod tests {
             render_as(TEXT, "Hi {{ name }}", &[("name", "Ben & Co")]).unwrap(),
             "Hi Ben & Co"
         );
-        // Same value, HTML template: escaped. The template name is what decides.
         assert_eq!(
             render_as(HTML, "<p>{{ name }}</p>", &[("name", "Ben & Co")]).unwrap(),
             "<p>Ben &amp; Co</p>"
@@ -249,7 +228,6 @@ mod tests {
 
     #[test]
     fn an_include_cannot_reach_the_filesystem_even_if_the_guard_is_bypassed() {
-        // The guard is belt; the absent loader is braces. Render one directly.
         let mut templates = Templates::new();
         templates
             .add(HTML, "{% include 'Cargo.toml' %}".to_string())
@@ -260,9 +238,6 @@ mod tests {
 
     #[test]
     fn each_record_renders_only_its_own_values() {
-        // The privacy property the whole feature turns on: one shared
-        // Environment, rendered record after record, must not carry anything
-        // from the previous record into the next.
         let mut templates = Templates::new();
         templates
             .add(HTML, r#"<a href="{{ url }}">read</a>"#.to_string())
@@ -289,8 +264,6 @@ mod tests {
 
     #[test]
     fn a_property_present_for_one_record_is_not_inherited_by_the_next() {
-        // The nastier half of the same property: if the previous record's
-        // context survived, this render would succeed with A's value.
         let mut templates = Templates::new();
         templates
             .add(HTML, "<p>{{ token }}</p>".to_string())

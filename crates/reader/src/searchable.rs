@@ -1,7 +1,6 @@
 use crate::html::{html_to_match_text, looks_like_html_document};
 use crate::pipeline::normalize_whitespace;
 
-/// The text of a message that the search index holds, joined.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SearchableText {
     pub text: String,
@@ -111,7 +110,6 @@ mod tests {
 
     #[test]
     fn a_long_html_paragraph_collapses_its_wrap_into_one_phrase() {
-        // The reader breaks this paragraph at 80 columns; the phrase must still match.
         let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
         let parts = body_match_parts(None, Some(html.as_str())).unwrap_or_default();
         assert_eq!(parts.len(), 1);
@@ -120,8 +118,6 @@ mod tests {
 
     #[test]
     fn a_big_cell_table_converts_in_bounded_output() {
-        // Rendering at a huge width padded every row to that width: one
-        // 524,288-character cell and 1,000 rows made gigabytes.
         let mut html = String::from("<table><tr><td>");
         html.push_str(&"x".repeat(524_288));
         html.push_str("</td></tr>");
@@ -140,7 +136,6 @@ mod tests {
 
     #[test]
     fn a_huge_colspan_still_renders_through_the_clamp() {
-        // Unclamped, html2text panics on this span and the part falls back.
         let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
         let searchable = searchable_text(None, Some(html));
         assert_eq!(searchable.fallbacks, 0);

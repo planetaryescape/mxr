@@ -206,7 +206,6 @@ async fn a_bad_anthropic_key_costs_one_attempt_for_a_batch_of_twenty() {
             panic!("item {item} should be answered by OpenRouter: {error}")
         });
         assert_eq!(response.content, "from openrouter");
-        // Provenance names the provider that answered, and the model.
         assert_eq!(response.model, "anthropic/claude-haiku-5.5 via OpenRouter");
     }
 
@@ -240,7 +239,6 @@ async fn keys_travel_in_the_headers_each_provider_expects() {
     assert!(headers.get("authorization").is_none());
     assert!(rig.openrouter_requests().await.is_empty());
 
-    // The same request, on the fallback route, uses the other header.
     rig.health.reset();
     rig.keys.remove(RouteProvider::Anthropic);
     rig.foreground().await.unwrap();
@@ -269,7 +267,6 @@ async fn no_sampling_parameters_reach_either_provider() {
         for field in ["temperature", "top_p", "top_k"] {
             assert!(body.get(field).is_none(), "{field} was sent: {body}");
         }
-        // Room for thinking on top of the 400 tokens asked for.
         assert_eq!(body["max_tokens"], 400 + 2048);
     }
     assert_eq!(anthropic[0]["model"], MODEL);
@@ -306,7 +303,6 @@ async fn a_refusal_or_an_empty_answer_does_not_fail_the_route_over() {
 
     assert!(matches!(rig.background().await, Err(LlmError::Other(_))));
     assert!(matches!(rig.background().await, Err(LlmError::Empty)));
-    // The route was never marked bad: the next request goes to Anthropic.
     assert_eq!(rig.background().await.unwrap().content, "from anthropic");
     assert_eq!(rig.anthropic_requests().await.len(), 3);
     assert!(rig.openrouter_requests().await.is_empty());
@@ -326,7 +322,6 @@ async fn after_the_wait_one_probe_goes_to_anthropic_and_traffic_returns() {
         .up_to_n_times(1)
         .mount(&rig.anthropic)
         .await;
-    // Anthropic is slow to answer the probe, so the others overlap it.
     mount_anthropic(&rig, anthropic_ok().set_delay(Duration::from_millis(300))).await;
     mount_openrouter(&rig, openrouter_ok()).await;
 
@@ -336,7 +331,6 @@ async fn after_the_wait_one_probe_goes_to_anthropic_and_traffic_returns() {
         rig.health.view(&anthropic_route()).state,
         RouteState::Cooling
     );
-    // Still cooling: skipped, no new attempt.
     rig.background().await.unwrap();
     assert_eq!(rig.anthropic_requests().await.len(), 1);
 
@@ -364,7 +358,6 @@ async fn after_the_wait_one_probe_goes_to_anthropic_and_traffic_returns() {
     );
     assert_eq!(rig.anthropic_requests().await.len(), 2);
 
-    // The probe succeeded: the route is back.
     assert_eq!(rig.health.view(&anthropic_route()).state, RouteState::Ok);
     assert_eq!(rig.background().await.unwrap().content, "from anthropic");
 }
@@ -387,7 +380,6 @@ async fn a_slow_anthropic_is_recorded_as_failed_within_the_background_budget() {
     let view = rig.health.view(&anthropic_route());
     assert_eq!(view.state, RouteState::Cooling);
     assert_eq!(view.reason.unwrap().to_string(), "timed out");
-    // Not asked again.
     rig.background().await.unwrap();
     assert_eq!(rig.anthropic_requests().await.len(), 1);
 }
@@ -402,7 +394,6 @@ async fn with_every_route_out_background_work_fails_fast_and_a_person_gets_one_t
         .mount(&rig.openrouter)
         .await;
 
-    // The first call finds out the state of both.
     let error = rig.background().await.unwrap_err();
     let message = error.to_string();
     assert!(
@@ -418,7 +409,6 @@ async fn with_every_route_out_background_work_fails_fast_and_a_person_gets_one_t
     let sent = rig.anthropic_requests().await.len() + rig.openrouter_requests().await.len();
     assert_eq!(sent, 2);
 
-    // Background: no network at all.
     assert!(matches!(
         rig.background().await,
         Err(LlmError::CircuitOpen { .. })
@@ -428,8 +418,6 @@ async fn with_every_route_out_background_work_fails_fast_and_a_person_gets_one_t
         2
     );
 
-    // Foreground: the soonest-recovering route (OpenRouter, cooling for
-    // 1 min, not Anthropic's hour) gets one request, and the error names both.
     let error = rig.foreground().await.unwrap_err().to_string();
     assert_eq!(rig.anthropic_requests().await.len(), 1);
     assert_eq!(rig.openrouter_requests().await.len(), 2);
@@ -455,7 +443,6 @@ async fn a_forced_foreground_attempt_that_works_brings_the_route_back() {
     mount_openrouter(&rig, ResponseTemplate::new(503)).await;
     assert!(rig.foreground().await.is_err());
 
-    // The user fixes the OpenRouter outage; OpenRouter is soonest to recover.
     rig.openrouter.reset().await;
     mount_openrouter(&rig, openrouter_ok()).await;
     assert_eq!(rig.foreground().await.unwrap().content, "from openrouter");
@@ -473,7 +460,6 @@ async fn keys_are_read_per_request_and_a_changed_key_clears_its_verdict() {
     mount_anthropic(&rig, anthropic_ok()).await;
     mount_openrouter(&rig, openrouter_ok()).await;
 
-    // No Anthropic key yet: straight to OpenRouter, no attempt at Anthropic.
     assert_eq!(rig.foreground().await.unwrap().content, "from openrouter");
     assert!(rig.anthropic_requests().await.is_empty());
     let statuses = route_statuses(
@@ -484,12 +470,10 @@ async fn keys_are_read_per_request_and_a_changed_key_clears_its_verdict() {
     assert!(!statuses[0].key_present && !statuses[0].next);
     assert!(statuses[1].key_present && statuses[1].next);
 
-    // A key stored while the daemon runs applies to the next request.
     rig.keys.set(RouteProvider::Anthropic, ANTHROPIC_KEY);
     rig.health.forget_provider(RouteProvider::Anthropic);
     assert_eq!(rig.foreground().await.unwrap().content, "from anthropic");
 
-    // Removing it again goes back to the fallback.
     rig.keys.remove(RouteProvider::Anthropic);
     assert_eq!(rig.foreground().await.unwrap().content, "from openrouter");
 }
@@ -521,11 +505,9 @@ async fn an_old_keys_late_401_does_not_mark_the_new_key_bad() {
             .await
     });
     tokio::time::sleep(Duration::from_millis(100)).await;
-    // The key is replaced while the request with the old one is out.
     rig.keys.set(RouteProvider::Anthropic, "sk-ant-the-new-key");
     rig.health.forget_provider(RouteProvider::Anthropic);
 
-    // That request still ends well, via the fallback.
     assert_eq!(in_flight.await.unwrap().unwrap().content, "from openrouter");
     assert_eq!(rig.health.view(&anthropic_route()).state, RouteState::Ok);
     let received = rig.anthropic.received_requests().await.unwrap();
@@ -569,8 +551,6 @@ async fn a_key_never_appears_in_an_error() {
     let error = rig.foreground().await.unwrap_err().to_string();
     assert!(error.contains("invalid_request_error"), "{error}");
     assert!(!error.contains(ANTHROPIC_KEY), "{error}");
-    // A bad request is the request's problem: Anthropic stays in use and
-    // OpenRouter was not tried.
     assert_eq!(rig.health.view(&anthropic_route()).state, RouteState::Ok);
     assert!(rig.openrouter_requests().await.is_empty());
 }

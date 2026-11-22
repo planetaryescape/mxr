@@ -7,7 +7,6 @@ use crate::schema_org::{self, SchemaRecord};
 use crate::{RecordKind, Source, Stage};
 use chrono::{DateTime, TimeZone, Utc};
 
-/// One message as detection sees it.
 #[derive(Debug, Clone, Copy)]
 pub struct DetectInput<'a> {
     pub subject: &'a str,
@@ -24,9 +23,7 @@ pub struct DetectInput<'a> {
 pub enum Origin {
     Schema,
     Rule,
-    /// The user said to file everything from this sender.
     Sender,
-    /// The user filed it by hand.
     Manual,
 }
 
@@ -41,7 +38,6 @@ impl Origin {
     }
 }
 
-/// One record a message holds, with its fields and their provenance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Detection {
     pub kind: RecordKind,
@@ -52,7 +48,6 @@ pub struct Detection {
     pub reason: String,
     pub issuer: String,
     pub reference: Option<String>,
-    /// An invoice's account, for series.
     pub account_ref: Option<String>,
     pub fields: Vec<Found>,
 }
@@ -63,12 +58,10 @@ impl Detection {
     }
 }
 
-/// What the user decided about a sender.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SenderView<'a> {
     /// "Always file this sender", with the kind to file as.
     pub always: Option<RecordKind>,
-    /// The issuer name the user gave this sender.
     pub issuer_name: Option<&'a str>,
 }
 
@@ -103,8 +96,6 @@ where
             .into_iter()
             .collect()
     } else {
-        // Words fill what the markup leaves out, such as a return window or
-        // a warranty, on the first record only.
         let words = rules::read(&rule_input, tz);
         schema
             .into_iter()
@@ -201,8 +192,6 @@ fn from_schema(record: SchemaRecord, fallback_issuer: &str, sent: DateTime<Utc>)
         }
     }
     if record.issued.is_none() {
-        // The markup said what, not when: the email's day stands in, says
-        // so, and stays unchecked. Only schema.org and you check a date.
         fields.push(
             Found::at(
                 FieldName::IssuedAt,
@@ -390,8 +379,6 @@ mod tests {
         assert_eq!(found[0].reference.as_deref(), Some("K7QX2M"));
         assert!(found[0].field(FieldName::ValidUntil).is_some());
         assert_eq!(found[1].issuer, "Hotel Lisboa Plaza");
-        // Markup that gives no booking time stands in the email's day,
-        // unchecked, with the email named as its source.
         let issued = found[1].field(FieldName::IssuedAt).expect("issued");
         assert!(!issued.checked);
         assert_eq!(issued.evidence.as_deref(), Some(EMAIL_DATE));

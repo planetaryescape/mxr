@@ -11,7 +11,6 @@ use crate::RecordKind;
 use chrono::{DateTime, Datelike, Duration, Utc};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// What grouping reads of a record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupInput {
     pub id: String,
@@ -42,7 +41,6 @@ impl GroupKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupPlan {
     pub kind: GroupKind,
-    /// Stable across regroups while the group's first member stays.
     pub key: String,
     pub title: String,
     pub span_start: Option<DateTime<Utc>>,
@@ -53,7 +51,6 @@ pub struct GroupPlan {
 /// Bookings closer than this are one trip: a flight that lands the
 /// evening before the hotel's check-in is still the same trip.
 const TRIP_GAP_HOURS: i64 = 24;
-/// A series needs this many statements, in this many different months.
 const SERIES_MIN: usize = 3;
 
 pub fn plan(records: &[GroupInput]) -> Vec<GroupPlan> {
@@ -62,7 +59,6 @@ pub fn plan(records: &[GroupInput]) -> Vec<GroupPlan> {
     plans
 }
 
-/// A booking and the span it covers.
 type Span<'a> = (&'a GroupInput, DateTime<Utc>, DateTime<Utc>);
 
 fn trips(records: &[GroupInput]) -> Vec<GroupPlan> {
@@ -143,9 +139,6 @@ fn trip_place(members: &[&GroupInput]) -> Option<String> {
 fn series(records: &[GroupInput]) -> Vec<GroupPlan> {
     let mut by_issuer: BTreeMap<&str, Vec<&GroupInput>> = BTreeMap::new();
     for record in records {
-        // Receipts and invoices recur as subscriptions, checked for cadence
-        // and amount; grouping them by issuer alone merged one-off orders
-        // and two plans from one issuer.
         if record.kind != RecordKind::Statement {
             continue;
         }
@@ -272,7 +265,6 @@ mod tests {
                 Some(day(6, 15, 20)),
                 Some("London"),
             ),
-            // A month later: a different trip, alone, so no group.
             booking(
                 "dinner",
                 RecordKind::Booking,

@@ -73,9 +73,6 @@ fn root_package_is_not_publishable_and_uses_registry_async_imap() {
         .get("package")
         .and_then(toml::Value::as_table)
         .unwrap();
-    // mxr is distributed via Homebrew + GitHub Releases + `cargo install --git`,
-    // not crates.io. The workspace's internal `mxr-*` crates are organizational
-    // seams, not library APIs. See AGENTS.md.
     assert_eq!(
         package.get("publish").and_then(toml::Value::as_bool),
         Some(false),

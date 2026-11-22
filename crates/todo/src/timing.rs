@@ -10,15 +10,12 @@
 use crate::TodoKind;
 use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, NaiveTime, TimeZone, Utc, Weekday};
 
-/// What the table needs to know about one item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimingInput<'a> {
     pub kind: TodoKind,
     pub doc_type: Option<&'a str>,
-    /// When the message arrived.
     pub arrived: DateTime<Utc>,
     pub due: Option<DateTime<Utc>>,
-    /// An event's start, for RSVPs without a reply-by date.
     pub event_start: Option<DateTime<Utc>>,
 }
 
@@ -26,9 +23,7 @@ pub struct TimingInput<'a> {
 pub struct Timing {
     pub act_by: Option<DateTime<Utc>>,
     pub surface_at: Option<DateTime<Utc>>,
-    /// How act-by was worked out, for provenance.
     pub act_by_rule: &'static str,
-    /// How the surface time was worked out, for provenance.
     pub surface_rule: &'static str,
 }
 
@@ -42,9 +37,7 @@ pub fn lead_time<Tz: TimeZone>(input: &TimingInput<'_>, tz: &Tz, morning_hour: u
         surface_rule: "at once",
     };
     match input.kind {
-        // A failed collection needs fixing now, whatever date it names.
         TodoKind::PaymentFailed => return at_once("now"),
-        // Links expire in hours, so a verify link shows up at once.
         TodoKind::Verify => return at_once("the link's expiry"),
         _ => {}
     }
@@ -91,7 +84,6 @@ pub fn lead_time<Tz: TimeZone>(input: &TimingInput<'_>, tz: &Tz, morning_hour: u
             .with_timezone(tz)
             .date_naive(),
     };
-    // Never later than the arrival: a date already past shows up at once.
     let surface_at = start_of_day(day, tz, morning_hour).max(input.arrived);
     Timing {
         act_by: Some(act_by),
@@ -151,7 +143,6 @@ pub fn minus_working_days<Tz: TimeZone>(at: DateTime<Utc>, days: i64, tz: &Tz) -
     at_wall_time(day, local.time(), tz)
 }
 
-/// The start of working hours on `day` in `tz`.
 pub fn start_of_day<Tz: TimeZone>(day: NaiveDate, tz: &Tz, morning_hour: u8) -> DateTime<Utc> {
     let time =
         NaiveTime::from_hms_opt(u32::from(morning_hour.min(23)), 0, 0).unwrap_or(NaiveTime::MIN);
@@ -163,8 +154,6 @@ pub fn start_of_day<Tz: TimeZone>(day: NaiveDate, tz: &Tz, morning_hour: u8) -> 
 /// moment that exists, so a deadline in the lost hour is not dropped.
 fn at_wall_time<Tz: TimeZone>(day: NaiveDate, time: NaiveTime, tz: &Tz) -> DateTime<Utc> {
     let wall = day.and_time(time);
-    // Gaps are at most a few hours; half-hour steps cover zones whose
-    // change is not on the hour.
     (0..=12)
         .find_map(|step| {
             tz.from_local_datetime(&(wall + Duration::minutes(30 * step)))
@@ -176,7 +165,6 @@ fn at_wall_time<Tz: TimeZone>(day: NaiveDate, time: NaiveTime, tz: &Tz) -> DateT
         )
 }
 
-/// Where a window's end came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowSource {
     Schema,
@@ -206,7 +194,6 @@ pub struct Window {
     pub rule: &'static str,
 }
 
-/// When an item stops mattering (blueprint 22, the relevancy table).
 pub fn window(input: &TimingInput<'_>) -> Window {
     let open_ended = Window {
         until: None,
@@ -269,11 +256,9 @@ pub fn window(input: &TimingInput<'_>) -> Window {
     }
 }
 
-/// Where a newly found item goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Placement {
     Open,
-    /// The first run's one-time batch.
     CatchUp,
     /// Already over when found: written expired, never surfaced.
     ExpiredAtBirth(&'static str),
@@ -336,7 +321,6 @@ mod tests {
 
     #[test]
     fn bill_with_a_pay_link_acts_by_the_due_date_and_shows_up_three_days_before() {
-        // Due Friday 9 October 2026.
         let timing = lead_time(
             &input(TodoKind::Bill, Some(at(2026, 10, 9, 23))),
             &London,
@@ -350,7 +334,6 @@ mod tests {
     fn bank_transfer_bill_acts_three_working_days_early() {
         let mut bank = input(TodoKind::Bill, Some(at(2026, 10, 12, 23)));
         bank.doc_type = Some("bill_bank");
-        // Monday 12 Oct minus 3 working days is Wednesday 7 Oct.
         let timing = lead_time(&bank, &London, 9);
         assert_eq!(timing.act_by, Some(at(2026, 10, 7, 23)));
         assert_eq!(timing.surface_at, Some(at(2026, 10, 4, 9)));
@@ -376,7 +359,6 @@ mod tests {
             surface(TodoKind::Sign, None).surface_at,
             Some(at(2026, 12, 29, 9))
         );
-        // Thursday 31 Dec minus one working day is Wednesday 30 Dec.
         assert_eq!(
             surface(TodoKind::Promise, None).surface_at,
             Some(at(2026, 12, 30, 9))
@@ -446,11 +428,8 @@ mod tests {
 
     #[test]
     fn a_bill_shows_up_on_the_calendar_day_three_before_it_across_a_clock_change() {
-        // Due at the end of the day, as a date-only due date is read.
         let cases = [
-            // BST ends Sunday 25 Oct 2026: a 25-hour day sits in the window.
             (London, (2026, 10, 27), (2026, 10, 24)),
-            // BST starts Sunday 29 Mar 2026: a 23-hour day.
             (London, (2026, 4, 1), (2026, 3, 29)),
         ];
         for (tz, due, shows) in cases {
@@ -485,14 +464,12 @@ mod tests {
             Some(wall(&London, 2026, 10, 28, 23, 59, 59)),
         );
         bank.doc_type = Some("bill_bank");
-        // Wednesday 28 Oct minus 3 working days is Friday 23 Oct, in BST.
         let timing = lead_time(&bank, &London, 9);
         assert_eq!(timing.act_by, Some(wall(&London, 2026, 10, 23, 23, 59, 59)));
         assert_eq!(
             timing.surface_at,
             Some(wall(&London, 2026, 10, 20, 9, 0, 0))
         );
-        // Tuesday 31 Mar 2026 minus 3 working days is Thursday 26 Mar, in GMT.
         bank.due = Some(wall(&London, 2026, 3, 31, 23, 59, 59));
         let timing = lead_time(&bank, &London, 9);
         assert_eq!(timing.act_by, Some(wall(&London, 2026, 3, 26, 23, 59, 59)));
@@ -503,8 +480,6 @@ mod tests {
         fn check<Z: TimeZone>(tz: &Z) {
             let mut day = NaiveDate::from_ymd_opt(2026, 1, 10).expect("a date");
             while day < NaiveDate::from_ymd_opt(2026, 12, 20).expect("a date") {
-                // 02:30 is skipped on a spring-forward day; 00:30 and 23:30
-                // are the times 24-hour arithmetic pushes onto a neighbour.
                 for (h, mi) in [(0, 30), (2, 30), (23, 30)] {
                     let time = NaiveTime::from_hms_opt(h, mi, 0).expect("a time");
                     let mut rsvp = arrived_long_before(TodoKind::Rsvp, None);
@@ -531,9 +506,6 @@ mod tests {
 
     #[test]
     fn a_notice_date_in_the_skipped_hour_still_moves_back_the_months() {
-        // 28 May 2027 01:30 BST minus two months is 28 Mar 01:30, an hour
-        // the clocks skip that day: the notice date is the first moment
-        // after the gap, not the lease end unchanged.
         let lease =
             arrived_long_before(TodoKind::Lease, Some(wall(&London, 2027, 5, 28, 1, 30, 0)));
         let timing = lead_time(&lease, &London, 9);
@@ -545,12 +517,10 @@ mod tests {
     fn working_hours_start_in_the_hour_after_a_gap_and_on_the_first_pass_of_a_repeat() {
         let ny = chrono_tz::America::New_York;
         let day = |m, d| NaiveDate::from_ymd_opt(2026, m, d).expect("a date");
-        // 02:00 does not exist on 8 Mar; it is 03:00 EDT, not a day early.
         assert_eq!(
             start_of_day(day(3, 8), &ny, 2),
             wall(&ny, 2026, 3, 8, 3, 0, 0)
         );
-        // 01:00 happens twice on 1 Nov; the first pass is the one that counts.
         assert_eq!(
             start_of_day(day(11, 1), &ny, 1),
             Utc.with_ymd_and_hms(2026, 11, 1, 5, 0, 0)

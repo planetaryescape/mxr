@@ -161,9 +161,6 @@ mod tests {
             ..Default::default()
         };
         let body = "Dear Alice,\n\nFurthermore, I would respectfully request that you kindly furnish the aforementioned documentation at your earliest convenience.\n\nSincerely,\nMe";
-        // Verify the underlying scoring lands at High confidence — pin
-        // the band so any future tweak to it surfaces here, not via
-        // this test's silent transition to Medium.
         let draft_metrics = mxr_relationship::compute_metrics(body);
         let report = mxr_relationship::score_voice_match(
             &draft_metrics,
@@ -193,7 +190,6 @@ mod tests {
 
     #[test]
     fn matching_tone_passes() {
-        // baseline ~0.5, draft also ~0.5
         let ctx = SafetyContext {
             contact_styles: vec![baseline_for("alice@x.com", 0.5, 30)],
             ..Default::default()
@@ -206,9 +202,6 @@ mod tests {
             &ctx,
             &SafetyToneConfig::default(),
         );
-        // Could either warn or pass depending on draft stylometry; we
-        // assert the SHAPE: at most one issue, and if present it is a
-        // warning, never a blocker.
         for issue in &issues {
             assert_eq!(issue.severity, DraftSafetySeverity::Warning);
             assert_ne!(issue.severity, DraftSafetySeverity::Blocker);

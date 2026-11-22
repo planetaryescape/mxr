@@ -26,7 +26,6 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// The environment variable that turns recording on.
 pub const RECORD_ENV: &str = "MXR_LLM_RECORD";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +57,6 @@ impl RecordMode {
     }
 }
 
-/// What identifies a recording.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordingKey {
     pub model: String,
@@ -106,7 +104,6 @@ pub fn input_hash(req: &CompletionRequest) -> String {
     struct Canonical<'a> {
         messages: Vec<(String, &'a str)>,
         max_tokens: Option<u32>,
-        /// Written as text: `f32` has no stable JSON form.
         temperature: Option<String>,
     }
     let canonical = Canonical {
@@ -122,7 +119,6 @@ pub fn input_hash(req: &CompletionRequest) -> String {
     hex(&Sha256::digest(json))
 }
 
-/// One checked-in recording.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Recording {
     key: RecordingKey,
@@ -163,7 +159,6 @@ impl RecordedProvider {
         }
     }
 
-    /// Call `inner` and write its answers to `dir`.
     pub fn record(
         inner: Arc<dyn LlmProvider>,
         dir: impl Into<PathBuf>,
@@ -233,7 +228,6 @@ impl RecordedProvider {
                 path.display()
             ))
         })?;
-        // A file under the wrong name would serve another request's answer.
         if &recording.key != key {
             return Err(LlmError::Other(format!(
                 "the recording {} holds a different key ({})",
@@ -252,8 +246,6 @@ impl RecordedProvider {
             .map_err(|error| LlmError::Other(format!("can't write a recording: {error}")))?;
         text.push('\n');
         let path = self.path(&recording.key);
-        // Unchanged recordings are left alone so a re-record touches only
-        // what changed.
         if std::fs::read_to_string(&path).is_ok_and(|existing| existing == text) {
             return Ok(());
         }
@@ -459,7 +451,6 @@ mod tests {
             let error = provider.complete(request(text)).await.unwrap_err();
             assert!(error.to_string().contains("no recording for"), "{error}");
         }
-        // Settings the model sees are part of the input.
         let mut hotter = request("same");
         hotter.temperature = Some(0.7);
         assert!(hit("fake-1", "p1", "s1").complete(hotter).await.is_err());
@@ -482,12 +473,10 @@ mod tests {
         }
         assert_eq!(files(&a), files(&b));
         assert_eq!(files(&a).len(), 3);
-        // Recording again changes nothing.
         let before = files(&a);
         let (again, _) = recorder(&a);
         again.complete(request("one")).await.unwrap();
         assert_eq!(files(&a), before);
-        // The file ends in a newline and holds the request beside the answer.
         let text = &before[0].1;
         assert!(text.ends_with("}\n"));
         assert!(text.contains("be brief"));

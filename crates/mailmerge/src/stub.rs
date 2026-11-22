@@ -12,11 +12,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
-/// How the stub answers one subcommand.
 pub enum Reply {
-    /// Succeed, returning `{"draft_id":"draft-N"}` for the Nth compose.
     Draft,
-    /// Succeed, printing exactly this on stdout.
     Literal(String),
     /// Fail, printing this on stderr.
     Fail(String),
@@ -27,12 +24,10 @@ pub struct Stub {
 }
 
 impl Stub {
-    /// A stub that drafts and sends successfully.
     pub fn new() -> Self {
         Self::with(true, Reply::Draft, Reply::Literal(String::new()))
     }
 
-    /// A stub whose every subcommand fails, `--version` included.
     pub fn failing(stderr: &str) -> Self {
         Self::with(
             false,
@@ -50,7 +45,6 @@ impl Stub {
         )
     }
 
-    /// A stub that is installed and healthy but refuses to compose.
     pub fn compose_fails(stderr: &str) -> Self {
         Self::with(
             true,
@@ -59,7 +53,6 @@ impl Stub {
         )
     }
 
-    /// A stub that drafts happily and then refuses to send.
     pub fn send_fails(stderr: &str) -> Self {
         Self::with(true, Reply::Draft, Reply::Fail(stderr.to_string()))
     }
@@ -217,7 +210,6 @@ exit 1
         listings.into_iter().map(|(_, files)| files).collect()
     }
 
-    /// The rendered bodies mxr was handed, as the stub saw them.
     pub fn captured_bodies(&self) -> Vec<String> {
         let Ok(entries) = std::fs::read_dir(self.dir.path().join("bodies")) else {
             return Vec::new();

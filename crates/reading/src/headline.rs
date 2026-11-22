@@ -12,20 +12,17 @@ fn regex(pattern: &str) -> Regex {
 
 /// "[AINews] ", "(Weekly) ".
 static LEADING_TAG: Lazy<Regex> = Lazy::new(|| regex(r"^\s*[\[(][^\])]{1,40}[\])]\s*[:|\-–·]?\s*"));
-/// "Issue #42 | ", "No. 7: ", "Vol. 3, Issue 7 - ", "#123: ", "Week 41 · ".
 static LEADING_NUMBER: Lazy<Regex> = Lazy::new(|| {
     regex(
         r"(?i)^\s*(?:(?:issue|edition|no\.?|vol\.?|volume|week|episode|ep\.?|part)\s*#?\s*\d+[\w.]*(?:\s*,\s*(?:issue|no\.?)\s*#?\d+)?|#\d+)\s*[:|\-–—·]\s*",
     )
 });
-/// "This week in Rust: ", "Today in Tech - ".
 static LEADING_ROUNDUP: Lazy<Regex> = Lazy::new(|| {
     regex(
         r"(?i)^\s*(?:(?:this week|today|this month) in [^:|\-–—]{1,30}|new (?:post|essay|article|episode|issue|video)|now live|just published)\s*[:|\-–—]\s+",
     )
 });
 
-/// Pictographs, dingbats and the joiners that glue them together.
 fn is_emoji(c: char) -> bool {
     matches!(
         c as u32,
@@ -62,7 +59,6 @@ pub fn clean_headline(subject: &str, source: Option<&str>) -> String {
         }
     }
     let text = collapse_spaces(&text);
-    // Only a sentence that lost its prefix gets a capital: "iPhone" stays.
     let text = if text == original {
         text
     } else {
@@ -79,7 +75,6 @@ pub fn clean_headline(subject: &str, source: Option<&str>) -> String {
     text
 }
 
-/// What was left after a prefix came off starts a sentence.
 pub(crate) fn capitalize_first(text: &str) -> String {
     let mut chars = text.chars();
     chars.next().map_or_else(String::new, |first| {

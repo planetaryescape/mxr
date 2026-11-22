@@ -1,6 +1,3 @@
-//! One conversation turn: call the model, run what it asks for, stop for
-//! the user when a call needs them.
-//!
 //! The rules that matter live here in code, not in the prompt:
 //! - the gate ([`crate::gate`]) decides what runs, before anything runs;
 //! - every tool call gets a result before the model is called again, since
@@ -22,7 +19,6 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use tokio_util::sync::CancellationToken;
 
-/// The model the loop talks to.
 #[async_trait]
 pub trait ChatModel: Send + Sync {
     /// One model call. `on_text` gets the whole reply so far as it streams.
@@ -31,17 +27,14 @@ pub trait ChatModel: Send + Sync {
         request: ToolChatRequest,
         on_text: &(dyn for<'t> Fn(&'t str) + Send + Sync),
     ) -> Result<ToolChatResponse, LlmError>;
-    /// Tokens one request may hold, when known.
     fn context_window(&self) -> Option<u32> {
         None
     }
-    /// Whether the model runs off this machine, when known.
     fn leaves_machine(&self) -> Option<bool> {
         None
     }
 }
 
-/// Where mxr's tools run.
 #[async_trait]
 pub trait ToolHost: Send + Sync {
     /// The tools, in a fixed order: the list is part of the cached prefix.
@@ -60,29 +53,23 @@ pub struct ToolOutput {
 #[async_trait]
 pub trait TurnSink: Send + Sync {
     async fn append(&self, message: &ToolChatMessage, meta: &MessageMeta) -> Result<(), String>;
-    /// What the loop is doing now, for the app's live status line.
     async fn progress(&self, progress: Progress);
     /// The reply so far while the model writes it. Called for every piece,
     /// so it must be cheap and must not block.
     fn writing(&self, _text: &str) {}
-    /// Earlier messages now reach the model only as this summary.
     async fn summarized(&self, _summary: &Summary) -> Result<(), String> {
         Ok(())
     }
 }
 
-/// Stored next to an assistant message.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Whether that model runs off this machine, so a reply keeps saying
-    /// where it was written after the model is switched.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leaves_machine: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
-    /// The user-facing reason for each tool call, by call id.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub reasons: HashMap<String, String>,
 }
@@ -96,13 +83,11 @@ pub enum Progress {
     Calling {
         tool: String,
         reason: String,
-        /// The call's arguments, so the sink can put it in words.
         arguments: Value,
     },
     Summarizing,
 }
 
-/// A call waiting for the user.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingItem {
     pub call_id: String,
@@ -130,7 +115,6 @@ pub enum PendingKind {
     },
 }
 
-/// The user's answer to one pending call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum Decision {
@@ -146,11 +130,8 @@ pub enum Decision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TurnOutcome {
-    /// The model answered without asking for more tools.
     Finished,
-    /// Some calls wait for the user.
     AwaitingUser(Vec<PendingItem>),
-    /// The turn hit its step limit. The user can say "go on".
     StepLimit,
     Cancelled,
     Failed(String),
@@ -158,7 +139,6 @@ pub enum TurnOutcome {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
-    /// Model calls per turn.
     pub max_steps: u32,
     pub max_output_tokens: Option<u32>,
 }
@@ -184,8 +164,6 @@ pub struct Agent<'a> {
     /// The user's choice to let reversible changes run without asking
     /// ([`gate::auto_approvable`]). Never set by the model.
     pub auto_approve: bool,
-    /// What the model reads instead of the earliest messages, once the
-    /// history outgrew the context window. Updated as the turn summarises.
     pub summary: std::sync::Mutex<Option<Summary>>,
 }
 
@@ -222,7 +200,6 @@ impl Agent<'_> {
         self.run(history).await
     }
 
-    /// Apply the user's decisions, then continue once nothing waits.
     /// Decisions for calls that aren't pending are refused, so a stale
     /// client can't approve something twice.
     pub async fn resume(
@@ -275,8 +252,6 @@ impl Agent<'_> {
                 let output = self
                     .call_tool(Some(&call_id), tool, arguments.clone())
                     .await;
-                // Same rule as a call that ran without asking: mxr's own
-                // refusal is a failure, not something that was done.
                 let is_error = output.is_error || crate::outcome::refused(&output.content);
                 ToolChatMessage::Tool {
                     call_id,
@@ -305,7 +280,6 @@ impl Agent<'_> {
                     is_error: false,
                 }
             }
-            // `check_decision` refused every other pairing.
             _ => unreachable!("decision checked against its pending call"),
         }
     }
@@ -330,7 +304,6 @@ impl Agent<'_> {
                 };
                 match response {
                     Ok(response) => break response,
-                    // Too long for the model: summarise once and retry.
                     Err(error)
                         if !summarized_for_overflow && compact::is_context_overflow(&error) =>
                     {
@@ -397,8 +370,6 @@ impl Agent<'_> {
         }
     }
 
-    /// Summarise older messages when the next request would crowd the
-    /// model's context window.
     async fn fit(&self, history: &[ToolChatMessage], tools: &[ToolSpec]) -> Result<(), String> {
         let Some(window) = self.model.context_window() else {
             return Ok(());
@@ -416,8 +387,6 @@ impl Agent<'_> {
         Ok(())
     }
 
-    /// Replace older messages with a summary in what the model reads. False
-    /// when nothing more can be summarised.
     async fn summarize(&self, history: &[ToolChatMessage]) -> Result<bool, String> {
         let previous = self
             .summary
@@ -557,9 +526,6 @@ impl Agent<'_> {
         }
     }
 
-    /// A preview that names messages only by id (the reviewed archive
-    /// flow) gets the messages themselves, so the user approves subjects
-    /// and senders, not ids.
     async fn with_messages(&self, preview: Value) -> Value {
         if has_subjects(&preview, 0) || !self.host.tools().iter().any(|t| t.name == LIST_BY_IDS) {
             return preview;
@@ -627,9 +593,7 @@ impl Agent<'_> {
     }
 }
 
-/// The read-only tool that lists envelopes by id.
 const LIST_BY_IDS: &str = "mxr_mutation_preview";
-/// More ids than this and the preview stays as the tool returned it.
 const MAX_PREVIEW_LOOKUP: usize = 200;
 
 fn has_subjects(value: &Value, depth: u8) -> bool {
@@ -675,7 +639,6 @@ enum CallStep {
     Wait(PendingItem),
 }
 
-/// The result for a call the user stopped before it ran.
 pub fn cancelled_result(call_id: String) -> ToolChatMessage {
     ToolChatMessage::Tool {
         call_id,

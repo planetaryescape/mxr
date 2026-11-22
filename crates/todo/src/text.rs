@@ -26,7 +26,6 @@ pub fn clip(value: &str, max: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
-/// "Spotify" from "spotify".
 pub fn capitalise(value: &str) -> String {
     let mut chars = value.chars();
     chars.next().map_or_else(String::new, |first| {
@@ -64,8 +63,6 @@ pub fn strip_glued_id(name: &str) -> &str {
         }
         start = index;
     }
-    // The run may begin with hex letters that belong to the word ("Cafe"),
-    // so the id starts at its first digit.
     let Some(offset) = name[start..].find(|c: char| c.is_ascii_digit()) else {
         return name;
     };
@@ -98,7 +95,6 @@ pub fn strip_urls(value: &str) -> String {
                 || lower.starts_with("www."))
         })
         .collect();
-    // "Read it at <link>": the word that pointed at the link goes with it.
     while kept.last().is_some_and(|word| {
         let word = word
             .trim_end_matches([',', ':', ';', '-', '('])

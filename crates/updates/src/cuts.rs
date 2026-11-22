@@ -9,7 +9,6 @@ use chrono::{DateTime, Datelike, Duration, NaiveTime, TimeZone, Timelike, Utc, W
 pub const DEFAULT_CUTS: [&str; 2] = ["08:00", "16:30"];
 pub const MAX_CUTS: usize = 4;
 
-/// A bad `updates.cuts` value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CutError(pub String);
 
@@ -21,7 +20,6 @@ impl std::fmt::Display for CutError {
 
 impl std::error::Error for CutError {}
 
-/// The day's cuts, sorted, local time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cuts(Vec<NaiveTime>);
 
@@ -34,16 +32,12 @@ impl Default for Cuts {
 /// Where the clock sits between cuts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CutWindow {
-    /// The latest cut at or before now: the digest holds mail up to here.
     pub at: DateTime<Utc>,
-    /// The cut before it.
     pub previous: DateTime<Utc>,
-    /// The next cut after now.
     pub next: DateTime<Utc>,
 }
 
 impl Cuts {
-    /// One to four "HH:MM" times, each once.
     pub fn parse(values: &[String]) -> Result<Self, CutError> {
         if values.is_empty() || values.len() > MAX_CUTS {
             return Err(CutError(format!(
@@ -67,7 +61,6 @@ impl Cuts {
         Ok(Self(times))
     }
 
-    /// "08:00" and "16:30".
     pub fn labels(&self) -> Vec<String> {
         self.0
             .iter()
@@ -75,7 +68,6 @@ impl Cuts {
             .collect()
     }
 
-    /// Every cut instant from `days_back` days ago through tomorrow.
     fn instants<Tz: TimeZone>(
         &self,
         now: DateTime<Utc>,
@@ -89,7 +81,6 @@ impl Cuts {
                 continue;
             };
             for time in &self.0 {
-                // A cut inside a DST gap moves to the next valid instant.
                 let local = day.and_time(*time);
                 let at = tz.from_local_datetime(&local).earliest().or_else(|| {
                     tz.from_local_datetime(&(local + Duration::hours(1)))
@@ -105,7 +96,6 @@ impl Cuts {
         out
     }
 
-    /// The cuts around `now`.
     pub fn window<Tz: TimeZone>(&self, now: DateTime<Utc>, tz: &Tz) -> CutWindow {
         let instants = self.instants(now, tz, 2);
         let latest = instants.iter().rposition(|at| *at <= now);
@@ -120,7 +110,6 @@ impl Cuts {
                     .copied()
                     .unwrap_or(instants[index] + Duration::days(1)),
             },
-            // Unreachable with at least one cut a day; a safe fallback.
             None => CutWindow {
                 at: now,
                 previous: now - Duration::days(1),
@@ -130,7 +119,6 @@ impl Cuts {
     }
 }
 
-/// "This morning's digest", "Yesterday afternoon's digest".
 pub fn digest_title<Tz: TimeZone>(cut: DateTime<Utc>, now: DateTime<Utc>, tz: &Tz) -> String {
     let local = cut.with_timezone(tz);
     let part = match local.hour() {
@@ -162,7 +150,6 @@ pub fn digest_title<Tz: TimeZone>(cut: DateTime<Utc>, now: DateTime<Utc>, tz: &T
     }
 }
 
-/// "08:00" in the user's zone.
 pub fn time_label<Tz: TimeZone>(at: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
@@ -207,7 +194,6 @@ mod tests {
         let early = cuts.window(at(7, 6, 0), &utc());
         assert_eq!(early.at, at(6, 16, 30));
         assert_eq!(early.next, at(7, 8, 0));
-        // Exactly on a cut belongs to that cut.
         assert_eq!(cuts.window(at(7, 16, 30), &utc()).at, at(7, 16, 30));
         let one = Cuts::parse(&["09:00".into()])
             .unwrap()

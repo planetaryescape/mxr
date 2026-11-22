@@ -26,14 +26,10 @@ use serde::{Deserialize, Serialize};
 /// Bumped whenever extraction changes, so cached rows are rebuilt.
 pub const EXTRACTOR_VERSION: u32 = 2;
 
-/// A standfirst longer than this is cut at a word boundary.
 const STANDFIRST_MAX_CHARS: usize = 300;
 const BLURB_MAX_CHARS: usize = 240;
-/// A paragraph shorter than this is not a standfirst.
 const STANDFIRST_MIN_WORDS: usize = 12;
-/// Digest: at least this many headline links...
 const DIGEST_MIN_LINKS: usize = 3;
-/// ...with at most this many words of body per link.
 const DIGEST_MAX_WORDS_PER_LINK: usize = 160;
 const TEASER_MAX_WORDS: usize = 300;
 const NOTICE_MAX_WORDS: usize = 60;
@@ -41,13 +37,9 @@ const NOTICE_MAX_WORDS: usize = 60;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Shape {
-    /// One essay: the issue is the article.
     Single,
-    /// Many links with blurbs: each link is an item.
     Digest,
-    /// A short body pointing at one article.
     Teaser,
-    /// A few lines with nothing to follow.
     Notice,
 }
 
@@ -72,7 +64,6 @@ impl Shape {
     }
 }
 
-/// A link an issue points to: a digest item or a teaser's article.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LinkItem {
     pub title: String,
@@ -80,7 +71,6 @@ pub struct LinkItem {
     /// Tracking parameters stripped; a redirect that names its target is
     /// unwrapped.
     pub url: String,
-    /// `sqlite.org`; for a click tracker, the tracker's domain.
     pub domain: String,
     /// The link goes through a click tracker, so `domain` is not the
     /// article's site.
@@ -107,27 +97,20 @@ pub struct Paragraph {
 pub struct Extraction {
     pub shape: Shape,
     pub headline: String,
-    /// The first paragraph of real text, cut to a few lines.
     pub standfirst: Option<String>,
-    /// Words in the issue's body, masthead and footer excluded.
     pub words: u32,
-    /// Teaser: the article it points at.
     pub main_link: Option<LinkItem>,
     /// Digest: each link item, in order.
     pub links: Vec<LinkItem>,
-    /// The body as paragraphs, masthead and footer removed.
     pub paragraphs: Vec<Paragraph>,
 }
 
-/// What extraction reads from one message.
 #[derive(Debug, Clone, Copy)]
 pub struct IssueInput<'a> {
     pub subject: &'a str,
-    /// The publication's name, when known (the sender's display name).
     pub source: Option<&'a str>,
     pub html: Option<&'a str>,
     pub text: Option<&'a str>,
-    /// Used when no body is stored.
     pub snippet: &'a str,
 }
 
@@ -146,7 +129,6 @@ static MASTHEAD: Lazy<Regex> = Lazy::new(|| {
         r"(?i)^(?:view (?:this )?(?:email|message|newsletter|post)?\s*(?:in|on) (?:your |a )?(?:browser|web)|view online|read (?:it )?(?:online|in (?:the )?app|on the web)|open in app|forwarded this email\??|was this (?:email )?forwarded to you\??|(?:sponsored|presented|brought to you) by\b|in partnership with\b|together with\b|listen (?:now|to this)|watch now|share this (?:post|email)|subscribe\b|upgrade to paid)",
     )
 });
-/// Footer lines: everything from the first one on is dropped.
 static FOOTER: Lazy<Regex> = Lazy::new(|| {
     regex(
         r"(?i)\bunsubscribe\b|you(?: are| were|'re|’re)? receiving this|you received this|update (?:your )?preferences|manage (?:your )?(?:email )?(?:preferences|subscription)|to stop receiving|no longer (?:wish|want) to receive|©\s*\d{4}|all rights reserved|why did i get this",
@@ -169,7 +151,6 @@ static READ_MORE: Lazy<Regex> = Lazy::new(|| {
         r"(?i)^(?:read more|continue reading|keep reading|read the (?:full|rest|whole)\b.*|read (?:the )?(?:full )?(?:post|article|story|essay|piece)|full (?:story|article|post)|read now|read it here|read on)\W*$",
     )
 });
-/// Links that are about the email, not in it.
 static BOILERPLATE_LINK: Lazy<Regex> = Lazy::new(|| {
     regex(
         r"(?i)^(?:unsubscribe|manage|preferences|update (?:your )?preferences|view (?:in|on)|view online|read online|read in app|open in app|share|like|comment|restack|subscribe|upgrade|sign up|log ?in|forward|refer\b|privacy|terms|help|contact us|follow|twitter|x|facebook|linkedin|instagram|youtube|tiktok|threads|bluesky|mastodon|download (?:on|the)|get it on|app store|google play|advertise|sponsor|website|home|here|link|click here|this)\b",
@@ -180,9 +161,7 @@ static BOILERPLATE_HREF: Lazy<Regex> = Lazy::new(|| {
         r"(?i)unsubscribe|/subscribe|manage[-_]?preferences|/preferences|/account|/settings|/app-link/|/share\b|action=share|twitter\.com|x\.com/|facebook\.com|linkedin\.com/(?:company|in|share)|instagram\.com|youtube\.com/(?:@|c/|channel|user)|apps\.apple\.com|play\.google\.com|/comments?\b|/sign-?in|/login|/refer",
     )
 });
-/// "1. ", "2) ", "- " before a list item's title.
 static LIST_MARKER: Lazy<Regex> = Lazy::new(|| regex(r"^\s*(?:\d{1,3}[.)]|[-*•·])\s+"));
-/// The verbs buttons start with.
 static CTA_VERB: Lazy<Regex> = Lazy::new(|| {
     regex(
         r"(?i)^(?:view|watch|read|get|save|shop|buy|book|claim|learn|discover|explore|try|start|join|register|download|see|check|order|reserve|apply|listen|unlock|grab|redeem|continue|go to|visit|open|reply|rsvp|vote|donate)\b",
@@ -201,7 +180,6 @@ pub(crate) fn word_count(text: &str) -> usize {
         .count()
 }
 
-/// Cut at a word boundary, with an ellipsis when cut.
 pub fn clip(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_string();
@@ -220,7 +198,6 @@ pub fn clip(text: &str, max_chars: usize) -> String {
     format!("{trimmed}…")
 }
 
-/// Extract the readable items of one issue.
 pub fn extract(input: &IssueInput<'_>) -> Extraction {
     let headline = clean_headline(input.subject, input.source);
     let walked = match input.html.filter(|html| !html.trim().is_empty()) {
@@ -239,12 +216,10 @@ pub fn extract(input: &IssueInput<'_>) -> Extraction {
     classify(walked, headline, input.subject)
 }
 
-/// A link as the walk found it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Anchor {
     text: String,
     href: String,
-    /// Index into the walk's paragraphs.
     paragraph: usize,
     in_heading: bool,
     in_strong: bool,
@@ -315,7 +290,6 @@ struct Walker {
     paragraphs: Vec<Paragraph>,
     anchors: Vec<Anchor>,
     buffer: String,
-    /// Anchors found in the paragraph being built.
     pending: Vec<Anchor>,
     block_stack: Vec<&'static str>,
     strong_depth: usize,
@@ -349,7 +323,6 @@ impl Walker {
 
     fn flush(&mut self) {
         let kind = self.kind();
-        // A double line break inside one block starts a new paragraph.
         let raw = std::mem::take(&mut self.buffer);
         let mut pieces: Vec<String> = raw
             .split("\n\n")
@@ -362,7 +335,6 @@ impl Walker {
             .filter(|piece| !piece.is_empty())
             .collect();
         if pieces.is_empty() {
-            // Anchors with no text of their own (an image link) still count.
             for mut anchor in self.pending.drain(..) {
                 anchor.paragraph = self.paragraphs.len();
                 self.paragraphs.push(Paragraph {
@@ -378,7 +350,6 @@ impl Walker {
             self.paragraphs.push(Paragraph { kind, text: piece });
         }
         for mut anchor in self.pending.drain(..) {
-            // The piece that holds the anchor's text, else the first.
             anchor.paragraph = (first..self.paragraphs.len())
                 .find(|&i| {
                     !anchor.text.is_empty() && self.paragraphs[i].text.contains(&anchor.text)
@@ -460,7 +431,6 @@ impl Walker {
     }
 }
 
-/// Any HTML (a fetched article's cleaned markup) as reader paragraphs.
 pub fn paragraphs_from_html(html: &str) -> Vec<Paragraph> {
     walk_html(html)
         .paragraphs
@@ -473,20 +443,16 @@ static IMG: Lazy<scraper::Selector> =
     Lazy::new(|| scraper::Selector::parse("img").expect("img selector parses"));
 
 fn walk_html(html: &str) -> Walked {
-    // A lost helper (timeout, crash) reads as an over-budget page: no
-    // paragraphs or links.
     WALK_HTML.call(html, &()).unwrap_or_else(|| Walked {
         paragraphs: Vec::new(),
         anchors: Vec::new(),
     })
 }
 
-/// The HTML parse and walk, which is what runs in the HTML helper process.
 static WALK_HTML: Job<(), Walked> =
     Job::new("reading.walk_html", |html, ()| walk_html_in_process(html));
 
 fn walk_html_in_process(html: &str) -> Walked {
-    // Over the parser budget the page yields no paragraphs or links.
     if !mxr_reader::within_budget(html) {
         return Walked {
             paragraphs: Vec::new(),
@@ -503,7 +469,6 @@ fn walk_html_in_process(html: &str) -> Walked {
     }
 }
 
-/// The extraction parses `reading.walk_html` runs in the HTML helper process.
 pub(crate) fn jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
     vec![&WALK_HTML]
 }
@@ -604,8 +569,6 @@ fn classify(walked: Walked, headline: String, subject: &str) -> Extraction {
         paragraphs,
         anchors,
     } = walked;
-    // The footer starts at the first footer line in the last half; a short
-    // issue's whole body can be its last half.
     let half = paragraphs.len() / 2;
     let footer_start = paragraphs
         .iter()
@@ -625,8 +588,6 @@ fn classify(walked: Walked, headline: String, subject: &str) -> Extraction {
 
     let subject_key = collapse(subject).to_lowercase();
     let headline_key = headline.to_lowercase();
-    // A paragraph that is nothing but one boilerplate link is a button.
-    // So is a row of them (Twitter LinkedIn).
     let mut leftover: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
     for anchor in anchors
         .iter()
@@ -801,7 +762,6 @@ fn blurb_for(
     }
     let next_index = anchor.paragraph + 1;
     let next = paragraphs.get(next_index)?;
-    // The next block is the next item's headline, not this one's blurb.
     let next_is_headline = anchors.iter().any(|other| {
         other.paragraph == next_index
             && (other.in_heading || other.text.chars().count() * 2 >= next.text.chars().count())

@@ -15,8 +15,6 @@ pub(super) fn aligned<'a>(
         if !trusted.iter().any(|id| id.eq_ignore_ascii_case(host.host)) {
             continue;
         }
-        // The first configured receiver's report is authoritative, including a
-        // failure. A later forged pass cannot replace it.
         if !parsed.errors.is_empty() || parsed.none_done || host.version.is_some_and(|v| v != 1) {
             return None;
         }

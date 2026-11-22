@@ -11,7 +11,6 @@ use mxr_todo::provenance::{FieldProvenance, FieldSource, FieldSources};
 use mxr_todo::timing::{lead_time, start_of_day, TimingInput};
 use mxr_todo::TodoKind;
 
-/// Inspectable proposal; `plan` does not reserve the cycle or write tasks.
 #[derive(Debug, Clone)]
 pub struct Candidate {
     pub record_ids: Vec<String>,
@@ -54,8 +53,6 @@ pub async fn plan<Tz: TimeZone>(
         let dedup_key = store
             .record_renewal_cycle_key(account, &record_ids, false)
             .await?;
-        // A corrected estimate can move outside the creation window;
-        // refresh the existing review without creating an early/late one.
         if !(0..=subscriptions::RENEWAL_LEAD_DAYS).contains(&(day - today).num_days())
             && store
                 .get_todo_by_dedup(account, &dedup_key)
@@ -121,8 +118,6 @@ pub async fn plan<Tz: TimeZone>(
             scheduled_for: None,
             action_url: None,
             action_domain: None,
-            // An estimate must not silently close a review the user has
-            // yet to do, including when cancellation is later inferred.
             relevant_until: None,
             window_source: None,
             state: TodoState::Open,

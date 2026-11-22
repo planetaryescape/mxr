@@ -37,8 +37,6 @@ fn cases() -> Vec<SecretCase> {
             kind: "OpenAI sk- prefix",
             body: "key: sk-supersecretliveapikeyabcd1234XYZ",
             raw_marker: "sk-supersecretliveapikeyabcd1234XYZ",
-            // detector emits format "sk-...XYZ" -- the leading prefix
-            // and trailing 4 are kept; the middle is dots.
             expected_preview_substring: "sk-",
         },
         SecretCase {
@@ -57,9 +55,6 @@ fn cases() -> Vec<SecretCase> {
                 "qrstuvwxyz"
             ),
             raw_marker: concat!("xoxb-", "1234567890-", "abcdefghijklmnop-", "qrstuvwxyz"),
-            // redact_token keeps the first 4 chars; the dash isn't
-            // part of the head for `xoxb-...` so the preview begins
-            // with `xoxb` (no dash).
             expected_preview_substring: "xoxb",
         },
         SecretCase {
@@ -100,7 +95,6 @@ fn cases() -> Vec<SecretCase> {
         },
         SecretCase {
             kind: "Luhn-valid CC",
-            // 4242 4242 4242 4242 is Stripe's well-known Luhn-valid test card.
             body: "card: 4242 4242 4242 4242",
             raw_marker: "4242 4242 4242 4242",
             expected_preview_substring: "**** **** **** 4242",
@@ -152,9 +146,6 @@ fn json_serialization_never_contains_raw_secrets() {
     let mut failures = Vec::new();
     for case in cases() {
         let report = build_report_for(case.body);
-        // Sanity: detector saw the secret. If this fails, the input
-        // sample isn't tripping the detector at all and the rest of
-        // the assertions are vacuous.
         let pii_issues: Vec<_> = report
             .issues
             .iter()
@@ -217,7 +208,6 @@ async fn audit_table_never_persists_raw_secrets() {
             .record_safety_run(&account.id, None, &report)
             .await
             .expect("audit row persists");
-        // Read back the issues_json column and grep for the raw form.
         let row: (String,) = sqlx::query_as(
             "SELECT issues_json FROM draft_safety_runs ORDER BY checked_at DESC LIMIT 1",
         )
@@ -240,9 +230,6 @@ async fn audit_table_never_persists_raw_secrets() {
 
 #[test]
 fn pii_issues_use_blocker_or_warning_severity_only() {
-    // Defence-in-depth: an Info-severity PII issue would slip past
-    // the daemon's `enforce_draft_safety_with_override` gate (Info
-    // doesn't trigger blocker), so the detector must never emit one.
     for case in cases() {
         let report = build_report_for(case.body);
         for issue in &report.issues {

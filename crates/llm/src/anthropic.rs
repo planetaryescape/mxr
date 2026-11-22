@@ -27,7 +27,6 @@ const EFFORT: &str = "low";
 /// The assistant plans multi-step tool use for a person who is waiting:
 /// more thought than an extraction, less than a coding agent.
 const ASSISTANT_EFFORT: &str = "medium";
-/// Room for thinking plus a long answer in one non-streamed reply.
 const ASSISTANT_MAX_TOKENS: u32 = 16_000;
 /// Provider tag on replayed turns.
 pub(crate) const PROVIDER_TAG: &str = "anthropic";
@@ -295,7 +294,6 @@ impl AnthropicClient {
                     },
                 )
             })?;
-        // Keeps the key out of reqwest's debug output.
         key_header.set_sensitive(true);
         let mut request = client
             .post(format!("{}/v1/messages", self.base_url))
@@ -392,7 +390,6 @@ fn build_request<'a>(
     })
 }
 
-/// A refusal or an empty answer is about this request; the API worked.
 fn interpret(
     reply: MessagesResponse,
     requested_model: &str,

@@ -53,7 +53,6 @@ pub fn first_informative_line(body: &str, max: usize) -> Option<String> {
 static URL: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"https?://[^\s<>"')\]]+"#).expect("valid url regex"));
 
-/// Words around a link that make it the place to go deeper.
 static LINK_CUE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b(view|open|see|track|details|review|check|read|status|report|dashboard|order|build|run|incident|activity)\b")
         .expect("valid link cue regex")
@@ -91,7 +90,6 @@ pub fn pick_link(body: &str) -> Option<String> {
     fallback
 }
 
-/// The registrable domain of a link's host, for "opens github.com".
 pub fn link_domain(url: &str) -> Option<String> {
     let rest = url.split_once("://")?.1;
     let host = rest
@@ -114,7 +112,6 @@ pub(crate) fn registrable_domain(host: &str) -> Option<String> {
     Some(psl::domain_str(&host).map_or_else(|| host.clone(), str::to_string))
 }
 
-/// "Strava" from "strava".
 pub(crate) fn capitalise(value: &str) -> String {
     let mut chars = value.chars();
     chars.next().map_or_else(String::new, |first| {

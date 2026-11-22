@@ -15,17 +15,14 @@ use mxr_todo::money::find_amounts;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// The evidence of an issued date that fell back to the email's own date.
 pub const EMAIL_DATE: &str = "the email's date";
 
-/// What the words of one email say about its record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleRead {
     pub kind: RecordKind,
     pub stage: Stage,
     /// The subject phrase that named the kind, for the why line.
     pub phrase: String,
-    /// The reference that names this one record, for its dedup key.
     pub reference: Option<String>,
     /// An account, customer or policy number: it names the account, not
     /// this bill, so each bill stays its own record and they form a series.
@@ -33,7 +30,6 @@ pub struct RuleRead {
     pub fields: Vec<Found>,
 }
 
-/// One message as the rules see it.
 #[derive(Debug, Clone, Copy)]
 pub struct RuleInput<'a> {
     pub subject: &'a str,
@@ -110,8 +106,6 @@ static KIND_RULES: Lazy<Vec<KindRule>> = Lazy::new(|| {
             Stage::Statement,
             r"\bstatement\b|\byour (?:new |latest |monthly )?bill\b|\bbill is (?:ready|available)\b",
         ),
-        // Only a finished e-signature: a person writing about a contract is
-        // a conversation, filed by hand (`T`) or "always file this sender".
         rule(
             K::Contract,
             Stage::Other,
@@ -130,7 +124,6 @@ static KIND_RULES: Lazy<Vec<KindRule>> = Lazy::new(|| {
     ]
 });
 
-/// Marketing and nudges that use record words without being records.
 static NOT_A_RECORD: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\d+\s?% off|\bsale\b|\bdeals?\b|\boffers?\b|\bcomplete your (?:order|purchase|booking)\b|\bin your (?:cart|basket)\b|\bforgot something\b|\brate your\b|\breview your\b|\bhow was\b|\bwebinar\b|\bnewsletter\b|\blast chance\b|\bdon'?t miss\b|\bsave \d|\bfree shipping\b|\bdiscount\b|\bwin\b|\bsurvey\b|\bcan'?t process\b|\bcould(?:n'?t| not)\b|\bfailed\b|\bdeclined\b|\bunsuccessful\b|\bproblem with your payment\b|\bupdate your payment\b|\baction required\b",
@@ -151,7 +144,6 @@ static HAS_DIGIT: Lazy<Regex> = Lazy::new(|| Regex::new(r"\d").expect("valid dig
 static UPPER_CODE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[A-Z0-9]{5,8}$").expect("valid code regex"));
 
-/// Label words a total sits behind, strongest first.
 static TOTAL_STRONG: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)(grand total|order total|total paid|amount paid|total charged|amount charged|you paid|payment of|total amount|total due|amount due|balance due|total to pay|total \(inc|total incl|total:)",
@@ -161,7 +153,6 @@ static TOTAL_STRONG: Lazy<Regex> = Lazy::new(|| {
 static TOTAL_WEAK: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b(total|amount|price|cost|fare|charge)\b").expect("valid weak total regex")
 });
-/// Lines that hold an amount that is not the total.
 static NOT_TOTAL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b(sub-?total|tax|vat|shipping|delivery|postage|discount|saving|saved|previous|balance brought|credit limit|minimum payment)\b")
         .expect("valid not-total regex")
@@ -214,7 +205,6 @@ static SPAN_END_TRIGGER: Lazy<Regex> = Lazy::new(|| {
     .expect("valid span end trigger")
 });
 
-/// Boilerplate stripped from a subject to make a title.
 static TITLE_NOISE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(?:re|fwd?|fw):\s*|\b(?:your|thanks for your|thank you for your)\b|\b(?:order|booking|reservation) (?:confirmation|confirmed|details)\b|\b(?:has been|has|was) (?:shipped|dispatched|delivered)\b|\breceipt (?:for|from)\b|#\s*[A-Za-z0-9\-]+|\b(?:no\.?|number)\s*[A-Za-z0-9\-]+|[!:|]+")
         .expect("valid title noise regex")
@@ -238,7 +228,6 @@ where
     let text = format!("{subject}\n{}", input.body_text);
     let (reference, amount, mut fields) =
         reference_and_total(&text, input.body_text, kind_rule.kind);
-    // A kind word with nothing to file is a notification, not a record.
     let enough = match kind_rule.kind {
         RecordKind::Order | RecordKind::Booking | RecordKind::Ticket | RecordKind::Account => {
             reference.is_some()
@@ -260,8 +249,6 @@ where
         re.captures_iter(&text).find_map(|caps| {
             let date = caps.name("date")?.as_str();
             let day = match intent {
-                // The time resolver reads ahead only, so a date already
-                // gone is read here.
                 YearIntent::JustGone => numeric_day(date, &anchor, order)
                     .or_else(|| past_day(date, anchor.date_naive()))?,
                 YearIntent::Next => parse_date(date, &anchor, order, intent)?.0,
@@ -298,8 +285,6 @@ where
             fields.push(Found::at(field, Source::Rule, at, words));
         }
     }
-    // "Warranty valid until 3 May" is the warranty, not a second validity
-    // date read from the same words.
     let warranty_words: Vec<String> = fields
         .iter()
         .filter(|f| f.field == FieldName::WarrantyUntil)
@@ -323,8 +308,6 @@ where
     if let Some(title) = title_from_subject(subject) {
         fields.push(Found::text(FieldName::Title, Source::Rule, title));
     }
-    // Every value must be quotable from the email; a parse that drifted
-    // from its words is dropped rather than shown.
     fields.retain(|found| {
         let quoted = matches!(found.field, FieldName::Reference) || found.field.needs_checking();
         !quoted
@@ -348,11 +331,9 @@ where
     })
 }
 
-/// A labelled reference read from an email.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoundReference {
     pub value: String,
-    /// The words it was read from, verbatim.
     pub words: String,
     /// An account, customer, policy or membership number: it names the
     /// account, not one transaction.
@@ -420,7 +401,6 @@ pub fn find_reference(text: &str, kind: RecordKind) -> Option<FoundReference> {
     best.map(|(_, found)| found)
 }
 
-/// The reference and the total a rule reads, as fields with their quotes.
 pub fn reference_and_total(
     text: &str,
     body: &str,
@@ -484,10 +464,8 @@ pub fn find_total(text: &str) -> Option<mxr_todo::money::Amount> {
         other.minor != ranked[0].1.minor || other.currency != ranked[0].1.currency
     });
     if differs && best == 1 {
-        // Several unlabelled amounts: none of them is the total.
         return None;
     }
-    // Among labelled totals the largest is the one that includes the rest.
     ranked
         .into_iter()
         .map(|(_, amount)| amount)

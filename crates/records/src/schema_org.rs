@@ -20,18 +20,15 @@ use serde_json::Value;
 pub struct SchemaMoney {
     pub minor: i64,
     pub currency: String,
-    /// The value as the markup wrote it.
     pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SchemaWhen {
     pub at: DateTime<Utc>,
-    /// The value as the markup wrote it.
     pub text: String,
 }
 
-/// One record the markup describes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SchemaRecord {
     pub kind: RecordKind,
@@ -46,7 +43,6 @@ pub struct SchemaRecord {
     pub span_start: Option<SchemaWhen>,
     pub span_end: Option<SchemaWhen>,
     pub place: Option<String>,
-    /// An invoice's `accountId`: bills to one account form a series.
     pub account_ref: Option<String>,
 }
 
@@ -77,8 +73,6 @@ fn collect(value: &Value, out: &mut Vec<SchemaRecord>) {
         Value::Object(map) => {
             if let Some(record) = type_name(value).and_then(|name| judge(&name, value)) {
                 out.push(record);
-                // The record read its nested entities (partOfOrder,
-                // reservationFor) already.
                 return;
             }
             map.values().for_each(|child| collect(child, out));
@@ -229,7 +223,6 @@ fn invoice(entity: &Value) -> SchemaRecord {
 fn reservation(name: &str, entity: &Value) -> Option<SchemaRecord> {
     let status = enum_suffix(entity, "reservationStatus");
     let stage = match status.as_deref() {
-        // Waiting for the user is a to-do, not a record yet.
         Some("ReservationPending" | "ReservationHold") => return None,
         Some("ReservationCancelled") => Stage::Cancellation,
         _ => Stage::Booking,
@@ -345,7 +338,6 @@ fn airport(node: Option<&Value>) -> Option<Airport> {
     })
 }
 
-/// The city of a place: its address's locality, else the place's name.
 fn locality(node: &Value) -> Option<String> {
     match node.get("address") {
         Some(Value::Object(_)) => node
@@ -377,7 +369,6 @@ fn offered_name(offer: &Value) -> Option<String> {
     }
 }
 
-/// "XPS 14 laptop", or "XPS 14 laptop and 2 more".
 fn item_title(names: &[String]) -> Option<String> {
     let mut unique: Vec<&String> = Vec::new();
     for name in names {

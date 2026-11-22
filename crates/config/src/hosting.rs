@@ -1,4 +1,3 @@
-//! Read-only client policy for an operator's persistent hosted-daemon stop.
 use serde::Deserialize;
 use std::{io, path::Path};
 

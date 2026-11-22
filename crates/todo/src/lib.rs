@@ -43,14 +43,12 @@ use serde::{Deserialize, Serialize};
 /// an expiry or a user decision.
 pub const RULES_VERSION: i64 = 3;
 
-/// The kind of action, which picks the lead time and the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TodoKind {
     Bill,
     PaymentFailed,
     Renewal,
-    /// Passport, visa, driving licence or ID card expiry.
     Document,
     Lease,
     Return,

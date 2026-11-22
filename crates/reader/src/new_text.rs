@@ -23,7 +23,6 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
-/// Words per shingle when matching against earlier messages.
 const SHINGLE: usize = 4;
 /// Share of a long line's shingles an earlier message must hold for the
 /// line to count as quoted.
@@ -72,7 +71,6 @@ pub const ONLY_QUOTED_TEXT: &str = "(only quoted text)";
 pub struct Trimmed {
     pub quote: bool,
     pub signature: bool,
-    /// A legal disclaimer or a tracking/unsubscribe footer.
     pub footer: bool,
 }
 
@@ -86,7 +84,6 @@ impl Trimmed {
 pub struct NewText {
     pub text: String,
     pub trimmed: Trimmed,
-    /// Quoted or forwarded source context remains beside authored text.
     pub has_preserved_context: bool,
     /// Everything was quoted: `text` is `ONLY_QUOTED_TEXT`, and the message
     /// as sent is the only way to read it.
@@ -115,8 +112,6 @@ pub fn new_text(
     let config = ReaderConfig::default();
     let mut trimmed = Trimmed::default();
 
-    // HTML markers only survive while the body is HTML: use the HTML when
-    // it carries them, else the plain part.
     let html_part = html_body
         .or_else(|| text.filter(|t| html::looks_like_html_document(t)))
         .map(split_html_quote);
@@ -137,9 +132,6 @@ pub fn new_text(
     let (body, quoted, inline_context) = strip_marked_quotes(&raw, html_preserved_context);
     has_preserved_context |= inline_context || has_forwarded_context;
     trimmed.quote |= quoted;
-    // Marked inline questions are part of the reply's meaning. The marked
-    // pass already folds a trailing quote; matching the remaining mixed
-    // block against prior messages could otherwise cut the answers too.
     let (body, matched) = if has_preserved_context {
         (body, false)
     } else {
@@ -167,8 +159,6 @@ pub fn new_text(
                 only_quoted: false,
             };
         }
-        // Nothing of the sender's own is left: say so rather than show
-        // someone else's quoted words as theirs.
         trimmed.quote = true;
         return NewText {
             text: ONLY_QUOTED_TEXT.to_string(),
@@ -178,8 +168,6 @@ pub fn new_text(
         };
     }
     if !trimmed.any() {
-        // Nothing was removed, so nothing is altered: the text keeps its
-        // own spacing (only the blank edges go).
         return NewText {
             text: raw
                 .trim_matches(|c: char| c == '\n' || c == '\r')
@@ -255,13 +243,9 @@ fn strip_marked_quotes(text: &str, preserve_html_attribution: bool) -> (String, 
         {
             removed = true;
         } else {
-            // Preserve the original `>` markers so readers can distinguish
-            // an inline question from the sender's answer.
             kept.push(*line);
         }
     }
-    // A forwarded section is retained as attributed context, even when it
-    // is the entire body. It must not be presented as the forwarder's words.
     if lines.iter().any(|line| FORWARDED_HEADER.is_match(line)) {
         return (text.trim_matches(['\n', '\r']).to_string(), false, false);
     }
@@ -273,8 +257,6 @@ fn is_strong_header(lines: &[&str], index: usize, line: &str) -> bool {
         return true;
     }
     if ON_WROTE.is_match(line) {
-        // An "On ... wrote:" with no `>` lines after it heads a quote that
-        // runs to the end (Gmail plain text without prefixes).
         let next = lines[index + 1..]
             .iter()
             .find(|line| !line.trim().is_empty());
@@ -289,7 +271,6 @@ fn is_strong_header(lines: &[&str], index: usize, line: &str) -> bool {
             >= 2
 }
 
-/// The words of `text`, lowercased, punctuation and `>` gone.
 fn words(text: &str) -> Vec<String> {
     text.split(|c: char| !c.is_alphanumeric())
         .filter(|word| !word.is_empty())
@@ -335,9 +316,7 @@ impl EarlierIndex {
 enum LineClass {
     Blank,
     Header,
-    /// A line long enough to judge: quoted or not.
     Long(bool),
-    /// Too short to judge alone ("Thanks,", "Sam").
     Short(bool),
 }
 

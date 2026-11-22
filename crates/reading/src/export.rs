@@ -8,16 +8,12 @@ use chrono::{DateTime, Utc};
 pub struct HighlightExport {
     pub quote: String,
     pub note: Option<String>,
-    /// The item's headline.
     pub title: String,
-    /// The publication.
     pub source: String,
-    /// The article or the issue's web link, when there is one.
     pub url: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
-/// Every highlight as one Markdown document.
 pub fn to_markdown(highlights: &[HighlightExport]) -> String {
     let mut sorted: Vec<&HighlightExport> = highlights.iter().collect();
     sorted.sort_by_key(|h| h.created_at);

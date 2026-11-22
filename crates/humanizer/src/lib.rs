@@ -34,7 +34,6 @@ pub enum HumanizerCategory {
     ChallengesProspects,
 }
 
-/// Compatibility map from legacy categories to direct humanizer 3.1 equivalents.
 pub fn pattern_for_category(category: HumanizerCategory) -> Option<u8> {
     Some(match category {
         HumanizerCategory::NegativeParallelism => 1,
@@ -344,8 +343,6 @@ impl PatternRates {
         let mut words = 0_u64;
         for text in samples {
             words += text.split_whitespace().count() as u64;
-            // Learn raw habits even when weak-alone detections are suppressed
-            // during draft scoring.
             for hit in score_internal(text, &HumanizerOpts::default(), false).hits {
                 if let Some(pattern) = pattern_for_category(hit.category) {
                     *counts.entry(pattern).or_default() += 1;
@@ -364,7 +361,6 @@ impl PatternRates {
     }
 }
 
-/// Score only the detections that exceed the writer's normalized rate.
 pub fn score_with_rates(text: &str, opts: &HumanizerOpts, rates: &PatternRates) -> HumanizerReport {
     let mut report = score_internal(text, opts, false);
     let words = text.split_whitespace().count() as u64;
@@ -375,8 +371,6 @@ pub fn score_with_rates(text: &str, opts: &HumanizerOpts, rates: &PatternRates) 
         };
         let count = observed.entry(pattern).or_default();
         *count += 1;
-        // Compare cross-products against the unrounded historical rate. This
-        // avoids granting a whole occurrence to a short draft for a tiny rate.
         let historical = rates.counts.get(&pattern).copied().unwrap_or(0);
         rates.words == 0 || count.saturating_mul(rates.words) > historical.saturating_mul(words)
     });
@@ -416,12 +410,9 @@ fn paragraph_range(text: &str, offset: usize) -> (usize, usize) {
 }
 
 pub fn writing_constraints() -> &'static str {
-    // Compatibility for legacy callers. Shared compose paths use the
-    // catalogue-derived email_writing_constraints below.
     "Avoid AI-writing patterns: no delve/tapestry/testament/underscore/moreover/additionally; no em dashes; no not-just-but framing; no comma + -ing tail clauses; no serves as/stands as/boasts; no filler phrases; no sycophantic openers; no knowledge-cutoff disclaimers; no curly quotes, emoji headings, or generic positive conclusions. Vary sentence rhythm. Use I when natural. Don't sound like a press release."
 }
 
-/// Catalogue-derived constraints for the shared compose-assist path.
 pub fn email_writing_constraints() -> String {
     format!(
         "Use the writer's own voice and preserve supported facts. Apply these email style rules:\n{}",

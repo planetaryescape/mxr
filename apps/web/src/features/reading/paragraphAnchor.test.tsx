@@ -108,3 +108,20 @@ describe("the paragraph at the top of the reader", () => {
 
 });
 
+
+describe("drawing anchored marks in the plain reader", () => {
+  const marked = (marks: { quote: string; paragraph?: number | null }[]) => {
+    render(<Paragraphs paragraphs={PARAGRAPHS} marks={marks} />);
+    return [...document.querySelectorAll("mark")].map((mark) =>
+      mark.closest("[data-paragraph]")?.getAttribute("data-paragraph"),
+    );
+  };
+
+  test("an anchored highlight marks only the paragraph it was made in", () => {
+    expect(marked([{ quote: "Same words here", paragraph: 2 }])).toEqual(["2"]);
+  });
+
+  test("a highlight with no anchor marks every occurrence, as before", () => {
+    expect(marked([{ quote: "Same words here" }])).toEqual(["0", "2"]);
+  });
+});

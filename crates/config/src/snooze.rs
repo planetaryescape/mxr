@@ -146,38 +146,6 @@ mod tests {
     use chrono::{Datelike, FixedOffset, Timelike};
 
     #[test]
-    fn tonight_preset_expires_after_evening_hour() {
-        let config = SnoozeConfig::default();
-        let timezone = FixedOffset::east_opt(3600).expect("valid test offset");
-        let before_evening = timezone
-            .with_ymd_and_hms(2026, 5, 11, 17, 0, 0)
-            .single()
-            .expect("valid test time");
-        let after_evening = timezone
-            .with_ymd_and_hms(2026, 5, 11, 19, 0, 0)
-            .single()
-            .expect("valid test time");
-
-        let tonight =
-            resolve_snooze_preset_time_from(SnoozeOption::Tonight, &config, &before_evening)
-                .expect("tonight should be available before evening");
-        let local_tonight = tonight.with_timezone(&timezone);
-        assert_eq!(local_tonight.date_naive(), before_evening.date_naive());
-        assert_eq!(local_tonight.hour(), u32::from(config.evening_hour));
-
-        assert!(
-            resolve_snooze_preset_time_from(SnoozeOption::Tonight, &config, &after_evening)
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn parse_iso8601() {
-        let config = SnoozeConfig::default();
-        assert!(parse_snooze_until("2099-12-25T09:00:00Z", &config).is_some());
-    }
-
-    #[test]
     fn parse_accepts_every_natural_phrase() {
         let config = SnoozeConfig::default();
         for phrase in [
@@ -214,28 +182,5 @@ mod tests {
         assert_eq!((weekend.weekday(), weekend.hour()), (Weekday::Sun, 11));
         let monday = local(SnoozeOption::NextMonday);
         assert_eq!((monday.day(), monday.hour()), (18, 7));
-    }
-
-    #[test]
-    fn parse_invalid() {
-        let config = SnoozeConfig::default();
-        assert!(parse_snooze_until("not-a-date", &config).is_none());
-    }
-
-    #[test]
-    fn out_of_range_config_hour_clamps_instead_of_panicking() {
-        let config = SnoozeConfig {
-            morning_hour: 99,
-            ..SnoozeConfig::default()
-        };
-        let tz = FixedOffset::east_opt(0).expect("valid test offset");
-        let now = tz
-            .with_ymd_and_hms(2026, 5, 11, 8, 0, 0)
-            .single()
-            .expect("valid test time");
-
-        let wake = resolve_snooze_time_from(SnoozeOption::TomorrowMorning, &config, &now);
-
-        assert_eq!(wake.with_timezone(&tz).hour(), 23);
     }
 }

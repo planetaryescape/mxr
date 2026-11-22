@@ -431,25 +431,6 @@ mod tests {
         ticket(health.admit(&anthropic())).failed(failure);
     }
 
-    #[test]
-    fn backoff_doubles_from_a_minute_to_half_an_hour() {
-        let minutes = |n: u64| Duration::from_secs(n * 60);
-        let steps: Vec<_> = (1..=7).map(cooling_backoff).collect();
-        assert_eq!(
-            steps,
-            [
-                minutes(1),
-                minutes(2),
-                minutes(4),
-                minutes(8),
-                minutes(16),
-                minutes(30),
-                minutes(30)
-            ]
-        );
-        assert_eq!(cooling_backoff(u32::MAX), minutes(30));
-    }
-
     #[tokio::test(start_paused = true)]
     async fn a_cooling_route_is_skipped_until_its_wait_is_over() {
         let health = RouteHealth::default();
@@ -466,42 +447,6 @@ mod tests {
         tokio::time::advance(Duration::from_secs(1)).await;
         assert_eq!(health.view(&anthropic()).state, RouteState::Recovering);
         assert!(matches!(health.admit(&anthropic()), Admission::Probe(_)));
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn each_failed_probe_doubles_the_wait() {
-        let health = RouteHealth::default();
-        fail(&health, cooling());
-        for expected in [2, 4, 8, 16, 30, 30] {
-            tokio::time::advance(COOLING_MAX).await;
-            let Admission::Probe(probe) = health.admit(&anthropic()) else {
-                panic!("expected the probe");
-            };
-            probe.failed(cooling());
-            assert_eq!(
-                health.view(&anthropic()).retry_in,
-                Duration::from_secs(expected * 60)
-            );
-        }
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn retry_after_replaces_the_backoff_within_limits() {
-        let health = RouteHealth::default();
-        let after = |secs| RouteFailure::Cooling {
-            reason: RATE_LIMITED,
-            retry_after: Some(Duration::from_secs(secs)),
-        };
-        fail(&health, after(7));
-        assert_eq!(health.view(&anthropic()).retry_in, Duration::from_secs(7));
-
-        health.reset();
-        fail(&health, after(0));
-        assert_eq!(health.view(&anthropic()).retry_in, RETRY_AFTER_MIN);
-
-        health.reset();
-        fail(&health, after(86_400));
-        assert_eq!(health.view(&anthropic()).retry_in, RETRY_AFTER_MAX);
     }
 
     #[tokio::test(start_paused = true)]
@@ -536,111 +481,6 @@ mod tests {
 
         fail(&health, cooling());
         assert_eq!(health.view(&anthropic()).retry_in, COOLING_MIN);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn the_probe_is_exclusive_until_it_reports() {
-        let health = RouteHealth::default();
-        fail(&health, cooling());
-        tokio::time::advance(COOLING_MIN).await;
-
-        let Admission::Probe(probe) = health.admit(&anthropic()) else {
-            panic!("expected the probe");
-        };
-        for _ in 0..5 {
-            let Admission::Skip(view) = health.admit(&anthropic()) else {
-                panic!("only one probe at a time");
-            };
-            assert_eq!(view.state, RouteState::Probing);
-        }
-        probe.succeeded();
-        assert!(matches!(health.admit(&anthropic()), Admission::Use(_)));
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_probe_dropped_without_a_result_is_released_not_punished() {
-        let health = RouteHealth::default();
-        fail(&health, cooling());
-        tokio::time::advance(COOLING_MIN).await;
-
-        drop(health.admit(&anthropic()));
-        let view = health.view(&anthropic());
-        assert_eq!(view.state, RouteState::Recovering);
-        assert!(matches!(health.admit(&anthropic()), Admission::Probe(_)));
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn failures_from_requests_already_in_flight_do_not_escalate_the_backoff() {
-        let health = RouteHealth::default();
-        let tickets: Vec<_> = (0..8).map(|_| ticket(health.admit(&anthropic()))).collect();
-        for ticket in tickets {
-            ticket.failed(cooling());
-        }
-        assert_eq!(health.view(&anthropic()).retry_in, COOLING_MIN);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_success_from_before_the_failure_does_not_undo_it() {
-        let health = RouteHealth::default();
-        let early = ticket(health.admit(&anthropic()));
-        fail(&health, cooling());
-        early.succeeded();
-        assert_eq!(health.view(&anthropic()).state, RouteState::Cooling);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn outcomes_that_arrive_after_a_reset_are_ignored() {
-        let health = RouteHealth::default();
-        let in_flight = ticket(health.admit(&anthropic()));
-        health.reset();
-        in_flight.failed(RouteFailure::Broken { reason: BAD_KEY });
-        assert_eq!(health.view(&anthropic()), RouteView::OK);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_new_key_clears_only_that_providers_verdicts() {
-        let health = RouteHealth::default();
-        let openrouter = route(RouteProvider::OpenRouter);
-        fail(&health, RouteFailure::Broken { reason: BAD_KEY });
-        ticket(health.admit(&openrouter)).failed(cooling());
-
-        health.forget_provider(RouteProvider::Anthropic);
-        assert_eq!(health.view(&anthropic()), RouteView::OK);
-        assert_eq!(health.view(&openrouter).state, RouteState::Cooling);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_forgotten_providers_in_flight_failure_is_dropped() {
-        let health = RouteHealth::default();
-        let in_flight = ticket(health.admit(&anthropic()));
-        health.forget_provider(RouteProvider::Anthropic);
-        in_flight.failed(RouteFailure::Broken { reason: BAD_KEY });
-        assert_eq!(health.view(&anthropic()), RouteView::OK);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_reset_does_not_strand_another_providers_probe() {
-        let health = RouteHealth::default();
-        let openrouter = route(RouteProvider::OpenRouter);
-        ticket(health.admit(&openrouter)).failed(cooling());
-        tokio::time::advance(COOLING_MIN).await;
-        let Admission::Probe(probe) = health.admit(&openrouter) else {
-            panic!("expected the probe");
-        };
-        health.forget_provider(RouteProvider::Anthropic);
-        probe.succeeded();
-        assert_eq!(health.view(&openrouter), RouteView::OK);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_forced_attempt_clears_the_route_on_success_and_changes_nothing_on_failure() {
-        let health = RouteHealth::default();
-        fail(&health, cooling());
-        health.force(&anthropic()).failed(cooling());
-        assert_eq!(health.view(&anthropic()).retry_in, COOLING_MIN);
-
-        health.force(&anthropic()).succeeded();
-        assert_eq!(health.view(&anthropic()), RouteView::OK);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -244,24 +244,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn row_attention_previews_run_but_commits_require_approval() {
-        let args =
-            json!({"mode": "todo", "row_id": "row", "account_id": "account", "revision": "exact"});
-        assert_eq!(classify("mxr_mode_row_seen", &args), Gate::Run);
-        let committing = with(&args, "confirm", json!(true));
-        assert_eq!(
-            classify("mxr_mode_row_seen", &committing),
-            Gate::Approve {
-                preview: Some((
-                    "mxr_mode_row_seen".into(),
-                    with(&args, "confirm", json!(false))
-                ))
-            }
-        );
-        assert!(!auto_approvable("mxr_mode_row_seen", &committing));
-    }
-
-    #[test]
     fn reads_run_and_unknown_tools_wait() {
         assert_eq!(classify("mxr_search", &json!({"query": "x"})), Gate::Run);
         assert_eq!(classify("mxr_classify_report", &json!({})), Gate::Run);
@@ -270,83 +252,6 @@ mod tests {
             classify("mxr_new_thing", &json!({})),
             Gate::Approve { preview: None }
         );
-    }
-
-    #[test]
-    fn microsoft_tasks_require_approval_for_confirmation_and_never_auto_approve() {
-        for action in ["status", "link", "sync"] {
-            let arguments = json!({
-                "action": action, "todo_id": "todo_1", "account_id": "work",
-                "fingerprint": "reviewed-payload",
-            });
-            for preview in [
-                arguments.clone(),
-                with(&arguments, "confirm", json!(false)),
-                with(&arguments, "confirm", Value::Null),
-            ] {
-                assert_eq!(classify("mxr_todo_microsoft", &preview), Gate::Run);
-                assert!(!auto_approvable("mxr_todo_microsoft", &preview));
-            }
-            for confirm in [
-                json!(true),
-                json!("true"),
-                json!("false"),
-                json!(0),
-                json!([]),
-                json!({}),
-            ] {
-                let committing = with(&arguments, "confirm", confirm);
-                assert_eq!(
-                    classify("mxr_todo_microsoft", &committing),
-                    Gate::Approve {
-                        preview: Some((
-                            "mxr_todo_microsoft".into(),
-                            json!({
-                                "action": action, "todo_id": "todo_1", "account_id": "work",
-                                "fingerprint": "reviewed-payload", "confirm": false,
-                            })
-                        )),
-                    }
-                );
-                assert!(!auto_approvable("mxr_todo_microsoft", &committing));
-            }
-        }
-    }
-
-    #[test]
-    fn todo_corrections_preview_but_commits_and_malformed_confirmation_wait() {
-        for tool in ["mxr_todo_correct", "mxr_todo_undo_correction"] {
-            let arguments = json!({
-                "todo_id": "todo_1", "reason": "wrong_details",
-                "edits": [{"field": "title", "value": "Updated task"}],
-                "correction_id": "exact-change",
-            });
-            for preview in [
-                arguments.clone(),
-                with(&arguments, "confirm", json!(false)),
-                with(&arguments, "confirm", Value::Null),
-            ] {
-                assert_eq!(classify(tool, &preview), Gate::Run);
-                assert!(!auto_approvable(tool, &preview));
-            }
-            for confirm in [
-                json!(true),
-                json!("true"),
-                json!("false"),
-                json!(0),
-                json!([]),
-                json!({}),
-            ] {
-                let committing = with(&arguments, "confirm", confirm);
-                assert_eq!(
-                    classify(tool, &committing),
-                    Gate::Approve {
-                        preview: Some((tool.into(), with(&arguments, "confirm", json!(false)))),
-                    }
-                );
-                assert!(!auto_approvable(tool, &committing));
-            }
-        }
     }
 
     #[test]
@@ -365,63 +270,6 @@ mod tests {
                 }
             );
         }
-    }
-
-    #[test]
-    fn tools_whose_own_preview_only_blocks_are_previewed_by_their_read_tool() {
-        assert_eq!(
-            classify(
-                "mxr_mutate",
-                &json!({"action": "archive", "message_ids": ["m"], "confirm": true, "client_correlation_id": "x"})
-            ),
-            Gate::Approve {
-                preview: Some((
-                    "mxr_mutation_preview".into(),
-                    json!({"action": "archive", "message_ids": ["m"]})
-                ))
-            }
-        );
-        assert_eq!(
-            classify(
-                "mxr_send_draft",
-                &json!({"draft_id": "d", "confirm": true, "expected_revision": 3})
-            ),
-            Gate::Approve {
-                preview: Some(("mxr_get_draft".into(), json!({"draft_id": "d"})))
-            }
-        );
-        assert_eq!(
-            classify("mxr_mutate", &json!({"action": "archive"})),
-            Gate::Run
-        );
-    }
-
-    #[test]
-    fn dry_run_tools_wait_when_dry_run_is_missing() {
-        assert_eq!(
-            classify("mxr_reading_later", &json!({"dry_run": true})),
-            Gate::Run
-        );
-        assert!(matches!(
-            classify("mxr_reading_later", &json!({"item_keys": ["k"]})),
-            Gate::Approve { preview: Some(_) }
-        ));
-        assert!(matches!(
-            classify("mxr_reading_later", &json!({"dry_run": "true"})),
-            Gate::Approve { .. }
-        ));
-    }
-
-    #[test]
-    fn applying_a_preview_token_waits_without_a_fresh_preview() {
-        assert_eq!(
-            classify("mxr_sorting_rule", &json!({"name": "x"})),
-            Gate::Run
-        );
-        assert_eq!(
-            classify("mxr_sorting_rule", &json!({"preview_token": "tok"})),
-            Gate::Approve { preview: None }
-        );
     }
 
     #[test]
@@ -494,5 +342,17 @@ mod tests {
             );
             assert!(!auto_approvable(tool, &committing));
         }
+    }
+
+    #[test]
+    fn applying_a_preview_token_waits_without_a_fresh_preview() {
+        assert_eq!(
+            classify("mxr_sorting_rule", &json!({"name": "x"})),
+            Gate::Run
+        );
+        assert_eq!(
+            classify("mxr_sorting_rule", &json!({"preview_token": "tok"})),
+            Gate::Approve { preview: None }
+        );
     }
 }

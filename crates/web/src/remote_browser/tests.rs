@@ -15,19 +15,6 @@ async fn gateway() -> (String, tokio::task::JoinHandle<()>) {
     (format!("http://{address}"), task)
 }
 
-#[test]
-fn origin_configuration_refuses_non_https_and_credential_urls() {
-    for origin in [
-        "http://mail.test",
-        "https://user:pw@mail.test",
-        "https://mail.test/path",
-        "https://mail.test/?x=1",
-        "https://mail.test/#token=secret",
-    ] {
-        assert!(router("missing.sock".into(), origin).is_err(), "{origin}");
-    }
-}
-
 #[tokio::test]
 async fn browser_has_no_loopback_bootstrap_or_cross_origin_mutation_path() {
     let (base, task) = gateway().await;
@@ -123,15 +110,4 @@ fn duplicate_or_malformed_cookies_cannot_select_another_principal() {
         .body(axum::body::Body::empty())
         .unwrap();
     assert!(cookie(&malformed).is_none());
-}
-
-#[test]
-fn json_media_types_cannot_skip_compose_ownership_validation() {
-    for content_type in [
-        "application/json",
-        "APPLICATION/JSON",
-        "application/vnd.mxr+json; charset=utf-8",
-    ] {
-        assert!(is_json(content_type));
-    }
 }

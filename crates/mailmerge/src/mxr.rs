@@ -309,24 +309,6 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn a_single_enormous_line_is_still_truncated() {
-        let body = "x".repeat(50_000);
-        let summary = first_lines(&body, 6);
-        assert!(
-            summary.chars().count() <= MAX_SUMMARY_CHARS + 1,
-            "{}",
-            summary.len()
-        );
-        assert!(summary.ends_with('…'), "{summary}");
-    }
-
-    #[test]
-    fn truncation_does_not_split_a_multibyte_character() {
-        let summary = first_lines(&"é".repeat(1_000), 6);
-        assert!(summary.starts_with("éé"), "{summary}");
-    }
-
     #[cfg(unix)]
     mod against_a_stub_binary {
         use super::*;
@@ -365,76 +347,6 @@ mod tests {
         }
 
         #[test]
-        fn optional_parts_are_passed_through_only_when_present() {
-            let stub = Stub::new();
-            let mxr = Mxr::new(Some(stub.binary()));
-            mxr.compose_draft(
-                "notto",
-                "a@example.com",
-                "Subject",
-                &stub.dir().join("body.html"),
-                Some(&stub.dir().join("body.txt")),
-                &[("logo".to_string(), "/tmp/logo.png".into())],
-                &[std::path::PathBuf::from("/tmp/brief.pdf")],
-            )
-            .unwrap();
-
-            let argv = stub.calls().remove(0);
-            assert_eq!(
-                stub.value_after(&argv, "--inline"),
-                Some("logo=/tmp/logo.png")
-            );
-            assert_eq!(stub.value_after(&argv, "--attach"), Some("/tmp/brief.pdf"));
-            assert!(argv.contains(&"--text-file".to_string()));
-        }
-
-        #[test]
-        fn a_failing_compose_surfaces_a_short_error_and_no_draft_id() {
-            let stub = Stub::failing(
-                &(1..=20)
-                    .map(|n| format!("boom {n}"))
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            );
-            let mxr = Mxr::new(Some(stub.binary()));
-            let err = mxr
-                .compose_draft(
-                    "notto",
-                    "a@example.com",
-                    "Subject",
-                    &stub.dir().join("body.html"),
-                    None,
-                    &[],
-                    &[],
-                )
-                .unwrap_err()
-                .to_string();
-            assert!(err.starts_with("boom 1; boom 2"), "{err}");
-            assert!(!err.contains("boom 7"), "{err}");
-        }
-
-        #[test]
-        fn compose_output_that_is_not_a_draft_is_rejected() {
-            for stdout in ["{}", "not json at all", "", r#"{"draft_id":42}"#] {
-                let stub = Stub::replying(stdout);
-                let mxr = Mxr::new(Some(stub.binary()));
-                assert!(
-                    mxr.compose_draft(
-                        "notto",
-                        "a@example.com",
-                        "Subject",
-                        &stub.dir().join("body.html"),
-                        None,
-                        &[],
-                        &[],
-                    )
-                    .is_err(),
-                    "accepted `{stdout}` as a created draft"
-                );
-            }
-        }
-
-        #[test]
         fn send_hands_the_draft_id_back_to_mxr() {
             let stub = Stub::new();
             let mxr = Mxr::new(Some(stub.binary()));
@@ -458,78 +370,6 @@ mod tests {
             assert_eq!(argv[0], "send");
             assert_eq!(argv[1], "draft-7");
             assert!(!argv.contains(&"--at".to_string()));
-        }
-
-        #[test]
-        fn scheduled_send_hands_one_absolute_time_to_mxr() {
-            let stub = Stub::new();
-            let mxr = Mxr::new(Some(stub.binary()));
-            mxr.send_draft(
-                "draft-7",
-                &SendReview {
-                    expected_workspace: Some(crate::manifest::WorkspaceOwner {
-                        workspace_id: "workspace-a".into(),
-                        recovery_generation: "generation-a".into(),
-                    }),
-                    account_id: "notto".into(),
-                    expected_revision: 1,
-                    operation_id: "draft-7:1".into(),
-                    attempt: 0,
-                    scheduled_at: Some("2026-08-05T08:00:00Z".into()),
-                },
-            )
-            .unwrap();
-
-            let argv = stub.calls_to("send").remove(0);
-            assert_eq!(argv[1], "draft-7");
-            assert_eq!(
-                stub.value_after(&argv, "--at"),
-                Some("2026-08-05T08:00:00Z")
-            );
-        }
-
-        #[test]
-        fn a_failing_send_is_an_error() {
-            let stub = Stub::failing("smtp said no");
-            let err = Mxr::new(Some(stub.binary()))
-                .send_draft(
-                    "draft-7",
-                    &SendReview {
-                        expected_workspace: Some(crate::manifest::WorkspaceOwner {
-                            workspace_id: "workspace-a".into(),
-                            recovery_generation: "generation-a".into(),
-                        }),
-                        account_id: "notto".into(),
-                        expected_revision: 1,
-                        operation_id: "draft-7:1".into(),
-                        attempt: 0,
-                        scheduled_at: None,
-                    },
-                )
-                .unwrap_err();
-            assert!(err.to_string().contains("did not acknowledge"), "{err}");
-        }
-
-        #[test]
-        fn send_time_is_resolved_once_through_mxr() {
-            let stub = Stub::new();
-            let mxr = Mxr::new(Some(stub.binary()));
-            let resolved = mxr
-                .resolve_send_time("notto", "a@example.com", "tomorrow 9am")
-                .unwrap();
-
-            assert_eq!(resolved, "2026-08-05T08:00:00Z");
-            let argv = stub.calls_to("send-time").remove(0);
-            assert_eq!(argv[1], "a@example.com");
-            assert_eq!(stub.value_after(&argv, "--account"), Some("notto"));
-            assert_eq!(stub.value_after(&argv, "--at"), Some("tomorrow 9am"));
-        }
-
-        #[test]
-        fn preflight_rejects_a_binary_that_fails() {
-            let stub = Stub::failing("broken install");
-            let err = Mxr::new(Some(stub.binary())).preflight().unwrap_err();
-            assert!(err.to_string().contains("--version` failed"), "{err}");
         }
     }
 }

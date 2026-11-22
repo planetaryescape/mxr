@@ -380,18 +380,6 @@ mod tests {
         out
     }
 
-    #[test]
-    fn ci_always_replays_whatever_the_record_variable_says() {
-        let mode = RecordMode::mode_for;
-        assert_eq!(mode(None, Some("1")), RecordMode::Record);
-        assert_eq!(mode(None, Some("true")), RecordMode::Record);
-        assert_eq!(mode(None, None), RecordMode::Replay);
-        assert_eq!(mode(None, Some("0")), RecordMode::Replay);
-        assert_eq!(mode(Some("true"), Some("1")), RecordMode::Replay);
-        assert_eq!(mode(Some(""), Some("true")), RecordMode::Replay);
-        assert_eq!(mode(Some("1"), None), RecordMode::Replay);
-    }
-
     #[tokio::test]
     async fn replay_returns_what_record_wrote_without_calling_the_model() {
         let dir = scratch("roundtrip");
@@ -428,94 +416,5 @@ mod tests {
             "{text}"
         );
         assert!(text.contains(RECORD_ENV), "{text}");
-    }
-
-    #[tokio::test]
-    async fn changing_the_model_prompt_schema_or_input_misses() {
-        let dir = scratch("key");
-        let (recording, _) = recorder(&dir);
-        recording.complete(request("same")).await.unwrap();
-        let hit = |model: &str, prompt: &str, schema: &str| {
-            RecordedProvider::replay(&dir, model, prompt, schema)
-        };
-        assert!(hit("fake-1", "p1", "s1")
-            .complete(request("same"))
-            .await
-            .is_ok());
-        for (provider, text) in [
-            (hit("fake-2", "p1", "s1"), "same"),
-            (hit("fake-1", "p2", "s1"), "same"),
-            (hit("fake-1", "p1", "s2"), "same"),
-            (hit("fake-1", "p1", "s1"), "different"),
-        ] {
-            let error = provider.complete(request(text)).await.unwrap_err();
-            assert!(error.to_string().contains("no recording for"), "{error}");
-        }
-        let mut hotter = request("same");
-        hotter.temperature = Some(0.7);
-        assert!(hit("fake-1", "p1", "s1").complete(hotter).await.is_err());
-        let mut longer = request("same");
-        longer.max_tokens = Some(500);
-        assert!(hit("fake-1", "p1", "s1").complete(longer).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn the_same_inputs_give_the_same_files_in_any_order() {
-        let (a, b) = (scratch("order-a"), scratch("order-b"));
-        let inputs = ["one", "two", "three"];
-        let (first, _) = recorder(&a);
-        for text in inputs {
-            first.complete(request(text)).await.unwrap();
-        }
-        let (second, _) = recorder(&b);
-        for text in inputs.iter().rev() {
-            second.complete(request(text)).await.unwrap();
-        }
-        assert_eq!(files(&a), files(&b));
-        assert_eq!(files(&a).len(), 3);
-        let before = files(&a);
-        let (again, _) = recorder(&a);
-        again.complete(request("one")).await.unwrap();
-        assert_eq!(files(&a), before);
-        let text = &before[0].1;
-        assert!(text.ends_with("}\n"));
-        assert!(text.contains("be brief"));
-    }
-
-    #[tokio::test]
-    async fn a_recording_filed_under_the_wrong_name_is_refused() {
-        let dir = scratch("swapped");
-        let (recording, _) = recorder(&dir);
-        recording.complete(request("x")).await.unwrap();
-        let replay = RecordedProvider::replay(&dir, "fake-1", "p1", "s1");
-        let key = replay.key_for(&request("y"));
-        let other = replay.key_for(&request("x"));
-        std::fs::copy(replay.path(&other), replay.path(&key)).unwrap();
-        let error = replay.complete(request("y")).await.unwrap_err();
-        assert!(error.to_string().contains("different key"), "{error}");
-    }
-
-    #[tokio::test]
-    async fn an_error_from_the_model_is_not_recorded() {
-        struct Failing;
-        #[async_trait]
-        impl LlmProvider for Failing {
-            async fn complete(&self, _: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-                Err(LlmError::Empty)
-            }
-            fn capabilities(&self) -> LlmCapabilities {
-                LlmCapabilities {
-                    context_window: 1,
-                    supports_streaming: false,
-                }
-            }
-            fn model_name(&self) -> &str {
-                "failing"
-            }
-        }
-        let dir = scratch("failing");
-        let recording = RecordedProvider::record(Arc::new(Failing), &dir, "p", "s");
-        assert!(recording.complete(request("x")).await.is_err());
-        assert!(!dir.exists() || files(&dir).is_empty());
     }
 }

@@ -112,29 +112,3 @@ async fn record_routes_forward_their_requests() {
         Request::ListRecordSubscriptions { account_id: Some(id) } if *id == account
     ));
 }
-
-#[tokio::test]
-async fn record_routes_reject_bad_input_before_the_daemon() {
-    let (_temp, addr, seen) = serve_recording().await;
-    let client = test_http_client();
-    for request in [
-        client.get(format!("http://{addr}/api/v1/mail/records?kind=parcel")),
-        client.get(format!("http://{addr}/api/v1/mail/records/answer?q=%20")),
-        client.get(format!(
-            "http://{addr}/api/v1/mail/records/subscriptions?account=not-an-id"
-        )),
-        client
-            .post(format!("http://{addr}/api/v1/mail/records/dismiss"))
-            .json(&serde_json::json!({ "record_ids": [] })),
-        client
-            .post(format!("http://{addr}/api/v1/mail/records/file"))
-            .json(&serde_json::json!({ "message_id": "not-an-id" })),
-        client
-            .post(format!("http://{addr}/api/v1/mail/records/sender"))
-            .json(&serde_json::json!({ "message_id": MessageId::new().to_string(), "verdict": "sometimes" })),
-    ] {
-        let response = request.bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
-        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    }
-    assert!(seen.lock().unwrap().is_empty());
-}

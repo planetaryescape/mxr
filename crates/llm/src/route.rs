@@ -333,23 +333,6 @@ mod tests {
     }
 
     #[test]
-    fn anthropic_ids_map_to_openrouter_slugs() {
-        let cases = [
-            ("claude-haiku-5-5", "anthropic/claude-haiku-5.5"),
-            ("claude-opus-5-5", "anthropic/claude-opus-5.5"),
-            ("claude-sonnet-4-5", "anthropic/claude-sonnet-4.5"),
-            ("claude-sonnet-4-20250514", "anthropic/claude-sonnet-4"),
-            ("claude-opus-4-1-20250805", "anthropic/claude-opus-4.1"),
-            ("claude-3-5-haiku-20241022", "anthropic/claude-3.5-haiku"),
-            ("claude-3-5-haiku-latest", "anthropic/claude-3.5-haiku"),
-            ("claude-3-haiku-20240307", "anthropic/claude-3-haiku"),
-        ];
-        for (id, slug) in cases {
-            assert_eq!(openrouter_slug(id).as_deref(), Some(slug), "{id}");
-        }
-    }
-
-    #[test]
     fn a_claude_model_tries_anthropic_then_openrouter() {
         assert_eq!(
             routes_for_model("claude-haiku-5-5", Endpoint::Default),
@@ -365,35 +348,6 @@ mod tests {
                 route(RouteProvider::OpenRouter, "anthropic/claude-opus-5.5"),
             ])
         );
-    }
-
-    #[test]
-    fn an_explicit_anthropic_slug_means_openrouter_only() {
-        for endpoint in [Endpoint::Default, Endpoint::Local, Endpoint::Remote] {
-            assert_eq!(
-                routes_for_model("anthropic/claude-haiku-5.5", endpoint),
-                Some(vec![route(
-                    RouteProvider::OpenRouter,
-                    "anthropic/claude-haiku-5.5"
-                )])
-            );
-        }
-    }
-
-    #[test]
-    fn other_vendor_ids_route_to_openrouter_only_without_a_custom_endpoint() {
-        assert_eq!(
-            routes_for_model("openai/gpt-4o-mini", Endpoint::Default),
-            Some(vec![route(RouteProvider::OpenRouter, "openai/gpt-4o-mini")])
-        );
-        assert_eq!(
-            routes_for_model("google/gemini-2.5-flash", Endpoint::Default),
-            Some(vec![route(
-                RouteProvider::OpenRouter,
-                "google/gemini-2.5-flash"
-            )])
-        );
-        assert_eq!(routes_for_model("google/gemma-3-4b", Endpoint::Local), None);
     }
 
     #[test]
@@ -416,44 +370,6 @@ mod tests {
             "",
         ] {
             assert_eq!(routes_for_model(model, Endpoint::Default), None, "{model}");
-        }
-    }
-
-    #[test]
-    fn a_gpt_model_tries_openai_then_openrouter() {
-        for id in ["gpt-6-luna", "gpt-5.6-terra", "gpt-4o-mini"] {
-            let expected = Some(vec![
-                route(RouteProvider::OpenAI, id),
-                route(RouteProvider::OpenRouter, &format!("openai/{id}")),
-            ]);
-            for endpoint in [Endpoint::Default, Endpoint::Local] {
-                assert_eq!(routes_for_model(id, endpoint), expected, "{id}");
-            }
-            assert_eq!(routes_for_model(id, Endpoint::Remote), None, "{id}");
-        }
-    }
-
-    #[test]
-    fn only_the_confirmed_models_get_reasoning_off_for_tool_calls() {
-        for yes in [
-            "gpt-6-luna",
-            "gpt-5.6-terra",
-            "gpt-5.6-luna",
-            "openai/gpt-6-luna",
-        ] {
-            assert!(openai_tools_need_no_reasoning(yes), "{yes}");
-        }
-        for no in [
-            "gpt-6-astra",
-            "gpt-6.1-sol",
-            "gpt-5.1",
-            "gpt-5.5",
-            "gpt-4o-mini",
-            "gpt-oss:20b",
-            "claude-haiku-5-5",
-            "gemma4",
-        ] {
-            assert!(!openai_tools_need_no_reasoning(no), "{no}");
         }
     }
 

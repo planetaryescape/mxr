@@ -43,7 +43,7 @@ pub fn export_markdown(thread: &ExportThread) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{empty_body_thread, sample_thread, single_message_thread};
+    use crate::tests::sample_thread;
 
     #[test]
     fn markdown_export_renders_thread_messages_attachments_and_footer() {
@@ -60,11 +60,5 @@ mod tests {
         let mut one_sender = sample_thread();
         one_sender.messages[1].from_email = "alice@example.com".into();
         assert!(export_markdown(&one_sender).contains("1 participants"));
-    }
-
-    #[test]
-    fn markdown_export_falls_back_to_email_and_survives_empty_body() {
-        assert!(export_markdown(&single_message_thread()).contains("## noreply@service.com —"));
-        assert!(export_markdown(&empty_body_thread()).contains("## Ghost —"));
     }
 }

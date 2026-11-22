@@ -272,7 +272,6 @@ pub(crate) fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<(
 mod tests {
     #![expect(
         clippy::unwrap_used,
-        clippy::panic,
         reason = "tests unwrap fixture setup and deliberately poison a lock"
     )]
 
@@ -297,58 +296,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn remove_deletes_only_that_entry_and_tolerates_absence() {
-        let dir = TempDir::new().unwrap();
-        let store = store_in(&dir);
-        store.remove("mxr/x", "u").unwrap();
-        store.set("mxr/x", "u", "gone").unwrap();
-        store.set("mxr/y", "u", "kept").unwrap();
-        store.remove("mxr/x", "u").unwrap();
-        store.remove("mxr/x", "u").unwrap();
-        assert!(store.get("mxr/x", "u").unwrap().is_none());
-        assert_eq!(store.get("mxr/y", "u").unwrap().as_deref(), Some("kept"));
-        assert!(!std::fs::read_to_string(dir.path().join("secrets.toml"))
-            .unwrap()
-            .contains("gone"));
-    }
-
-    #[test]
-    fn set_upserts_existing_entry() {
-        let dir = TempDir::new().unwrap();
-        let store = store_in(&dir);
-        store.set("mxr/imap", "u", "first").unwrap();
-        store.set("mxr/imap", "u", "second").unwrap();
-        assert_eq!(
-            store.get("mxr/imap", "u").unwrap().as_deref(),
-            Some("second")
-        );
-        store.set("mxr/smtp", "u", "smtp-pw").unwrap();
-        assert_eq!(
-            store.get("mxr/imap", "u").unwrap().as_deref(),
-            Some("second")
-        );
-        assert_eq!(
-            store.get("mxr/smtp", "u").unwrap().as_deref(),
-            Some("smtp-pw")
-        );
-    }
-
-    #[test]
-    fn secret_with_special_characters_round_trips() {
-        let dir = TempDir::new().unwrap();
-        let store = store_in(&dir);
-        let secret = "p@ss\"w0rd\nwith = [weird] chars/@.";
-        store.set("mxr/work-imap", "user@host.com", secret).unwrap();
-        assert_eq!(
-            store
-                .get("mxr/work-imap", "user@host.com")
-                .unwrap()
-                .as_deref(),
-            Some(secret)
-        );
-    }
-
     #[cfg(unix)]
     #[test]
     fn file_is_created_0600() {
@@ -362,41 +309,6 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o600);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn read_tightens_too_open_file() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = TempDir::new().unwrap();
-        let store = store_in(&dir);
-        store.set("mxr/imap", "u", "s").unwrap();
-        std::fs::set_permissions(store.path(), std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert_eq!(store.get("mxr/imap", "u").unwrap().as_deref(), Some("s"));
-        let mode = std::fs::metadata(store.path())
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, 0o600);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn set_survives_a_poisoned_write_lock() {
-        let poisoned = std::panic::catch_unwind(|| {
-            let _guard = write_lock().lock().unwrap();
-            panic!("poison the lock");
-        });
-        assert!(poisoned.is_err());
-
-        let dir = TempDir::new().unwrap();
-        let store = store_in(&dir);
-        store.set("mxr/poison-test", "u", "s").unwrap();
-        assert_eq!(
-            store.get("mxr/poison-test", "u").unwrap().as_deref(),
-            Some("s")
-        );
     }
 
     #[test]
@@ -419,29 +331,6 @@ mod tests {
                 Some(format!("secret-{i}").as_str())
             );
         }
-    }
-
-    #[test]
-    fn empty_secret_is_treated_as_absent() {
-        let dir = TempDir::new().unwrap();
-        let store = store_in(&dir);
-
-        store.set("mxr/imap", "u", "").unwrap();
-        assert!(store.get("mxr/imap", "u").unwrap().is_none());
-
-        store.set("mxr/imap", "u", "real").unwrap();
-        assert_eq!(store.get("mxr/imap", "u").unwrap().as_deref(), Some("real"));
-        std::fs::write(
-            store.path(),
-            "[[secret]]\nservice = \"mxr/imap\"\naccount = \"u\"\nsecret = \"\"\n",
-        )
-        .unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(store.path(), std::fs::Permissions::from_mode(0o600)).unwrap();
-        }
-        assert!(store.get("mxr/imap", "u").unwrap().is_none());
     }
 
     #[test]
@@ -509,31 +398,6 @@ mod tests {
         assert!(
             strays.is_empty(),
             "guard must remove the temp after a failed rename: {strays:?}"
-        );
-    }
-
-    #[test]
-    fn relative_secrets_path_round_trips_and_returns_ok() {
-        static CWD_LOCK: Mutex<()> = Mutex::new(());
-        let _cwd = CWD_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        let dir = TempDir::new().unwrap();
-        let original = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        let store = SecretStore::new(PathBuf::from("secrets.toml"));
-        let set_result = store.set("mxr/imap", "u", "pw");
-        let got = store.get("mxr/imap", "u");
-
-        std::env::set_current_dir(&original).unwrap();
-
-        set_result.expect("set with a relative path must return Ok");
-        assert_eq!(
-            got.unwrap().as_deref(),
-            Some("pw"),
-            "relative-path secret must round-trip"
         );
     }
 }

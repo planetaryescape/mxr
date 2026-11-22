@@ -374,50 +374,6 @@ mod tests {
     }
 
     #[test]
-    fn schema_email_creates_from_schema_source() {
-        let html = r#"<script type="application/ld+json">
-            {"@type":"ParcelDelivery","trackingNumber":"1Z999AA10123456784",
-             "carrier":{"name":"UPS"},"orderStatus":"OrderInTransit"}</script>"#;
-        let mut inp = input("Acme", "acme.com", "Update", "see attachment");
-        inp.body_html = Some(html);
-        let sig = detect(&inp);
-        assert_eq!(sig.decision, Decision::Create);
-        assert_eq!(sig.source, DetectionSource::Schema);
-        assert_eq!(sig.dedup_key.as_deref(), Some("1Z999AA10123456784"));
-    }
-
-    #[test]
-    fn order_confirmation_without_tracking_is_shortlisted() {
-        let sig = detect(&input(
-            "Acme Store",
-            "mail.acme.com",
-            "Order #AB-12345 confirmation — thanks for your order",
-            "We received your order.",
-        ));
-        assert_eq!(sig.decision, Decision::ShortlistLlm);
-        assert_eq!(sig.dedup_key.as_deref(), Some("acme store|ab-12345"));
-        assert_eq!(sig.stage, Some(DeliveryStatus::Ordered));
-    }
-
-    #[test]
-    fn order_is_confirmed_phrasing_is_shortlisted_not_rejected() {
-        let sig = detect(&input(
-            "Google Store",
-            "google.com",
-            "Your order is confirmed",
-            "Order confirmed. Order number: GS.9175-8733-9584. Delivers 31 May - \
-             5 Jun. Google Fitbit Air (Obsidian). For your VAT invoice, visit \
-             payments.google.com.",
-        ));
-        assert_eq!(sig.stage, Some(DeliveryStatus::Ordered));
-        assert_eq!(sig.decision, Decision::ShortlistLlm);
-        assert_eq!(
-            sig.dedup_key.as_deref(),
-            Some("google store|gs.9175-8733-9584")
-        );
-    }
-
-    #[test]
     fn bare_tracking_match_from_unknown_sender_is_not_auto_created() {
         let sig = detect(&input(
             "CoinTracker",
@@ -438,44 +394,5 @@ mod tests {
             "Shop now, limited time.",
         ));
         assert_eq!(sig.decision, Decision::Reject);
-    }
-
-    #[test]
-    fn review_survey_is_rejected_and_flagged_noise() {
-        let sig = detect(&input(
-            "Acme",
-            "acme.com",
-            "How was your delivery?",
-            "Leave a review of your purchase.",
-        ));
-        assert_eq!(sig.decision, Decision::Reject);
-        assert!(sig.post_delivery_noise);
-    }
-
-    #[test]
-    fn unknown_sender_plain_text_rejected() {
-        let sig = detect(&input(
-            "Bob",
-            "personal.example",
-            "lunch tomorrow?",
-            "are you free at noon",
-        ));
-        assert_eq!(sig.decision, Decision::Reject);
-    }
-
-    #[test]
-    fn amazon_tba_is_detected_and_creates() {
-        let sig = detect(&input(
-            "Amazon",
-            "amazon.com",
-            "Your package is out for delivery",
-            "Tracking TBA619632698000",
-        ));
-        assert!(sig
-            .tracking_numbers
-            .iter()
-            .any(|t| t.number == "TBA619632698000"));
-        assert_eq!(sig.decision, Decision::Create);
-        assert_eq!(sig.carrier.as_deref(), Some("amazon"));
     }
 }

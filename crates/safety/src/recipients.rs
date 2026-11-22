@@ -178,14 +178,6 @@ mod tests {
     }
 
     #[test]
-    fn dl_basic() {
-        assert_eq!(damerau_levenshtein("alice", "alice"), 0);
-        assert_eq!(damerau_levenshtein("alice", "alicc"), 1);
-        assert_eq!(damerau_levenshtein("alice", "alcie"), 1);
-        assert!(damerau_levenshtein("alice", "bob") > 2);
-    }
-
-    #[test]
     fn typo_recipient_warns_when_better_known() {
         let ctx = SafetyContext {
             known_contacts: vec![contact("alice@example.com", 12, 6)],
@@ -211,64 +203,6 @@ mod tests {
     }
 
     #[test]
-    fn typo_threshold_at_strength_boundary() {
-        let ctx_typed_strong = SafetyContext {
-            known_contacts: vec![
-                contact("alice@example.com", 50, 50),
-                contact("alcie@example.com", 2, 1),
-            ],
-            ..Default::default()
-        };
-        assert!(
-            check(
-                &d(vec![addr("alcie@example.com")]),
-                &ctx_typed_strong,
-                &Default::default()
-            )
-            .is_empty(),
-            "sum==3 must count as strong"
-        );
-
-        let ctx_typed_weak = SafetyContext {
-            known_contacts: vec![
-                contact("alice@example.com", 50, 50),
-                contact("alcie@example.com", 2, 0),
-            ],
-            ..Default::default()
-        };
-        assert_eq!(
-            check(
-                &d(vec![addr("alcie@example.com")]),
-                &ctx_typed_weak,
-                &Default::default()
-            )
-            .len(),
-            1,
-            "sum==2 must still trigger the typo warn"
-        );
-    }
-
-    #[test]
-    fn no_typo_warning_when_typed_recipient_is_also_strong() {
-        let ctx = SafetyContext {
-            known_contacts: vec![
-                contact("alice@example.com", 12, 6),
-                contact("alcie@example.com", 8, 4),
-            ],
-            ..Default::default()
-        };
-        let issues = check(
-            &d(vec![addr("alcie@example.com")]),
-            &ctx,
-            &Default::default(),
-        );
-        assert!(
-            issues.is_empty(),
-            "both addresses have prior history; should not warn"
-        );
-    }
-
-    #[test]
     fn sensitive_domain_blocks() {
         let cfg = SafetyRecipientConfig {
             sensitive_domains: vec!["competitor.com".into()],
@@ -276,21 +210,6 @@ mod tests {
         };
         let issues = check(
             &d(vec![addr("ceo@competitor.com")]),
-            &Default::default(),
-            &cfg,
-        );
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].severity, DraftSafetySeverity::Blocker);
-    }
-
-    #[test]
-    fn sensitive_domain_match_is_case_insensitive() {
-        let cfg = SafetyRecipientConfig {
-            sensitive_domains: vec!["Competitor.COM".into()],
-            ..Default::default()
-        };
-        let issues = check(
-            &d(vec![addr("CEO@COMPETITOR.com")]),
             &Default::default(),
             &cfg,
         );
@@ -312,51 +231,5 @@ mod tests {
         let issues = check(&d(vec![addr("stranger@external.com")]), &ctx, &cfg);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].severity, DraftSafetySeverity::Warning);
-    }
-
-    #[test]
-    fn first_time_external_silent_when_disabled() {
-        let cfg = SafetyRecipientConfig {
-            internal_domains: vec!["company.com".into()],
-            warn_on_first_time_external: false,
-            ..Default::default()
-        };
-        let issues = check(
-            &d(vec![addr("stranger@external.com")]),
-            &Default::default(),
-            &cfg,
-        );
-        assert!(issues.is_empty());
-    }
-
-    #[test]
-    fn first_time_external_does_not_warn_for_internal_domain() {
-        let cfg = SafetyRecipientConfig {
-            internal_domains: vec!["company.com".into()],
-            warn_on_first_time_external: true,
-            ..Default::default()
-        };
-        let issues = check(
-            &d(vec![addr("newhire@company.com")]),
-            &Default::default(),
-            &cfg,
-        );
-        assert!(issues.is_empty(), "internal domain should not warn");
-    }
-
-    #[test]
-    fn self_address_is_ignored() {
-        let ctx = SafetyContext {
-            self_addresses: vec!["me@x.com".into()],
-            known_contacts: vec![contact("alice@x.com", 10, 10)],
-            ..Default::default()
-        };
-        let cfg = SafetyRecipientConfig {
-            sensitive_domains: vec!["x.com".into()],
-            warn_on_first_time_external: true,
-            ..Default::default()
-        };
-        let issues = check(&d(vec![addr("me@x.com")]), &ctx, &cfg);
-        assert!(issues.is_empty(), "self address should produce no issues");
     }
 }

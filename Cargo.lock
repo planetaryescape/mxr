@@ -4953,11 +4953,9 @@ name = "mxr-export"
 version = "0.6.250"
 dependencies = [
  "chrono",
- "insta",
  "mailbox-formats",
  "mxr-core",
  "mxr-reader",
- "mxr-test-support",
  "pretty_assertions",
  "serde",
  "serde_json",

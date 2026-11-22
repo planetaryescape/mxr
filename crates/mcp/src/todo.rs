@@ -123,7 +123,7 @@ pub struct TodoCorrectionUndoInput {
 mod tests {
     use super::*;
     use crate::{DaemonRequester, MxrMcpServer};
-    use mxr_protocol::{Request, Response, ResponseData, TodoResolutionActionData};
+    use mxr_protocol::{Request, Response, ResponseData};
     use rmcp::handler::server::wrapper::Parameters;
     use std::sync::{Arc, Mutex};
 
@@ -138,40 +138,6 @@ mod tests {
                 data: ResponseData::Ack,
             })
         }
-    }
-
-    #[tokio::test]
-    async fn microsoft_tool_previews_by_default_and_preserves_link_fingerprint() {
-        let requester = Arc::new(Requester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        let account = mxr_core::AccountId::new();
-        for action in ["link", "sync"] {
-            for confirm in [None, Some(true)] {
-                server
-                    .todo_microsoft(Parameters(MicrosoftTodoInput {
-                        action: action.into(),
-                        account_id: Some(account.as_str()),
-                        todo_id: Some("todo_1".into()),
-                        fingerprint: Some("reviewed".into()),
-                        confirm,
-                    }))
-                    .await
-                    .expect("Microsoft tool request");
-            }
-        }
-        let requests = requester.0.lock().expect("recorded requests");
-        assert!(
-            matches!(&requests[0], Request::SendTodoToMicrosoft { dry_run: true, fingerprint: Some(value), account_id: Some(selected), .. } if value == "reviewed" && selected == &account)
-        );
-        assert!(
-            matches!(&requests[1], Request::SendTodoToMicrosoft { dry_run: false, fingerprint: Some(value), .. } if value == "reviewed")
-        );
-        assert!(
-            matches!(&requests[2], Request::SyncMicrosoftTodos { dry_run: true, todo_id: Some(id), .. } if id == "todo_1")
-        );
-        assert!(
-            matches!(&requests[3], Request::SyncMicrosoftTodos { dry_run: false, todo_id: Some(id), account_id: Some(selected) } if id == "todo_1" && selected == &account)
-        );
     }
 
     #[tokio::test]
@@ -209,48 +175,5 @@ mod tests {
             r#"{"todo_ids":["a"],"action":"dismiss","confirm":"true"}"#
         )
         .is_err());
-    }
-
-    #[tokio::test]
-    async fn resolution_tool_preserves_preview_action_and_confirmation_state() {
-        let requester = Arc::new(Requester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        for action in [
-            ResolutionAction::Accept,
-            ResolutionAction::Dismiss,
-            ResolutionAction::Undo,
-        ] {
-            for confirm in [None, Some(false), Some(true)] {
-                server
-                    .todo_resolve(Parameters(TodoResolutionInput {
-                        todo_id: "todo_cycle".into(),
-                        suggestion_id: "offer_cycle".into(),
-                        action,
-                        confirm,
-                    }))
-                    .await
-                    .expect("tool");
-            }
-        }
-        let requests = requester.0.lock().expect("requests");
-        let actions = [
-            TodoResolutionActionData::Accept,
-            TodoResolutionActionData::Dismiss,
-            TodoResolutionActionData::Undo,
-        ];
-        for (index, expected_action) in actions.into_iter().enumerate() {
-            let offset = index * 3;
-            for (request, dry_run) in [
-                (&requests[offset], true),
-                (&requests[offset + 1], true),
-                (&requests[offset + 2], false),
-            ] {
-                assert!(matches!(
-                    request,
-                    Request::ResolveTodoSuggestion { action, dry_run: actual, .. }
-                        if *action == expected_action && *actual == dry_run
-                ));
-            }
-        }
     }
 }

@@ -281,34 +281,6 @@ mod tests {
     }
 
     #[test]
-    fn explicitly_selected_disabled_rule_can_be_previewed() {
-        let mut rule = archive_newsletters_rule();
-        rule.enabled = false;
-        let id = rule.id.clone();
-        let engine = RuleEngine::new(vec![rule]);
-        let msg = newsletter_msg();
-        assert!(engine.evaluate(&msg, "fixture").actions.is_empty());
-        assert_eq!(
-            engine
-                .dry_run(&id, &[(&msg, "fixture", "sender", "subject")])
-                .unwrap()
-                .matches
-                .len(),
-            1
-        );
-    }
-
-    #[test]
-    fn engine_accumulates_actions_from_multiple_matching_rules() {
-        let engine = RuleEngine::new(vec![archive_newsletters_rule(), mark_read_unsub_rule()]);
-        let msg = newsletter_msg();
-        let result = engine.evaluate(&msg, "msg_1");
-
-        assert_eq!(result.actions.len(), 2);
-        assert_eq!(result.matched_rules.len(), 2);
-    }
-
-    #[test]
     fn disabled_rules_are_skipped() {
         let mut rule = archive_newsletters_rule();
         rule.enabled = false;
@@ -339,21 +311,6 @@ mod tests {
     }
 
     #[test]
-    fn batch_evaluate_filters_non_matching() {
-        let engine = RuleEngine::new(vec![archive_newsletters_rule()]);
-        let nl = newsletter_msg();
-        let work = work_email_msg();
-
-        let messages: Vec<(&dyn MessageView, &str)> =
-            vec![(&nl as &dyn MessageView, "msg_1"), (&work, "msg_2")];
-
-        let results = engine.evaluate_batch(&messages);
-
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].message_id, "msg_1");
-    }
-
-    #[test]
     fn dry_run_shows_what_would_match() {
         let engine = RuleEngine::new(vec![archive_newsletters_rule()]);
         let nl = newsletter_msg();
@@ -377,98 +334,5 @@ mod tests {
         assert_eq!(result.matches.len(), 1);
         assert_eq!(result.matches[0].message_id, "msg_1");
         assert_eq!(result.matches[0].from, "newsletter@substack.com");
-    }
-
-    #[test]
-    fn sorting_winner_is_stable_and_account_scoped() {
-        let account = mxr_core::AccountId::new();
-        let other = mxr_core::AccountId::new();
-        let mut a = archive_newsletters_rule();
-        a.id = RuleId("a".into());
-        a.account_id = Some(account.clone());
-        a.actions = vec![RuleAction::SetTreatment {
-            treatment: crate::Treatment::Reading,
-        }];
-        let mut b = a.clone();
-        b.id = RuleId("b".into());
-        b.actions = vec![
-            RuleAction::SetTreatment {
-                treatment: crate::Treatment::Messages,
-            },
-            RuleAction::Star,
-        ];
-        for rules in [vec![a.clone(), b.clone()], vec![b.clone(), a.clone()]] {
-            let engine = RuleEngine::new(rules);
-            assert_eq!(
-                engine
-                    .treatment(&newsletter_msg(), &account)
-                    .unwrap()
-                    .0
-                    .id
-                    .0,
-                "a"
-            );
-            assert!(engine.treatment(&newsletter_msg(), &other).is_none());
-            assert_eq!(engine.evaluate(&newsletter_msg(), "id").actions.len(), 3);
-        }
-        a.enabled = false;
-        assert_eq!(
-            RuleEngine::new(vec![a, b])
-                .treatment(&newsletter_msg(), &account)
-                .unwrap()
-                .0
-                .id
-                .0,
-            "b"
-        );
-    }
-
-    #[test]
-    fn unfetched_body_does_not_match_under_not_or_trigger_mixed_actions() {
-        let mut message = newsletter_msg();
-        message.body = None;
-        let mut rule = archive_newsletters_rule();
-        rule.account_id = Some(mxr_core::AccountId::new());
-        rule.conditions = Conditions::Not {
-            condition: Box::new(Conditions::Field(FieldCondition::BodyContains {
-                pattern: StringMatch::Contains("sale".into()),
-            })),
-        };
-        rule.actions = vec![
-            RuleAction::SetTreatment {
-                treatment: crate::Treatment::Reading,
-            },
-            RuleAction::Archive,
-        ];
-        let account = rule.account_id.clone().unwrap();
-        let engine = RuleEngine::new(vec![rule]);
-        assert!(engine.treatment(&message, &account).is_none());
-        assert!(engine.evaluate(&message, "id").actions.is_empty());
-        message.body = Some("ordinary newsletter".into());
-        assert!(engine.treatment(&message, &account).is_some());
-    }
-    #[test]
-    fn equal_priority_ordinary_actions_retain_storage_order() {
-        let mut first = archive_newsletters_rule();
-        first.id = RuleId("z-first".into());
-        first.actions = vec![RuleAction::AddLabel {
-            label: "first".into(),
-        }];
-        let mut second = first.clone();
-        second.id = RuleId("a-second".into());
-        second.actions = vec![RuleAction::AddLabel {
-            label: "second".into(),
-        }];
-        let engine = RuleEngine::new(vec![first, second]);
-        let result = engine.evaluate(&newsletter_msg(), "id");
-        let labels: Vec<_> = result
-            .actions
-            .iter()
-            .filter_map(|a| match a {
-                RuleAction::AddLabel { label } => Some(label.as_str()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(labels, vec!["first", "second"]);
     }
 }

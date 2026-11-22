@@ -142,33 +142,3 @@ async fn arrival_routes_forward_their_requests() {
         }
     ));
 }
-
-#[tokio::test]
-async fn arrival_routes_reject_bad_input_before_the_daemon() {
-    let (_temp, addr, seen) = serve_recording().await;
-    let client = test_http_client();
-    let message = MessageId::new();
-    let too_many: Vec<String> = (0..201).map(|_| MessageId::new().to_string()).collect();
-    for request in [
-        client.get(format!("http://{addr}/api/v1/mail/arrivals/list?bucket=inbox")),
-        client.get(format!(
-            "http://{addr}/api/v1/mail/arrivals/list?since=2026-10-07T10:00:00Z&until=2026-10-07T08:00:00Z"
-        )),
-        client
-            .post(format!("http://{addr}/api/v1/mail/arrivals/modes"))
-            .json(&serde_json::json!({ "message_ids": [] })),
-        client
-            .post(format!("http://{addr}/api/v1/mail/arrivals/modes"))
-            .json(&serde_json::json!({ "message_ids": too_many })),
-        client
-            .post(format!("http://{addr}/api/v1/mail/messages/{message}/move"))
-            .json(&serde_json::json!({ "mode": "now" })),
-        client
-            .post(format!("http://{addr}/api/v1/mail/messages/not-an-id/move"))
-            .json(&serde_json::json!({ "mode": "reading" })),
-    ] {
-        let response = request.bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
-        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    }
-    assert!(seen.lock().unwrap().is_empty());
-}

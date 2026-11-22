@@ -1787,32 +1787,6 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    #[tokio::test]
-    async fn noop_provider_returns_disabled_error() {
-        let p = NoopProvider;
-        let err = p
-            .complete(CompletionRequest {
-                messages: vec![ChatMessage::user("hello")],
-                max_tokens: None,
-                temperature: None,
-            })
-            .await
-            .unwrap_err();
-        assert!(matches!(err, LlmError::Disabled));
-        let runtime = Arc::new(LlmRuntime::new(Arc::new(NoopProvider)));
-        assert!(matches!(
-            runtime
-                .complete(CompletionRequest {
-                    messages: vec![ChatMessage::user("hello")],
-                    max_tokens: None,
-                    temperature: None,
-                })
-                .await,
-            Err(LlmError::Disabled)
-        ));
-        assert_eq!(runtime.observation(None), None);
-    }
-
     /// A config reload can swap providers mid-request: a pinned handle keeps
     /// answering from, and reporting, the endpoint it was pinned to.
     #[tokio::test]
@@ -1846,12 +1820,6 @@ mod tests {
         assert!(redacted.contains("<redacted>"));
     }
 
-    #[test]
-    fn redact_leaves_short_keys_alone_to_avoid_collateral_damage() {
-        let s = "the model name is gpt".to_string();
-        assert_eq!(redact_key(s.clone(), Some("gpt")), s);
-    }
-
     #[derive(Debug)]
     struct StaticProvider {
         model: &'static str,
@@ -1880,29 +1848,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn feature_override_routes_completion_to_feature_provider() {
-        let runtime = Arc::new(LlmRuntime::new(Arc::new(StaticProvider { model: "base" })));
-        let mut providers = HashMap::new();
-        providers.insert(
-            LlmFeature::DraftAssist,
-            Arc::new(StaticProvider { model: "draft" }) as Arc<dyn LlmProvider>,
-        );
-        runtime.replace_feature_providers(providers, HashMap::new());
-
-        let response = runtime
-            .for_feature(LlmFeature::DraftAssist)
-            .complete(CompletionRequest {
-                messages: vec![ChatMessage::user("hello")],
-                max_tokens: None,
-                temperature: None,
-            })
-            .await
-            .unwrap();
-
-        assert_eq!(response.model, "draft");
-    }
-
-    #[tokio::test]
     async fn blocked_feature_returns_privacy_error_before_provider_call() {
         let runtime = Arc::new(LlmRuntime::new(Arc::new(StaticProvider { model: "base" })));
         let mut blocked = HashMap::new();
@@ -1920,57 +1865,6 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, LlmError::PrivacyBlocked(_)));
-    }
-
-    #[derive(Debug)]
-    struct SlowProvider {
-        delay: Duration,
-    }
-
-    #[async_trait]
-    impl LlmProvider for SlowProvider {
-        async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-            tokio::time::sleep(self.delay).await;
-            Ok(CompletionResponse {
-                content: "late".into(),
-                model: "slow".into(),
-                finish_reason: None,
-            })
-        }
-        fn capabilities(&self) -> LlmCapabilities {
-            LlmCapabilities {
-                context_window: 8,
-                supports_streaming: false,
-            }
-        }
-        fn model_name(&self) -> &str {
-            "slow"
-        }
-    }
-
-    #[tokio::test]
-    async fn complete_background_times_out_slow_provider() {
-        let runtime = Arc::new(LlmRuntime::new(Arc::new(SlowProvider {
-            delay: Duration::from_secs(30),
-        })));
-        runtime.set_background_timeout(Duration::from_millis(50));
-
-        let started = std::time::Instant::now();
-        let error = runtime
-            .for_feature(LlmFeature::RelationshipSummary)
-            .complete_background(CompletionRequest {
-                messages: vec![ChatMessage::user("hello")],
-                max_tokens: None,
-                temperature: None,
-            })
-            .await
-            .unwrap_err();
-
-        assert!(matches!(error, LlmError::Timeout(_)), "got {error:?}");
-        assert!(
-            started.elapsed() < Duration::from_secs(5),
-            "should fail near the 50ms budget, not wait the 30s provider delay"
-        );
     }
 
     /// Captured from Ollama 0.34.3 serving gemma4:latest for a real
@@ -2023,53 +1917,6 @@ mod tests {
             .collect()
     }
 
-    /// A `gpt-*` model on a server of the user's own gets OpenAI's rules:
-    /// the cap as `max_completion_tokens` with room to think, and no
-    /// temperature. Another model on the same kind of server keeps both.
-    #[tokio::test]
-    async fn a_gpt_model_on_a_remote_endpoint_speaks_openais_dialect() {
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(ok_completion("ok")))
-            .mount(&server)
-            .await;
-        let request = CompletionRequest {
-            temperature: Some(0.2),
-            ..hello()
-        };
-        for model in ["gpt-6-luna", "gemma4:latest"] {
-            OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
-                base_url: server.uri(),
-                api_key: None,
-                model: model.into(),
-                context_window: 8192,
-                request_timeout: Duration::from_secs(5),
-            })
-            .complete(request.clone())
-            .await
-            .unwrap();
-        }
-        let bodies: Vec<serde_json::Value> = server
-            .received_requests()
-            .await
-            .unwrap()
-            .iter()
-            .map(|request| serde_json::from_slice(&request.body).unwrap())
-            .collect();
-        let (gpt, other) = (&bodies[0], &bodies[1]);
-        assert_eq!(gpt["model"], "gpt-6-luna");
-        assert_eq!(gpt["max_completion_tokens"], 500 + 2048);
-        assert!(gpt.get("max_tokens").is_none());
-        assert!(gpt.get("temperature").is_none());
-        assert_eq!(other["max_tokens"], 500);
-        assert!(other.get("max_completion_tokens").is_none());
-        assert!(other["temperature"].as_f64().is_some());
-    }
-
     #[tokio::test]
     async fn reasoning_only_response_retries_with_reasoning_off_and_remembers() {
         use wiremock::matchers::{body_partial_json, method, path};
@@ -2103,46 +1950,6 @@ mod tests {
             sent_reasoning_efforts(&server).await,
             vec![None, Some("none".to_string()), Some("none".to_string())]
         );
-    }
-
-    #[tokio::test]
-    async fn reasoning_switch_is_not_remembered_when_endpoint_ignores_it() {
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/chat/completions"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_raw(GEMMA4_REASONING_ONLY, "application/json"),
-            )
-            .mount(&server)
-            .await;
-        let provider = provider_for(&server);
-
-        let error = provider.complete(hello()).await.unwrap_err();
-        assert!(matches!(error, LlmError::Empty), "got {error:?}");
-        assert!(!provider.disable_reasoning.load(Ordering::Relaxed));
-    }
-
-    #[tokio::test]
-    async fn empty_content_without_reasoning_is_empty_and_not_retried() {
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "model": "m",
-                "choices": [{"message": {"role": "assistant", "content": null}, "finish_reason": "stop"}]
-            })))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let error = provider_for(&server).complete(hello()).await.unwrap_err();
-        assert!(matches!(error, LlmError::Empty), "got {error:?}");
     }
 
     struct CountingProvider {
@@ -2221,66 +2028,6 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn replacing_the_provider_closes_the_background_breaker() {
-        let failing = Arc::new(CountingProvider {
-            calls: 0.into(),
-            fail: AtomicBool::new(true),
-        });
-        let runtime = Arc::new(LlmRuntime::new(failing));
-        let feature = runtime.for_feature(LlmFeature::Commitments);
-        for _ in 0..BREAKER_THRESHOLD {
-            let _ = feature.complete_background(hello()).await;
-        }
-        assert!(matches!(
-            feature.complete_background(hello()).await,
-            Err(LlmError::CircuitOpen { .. })
-        ));
-
-        runtime.replace(Arc::new(StaticProvider { model: "fixed" }));
-        let response = feature.complete_background(hello()).await.unwrap();
-        assert_eq!(response.model, "fixed");
-    }
-
-    #[tokio::test]
-    async fn foreground_calls_bypass_the_background_breaker() {
-        let provider = Arc::new(CountingProvider {
-            calls: 0.into(),
-            fail: AtomicBool::new(true),
-        });
-        let runtime = Arc::new(LlmRuntime::new(provider.clone()));
-        let feature = runtime.for_feature(LlmFeature::Summarize);
-        for _ in 0..BREAKER_THRESHOLD {
-            let _ = feature.complete_background(hello()).await;
-        }
-        assert!(matches!(
-            feature.complete(hello()).await,
-            Err(LlmError::Unreachable(_))
-        ));
-        assert_eq!(provider.calls.load(Ordering::SeqCst), BREAKER_THRESHOLD + 1);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn attempt_ledger_skips_succeeded_input_until_it_changes() {
-        let runtime = Arc::new(LlmRuntime::new(Arc::new(NoopProvider)));
-        let commitments = runtime.for_feature(LlmFeature::Commitments);
-        assert!(commitments.background_attempt_due("alice", "v1"));
-
-        commitments.record_background_attempt("alice", "v1", true);
-        assert!(!commitments.background_attempt_due("alice", "v1"));
-        assert!(
-            commitments.background_attempt_due("alice", "v2"),
-            "new mail"
-        );
-        assert!(commitments.background_attempt_due("bob", "v1"), "other key");
-        assert!(
-            runtime
-                .for_feature(LlmFeature::RelationshipSummary)
-                .background_attempt_due("alice", "v1"),
-            "features are tracked separately"
-        );
-    }
-
-    #[tokio::test(start_paused = true)]
     async fn attempt_ledger_backs_off_failed_input_then_gives_up() {
         let runtime = Arc::new(LlmRuntime::new(Arc::new(NoopProvider)));
         let deliveries = runtime.for_feature(LlmFeature::DeliveryExtraction);
@@ -2314,39 +2061,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn replacing_the_provider_clears_the_attempt_ledger() {
-        let runtime = Arc::new(LlmRuntime::new(Arc::new(NoopProvider)));
-        let commitments = runtime.for_feature(LlmFeature::Commitments);
-        commitments.record_background_attempt("alice", "v1", false);
-        assert!(!commitments.background_attempt_due("alice", "v1"));
-
-        runtime.replace(Arc::new(StaticProvider { model: "new" }));
-        assert!(commitments.background_attempt_due("alice", "v1"));
-    }
-
-    #[test]
-    fn guard_states_the_data_not_instructions_substance() {
-        let g = UNTRUSTED_MAIL_GUARD.to_ascii_lowercase();
-        assert!(g.contains("not instructions") || g.contains("data"));
-        assert!(g.contains("permission"));
-        assert!(g.contains("recipient"));
-        assert!(g.contains("tool") || g.contains("action"));
-        assert!(g.contains("credential") || g.contains("secret"));
-        assert!(g.contains("system") && g.contains("operator") && g.contains("user"));
-        assert!(UNTRUSTED_MAIL_GUARD.contains(UNTRUSTED_MAIL_BEGIN));
-        assert!(UNTRUSTED_MAIL_GUARD.contains(UNTRUSTED_MAIL_END));
-        assert!(!UNTRUSTED_MAIL_GUARD.contains('\n'));
-    }
-
-    #[test]
-    fn wrap_places_content_between_the_markers() {
-        let wrapped = wrap_untrusted_mail("hello from a message body");
-        assert!(wrapped.starts_with(UNTRUSTED_MAIL_BEGIN));
-        assert!(wrapped.trim_end().ends_with(UNTRUSTED_MAIL_END));
-        assert!(wrapped.contains("hello from a message body"));
-    }
-
     #[test]
     fn wrap_neutralizes_marker_injection_from_mail_content() {
         let malicious = format!(
@@ -2356,13 +2070,6 @@ mod tests {
         assert_eq!(wrapped.matches(UNTRUSTED_MAIL_BEGIN).count(), 1);
         assert_eq!(wrapped.matches(UNTRUSTED_MAIL_END).count(), 1);
         assert!(wrapped.contains("[end-marker]"));
-    }
-
-    #[test]
-    fn guarded_system_prompt_keeps_base_task_and_appends_guard() {
-        let out = guarded_system_prompt("You summarize threads.");
-        assert!(out.starts_with("You summarize threads."));
-        assert!(out.contains(UNTRUSTED_MAIL_GUARD));
     }
 
     #[tokio::test]

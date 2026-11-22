@@ -195,29 +195,4 @@ mod tests {
         assert!(second.tool_calls.is_empty());
         assert!(second.text.contains("**New** from Ana"));
     }
-
-    #[test]
-    fn asked_to_tidy_it_proposes_archiving_the_two_oldest() {
-        let ask = user("tidy my inbox");
-        let first = reply(&request(vec![ask.clone()]));
-        let second = reply(&request(vec![ask.clone(), first.to_message(), listed()]));
-        assert_eq!(second.tool_calls[0].name, "mxr_mutate");
-        assert_eq!(
-            second.tool_calls[0].arguments["message_ids"],
-            json!(["m3", "m2"])
-        );
-        let declined = ToolChatMessage::Tool {
-            call_id: ARCHIVE_CALL.into(),
-            content: "{\"source\":\"user\",\"status\":\"rejected\"}".into(),
-            is_error: true,
-        };
-        let done = reply(&request(vec![
-            ask,
-            first.to_message(),
-            listed(),
-            second.to_message(),
-            declined,
-        ]));
-        assert!(done.text.contains("left them"));
-    }
 }

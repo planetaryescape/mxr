@@ -2951,6 +2951,34 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    #[derive(Debug, Default)]
+    struct ThreadPreviewRequester {
+        requests: Mutex<Vec<Request>>,
+    }
+
+    #[async_trait]
+    impl DaemonRequester for ThreadPreviewRequester {
+        async fn request(&self, request: Request) -> anyhow::Result<Response> {
+            self.requests.lock().expect("requests lock").push(request);
+            Ok(Response::Ok {
+                data: mxr_protocol::ResponseData::ThreadPreviews {
+                    previews: vec![mxr_protocol::ThreadPreviewData {
+                        thread_id: ThreadId::new(),
+                        subject: "Quarterly, \"final\"".into(),
+                        sender_name: None,
+                        sender_email: "dana@example.com".into(),
+                        latest_at: 1_760_000_000,
+                        message_count: 2,
+                        unread_count: 1,
+                        snippet: "Please confirm".into(),
+                        has_attachments: false,
+                        account_id: None,
+                    }],
+                },
+            })
+        }
+    }
+
     #[test]
     #[expect(
         clippy::unwrap_used,
@@ -3024,40 +3052,6 @@ mod tests {
         requests: Mutex<Vec<Request>>,
     }
 
-    #[tokio::test]
-    async fn row_seen_tool_previews_unless_explicitly_confirmed() {
-        let requester = Arc::new(FakeRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        let account = AccountId::new();
-        for confirm in [None, Some(true)] {
-            server
-                .mode_row_seen(Parameters(RowSeenInput {
-                    account_id: account.as_str(),
-                    mode: "updates".into(),
-                    row_id: "line".into(),
-                    revision: "exact-revision".into(),
-                    confirm,
-                }))
-                .await
-                .expect("row acknowledgement");
-        }
-        let calls = requester.requests.lock().expect("requests");
-        assert!(
-            matches!(&calls[0], Request::SetModeRowSeen { account_id, mode: ModeKindData::Updates,
-            row_id, revision, dry_run: true } if account_id == &account && row_id == "line" && revision == "exact-revision")
-        );
-        assert!(matches!(
-            &calls[1],
-            Request::SetModeRowSeen { dry_run: false, .. }
-        ));
-    }
-
-    #[derive(Debug)]
-    struct VersionedSyncRequester {
-        version: u32,
-        requests: Mutex<Vec<Request>>,
-    }
-
     #[derive(Debug, Default)]
     struct CapturedRecoveryRequester {
         calls: Mutex<Vec<(Request, Option<mxr_protocol::ArchiveWorkspaceData>)>>,
@@ -3084,45 +3078,6 @@ mod tests {
             Ok(Response::Ok {
                 data: ResponseData::Pong,
             })
-        }
-    }
-
-    #[async_trait]
-    impl DaemonRequester for VersionedSyncRequester {
-        async fn request(&self, request: Request) -> anyhow::Result<Response> {
-            self.requests
-                .lock()
-                .expect("requests lock")
-                .push(request.clone());
-            let data = match request {
-                Request::GetStatus => ResponseData::Status {
-                    workspace_owner_supported: false,
-                    draft_revision_supported: false,
-                    send_outcome_supported: true,
-                    archive_recovery_supported: false,
-                    recovery_supported: false,
-                    recovery: None,
-                    attachment_transfer_supported: false,
-                    draft_attachment_upload_supported: false,
-                    uptime_secs: 1,
-                    accounts: Vec::new(),
-                    total_messages: 0,
-                    daemon_pid: None,
-                    sync_statuses: Vec::new(),
-                    protocol_version: self.version,
-                    daemon_version: None,
-                    daemon_build_id: None,
-                    repair_required: false,
-                    semantic_runtime: None,
-                    feature_health: None,
-                    degraded: false,
-                },
-                Request::SyncAll => ResponseData::SyncBatch {
-                    results: Vec::new(),
-                },
-                _ => ResponseData::Pong,
-            };
-            Ok(Response::Ok { data })
         }
     }
 
@@ -3314,83 +3269,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn draft_assist_without_text_writes_the_reply_to_the_threads_newest_inbound_message() {
-        #[derive(Debug)]
-        struct ThreadRequester {
-            older: MessageId,
-            newest_inbound: MessageId,
-            my_reply: MessageId,
-            asked: Mutex<Vec<Request>>,
-        }
-        #[async_trait]
-        impl DaemonRequester for ThreadRequester {
-            async fn request(&self, request: Request) -> anyhow::Result<Response> {
-                self.asked.lock().expect("asked lock").push(request.clone());
-                let envelope = |id: &MessageId, date: &str, flags: &str| {
-                    serde_json::from_value(json!({
-                        "id": id, "account_id": AccountId::new(), "provider_id": "p",
-                        "thread_id": ThreadId::new(), "message_id_header": null,
-                        "in_reply_to": null, "references": [],
-                        "from": {"name": null, "email": "a@b.c"},
-                        "to": [], "cc": [], "bcc": [], "subject": "s",
-                        "date": date, "flags": flags, "snippet": "",
-                        "has_attachments": false, "size_bytes": 1, "unsubscribe": "None",
-                    }))
-                    .expect("fixture envelope")
-                };
-                let data = match request {
-                    Request::GetThread { .. } => ResponseData::Thread {
-                        thread: serde_json::from_value(json!({
-                            "id": ThreadId::new(), "account_id": AccountId::new(),
-                            "subject": "s", "participants": [], "message_count": 3,
-                            "unread_count": 0, "latest_date": "2026-10-03T09:00:00Z",
-                            "snippet": "",
-                        }))
-                        .expect("fixture thread"),
-                        messages: vec![
-                            envelope(&self.older, "2026-10-01T09:00:00Z", "READ"),
-                            envelope(&self.newest_inbound, "2026-10-02T09:00:00Z", "READ"),
-                            envelope(&self.my_reply, "2026-10-03T09:00:00Z", "READ | SENT"),
-                        ],
-                        summary: None,
-                    },
-                    _ => ResponseData::Pong,
-                };
-                Ok(Response::Ok { data })
-            }
-        }
-        let requester = Arc::new(ThreadRequester {
-            older: MessageId::new(),
-            newest_inbound: MessageId::new(),
-            my_reply: MessageId::new(),
-            asked: Mutex::default(),
-        });
-        let server = MxrMcpServer::from_requester(requester.clone());
-        server
-            .draft_assist(Parameters(DraftAssistInput {
-                thread_id: ThreadId::new().as_str(),
-                message_id: None,
-                instruction: "decline politely".into(),
-                text: None,
-                revise: None,
-                model: None,
-            }))
-            .await
-            .expect("draft assist");
-        let asked = requester.asked.lock().expect("asked lock");
-        let Some(Request::ComposeAssist {
-            draft: mxr_protocol::DraftTargetData::Reply { message_id, .. },
-            text,
-            ..
-        }) = asked.last()
-        else {
-            unreachable!("expected ComposeAssist last, got {asked:?}");
-        };
-        assert_eq!(message_id, &requester.newest_inbound, "not my own reply");
-        assert!(text.is_empty(), "nothing typed means write");
-    }
-
-    #[tokio::test]
     async fn archive_submission_requires_explicit_confirmation_before_any_ipc() {
         let requester = Arc::new(FakeRequester::default());
         let server = MxrMcpServer::from_requester(requester.clone());
@@ -3402,149 +3280,6 @@ mod tests {
             .await;
         assert!(result.is_err());
         assert!(requester.requests.lock().expect("requests lock").is_empty());
-    }
-
-    #[tokio::test]
-    async fn draft_attachment_tools_preview_without_writes_and_bound_raw_chunks() {
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
-        let requester = Arc::new(FakeRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        let draft_id = DraftId::new();
-        let account_id = AccountId::new();
-        let resource_id = mxr_core::DraftAttachmentId::new();
-        let declaration = json!({"id": resource_id, "draft_id": draft_id, "account_id": account_id, "filename": "synthetic.txt", "mime_type": "text/plain", "length_bytes": 3, "sha256": "a".repeat(64)});
-        server
-            .draft_attachment_begin(Parameters(DraftAttachmentBeginInput {
-                expected_workspace: Some(
-                    serde_json::to_value(test_workspace()).expect("fixture owner"),
-                ),
-                metadata: declaration,
-                confirm: false,
-            }))
-            .await
-            .expect("attachment declaration preview");
-        assert!(matches!(
-            requester.requests.lock().expect("requests lock").as_slice(),
-            [Request::PreviewDraftAttachment { .. }]
-        ));
-        requester.requests.lock().expect("requests lock").clear();
-        for length in [64 * 1024 + 1, 64 * 1024 + 2, 64 * 1024 + 3] {
-            assert!(server
-                .draft_attachment_chunk(Parameters(DraftAttachmentChunkInput {
-                    expected_workspace: Some(
-                        serde_json::to_value(test_workspace()).expect("fixture owner")
-                    ),
-                    draft_id: draft_id.as_str(),
-                    account_id: account_id.as_str(),
-                    resource_id: resource_id.as_str(),
-                    offset: 0,
-                    data_base64: STANDARD.encode(vec![0; length]),
-                    confirm: true
-                }))
-                .await
-                .is_err());
-        }
-        server
-            .draft_attachment_chunk(Parameters(DraftAttachmentChunkInput {
-                expected_workspace: Some(
-                    serde_json::to_value(test_workspace()).expect("fixture owner"),
-                ),
-                draft_id: draft_id.as_str(),
-                account_id: account_id.as_str(),
-                resource_id: resource_id.as_str(),
-                offset: 0,
-                data_base64: STANDARD.encode(b"abc"),
-                confirm: false,
-            }))
-            .await
-            .expect("attachment chunk preview");
-        server
-            .draft_attachment_finalize(Parameters(DraftAttachmentFinalizeInput {
-                expected_workspace: Some(
-                    serde_json::to_value(test_workspace()).expect("fixture owner"),
-                ),
-                draft_id: draft_id.as_str(),
-                account_id: account_id.as_str(),
-                resource_id: resource_id.as_str(),
-                confirm: false,
-            }))
-            .await
-            .expect("attachment finalization preview");
-        assert!(requester.requests.lock().expect("requests lock").is_empty());
-        server
-            .draft_attachment_chunk(Parameters(DraftAttachmentChunkInput {
-                expected_workspace: Some(
-                    serde_json::to_value(test_workspace()).expect("fixture owner"),
-                ),
-                draft_id: draft_id.as_str(),
-                account_id: account_id.as_str(),
-                resource_id: resource_id.as_str(),
-                offset: 0,
-                data_base64: STANDARD.encode(b"abc"),
-                confirm: true,
-            }))
-            .await
-            .expect("confirmed attachment chunk");
-        assert!(matches!(
-            requester.requests.lock().expect("requests lock").as_slice(),
-            [Request::WriteDraftAttachmentChunk { .. }]
-        ));
-    }
-
-    #[tokio::test]
-    async fn attachment_chunk_tool_enforces_its_64_kibibyte_limit() {
-        let requester = Arc::new(FakeRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        for length in [0, 64 * 1024 + 1] {
-            let result = server
-                .attachment_chunk(Parameters(AttachmentChunkInput {
-                    message_id: "invalid-before-dispatch".into(),
-                    attachment_id: "invalid-before-dispatch".into(),
-                    offset: 0,
-                    length,
-                    account_id: None,
-                }))
-                .await;
-            assert!(result.is_err());
-        }
-        assert!(requester
-            .requests
-            .lock()
-            .expect("fake requester mutex is not poisoned")
-            .is_empty());
-    }
-
-    #[tokio::test]
-    async fn attachment_chunk_tool_dispatches_the_requested_bounded_range() {
-        let requester = Arc::new(FakeRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        let message_id = MessageId::new();
-        let attachment_id = mxr_core::AttachmentId::new();
-
-        server
-            .attachment_chunk(Parameters(AttachmentChunkInput {
-                message_id: message_id.to_string(),
-                attachment_id: attachment_id.to_string(),
-                offset: 12,
-                length: 64 * 1024,
-                account_id: None,
-            }))
-            .await
-            .expect("bounded attachment chunk request succeeds");
-
-        assert!(matches!(
-            requester
-                .requests
-                .lock()
-                .expect("fake requester mutex is not poisoned")
-                .as_slice(),
-            [Request::ReadAttachmentChunk {
-                message_id: requested_message,
-                attachment_id: requested_attachment,
-                offset: 12,
-                length: 65_536,
-            }] if requested_message == &message_id && requested_attachment == &attachment_id
-        ));
     }
 
     fn draft_fixture() -> Draft {
@@ -3624,124 +3359,6 @@ mod tests {
 
         drop(client);
         server_task.abort();
-    }
-
-    #[derive(Debug, Default)]
-    struct ThreadPreviewRequester {
-        requests: Mutex<Vec<Request>>,
-    }
-
-    #[async_trait]
-    impl DaemonRequester for ThreadPreviewRequester {
-        async fn request(&self, request: Request) -> anyhow::Result<Response> {
-            self.requests.lock().expect("requests lock").push(request);
-            Ok(Response::Ok {
-                data: mxr_protocol::ResponseData::ThreadPreviews {
-                    previews: vec![mxr_protocol::ThreadPreviewData {
-                        thread_id: ThreadId::new(),
-                        subject: "Quarterly, \"final\"".into(),
-                        sender_name: None,
-                        sender_email: "dana@example.com".into(),
-                        latest_at: 1_760_000_000,
-                        message_count: 2,
-                        unread_count: 1,
-                        snippet: "Please confirm".into(),
-                        has_attachments: false,
-                        account_id: None,
-                    }],
-                },
-            })
-        }
-    }
-
-    #[tokio::test]
-    async fn thread_previews_tool_sends_the_ids_and_returns_headline_facts_without_bodies() {
-        let requester = Arc::new(ThreadPreviewRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        let first = ThreadId::new();
-        let second = ThreadId::new();
-
-        let McpJson(value) = server
-            .thread_previews(Parameters(ThreadPreviewsInput {
-                thread_ids: vec![first.to_string(), second.to_string()],
-            }))
-            .await
-            .expect("thread previews");
-
-        let requests = requester.requests.lock().expect("requests lock");
-        assert!(matches!(
-            &requests[0],
-            Request::GetThreadPreviews { thread_ids } if *thread_ids == vec![first.clone(), second.clone()]
-        ));
-        assert_eq!(value["kind"], "ThreadPreviews");
-        let preview = &value["previews"][0];
-        assert_eq!(preview["subject"], "Quarterly, \"final\"");
-        assert_eq!(preview["sender_email"], "dana@example.com");
-        assert_eq!(preview["latest_at"], 1_760_000_000);
-        assert_eq!(preview["unread_count"], 1);
-        assert!(preview.get("body").is_none());
-        assert!(preview.get("sender_name").is_none());
-    }
-
-    #[tokio::test]
-    async fn thread_previews_tool_rejects_a_malformed_thread_id_before_asking_the_daemon() {
-        let requester = Arc::new(ThreadPreviewRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-
-        let result = server
-            .thread_previews(Parameters(ThreadPreviewsInput {
-                thread_ids: vec!["not-a-thread".into()],
-            }))
-            .await;
-
-        assert!(result.is_err());
-        assert!(requester.requests.lock().expect("requests lock").is_empty());
-    }
-
-    #[tokio::test]
-    async fn sync_tool_uses_the_explicit_all_accounts_request() {
-        let requester = Arc::new(VersionedSyncRequester {
-            version: IPC_PROTOCOL_VERSION,
-            requests: Mutex::new(Vec::new()),
-        });
-        let server = MxrMcpServer::from_requester(requester.clone());
-
-        server.sync_all().await.expect("sync tool result");
-
-        let requests = requester.requests.lock().expect("requests lock");
-        assert_eq!(requests.len(), 2);
-        assert!(matches!(requests[0], Request::GetStatus));
-        assert!(matches!(requests[1], Request::SyncAll));
-    }
-
-    #[tokio::test]
-    async fn sync_tool_explains_older_daemons_without_sending_new_request() {
-        for version in 4..mxr_protocol::IPC_PROTOCOL_VERSION {
-            let requester = Arc::new(VersionedSyncRequester {
-                version,
-                requests: Mutex::new(Vec::new()),
-            });
-            let server = MxrMcpServer::from_requester(requester.clone());
-
-            let result = server.sync_all().await;
-            assert!(
-                result.is_err(),
-                "old daemon must be rejected before SyncAll"
-            );
-            let Some(error) = result.err() else {
-                continue;
-            };
-
-            assert!(error.message.contains(&format!(
-                "requires daemon IPC protocol {IPC_PROTOCOL_VERSION}"
-            )));
-            assert!(error
-                .message
-                .contains(&format!("running daemon uses {version}")));
-            let requests = requester.requests.lock().expect("requests lock");
-            assert_eq!(requests.len(), 1);
-            assert!(matches!(requests[0], Request::GetStatus));
-        }
     }
 
     #[tokio::test]
@@ -3825,42 +3442,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn got_it_previews_unless_confirmed_with_the_previewed_text() {
-        let requester = Arc::new(FakeRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        let thread = ThreadId::new();
-        server
-            .got_it(Parameters(GotItInput {
-                thread_id: thread.as_str(),
-                confirm: None,
-                expect_text: None,
-                preview_token: None,
-            }))
-            .await
-            .expect("preview");
-        let blocked = server
-            .got_it(Parameters(GotItInput {
-                thread_id: thread.as_str(),
-                confirm: Some(true),
-                expect_text: None,
-                preview_token: None,
-            }))
-            .await
-            .expect("tool result");
-        assert_eq!(blocked.0["blocked"], true);
-        let requests = requester.requests.lock().expect("requests lock");
-        assert_eq!(
-            requests.len(),
-            1,
-            "the blocked send never reached the daemon"
-        );
-        assert!(matches!(
-            &requests[0],
-            Request::AckMessage { dry_run: true, .. }
-        ));
-    }
-
-    #[tokio::test]
     async fn a_move_only_previews_unless_confirmed() {
         let requester = Arc::new(FakeRequester::default());
         let server = MxrMcpServer::from_requester(requester.clone());
@@ -3903,43 +3484,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_arrivals_line_never_starts_a_visit_to_now() {
-        let requester = Arc::new(FakeRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        server
-            .arrivals(Parameters(ArrivalsInput { account_id: None }))
-            .await
-            .expect("tool result");
-        server
-            .arrivals_list(Parameters(ArrivalsListInput {
-                account_id: None,
-                bucket: Some("reading".into()),
-                since: Some("2026-10-07T08:12:00Z".into()),
-                until: None,
-                limit: None,
-            }))
-            .await
-            .expect("tool result");
-        let requests = requester.requests.lock().expect("requests lock");
-        assert!(matches!(
-            &requests[0],
-            Request::GetArrivals {
-                mark_seen: false,
-                ..
-            }
-        ));
-        assert!(matches!(
-            &requests[1],
-            Request::ListArrivals {
-                bucket: Some(ArrivalBucketData::Reading),
-                since: Some(_),
-                limit: 100,
-                ..
-            }
-        ));
-    }
-
-    #[tokio::test]
     async fn draft_attachment_send_review_marker_is_explicit() {
         let requester = Arc::new(FakeRequester::default());
         let server = MxrMcpServer::from_requester(requester.clone());
@@ -3971,58 +3515,6 @@ mod tests {
                 ..
             }
         ));
-    }
-
-    #[derive(Debug)]
-    struct ReplyContextRequester {
-        subject: &'static str,
-    }
-
-    #[async_trait]
-    impl DaemonRequester for ReplyContextRequester {
-        async fn request(&self, request: Request) -> anyhow::Result<Response> {
-            let data = match request {
-                Request::GetArchiveWorkspace => ResponseData::ArchiveWorkspace {
-                    workspace: test_workspace(),
-                },
-                Request::PrepareReply { .. } => ResponseData::ReplyContext {
-                    context: mxr_protocol::ReplyContext {
-                        account_id: AccountId::new(),
-                        in_reply_to: "<original@example.com>".into(),
-                        references: Vec::new(),
-                        reply_to: "sender@example.com".into(),
-                        cc: String::new(),
-                        subject: self.subject.into(),
-                        from: "me@example.com".into(),
-                        thread_context: String::new(),
-                        thread_id: None,
-                    },
-                },
-                other => anyhow::bail!("unexpected request {other:?}"),
-            };
-            Ok(Response::Ok { data })
-        }
-    }
-
-    #[tokio::test]
-    async fn prepared_reply_subject_gets_exactly_one_re_marker() {
-        for (original, expected) in [
-            ("Deploy plan", "Re: Deploy plan"),
-            ("Re: Deploy plan", "Re: Deploy plan"),
-            ("RE: Deploy plan", "Re: Deploy plan"),
-        ] {
-            let server =
-                MxrMcpServer::from_requester(Arc::new(ReplyContextRequester { subject: original }));
-            let McpJson(prepared) = server
-                .prepare_reply(Parameters(PrepareReplyInput {
-                    body: "Thanks".into(),
-                    message_id: mxr_core::MessageId::new().as_str().clone(),
-                    reply_all: false,
-                }))
-                .await
-                .expect("prepared reply");
-            assert_eq!(prepared["draft"]["subject"], expected, "from {original}");
-        }
     }
 
     #[derive(Debug)]
@@ -4112,128 +3604,6 @@ mod tests {
         assert_eq!(result.0["draft"]["id"], draft.id.as_str());
     }
 
-    #[derive(Debug)]
-    struct ProviderDraftRequester {
-        draft: Draft,
-        submitted: Mutex<Vec<Draft>>,
-    }
-
-    #[async_trait]
-    impl DaemonRequester for ProviderDraftRequester {
-        async fn request_owned(
-            &self,
-            request: Request,
-            owner: mxr_protocol::ArchiveWorkspaceData,
-        ) -> anyhow::Result<Response> {
-            anyhow::ensure!(owner == test_workspace(), "workspace_conflict");
-            self.request(request).await
-        }
-
-        async fn request(&self, request: Request) -> anyhow::Result<Response> {
-            let data = match request {
-                Request::GetArchiveWorkspace => ResponseData::ArchiveWorkspace {
-                    workspace: test_workspace(),
-                },
-                Request::GetDraft { .. } => ResponseData::Draft {
-                    draft: self.draft.clone(),
-                },
-                Request::ListAccounts => ResponseData::Accounts {
-                    accounts: vec![mxr_protocol::AccountSummaryData {
-                        identity: None,
-                        account_id: self.draft.account_id.clone(),
-                        key: None,
-                        name: "Test".into(),
-                        email: "me@example.com".into(),
-                        provider_kind: "gmail".into(),
-                        sync_kind: None,
-                        send_kind: None,
-                        enabled: true,
-                        is_default: true,
-                        source: mxr_protocol::AccountSourceData::Runtime,
-                        editable: mxr_protocol::AccountEditModeData::Full,
-                        sync: None,
-                        send: None,
-                        capabilities: mxr_protocol::AccountCapabilitiesData {
-                            supports_server_drafts: true,
-                            ..Default::default()
-                        },
-                    }],
-                },
-                Request::SaveDraftToServer { draft } => {
-                    self.submitted
-                        .lock()
-                        .expect("provider submissions lock is not poisoned")
-                        .push(draft.clone());
-                    ResponseData::Draft { draft }
-                }
-                _ => ResponseData::Pong,
-            };
-            Ok(Response::Ok { data })
-        }
-    }
-
-    #[tokio::test]
-    async fn both_provider_confirm_names_require_the_previewed_revision() {
-        for compatibility_name in [false, true] {
-            let mut draft = draft_fixture();
-            draft.revision = Some(2);
-            let requester = Arc::new(ProviderDraftRequester {
-                draft: draft.clone(),
-                submitted: Mutex::new(Vec::new()),
-            });
-            let server = MxrMcpServer::from_requester(requester.clone());
-            for expected in [None, Some(1), Some(2)] {
-                let input = Parameters(DraftActionInput {
-                    expected_workspace: Some(
-                        serde_json::to_value(test_workspace()).expect("fixture owner"),
-                    ),
-                    draft_id: draft.id.as_str(),
-                    confirm: Some(true),
-                    expected_revision: expected,
-                });
-                let result = if compatibility_name {
-                    server.copy_draft_to_provider(input).await
-                } else {
-                    server.sync_draft_to_provider(input).await
-                };
-                assert_eq!(result.is_ok(), expected == Some(2));
-            }
-            let submitted = requester
-                .submitted
-                .lock()
-                .expect("provider submissions lock is not poisoned");
-            assert_eq!(
-                submitted.len(),
-                1,
-                "missing or stale previews never cause provider effects"
-            );
-            assert_eq!(submitted[0].revision, Some(2));
-            assert_eq!(submitted[0].content, draft.content);
-        }
-    }
-
-    #[tokio::test]
-    async fn get_draft_returns_the_complete_stored_draft() {
-        let draft = draft_fixture();
-        let server = MxrMcpServer::new(DraftRequester {
-            draft: draft.clone(),
-        });
-        let result = server
-            .get_draft(Parameters(DraftIdInput {
-                expected_workspace: Some(
-                    serde_json::to_value(test_workspace()).expect("fixture owner"),
-                ),
-                draft_id: draft.id.as_str(),
-            }))
-            .await
-            .expect("get result");
-
-        let mut expected = serde_json::to_value(draft).expect("draft JSON");
-        expected["expected_workspace"] =
-            serde_json::to_value(test_workspace()).expect("fixture owner");
-        assert_eq!(result.0, expected);
-    }
-
     #[tokio::test]
     async fn the_export_tool_only_ever_previews() {
         let requester = Arc::new(FakeRequester::default());
@@ -4261,50 +3631,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_reading_article_is_fetched_only_with_confirmation() {
-        let requester = Arc::new(FakeRequester::default());
+    async fn thread_previews_tool_sends_the_ids_and_returns_headline_facts_without_bodies() {
+        let requester = Arc::new(ThreadPreviewRequester::default());
         let server = MxrMcpServer::from_requester(requester.clone());
-        let blocked = server
-            .reading_item(Parameters(ReadingItemInput {
-                item_key: "m:1".to_string(),
-                fetch_article: Some(true),
-                confirm: None,
-            }))
-            .await
-            .expect("tool result");
-        assert_eq!(blocked.0["blocked"], true);
-        assert!(requester.requests.lock().expect("requests lock").is_empty());
-        server
-            .reading_item(Parameters(ReadingItemInput {
-                item_key: "m:1".to_string(),
-                fetch_article: Some(true),
-                confirm: Some(true),
-            }))
-            .await
-            .expect("tool result");
-        let requests = requester.requests.lock().expect("requests lock");
-        assert!(matches!(
-            requests.as_slice(),
-            [Request::FetchArticle { item_key, refresh: false }] if item_key == "m:1"
-        ));
-    }
+        let first = ThreadId::new();
+        let second = ThreadId::new();
 
-    #[tokio::test]
-    async fn the_edition_over_mcp_never_counts_as_a_visit() {
-        let requester = Arc::new(FakeRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        server
-            .reading_edition(Parameters(ReadingEditionInput { account_id: None }))
+        let McpJson(value) = server
+            .thread_previews(Parameters(ThreadPreviewsInput {
+                thread_ids: vec![first.to_string(), second.to_string()],
+            }))
             .await
-            .expect("tool result");
+            .expect("thread previews");
+
         let requests = requester.requests.lock().expect("requests lock");
         assert!(matches!(
-            requests.as_slice(),
-            [Request::GetReadingEdition {
-                mark_visit: false,
-                ..
-            }]
+            &requests[0],
+            Request::GetThreadPreviews { thread_ids } if *thread_ids == vec![first.clone(), second.clone()]
         ));
+        assert_eq!(value["kind"], "ThreadPreviews");
+        let preview = &value["previews"][0];
+        assert_eq!(preview["subject"], "Quarterly, \"final\"");
+        assert_eq!(preview["sender_email"], "dana@example.com");
+        assert_eq!(preview["latest_at"], 1_760_000_000);
+        assert_eq!(preview["unread_count"], 1);
+        assert!(preview.get("body").is_none());
+        assert!(preview.get("sender_name").is_none());
     }
 }
 

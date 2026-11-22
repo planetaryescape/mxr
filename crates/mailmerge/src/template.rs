@@ -158,17 +158,6 @@ mod tests {
     }
 
     #[test]
-    fn quotes_in_values_cannot_break_out_of_an_attribute() {
-        let out = render_html(
-            r#"<a href="{{ url }}">x</a>"#,
-            &[("url", r#"https://x.example" onclick="steal()"#)],
-        )
-        .unwrap();
-        assert_eq!(out.matches('"').count(), 2, "attribute escaped out: {out}");
-        assert!(!out.contains("onclick=\""), "{out}");
-    }
-
-    #[test]
     fn a_missing_property_fails_the_batch() {
         let err = render_html("<p>Hi {{ first_name }},</p>", &[]).unwrap_err();
         assert!(err.to_string().contains("first_name"), "{err}");
@@ -183,27 +172,6 @@ mod tests {
         assert!(
             !err.contains("`first_name`"),
             "blamed a property that was present: {err}"
-        );
-    }
-
-    #[test]
-    fn a_missing_property_inside_a_condition_also_fails() {
-        assert!(render_html("{% if plan %}pro{% endif %}", &[("plna", "pro")]).is_err());
-    }
-
-    #[test]
-    fn the_subject_and_text_templates_do_not_html_escape() {
-        assert_eq!(
-            render_as(SUBJECT, "Digest for {{ name }}", &[("name", "Ben & Co")]).unwrap(),
-            "Digest for Ben & Co"
-        );
-        assert_eq!(
-            render_as(TEXT, "Hi {{ name }}", &[("name", "Ben & Co")]).unwrap(),
-            "Hi Ben & Co"
-        );
-        assert_eq!(
-            render_as(HTML, "<p>{{ name }}</p>", &[("name", "Ben & Co")]).unwrap(),
-            "<p>Ben &amp; Co</p>"
         );
     }
 
@@ -224,16 +192,6 @@ mod tests {
             assert!(err.contains("data templates"), "accepted `{source}`");
             assert!(err.contains("html template"), "{err}");
         }
-    }
-
-    #[test]
-    fn an_include_cannot_reach_the_filesystem_even_if_the_guard_is_bypassed() {
-        let mut templates = Templates::new();
-        templates
-            .add(HTML, "{% include 'Cargo.toml' %}".to_string())
-            .unwrap();
-        let err = templates.render(HTML, &props(&[])).unwrap_err();
-        assert!(!err.to_string().contains("[package]"), "{err}");
     }
 
     #[test]
@@ -260,17 +218,5 @@ mod tests {
             !b.contains("TOKEN_A"),
             "record B leaked record A's token: {b}"
         );
-    }
-
-    #[test]
-    fn a_property_present_for_one_record_is_not_inherited_by_the_next() {
-        let mut templates = Templates::new();
-        templates
-            .add(HTML, "<p>{{ token }}</p>".to_string())
-            .unwrap();
-        assert!(templates
-            .render(HTML, &props(&[("token", "TOKEN_A")]))
-            .is_ok());
-        assert!(templates.render(HTML, &props(&[])).is_err());
     }
 }

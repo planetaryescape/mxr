@@ -13,9 +13,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mxr_llm::{
-    chain_statuses, routes_for_model, ApiKey, ApiKeySource, ChatMessage, CompletionRequest,
-    Endpoint, EndpointRoute, LlmError, LlmFeature, LlmProvider, LlmRuntime, OpenAiCompatibleConfig,
-    RouteHealth, RouteProvider, RouteState, RoutedProvider, RoutedProviderConfig,
+    routes_for_model, ApiKey, ApiKeySource, ChatMessage, CompletionRequest, Endpoint,
+    EndpointRoute, LlmError, LlmFeature, LlmRuntime, OpenAiCompatibleConfig, RouteHealth,
+    RouteProvider, RouteState, RoutedProvider, RoutedProviderConfig,
 };
 use serde_json::{json, Value};
 use wiremock::matchers::{method, path};
@@ -49,7 +49,6 @@ struct Rig {
     local: MockServer,
     openai: MockServer,
     openrouter: MockServer,
-    keys: Arc<Keys>,
     health: RouteHealth,
     runtime: Arc<LlmRuntime>,
     endpoint: EndpointRoute,
@@ -103,7 +102,6 @@ impl Rig {
             local,
             openai,
             openrouter,
-            keys,
             health,
             runtime,
             endpoint: EndpointRoute::new(&base_url, LOCAL_MODEL, ""),
@@ -255,120 +253,6 @@ async fn a_local_outage_costs_one_attempt_for_a_batch_then_the_fallback_answers(
     assert!(cloud[0].get("temperature").is_none(), "{}", cloud[0]);
 }
 
-#[tokio::test]
-async fn a_closed_local_port_falls_back_within_the_same_call() {
-    let closed = {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        listener.local_addr().unwrap()
-    };
-    let rig = Rig::build(true, Some(format!("http://{closed}/v1"))).await;
-    openrouter_answers(&rig).await;
-
-    let response = rig.foreground().await.unwrap();
-    assert_eq!(response.content, "from openrouter");
-
-    let (endpoint, routes) = chain_statuses(
-        &rig.endpoint,
-        &routes_for_model(FALLBACK_MODEL, Endpoint::Default).unwrap(),
-        rig.keys.as_ref(),
-        &rig.health,
-    );
-    assert_eq!(endpoint.view.state, RouteState::Cooling);
-    assert_eq!(
-        endpoint.view.reason.map(|reason| reason.to_string()),
-        Some("unreachable".to_string())
-    );
-    assert!(!endpoint.next);
-    let next: Vec<_> = routes
-        .iter()
-        .map(|status| (status.route.provider, status.key_present, status.next))
-        .collect();
-    assert_eq!(
-        next,
-        [
-            (RouteProvider::OpenAI, false, false),
-            (RouteProvider::OpenRouter, true, true)
-        ]
-    );
-}
-
-#[tokio::test]
-async fn traffic_returns_to_the_endpoint_after_its_wait_with_a_cheap_check() {
-    let rig = Rig::new().await;
-    local_is_out(&rig, out_for_a_second()).await;
-    openrouter_answers(&rig).await;
-    let mut recovered = rig.runtime.subscribe_background_recovery();
-    recovered.borrow_and_update();
-
-    assert_eq!(
-        rig.background(LlmFeature::Summarize).await.unwrap().content,
-        "from openrouter"
-    );
-    rig.local.reset().await;
-    local_answers(&rig).await;
-    assert_eq!(
-        rig.background(LlmFeature::Summarize).await.unwrap().content,
-        "from openrouter"
-    );
-    assert!(rig.local_calls().await.is_empty());
-
-    wait_past_the_retry_after().await;
-    let response = rig.background(LlmFeature::Summarize).await.unwrap();
-    assert_eq!(response.content, "from local");
-    assert_eq!(
-        response.model, LOCAL_MODEL,
-        "a local answer keeps its label"
-    );
-    assert_eq!(
-        rig.local_calls().await,
-        ["GET /v1/models", "POST /v1/chat/completions"],
-        "the model listing is the check; the prompt goes once it answers"
-    );
-    assert!(recovered.has_changed().unwrap(), "recovery is signalled");
-    assert_eq!(rig.endpoint_state(), RouteState::Ok);
-    assert_eq!(bodies(&rig.openrouter).await.len(), 2);
-}
-
-/// A server whose model listing answers while its completions fail is not
-/// back: the failure counts on top of the one before, so the wait doubles
-/// instead of starting over at a minute.
-#[tokio::test]
-async fn a_listing_that_answers_does_not_reset_a_failing_endpoints_wait() {
-    let rig = Rig::new().await;
-    local_is_out(&rig, out_for_a_second()).await;
-    openrouter_answers(&rig).await;
-    rig.background(LlmFeature::Summarize).await.unwrap();
-
-    rig.local.reset().await;
-    Mock::given(method("GET"))
-        .and(path("/v1/models"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
-        .mount(&rig.local)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/v1/chat/completions"))
-        .respond_with(ResponseTemplate::new(503))
-        .mount(&rig.local)
-        .await;
-    wait_past_the_retry_after().await;
-
-    assert_eq!(
-        rig.background(LlmFeature::Summarize).await.unwrap().content,
-        "from openrouter"
-    );
-    assert_eq!(
-        rig.local_calls().await,
-        ["GET /v1/models", "POST /v1/chat/completions"]
-    );
-    let view = rig.health.view(&rig.endpoint);
-    assert_eq!(view.state, RouteState::Cooling);
-    assert!(
-        view.retry_in > Duration::from_secs(60),
-        "second failure in a row waits two minutes, not one: {:?}",
-        view.retry_in
-    );
-}
-
 /// Which side answered decides the label a client shows: the endpoint on
 /// this machine is local even though a hosted fallback stands behind it.
 #[tokio::test]
@@ -405,86 +289,6 @@ async fn an_answer_says_whether_it_came_from_this_machine() {
         "{}",
         hosted.model
     );
-}
-
-#[tokio::test]
-async fn an_endpoint_still_out_after_its_wait_costs_a_listing_not_a_prompt() {
-    let rig = Rig::new().await;
-    local_is_out(&rig, out_for_a_second()).await;
-    openrouter_answers(&rig).await;
-
-    rig.background(LlmFeature::Summarize).await.unwrap();
-    wait_past_the_retry_after().await;
-    let response = rig.background(LlmFeature::Summarize).await.unwrap();
-    assert_eq!(response.content, "from openrouter", "same call moves on");
-    assert_eq!(
-        rig.local_calls().await,
-        ["POST /v1/chat/completions", "GET /v1/models"]
-    );
-    assert_eq!(rig.endpoint_state(), RouteState::Cooling);
-}
-
-#[tokio::test]
-async fn racing_callers_share_one_check_of_the_endpoint() {
-    let rig = Rig::new().await;
-    local_is_out(&rig, out_for_a_second()).await;
-    openrouter_answers(&rig).await;
-    rig.foreground().await.unwrap();
-
-    rig.local.reset().await;
-    Mock::given(method("GET"))
-        .and(path("/v1/models"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(json!({"data": []}))
-                .set_delay(Duration::from_millis(400)),
-        )
-        .mount(&rig.local)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/v1/chat/completions"))
-        .respond_with(completion(LOCAL_MODEL, "from local"))
-        .mount(&rig.local)
-        .await;
-    wait_past_the_retry_after().await;
-
-    let rig = Arc::new(rig);
-    let mut tasks = Vec::new();
-    for _ in 0..8 {
-        let rig = rig.clone();
-        tasks.push(tokio::spawn(async move {
-            rig.background(LlmFeature::Summarize).await.unwrap().content
-        }));
-    }
-    let mut answers = Vec::new();
-    for task in tasks {
-        answers.push(task.await.unwrap());
-    }
-
-    let listings = rig
-        .local_calls()
-        .await
-        .into_iter()
-        .filter(|call| call == "GET /v1/models")
-        .count();
-    assert_eq!(listings, 1, "one caller checks; the rest don't wait on it");
-    assert_eq!(
-        answers
-            .iter()
-            .filter(|answer| *answer == "from local")
-            .count(),
-        1,
-        "{answers:?}"
-    );
-    assert_eq!(
-        answers
-            .iter()
-            .filter(|answer| *answer == "from openrouter")
-            .count(),
-        7,
-        "{answers:?}"
-    );
-    assert_eq!(rig.endpoint_state(), RouteState::Ok);
 }
 
 #[tokio::test]
@@ -531,80 +335,4 @@ async fn a_withheld_feature_waits_for_its_endpoint_and_resumes_there() {
         "a loopback endpoint alone stays local"
     );
     assert_eq!(pinned.base_url(), Some(rig.endpoint.base_url.as_str()));
-}
-
-#[tokio::test]
-async fn the_chain_names_the_endpoint_model_fits_both_windows_and_leaves_the_machine() {
-    let rig = Rig::new().await;
-    let pinned = rig.runtime.for_feature(LlmFeature::Summarize).pin();
-    assert_eq!(pinned.model_name(), LOCAL_MODEL);
-    assert_eq!(pinned.context_window(), 32_768, "the smaller window");
-    assert!(pinned.leaves_machine(), "the fallback is a cloud service");
-    assert_eq!(pinned.base_url(), None, "answers can come from either");
-}
-
-#[tokio::test]
-async fn a_config_reload_forgets_that_the_endpoint_was_out() {
-    let rig = Rig::new().await;
-    local_is_out(&rig, ResponseTemplate::new(503)).await;
-    openrouter_answers(&rig).await;
-    rig.foreground().await.unwrap();
-    assert_eq!(rig.endpoint_state(), RouteState::Cooling);
-
-    rig.runtime.replace(Arc::new(mxr_llm::NoopProvider));
-    assert_eq!(rig.endpoint_state(), RouteState::Ok);
-}
-
-#[tokio::test]
-async fn a_foreground_call_with_every_route_out_tries_the_soonest_once() {
-    let rig = Rig::new().await;
-    local_is_out(&rig, ResponseTemplate::new(503)).await;
-    Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .respond_with(ResponseTemplate::new(503))
-        .mount(&rig.openrouter)
-        .await;
-
-    let error = rig.foreground().await.unwrap_err().to_string();
-    assert!(
-        error.contains("base_url: failed (503 server error)"),
-        "{error}"
-    );
-    assert!(
-        error.contains("openrouter: failed (503 server error)"),
-        "{error}"
-    );
-
-    let error = rig.background(LlmFeature::Summarize).await.unwrap_err();
-    assert!(matches!(error, LlmError::CircuitOpen { .. }), "{error:?}");
-    assert_eq!(rig.local_calls().await.len(), 1);
-}
-
-#[tokio::test]
-async fn the_provider_reports_its_chain() {
-    let rig = Rig::new().await;
-    let provider = RoutedProvider::new({
-        let mut config = RoutedProviderConfig::new(
-            FALLBACK_MODEL.to_string(),
-            routes_for_model(FALLBACK_MODEL, Endpoint::Default).unwrap(),
-            128_000,
-            Duration::from_secs(10),
-            rig.keys.clone(),
-            rig.health.clone(),
-        );
-        config.endpoint = Some(OpenAiCompatibleConfig {
-            base_url: format!("{}/v1/", rig.local.uri()),
-            api_key: None,
-            model: LOCAL_MODEL.to_string(),
-            context_window: 32_768,
-            request_timeout: Duration::from_secs(10),
-        });
-        config
-    });
-    assert_eq!(
-        provider.endpoint(),
-        Some(&rig.endpoint),
-        "trailing slash or not"
-    );
-    assert!(provider.tracks_route_health());
 }

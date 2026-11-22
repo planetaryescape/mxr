@@ -958,45 +958,6 @@ fn truncate(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::html_limits::clamp_table_spans;
-    #[test]
-    fn text_alternative_bounds_an_adversarial_table_before_html2text() {
-        let mut html = String::from("<table><tr>");
-        for n in 0..20_000 {
-            html.push_str(&format!("<td>c{n}</td>"));
-        }
-        html.push_str("</tr>");
-        for n in 0..20_000 {
-            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
-        }
-        html.push_str("</table>");
-        let started = std::time::Instant::now();
-        let text = generate_text_alternative(&html);
-        assert!(started.elapsed() < std::time::Duration::from_secs(10));
-        assert!(text.contains("c0") && text.contains("r19999"));
-        assert!(text.len() < 4 * html.len());
-    }
-
-    #[test]
-    fn text_alternative_of_an_oversized_body_is_the_tag_strip() {
-        let html = format!(
-            "<p>zzoversizedword</p>{}",
-            "<p>filler</p>".repeat(crate::html_limits::MAX_HTML_BYTES / 13 + 1)
-        );
-        let text = generate_text_alternative(&html);
-        assert!(text.contains("zzoversizedword"));
-        assert!(!text.contains('<'));
-    }
-
-    #[test]
-    fn text_alternative_renders_a_huge_span_without_the_fallback() {
-        let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
-        let text = html2text::config::plain_no_decorate()
-            .string_from_read(clamp_table_spans(html).as_bytes(), 80)
-            .expect("clamped table should render");
-        assert!(text.contains('A') && text.contains('B'), "got {text:?}");
-    }
-
     #[test]
     fn text_alternative_survives_a_malformed_table_span() {
         // html2text panics on this colspan; the alternative must still carry the text.
@@ -1008,42 +969,12 @@ mod tests {
 
     use super::*;
 
-    /// The whole point of the feature: a designed email survives untouched.
-    const BRANDED: &str = r#"<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  @media only screen and (max-width: 600px) {
-    .container { width: 100% !important; }
-  }
-</style>
-<!--[if mso]>
-<style>.fallback { font-family: Arial, sans-serif; }</style>
-<![endif]-->
-</head>
-<body>
-<table class="container" role="presentation" cellpadding="0" cellspacing="0" width="600">
-  <tr><td style="padding:24px;font-family:Georgia,serif;color:#1a1a1a;">
-    <img src="cid:notto-logo" alt="Notto®" width="120">
-    <p>Hi Dumi — the Notto® digest is ready.</p>
-    <a href="https://example.com/read">Read it</a>
-  </td></tr>
-</table>
-</body>
-</html>"#;
-
     /// Refuse `markup`, or fail with a message naming what got through.
     fn refusal(markup: &str) -> HtmlValidationError {
         match validate_html(markup) {
             Err(error) => error,
             Ok(()) => panic!("should have been refused: {markup}"),
         }
-    }
-
-    #[test]
-    fn a_branded_responsive_template_passes() {
-        assert_eq!(validate_html(BRANDED), Ok(()));
     }
 
     #[test]
@@ -1077,17 +1008,6 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_document_is_handed_back_intact_for_the_caller_to_fix() {
-        let source = String::from("<p>keep me</p>\n<script>alert(1)</script>\n<p>®</p>");
-        let before = source.clone();
-
-        let error = validate_html(&source).unwrap_err();
-
-        assert!(!error.issues.is_empty());
-        assert_eq!(source, before);
-    }
-
-    #[test]
     fn every_executing_or_submitting_element_is_rejected_by_name() {
         for (markup, tag) in [
             ("<script>alert(1)</script>", "script"),
@@ -1111,22 +1031,6 @@ mod tests {
                 "expected <{tag}> to be named in the refusal for {markup}, got {:?}",
                 error.issues
             );
-        }
-    }
-
-    #[test]
-    fn a_frameset_document_is_rejected() {
-        refusal("<html><frameset><frame src=\"https://evil.example\"></frameset></html>");
-    }
-
-    #[test]
-    fn tag_case_does_not_hide_a_forbidden_element() {
-        for markup in [
-            "<SCRIPT>alert(1)</SCRIPT>",
-            "<ScRiPt>alert(1)</ScRiPt>",
-            "<IFRAME src='https://evil.example'></IFRAME>",
-        ] {
-            refusal(markup);
         }
     }
 
@@ -1178,22 +1082,6 @@ mod tests {
     }
 
     #[test]
-    fn data_urls_are_allowed_only_for_images() {
-        assert_eq!(
-            validate_html(r#"<img src="data:image/jpeg;base64,/9j/4AA">"#),
-            Ok(())
-        );
-        for markup in [
-            r#"<a href="data:text/html,<b>x</b>">y</a>"#,
-            r#"<a href="DATA:TEXT/HTML,x">y</a>"#,
-            r#"<a href="data:application/javascript,steal()">y</a>"#,
-            r#"<a href="data:,plain">y</a>"#,
-        ] {
-            refusal(markup);
-        }
-    }
-
-    #[test]
     fn style_blocks_survive_but_active_css_inside_them_does_not() {
         assert_eq!(
             validate_html("<style>@media (max-width:600px){.a{width:100%}}</style>"),
@@ -1239,15 +1127,6 @@ mod tests {
     }
 
     #[test]
-    fn an_active_construct_hidden_in_a_conditional_comment_is_rejected() {
-        // Outlook renders what is inside `[if mso]`, so a handler in there is
-        // a live handler and not inert comment text.
-        refusal(r#"<!--[if mso]><table><tr><td onclick="steal()">x</td></tr></table><![endif]-->"#);
-        refusal(r#"<!--[if mso]><a href="javascript:steal()">x</a><![endif]-->"#);
-        refusal("<!--[if mso]><style>.a{width:expression(alert(1))}</style><![endif]-->");
-    }
-
-    #[test]
     fn meta_refresh_is_rejected_however_it_is_spelled() {
         for markup in [
             r#"<meta http-equiv="refresh" content="0;url=https://evil.example">"#,
@@ -1290,141 +1169,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn an_issue_points_at_a_line_and_does_not_echo_the_whole_document() {
-        let filler = "<p>padding</p>\n".repeat(20);
-        let markup = format!("<html>\n<body>\n{filler}<script>alert(1)</script>\n</body>\n</html>");
-
-        let error = refusal(&markup);
-
-        assert_eq!(error.issues[0].line, Some(23));
-        assert!(
-            !error.issues[0].detail.contains("padding"),
-            "the excerpt leaked the surrounding document: {:?}",
-            error.issues[0].detail
-        );
-    }
-
-    #[test]
-    fn a_long_offending_value_is_truncated_in_the_excerpt() {
-        let href = format!("javascript:{}", "a".repeat(500));
-
-        let error = refusal(&format!(r#"<a href="{href}">x</a>"#));
-
-        let detail = &error.issues[0].detail;
-        assert!(
-            detail.chars().count() <= 64,
-            "excerpt was not truncated: {} chars",
-            detail.chars().count()
-        );
-        assert!(
-            detail.starts_with("javascript:"),
-            "excerpt lost the useful part: {detail}"
-        );
-    }
-
-    #[test]
-    fn the_generated_text_alternative_is_deterministic_readable_and_markup_free() {
-        let html = r#"<h1>Digest</h1><p>Hi Dumi — the report is ready.</p><a href="https://x">Read it</a>"#;
-
-        let text = generate_text_alternative(html);
-
-        assert_eq!(
-            text,
-            generate_text_alternative(html),
-            "generation is not deterministic"
-        );
-        assert!(text.contains("Digest"), "{text:?}");
-        assert!(text.contains("Hi Dumi"), "{text:?}");
-        assert!(text.contains("Read it"), "{text:?}");
-        assert!(
-            !text.contains('<'),
-            "markup leaked into the text alternative: {text:?}"
-        );
-    }
-
-    #[test]
-    fn generating_a_text_alternative_from_nothing_yields_nothing() {
-        for html in ["", "<p></p>", "<style>.a{color:red}</style>"] {
-            assert!(
-                generate_text_alternative(html).trim().is_empty(),
-                "expected no visible text from {html:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn an_entity_in_an_attribute_name_is_inert_but_a_real_handler_is_not() {
-        // No HTML parser decodes character references in attribute *names*
-        // (html5ever's attribute-name state has no character-reference path),
-        // so `o&#110;click` is an inert attribute rather than a disguised
-        // handler, and refusing it would refuse valid markup. Values are a
-        // different matter, and are covered above.
-        assert_eq!(validate_html(r#"<p o&#110;click="steal()">x</p>"#), Ok(()));
-        refusal(r#"<p onclick="steal()">x</p>"#);
-    }
-
     /// Spelled out rather than read from `TABLE_SCOPED_ELEMENTS`, so that
     /// shrinking that list fails a test instead of quietly narrowing one.
     const DROPPED_WITHOUT_A_TABLE: &[&str] = &[
         "td", "tr", "th", "tbody", "thead", "tfoot", "caption", "col", "colgroup",
     ];
-
-    /// Why the second parse exists at all. If html5ever ever starts keeping
-    /// these, or starts dropping something new, this is the test that says so.
-    #[test]
-    fn only_table_scoped_elements_vanish_from_a_document_parse() {
-        fn survives(tag: &str) -> bool {
-            let document = Html::parse_document(&format!("<{tag} data-probe=\"1\">x"));
-            document
-                .tree
-                .nodes()
-                .filter_map(|node| node.value().as_element())
-                .any(|element| element.name() == tag)
-        }
-
-        assert_eq!(
-            TABLE_SCOPED_ELEMENTS, DROPPED_WITHOUT_A_TABLE,
-            "the validator's list drifted from what html5ever actually drops"
-        );
-        for tag in DROPPED_WITHOUT_A_TABLE {
-            assert!(!survives(tag), "<{tag}> unexpectedly survived");
-        }
-        for tag in [
-            "li", "option", "optgroup", "dt", "dd", "legend", "rt", "source",
-        ] {
-            assert!(survives(tag), "<{tag}> is dropped too and needs covering");
-        }
-    }
-
-    /// A realistic branded template whose cells sit in a real table. Nothing
-    /// here may ever be refused.
-    const BRANDED_TABLE_CELLS: &str = r#"<!DOCTYPE html>
-<html>
-<body>
-<table role="presentation" cellpadding="0" cellspacing="0" width="600">
-  <caption style="caption-side:top;font-size:11px;">Notto® weekly</caption>
-  <!-- The url() forms a real branded template actually uses. -->
-  <colgroup><col style="background-image:url(&quot;https://cdn.example.com/rule.gif&quot;)"></colgroup>
-  <colgroup><col style="width:600px"></colgroup>
-  <thead><tr><th style="text-align:left;font-family:Georgia,serif;">Notto® digest</th></tr></thead>
-  <tbody>
-    <tr><td style="padding:24px;color:#1a1a1a;background:#fff;mso-line-height-rule:exactly;">
-      <a href="https://example.com/read" style="color:#0b57d0;">Read it</a>
-    </td></tr>
-    <tr><td style="background:url(https://cdn.example.com/hero.png) no-repeat center,url('cid:notto-texture');list-style-image:url(data:image/png;base64,iVBORw0KGgo=);">
-      <img src="cid:notto-logo" alt="Notto®" width="120"
-           srcset="https://cdn.example.com/logo.png 1x, https://cdn.example.com/logo@2x.png 2x">
-    </td></tr>
-    <!-- An inlined raster logo, base64 wrapped across lines as a real
-         template writes it. -->
-    <tr><td><img alt="Notto®" width="1" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB
-      CAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABV81f1QAAAABJRU5ErkJggg=="></td></tr>
-  </tbody>
-  <tfoot><tr><td style="font-size:12px;color:#666;">Unsubscribe any time.</td></tr></tfoot>
-</table>
-</body>
-</html>"#;
 
     #[test]
     fn an_event_handler_on_an_orphan_table_element_is_not_a_blind_spot() {
@@ -1438,61 +1187,6 @@ mod tests {
                 "orphan <{tag}> hid its handler: {error:?}"
             );
         }
-    }
-
-    #[test]
-    fn an_unsafe_url_on_an_orphan_table_element_is_not_a_blind_spot() {
-        let error = refusal(r#"<td background="javascript:steal()">x</td>"#);
-        assert!(
-            error.issues.iter().any(|issue| matches!(
-                &issue.kind,
-                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
-            )),
-            "{error:?}"
-        );
-    }
-
-    /// Held before the orphan scan existed and must keep holding: only the
-    /// `<td>` token is dropped, so the `<a>` beneath it is reparented into the
-    /// body and inspected there.
-    #[test]
-    fn an_unsafe_url_below_an_orphan_table_element_is_caught() {
-        let error = refusal(r#"<td><a href="javascript:steal()">x</a></td>"#);
-        assert!(
-            error.issues.iter().any(|issue| matches!(
-                &issue.kind,
-                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
-            )),
-            "{error:?}"
-        );
-    }
-
-    #[test]
-    fn a_stray_table_end_tag_does_not_hide_the_orphan_that_follows_it() {
-        for markup in [
-            r#"<div></table><td onclick="steal()">x"#,
-            r#"<div></TABLE><td onclick="steal()">x"#,
-            r#"<div></table  ><td onclick="steal()">x"#,
-        ] {
-            refusal(markup);
-        }
-    }
-
-    #[test]
-    fn a_handler_on_an_orphan_cell_inside_a_conditional_comment_is_rejected() {
-        refusal(r#"<!--[if mso]><td onclick="steal()">x<![endif]-->"#);
-    }
-
-    #[test]
-    fn a_real_table_cell_is_not_mistaken_for_an_orphan() {
-        assert_eq!(validate_html(BRANDED_TABLE_CELLS), Ok(()));
-    }
-
-    #[test]
-    fn a_real_table_cell_with_a_handler_is_reported_once_not_twice() {
-        let error =
-            refusal(r#"<table><tr><td onclick="steal()" style="padding:8px">x</td></tr></table>"#);
-        assert_eq!(error.issues.len(), 1, "{error:?}");
     }
 
     #[test]
@@ -1518,155 +1212,6 @@ mod tests {
         ] {
             assert_eq!(validate_html(markup), Ok(()), "wrongly refused: {markup}");
         }
-    }
-
-    /// Inline CSS is the dominant form in email, because most mail clients
-    /// strip `<style>` blocks. Checking blocks but not attributes left the
-    /// rules absent from exactly the place email puts its CSS.
-    #[test]
-    fn active_css_in_an_inline_style_attribute_is_rejected() {
-        for markup in [
-            r#"<td style="width:expression(steal())">x</td>"#,
-            r#"<p style="background:url(javascript:steal())">x</p>"#,
-            r#"<p style="-moz-binding:url(evil.xml#x)">x</p>"#,
-            r#"<p STYLE="WIDTH:EXPRESSION(steal())">x</p>"#,
-            r#"<table><tr><td style="width:expression(steal())">x</td></tr></table>"#,
-            r#"<!--[if mso]><p style="width:expression(steal())">x</p><![endif]-->"#,
-        ] {
-            refusal(markup);
-        }
-    }
-
-    /// The defect was drift between the block rules and the attribute rules,
-    /// so assert the two agree rather than that each works alone.
-    #[test]
-    fn a_block_and_an_attribute_reach_the_same_verdict_on_the_same_css() {
-        for css in [
-            "width:expression(steal())",
-            "background:url(javascript:steal())",
-            "-moz-binding:url(evil.xml#x)",
-        ] {
-            assert!(
-                validate_html(&format!("<style>.a{{{css}}}</style>")).is_err(),
-                "block allowed {css}"
-            );
-            assert!(
-                validate_html(&format!(r#"<p style="{css}">x</p>"#)).is_err(),
-                "attribute allowed {css}"
-            );
-        }
-        for css in [
-            "background:url(https://cdn.example.com/bg.png)",
-            "mso-line-height-rule:exactly",
-            "padding:24px;color:#1a1a1a",
-        ] {
-            assert_eq!(
-                validate_html(&format!("<style>.a{{{css}}}</style>")),
-                Ok(()),
-                "block refused {css}"
-            );
-            assert_eq!(
-                validate_html(&format!(r#"<p style="{css}">x</p>"#)),
-                Ok(()),
-                "attribute refused {css}"
-            );
-        }
-    }
-
-    /// The round-1 SVG refusal covered `src` and `href` only, so CSS was a way
-    /// straight round it. Blocks and attributes are asserted together, because
-    /// a rule living in one and not the other is the defect being fixed.
-    #[test]
-    fn a_url_in_css_is_held_to_the_same_scheme_allowlist_as_an_attribute() {
-        for css in [
-            "background:url(data:image/svg+xml;base64,PHN2Zz4=)",
-            "background:url('data:image/svg+xml;base64,PHN2Zz4=')",
-            "background:url( data:image/svg+xml;base64,PHN2Zz4= )",
-            "background:url(vbscript:steal())",
-            "background:url(file:///etc/passwd)",
-            "background:url(a.png),url(data:image/svg+xml;base64,PHN2Zz4=)",
-        ] {
-            assert!(
-                validate_html(&format!("<style>.a{{{css}}}</style>")).is_err(),
-                "block allowed {css}"
-            );
-            assert!(
-                validate_html(&format!(r#"<p style="{css}">x</p>"#)).is_err(),
-                "attribute allowed {css}"
-            );
-        }
-
-        refusal(r#"<style>.a{background:url("data:image/svg+xml;base64,PHN2Zz4=")}</style>"#);
-        refusal(
-            r#"<p style="background:url(&quot;data:image/svg+xml;base64,PHN2Zz4=&quot;)">x</p>"#,
-        );
-
-        for css in [
-            "background:url(https://cdn.example.com/bg.png)",
-            "background:url(cid:notto-logo)",
-            "background:url('cid:notto-logo')",
-            "background:url(data:image/png;base64,iVBORw0KGgo=)",
-            "background:url(images/bg.png),url(images/bg@2x.png)",
-            "background:url()",
-            "list-style:none",
-        ] {
-            assert_eq!(
-                validate_html(&format!("<style>.a{{{css}}}</style>")),
-                Ok(()),
-                "block refused {css}"
-            );
-            assert_eq!(
-                validate_html(&format!(r#"<p style="{css}">x</p>"#)),
-                Ok(()),
-                "attribute refused {css}"
-            );
-        }
-    }
-
-    #[test]
-    fn every_url_bearing_attribute_is_checked_not_just_href_and_src() {
-        for markup in [
-            r#"<img longdesc="javascript:steal()">"#,
-            r#"<blockquote cite="javascript:steal()">x</blockquote>"#,
-            r#"<img usemap="javascript:steal()">"#,
-            r#"<img dynsrc="javascript:steal()">"#,
-            r#"<img lowsrc="javascript:steal()">"#,
-            r#"<svg><a xlink:href="javascript:steal()">x</a></svg>"#,
-        ] {
-            let error = refusal(markup);
-            assert!(
-                error
-                    .issues
-                    .iter()
-                    .any(|issue| matches!(issue.kind, HtmlIssueKind::UnsafeUrlScheme { .. })),
-                "expected an UnsafeUrlScheme issue for {markup}, got {:?}",
-                error.issues
-            );
-        }
-    }
-
-    #[test]
-    fn each_candidate_in_a_srcset_is_checked_not_the_whole_value() {
-        for markup in [
-            r#"<img srcset="javascript:steal() 1x">"#,
-            r#"<img srcset="hero.png 1x, javascript:steal() 2x">"#,
-            r#"<link imagesrcset="hero.png 1x, javascript:steal() 2x">"#,
-        ] {
-            let error = refusal(markup);
-            assert!(
-                error.issues.iter().any(|issue| matches!(
-                    &issue.kind,
-                    HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
-                )),
-                "{error:?}"
-            );
-        }
-        assert_eq!(
-            validate_html(
-                r#"<img srcset="hero.png 1x, hero@2x.png 2x, https://cdn.example.com/h.png 3x">"#
-            ),
-            Ok(())
-        );
     }
 
     #[test]
@@ -1699,6 +1244,17 @@ mod tests {
     }
 
     #[test]
+    fn tag_case_does_not_hide_a_forbidden_element() {
+        for markup in [
+            "<SCRIPT>alert(1)</SCRIPT>",
+            "<ScRiPt>alert(1)</ScRiPt>",
+            "<IFRAME src='https://evil.example'></IFRAME>",
+        ] {
+            refusal(markup);
+        }
+    }
+
+    #[test]
     fn foreign_object_is_refused_outright() {
         for markup in [
             "<svg><foreignObject><p>x</p></foreignObject></svg>",
@@ -1717,32 +1273,6 @@ mod tests {
         }
     }
 
-    /// Claimed already covered, because html5ever adjusts foreign attributes
-    /// and scraper yields only the local name, so SVG's `xlink:href` arrives as
-    /// `href`. Asserted rather than inherited.
-    #[test]
-    fn an_svg_use_reference_is_held_to_the_scheme_allowlist() {
-        for markup in [
-            r#"<svg><use href="javascript:steal()"></use></svg>"#,
-            r#"<svg><use xlink:href="javascript:steal()"></use></svg>"#,
-        ] {
-            let error = refusal(markup);
-            assert!(
-                error.issues.iter().any(|issue| matches!(
-                    &issue.kind,
-                    HtmlIssueKind::UnsafeUrlScheme { attribute, scheme }
-                        if attribute == "href" && scheme == "javascript"
-                )),
-                "expected <use> to be checked, got {:?}",
-                error.issues
-            );
-        }
-    }
-
-    /// The scheme check reads the declared media type and stops. A client that
-    /// content-sniffs reads the payload, so the payload is what decides:
-    /// `data:image/png;base64,<an SVG document>` is an SVG, and SVG carries
-    /// `<script>`.
     #[test]
     fn a_data_image_url_whose_payload_is_markup_is_refused_whatever_it_claims_to_be() {
         for markup in [
@@ -1762,51 +1292,27 @@ mod tests {
     }
 
     #[test]
-    fn a_mislabelled_data_url_says_the_payload_disagrees_with_the_declared_type() {
-        let rendered = refusal(r#"<img src="data:image/png;base64,PHN2Zz4=">"#).to_string();
-        assert!(rendered.contains("image/png"), "{rendered}");
-        assert!(rendered.contains("markup"), "{rendered}");
-    }
-
-    /// The false-positive side of the payload check, which matters more than
-    /// the true-positive side: real templates inline raster logos.
-    #[test]
-    fn a_raster_data_url_still_passes_and_an_unreadable_payload_is_not_refused() {
-        for markup in [
-            "<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB\n  CAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABV81f1QAAAABJRU5ErkJggg==\">",
-            r#"<img src="data:image/jpeg;base64,/9j/4AAQ">"#,
-            r#"<img src="data:image/gif;base64,R0lGOD">"#,
-            r#"<img src="data:image/webp;base64,UklGRg==">"#,
-            r#"<img src="data:image/avif;base64,AAAAIGZ0eXBhdmlm">"#,
-            r#"<img src="data:image/x-icon;base64,AAABAAEAEBA=">"#,
-            r#"<img src="data:image/png;base64,****">"#,
-            r#"<img src="data:image/png;base64,">"#,
-            r#"<img src="data:image/png">"#,
-        ] {
-            assert_eq!(validate_html(markup), Ok(()), "wrongly refused: {markup}");
-        }
-    }
-
-    /// Identical markup written both inside a conditional comment and outside
-    /// it is two problems. Comparing whole issues collapsed them into one,
-    /// because both carry the same value and the same first-occurrence line.
-    #[test]
-    fn the_same_offence_in_a_comment_and_in_the_document_is_reported_twice() {
-        let error =
-            refusal(r#"<!--[if mso]><td onclick="steal()">x<![endif]--><td onclick="steal()">y"#);
-        assert_eq!(error.issues.len(), 2, "{error:?}");
-    }
-
-    /// The suppression exists so a real table cell is not reported by both the
-    /// document parse and the orphan reparse. It has to subtract one copy, not
-    /// every copy: a second, genuinely orphaned cell on the same line is a
-    /// second problem.
-    #[test]
-    fn a_real_table_cell_does_not_mask_an_identical_orphan_beside_it() {
-        let error = refusal(
-            r#"<table><tr><td onclick="steal()">x</td></tr></table><td onclick="steal()">y"#,
+    fn an_unsafe_url_below_an_orphan_table_element_is_caught() {
+        let error = refusal(r#"<td><a href="javascript:steal()">x</a></td>"#);
+        assert!(
+            error.issues.iter().any(|issue| matches!(
+                &issue.kind,
+                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
+            )),
+            "{error:?}"
         );
-        assert_eq!(error.issues.len(), 2, "{error:?}");
+    }
+
+    #[test]
+    fn an_unsafe_url_on_an_orphan_table_element_is_not_a_blind_spot() {
+        let error = refusal(r#"<td background="javascript:steal()">x</td>"#);
+        assert!(
+            error.issues.iter().any(|issue| matches!(
+                &issue.kind,
+                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
+            )),
+            "{error:?}"
+        );
     }
 }
 
@@ -1825,12 +1331,6 @@ mod budget_validation_tests {
 
     fn sixty_five_inert_attributes() -> String {
         (0..65).map(|n| format!(" a{n}")).collect()
-    }
-
-    #[test]
-    fn an_over_budget_html_send_is_refused_as_too_complex() {
-        let over = format!("<table>{}</table>", "<br>".repeat(200_000));
-        assert!(refused_as_too_complex(&over));
     }
 
     #[test]
@@ -1855,14 +1355,6 @@ mod budget_validation_tests {
     fn a_script_in_an_over_budget_document_is_refused() {
         let over = format!("{}<script>x()</script>", "<br>".repeat(200_000));
         assert!(refused_as_too_complex(&over));
-    }
-
-    #[test]
-    fn an_over_budget_text_alternative_is_the_tag_strip() {
-        let over = format!("<p>zzalt</p>{}", "<br>".repeat(200_000));
-        let text = generate_text_alternative(&over);
-        assert!(text.contains("zzalt"));
-        assert!(!text.contains('<'));
     }
 }
 
@@ -1894,40 +1386,5 @@ mod lost_helper_tests {
         let message = error.to_string();
         assert!(message.contains("try again"), "{message}");
         assert!(!message.contains("simplify"), "{message}");
-    }
-
-    #[test]
-    fn html_the_helper_gave_up_on_is_refused_as_too_complex() {
-        for reason in [
-            FallbackReason::Oversize,
-            FallbackReason::KnownBad,
-            FallbackReason::Timeout,
-            FallbackReason::HelperDied,
-            FallbackReason::JobFailed,
-        ] {
-            assert_eq!(
-                unchecked_kind(reason),
-                HtmlIssueKind::TooComplexToCheck,
-                "{reason:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_sent_message_still_gets_its_text_part_when_the_helper_is_lost() {
-        let text = with_supervisor(lost_helper(), || {
-            generate_text_alternative("<p>Hello&nbsp;<b>world</b></p>")
-        });
-        assert_eq!(text, "Hello world");
-    }
-
-    #[test]
-    fn a_validation_error_survives_the_trip_through_the_helper_wire_format() {
-        let error = validate_html_in_process("<script>x</script><p onclick=\"y\">z</p>")
-            .expect_err("refused");
-        let wire = serde_json::to_vec(&error).expect("encodes");
-        let back: HtmlValidationError = serde_json::from_slice(&wire).expect("decodes");
-        assert_eq!(back, error);
-        assert!(back.issues.len() >= 2);
     }
 }

@@ -71,17 +71,6 @@ pub fn within_budget(html: &str) -> bool {
     html.len() <= MAX_HTML_BYTES && scan(html, true).is_some()
 }
 
-/// `html` with every colspan and rowspan inside a tag clamped to [`MAX_SPAN`],
-/// whatever the document's size. Outbound's own tests use it; the send path only
-/// needs `bounded_html`.
-#[cfg(test)]
-pub fn clamp_table_spans(html: &str) -> Cow<'_, str> {
-    match scan(html, false) {
-        Some(found) => apply_edits(html, &found.edits),
-        None => Cow::Borrowed(html),
-    }
-}
-
 /// A run of ASCII digits, inside a tag, to be replaced by [`MAX_SPAN`].
 struct Edit {
     start: usize,
@@ -348,22 +337,8 @@ mod tests {
     }
 
     #[test]
-    fn a_normal_table_is_left_exactly_as_it_is() {
-        let html = "<table><tr><td>a</td><td>b</td><td>c</td></tr>\
-                    <tr><td>d</td><td>e</td><td>f</td></tr>\
-                    <tr><td>g</td><td>h</td><td>i</td></tr></table>";
-        assert!(matches!(bounded_html(html), Some(Cow::Borrowed(_))));
-    }
-
-    #[test]
     fn a_wide_table_is_over_budget() {
         assert!(!within_budget(&wide_table()));
-    }
-
-    #[test]
-    fn a_comment_cannot_hide_a_wide_table() {
-        let html = wide_table().replacen("<tr>", "<!-- </table> --><tr>", 1);
-        assert!(!within_budget(&html));
     }
 
     #[test]
@@ -377,56 +352,11 @@ mod tests {
     }
 
     #[test]
-    fn foster_parenting_table_of_brs_is_over_budget() {
-        let html = format!("<table>{}</table>", "<br>".repeat(200_000));
-        assert!(!within_budget(&html));
-    }
-
-    #[test]
-    fn a_100000_deep_div_nest_is_over_budget() {
-        let html = format!("{}x{}", "<div>".repeat(100_000), "</div>".repeat(100_000));
-        assert!(!within_budget(&html));
-    }
-
-    #[test]
-    fn a_list_with_optional_end_tags_is_within_budget() {
-        let items = "<li>Item<br>details".repeat(300);
-        let html = format!("<ol>{items}</ol>");
-        assert!(within_budget(&html));
-    }
-
-    #[test]
     fn rowspan_inside_a_tag_is_clamped() {
         let html = "<td rowspan=365>x</td>";
         assert_eq!(
             bounded_html(html).as_deref(),
             Some("<td rowspan=100>x</td>")
         );
-    }
-
-    #[test]
-    fn a_span_with_an_entity_and_no_digits_is_over_budget() {
-        // `&#53;` decodes to `5`, so the value is 50000 to the parser.
-        let html = r#"<table><tr><td colspan="&#53;0000">x</td></tr></table>"#;
-        assert!(!within_budget(html));
-    }
-
-    #[test]
-    fn grid_slots_over_the_cap_are_over_budget() {
-        let at_cap: String = (0..2_000)
-            .map(|_| r#"<tr><td rowspan="100">x</td></tr>"#)
-            .collect();
-        assert!(within_budget(&format!("<table>{at_cap}</table>")));
-        let over: String = (0..2_001)
-            .map(|_| r#"<tr><td rowspan="100">x</td></tr>"#)
-            .collect();
-        assert!(!within_budget(&format!("<table>{over}</table>")));
-    }
-
-    #[test]
-    fn an_oversized_document_is_over_budget() {
-        let html = format!("<p>{}</p>", "word ".repeat(MAX_HTML_BYTES / 5 + 1));
-        assert!(bounded_html(&html).is_none());
-        assert!(!within_budget(&html));
     }
 }

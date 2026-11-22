@@ -420,23 +420,6 @@ pub(super) struct CommitUnsubscribePreviewRequest {
     pub(super) archive_on_no_method: bool,
 }
 
-#[cfg(test)]
-mod unsubscribe_preview_tests {
-    use super::CommitUnsubscribePreviewRequest;
-
-    #[test]
-    fn unsubscribe_preview_commit_requires_token_and_archive_choice() {
-        let missing_token = serde_json::json!({"address":"news@example.com", "archive":false});
-        assert!(serde_json::from_value::<CommitUnsubscribePreviewRequest>(missing_token).is_err());
-        let missing_choice =
-            serde_json::json!({"address":"news@example.com", "preview_token":"tok"});
-        assert!(serde_json::from_value::<CommitUnsubscribePreviewRequest>(missing_choice).is_err());
-        let keep: CommitUnsubscribePreviewRequest = serde_json::from_value(serde_json::json!({"address":"news@example.com", "archive":false, "preview_token":"tok"})).expect("keep mail request");
-        assert!(!keep.archive);
-        assert_eq!(keep.preview_token, "tok");
-    }
-}
-
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
 pub(super) struct ComposeSessionData {

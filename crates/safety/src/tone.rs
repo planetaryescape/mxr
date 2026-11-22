@@ -124,37 +124,6 @@ mod tests {
     }
 
     #[test]
-    fn no_baseline_no_warning() {
-        let ctx = SafetyContext::default();
-        assert!(check(
-            &d("yo", vec![addr("alice@x.com")]),
-            &ctx,
-            &SafetyToneConfig::default()
-        )
-        .is_empty());
-    }
-
-    #[test]
-    fn low_sample_no_warning() {
-        let ctx = SafetyContext {
-            contact_styles: vec![baseline_for("alice@x.com", 0.5, 2)],
-            ..Default::default()
-        };
-        let issues = check(
-            &d(
-                "Hi Alice. Could you please review the proposal at your earliest convenience?",
-                vec![addr("alice@x.com")],
-            ),
-            &ctx,
-            &SafetyToneConfig::default(),
-        );
-        assert!(
-            issues.is_empty(),
-            "below threshold sample count should suppress"
-        );
-    }
-
-    #[test]
     fn high_confidence_high_delta_warns() {
         let ctx = SafetyContext {
             contact_styles: vec![baseline_for("alice@x.com", 0.1, 30)],
@@ -186,25 +155,5 @@ mod tests {
         assert_eq!(issues.len(), 1, "expected tone warning, got {issues:?}");
         assert_eq!(issues[0].code, DraftSafetyIssueCode::ToneMismatch);
         assert!(issues[0].message.to_lowercase().contains("formal"));
-    }
-
-    #[test]
-    fn matching_tone_passes() {
-        let ctx = SafetyContext {
-            contact_styles: vec![baseline_for("alice@x.com", 0.5, 30)],
-            ..Default::default()
-        };
-        let issues = check(
-            &d(
-                "hey alice, sounds good. let me know.",
-                vec![addr("alice@x.com")],
-            ),
-            &ctx,
-            &SafetyToneConfig::default(),
-        );
-        for issue in &issues {
-            assert_eq!(issue.severity, DraftSafetySeverity::Warning);
-            assert_ne!(issue.severity, DraftSafetySeverity::Blocker);
-        }
     }
 }

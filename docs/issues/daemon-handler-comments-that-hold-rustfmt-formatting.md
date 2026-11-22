@@ -1,4 +1,4 @@
-# Five handler comments stay because deleting them makes rustfmt rewrite code
+# Four handler comments stay because deleting them makes rustfmt rewrite code
 
 Status: open. Found: delete-comment sweep of `crates/daemon/src/handler`.
 

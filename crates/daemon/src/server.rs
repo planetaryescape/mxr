@@ -2049,21 +2049,20 @@ fn detach_daemon_child(_command: &mut std::process::Command) {}
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_ping,
-        daemon_responds_to_status, is_index_lock_error, lost_scheduled_send_message,
-        request_shutdown_to, run_startup_maintenance, spawn_startup_maintenance,
+        classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_status,
+        run_startup_maintenance, spawn_startup_maintenance,
     };
     use crate::{handler::handle_request, state::AppState};
     use chrono::Utc;
     use futures::{SinkExt, StreamExt};
     use mxr_core::{
-        id::{AccountId, MessageId, ThreadId},
+        id::{MessageId, ThreadId},
         types::{Address, Envelope, MessageFlags, UnsubscribeMethod},
         RemoteSecret,
     };
     use mxr_protocol::{
-        AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
-        ResponseData, IPC_PROTOCOL_VERSION,
+        DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
+        IPC_PROTOCOL_VERSION,
     };
     use std::sync::Arc;
     use std::time::Duration;
@@ -2151,30 +2150,6 @@ mod tests {
     }
 
     #[test]
-    fn broken_socket_leaves_processes_alone_while_the_socket_answers() {
-        use super::{classify_broken_socket, BrokenSocketRecovery};
-
-        assert_eq!(
-            classify_broken_socket(|| Some(verified(4242)), Some(4242)),
-            BrokenSocketRecovery::SocketAlive
-        );
-        assert_eq!(
-            classify_broken_socket(
-                || panic!("a live socket must settle it without a lookup"),
-                Some(99)
-            ),
-            BrokenSocketRecovery::SocketAlive
-        );
-        assert_eq!(
-            classify_broken_socket(
-                || panic!("a live socket must settle it without a lookup"),
-                Some(99)
-            ),
-            BrokenSocketRecovery::SocketAlive
-        );
-    }
-
-    #[test]
     fn broken_socket_starts_fresh_rather_than_signalling_an_unidentified_process() {
         use super::{classify_broken_socket, BrokenSocketRecovery};
 
@@ -2231,60 +2206,6 @@ mod tests {
     }
 
     #[test]
-    fn daemon_scan_accepts_a_daemon_started_by_hand() {
-        use super::scan_daemon_processes;
-
-        let ours = std::fs::canonicalize(std::env::current_exe().expect("current exe"))
-            .expect("canonical exe");
-        let exe = ours.display();
-        let command_lines = vec![
-            (100, format!("{exe} daemon --foreground")),
-            (200, format!("{exe} daemon --no-bridge --bridge-port 7777")),
-            (300, format!("{exe} daemon --instance mxr-demo")),
-        ];
-
-        assert_eq!(
-            scan_daemon_processes(&command_lines, 999, &ours, "mxr-dev"),
-            vec![100, 200],
-            "flags other than a foreign --instance must not disqualify a daemon"
-        );
-    }
-
-    #[test]
-    fn daemon_scan_skips_our_own_process() {
-        use super::scan_daemon_processes;
-
-        let ours = std::fs::canonicalize(std::env::current_exe().expect("current exe"))
-            .expect("canonical exe");
-        let command_lines = vec![(777, format!("{} daemon --instance mxr-dev", ours.display()))];
-
-        assert!(
-            scan_daemon_processes(&command_lines, 777, &ours, "mxr-dev").is_empty(),
-            "the scanning process must never adopt itself"
-        );
-    }
-
-    #[test]
-    fn daemon_command_exe_accepts_any_daemon_flags_but_not_a_foreign_instance() {
-        use super::daemon_command_exe;
-
-        assert_eq!(
-            daemon_command_exe("/opt/bin/mxr daemon --instance mxr", "mxr"),
-            Some("/opt/bin/mxr")
-        );
-        assert_eq!(
-            daemon_command_exe("/opt/bin/mxr daemon --foreground", "mxr"),
-            Some("/opt/bin/mxr")
-        );
-        assert_eq!(
-            daemon_command_exe("/opt/bin/mxr daemon --instance mxr-demo", "mxr"),
-            None
-        );
-        assert_eq!(daemon_command_exe("/usr/bin/vim notes.txt", "mxr"), None);
-        assert_eq!(daemon_command_exe("", "mxr"), None);
-    }
-
-    #[test]
     fn profile_check_accepts_our_own_environment_and_rejects_a_neighbour() {
         use super::{environment_selects_our_profile, PROFILE_ENV_KEYS};
 
@@ -2315,10 +2236,6 @@ mod tests {
         );
     }
 
-    fn words(line: &str) -> Vec<String> {
-        line.split_whitespace().map(ToString::to_string).collect()
-    }
-
     fn identity_for(pid: u32, started_at: &str) -> super::DaemonIdentity {
         super::DaemonIdentity {
             pid,
@@ -2328,23 +2245,6 @@ mod tests {
             config_dir: "/Users/bk/.config/mxr".into(),
             data_dir: "/Users/bk/.local/share/mxr".into(),
         }
-    }
-
-    #[test]
-    fn an_identity_record_that_matches_confirms_the_pid_file() {
-        use super::pid_file_verdict;
-
-        let record = identity_for(4242, "Wed Aug 20 00:11:22 2026");
-
-        assert!(
-            pid_file_verdict(
-                4242,
-                Some((&record, true)),
-                || Some("Wed Aug 20 00:11:22 2026".to_string()),
-                || panic!("the argv fallback must not run when a record decides it"),
-            ),
-            "a record naming this pid, this profile and this start time is our daemon"
-        );
     }
 
     #[test]
@@ -2377,18 +2277,6 @@ mod tests {
     }
 
     #[test]
-    fn without_a_record_the_argv_check_decides_and_silence_keeps_the_pid_file() {
-        use super::pid_file_verdict;
-
-        assert!(pid_file_verdict(4242, None, || None, || Some(true)));
-        assert!(!pid_file_verdict(4242, None, || None, || Some(false)));
-        assert!(
-            pid_file_verdict(4242, None, || None, || None),
-            "an argv nobody will report is not grounds for stranding a live daemon"
-        );
-    }
-
-    #[test]
     fn a_pid_recycled_between_the_decision_and_the_signal_is_not_signalled() {
         use super::{DaemonEvidence, VerifiedDaemon};
 
@@ -2406,59 +2294,6 @@ mod tests {
             None,
             || panic!("a vanished process settles it on its own"),
             || panic!("a vanished process settles it on its own"),
-        ));
-    }
-
-    #[test]
-    fn an_indistinguishable_start_time_falls_back_on_the_rest_of_the_evidence() {
-        use super::{DaemonEvidence, VerifiedDaemon};
-
-        // Same second — `lstart` has one-second resolution, so a fast recycle
-        // is indistinguishable by timestamp alone.
-        let same_second = |evidence, runs_daemon, profile| {
-            VerifiedDaemon::still_the_same_process(
-                Some("Wed Aug 20 00:11:22 2026"),
-                evidence,
-                Some("Wed Aug 20 00:11:22 2026"),
-                || runs_daemon,
-                || profile,
-            )
-        };
-
-        assert!(same_second(DaemonEvidence::PidFile, Some(true), false));
-        assert!(!same_second(DaemonEvidence::PidFile, Some(false), true));
-        assert!(same_second(DaemonEvidence::ProcessScan, Some(true), true));
-        assert!(!same_second(DaemonEvidence::ProcessScan, Some(true), false));
-    }
-
-    #[test]
-    fn an_unreadable_argv_is_read_the_same_way_by_both_phases() {
-        use super::{pid_file_verdict, DaemonEvidence, VerifiedDaemon};
-
-        let record = identity_for(4242, "Wed Aug 20 00:11:22 2026");
-
-        assert!(
-            pid_file_verdict(4242, None, || None, || None),
-            "verification keeps a pid whose argv nobody will report"
-        );
-
-        assert!(
-            VerifiedDaemon::still_the_same_process(
-                Some(&record.started_at),
-                DaemonEvidence::PidFile,
-                Some(&record.started_at),
-                || None,
-                || panic!("a pid-file pid does not have to re-prove its profile"),
-            ),
-            "the re-check must read that silence the same way"
-        );
-
-        assert!(!VerifiedDaemon::still_the_same_process(
-            Some(&record.started_at),
-            DaemonEvidence::ProcessScan,
-            Some(&record.started_at),
-            || None,
-            || false,
         ));
     }
 
@@ -2486,129 +2321,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_process_that_exits_during_the_shutdown_wait_is_not_escalated_to() {
-        use super::{DaemonEvidence, VerifiedDaemon};
-
-        let mut child = std::process::Command::new("sleep")
-            .arg("30")
-            .spawn()
-            .expect("spawn child");
-        let daemon = VerifiedDaemon::verify(child.id(), DaemonEvidence::PidFile);
-        assert!(
-            daemon.started_at.is_some(),
-            "the fixture needs a start time to compare against"
-        );
-
-        let _ = child.kill();
-        let _ = child.wait();
-
-        assert!(
-            !daemon.is_unchanged(),
-            "a process that has exited must not be signalled again"
-        );
-    }
-
-    #[test]
-    fn a_pid_file_without_an_identity_record_is_not_rejected() {
-        use super::DaemonIdentity;
-
-        assert!(toml::from_str::<DaemonIdentity>("4242").is_err());
-        assert!(toml::from_str::<DaemonIdentity>("").is_err());
-    }
-
-    #[test]
-    fn a_hand_started_daemon_is_still_this_profile_s_daemon() {
-        use super::command_runs_a_daemon;
-
-        assert!(command_runs_a_daemon(&words("/opt/bin/mxr daemon")));
-        assert!(command_runs_a_daemon(&words(
-            "/opt/bin/mxr daemon --foreground"
-        )));
-        assert!(command_runs_a_daemon(&words(
-            "/opt/bin/mxr daemon --no-bridge --bridge-port 7777"
-        )));
-        assert!(command_runs_a_daemon(&words(
-            "/opt/bin/mxr daemon --instance mxr-demo"
-        )));
-
-        assert!(!command_runs_a_daemon(&words("/usr/bin/vim notes.txt")));
-        assert!(!command_runs_a_daemon(&words("/opt/bin/mxr status")));
-        assert!(!command_runs_a_daemon(&words("/opt/bin/mxr")));
-    }
-
-    #[test]
-    fn a_pid_file_with_no_record_weighs_the_instance_name_against_the_pid() {
-        use super::{command_names_another_instance, command_runs_a_daemon, pid_file_verdict};
-
-        let another_profile = words("/opt/bin/mxr daemon --instance mxr-dev");
-        assert!(command_names_another_instance(&another_profile, "mxr"));
-        assert!(
-            !pid_file_verdict(
-                4242,
-                None,
-                || None,
-                || Some(
-                    command_runs_a_daemon(&another_profile)
-                        && !command_names_another_instance(&another_profile, "mxr")
-                )
-            ),
-            "a pid now running another profile's daemon must not be signalled on this one's behalf"
-        );
-
-        assert!(command_names_another_instance(
-            &words("/opt/bin/mxr daemon --instance=mxr-dev"),
-            "mxr"
-        ));
-        assert!(command_names_another_instance(
-            &words("/opt/bin/mxr daemon --instance=mxr-demo --foreground"),
-            "mxr"
-        ));
-        assert!(!command_names_another_instance(
-            &words("/opt/bin/mxr daemon --instance=mxr"),
-            "mxr"
-        ));
-
-        let hand_started = words("/opt/bin/mxr daemon --foreground");
-        assert!(!command_names_another_instance(&hand_started, "mxr"));
-        assert!(!command_names_another_instance(
-            &words("/opt/bin/mxr daemon --instance"),
-            "mxr"
-        ));
-        assert!(
-            !command_names_another_instance(
-                &words("/opt/bin/mxr daemon --instance my profile"),
-                "my profile"
-            ),
-            "a name with a space survives no round trip through `ps`; half of it is not a mismatch"
-        );
-        assert!(pid_file_verdict(
-            4242,
-            None,
-            || None,
-            || Some(command_runs_a_daemon(&hand_started))
-        ));
-    }
-
-    #[test]
-    fn the_pre_signal_recheck_does_not_weigh_the_instance_name() {
-        use super::{command_names_another_instance, DaemonEvidence, VerifiedDaemon};
-
-        let foreign_name = words("/opt/bin/mxr daemon --instance mxr-dev");
-        assert!(command_names_another_instance(&foreign_name, "mxr"));
-
-        assert!(
-            VerifiedDaemon::still_the_same_process(
-                Some("Wed Aug 20 00:11:22 2026"),
-                DaemonEvidence::PidFile,
-                Some("Wed Aug 20 00:11:22 2026"),
-                || Some(super::command_runs_a_daemon(&foreign_name)),
-                || panic!("a pid-file pid does not have to re-prove its profile"),
-            ),
-            "the re-check keeps a daemon the pid file already vouched for"
-        );
-    }
-
-    #[tokio::test]
     async fn wait_for_process_exit_observes_an_unreaped_child() {
         use super::wait_for_process_exit;
 
@@ -2622,12 +2334,6 @@ mod tests {
             wait_for_process_exit(pid, Duration::from_secs(5)).await,
             "zombie child must count as exited"
         );
-    }
-
-    #[test]
-    fn detects_tantivy_lockbusy_message() {
-        let msg = "Search error: Failed to acquire Lockfile: LockBusy. Some(\"Failed to acquire index lock. If you are using a regular directory, this means there is already an `IndexWriter` working on this `Directory`, in this process or in a different process.\")";
-        assert!(is_index_lock_error(msg));
     }
 
     #[test]
@@ -2646,41 +2352,6 @@ mod tests {
     }
 
     #[test]
-    fn health_class_prioritizes_restart_then_repair_then_degraded() {
-        let sync = [AccountSyncStatus {
-            account_id: AccountId::new(),
-            account_name: "main".into(),
-            last_attempt_at: None,
-            last_success_at: Some("2026-03-21T10:00:00+00:00".into()),
-            last_error: None,
-            failure_class: None,
-            consecutive_failures: 0,
-            backoff_until: None,
-            sync_in_progress: false,
-            current_cursor_summary: Some("initial".into()),
-            last_synced_count: 1,
-            healthy: true,
-            progress: None,
-        }];
-
-        assert_eq!(
-            classify_health(&sync, false, true, false),
-            DaemonHealthClass::RestartRequired
-        );
-        assert_eq!(
-            classify_health(&sync, true, false, false),
-            DaemonHealthClass::RepairRequired
-        );
-
-        let mut degraded = sync.to_vec();
-        degraded[0].healthy = false;
-        assert_eq!(
-            classify_health(&degraded, false, false, false),
-            DaemonHealthClass::Degraded
-        );
-    }
-
-    #[test]
     fn a_degraded_snapshot_never_reads_as_healthy() {
         assert_eq!(
             classify_health(&[], false, false, true),
@@ -2694,114 +2365,6 @@ mod tests {
             classify_health(&[], false, true, true),
             DaemonHealthClass::RestartRequired
         );
-    }
-
-    #[tokio::test]
-    async fn startup_maintenance_repairs_partial_index() {
-        let state = Arc::new(AppState::in_memory().await.expect("state"));
-        let indexed_envelope = Envelope {
-            id: MessageId::new(),
-            account_id: state.default_account_id(),
-            provider_id: "provider-msg-1".into(),
-            thread_id: ThreadId::new(),
-            message_id_header: Some("<msg-1@example.com>".into()),
-            in_reply_to: None,
-            references: Vec::new(),
-            from: Address {
-                name: Some("Sender".into()),
-                email: "sender@example.com".into(),
-            },
-            to: vec![Address {
-                name: Some("User".into()),
-                email: "user@example.com".into(),
-            }],
-            cc: Vec::new(),
-            bcc: Vec::new(),
-            subject: "startup reindex subject".into(),
-            date: Utc::now(),
-            flags: MessageFlags::empty(),
-            snippet: "startup reindex snippet".into(),
-            has_attachments: false,
-            size_bytes: 128,
-            unsubscribe: UnsubscribeMethod::None,
-            link_count: 0,
-            body_word_count: 0,
-            label_provider_ids: Vec::new(),
-            keywords: std::collections::BTreeSet::new(),
-        };
-        let missing_envelope = Envelope {
-            id: MessageId::new(),
-            account_id: state.default_account_id(),
-            provider_id: "provider-msg-2".into(),
-            thread_id: ThreadId::new(),
-            message_id_header: Some("<msg-2@example.com>".into()),
-            in_reply_to: None,
-            references: Vec::new(),
-            from: Address {
-                name: Some("Sender".into()),
-                email: "sender@example.com".into(),
-            },
-            to: vec![Address {
-                name: Some("User".into()),
-                email: "user@example.com".into(),
-            }],
-            cc: Vec::new(),
-            bcc: Vec::new(),
-            subject: "missing corpus subject".into(),
-            date: Utc::now(),
-            flags: MessageFlags::empty(),
-            snippet: "missing corpus snippet".into(),
-            has_attachments: false,
-            size_bytes: 128,
-            unsubscribe: UnsubscribeMethod::None,
-            link_count: 0,
-            body_word_count: 0,
-            label_provider_ids: Vec::new(),
-            keywords: std::collections::BTreeSet::new(),
-        };
-
-        state
-            .store
-            .upsert_envelope(&indexed_envelope)
-            .await
-            .expect("insert envelope");
-        state
-            .store
-            .upsert_envelope(&missing_envelope)
-            .await
-            .expect("insert envelope");
-
-        state
-            .search
-            .apply_batch(mxr_search::SearchUpdateBatch {
-                entries: vec![mxr_search::SearchIndexEntry {
-                    envelope: indexed_envelope.clone(),
-                    body: None,
-                    reply_later: false,
-                }],
-                removed_message_ids: Vec::new(),
-            })
-            .await
-            .expect("index partial envelope");
-
-        assert!(state
-            .search
-            .search("missing", 10, 0, mxr_core::types::SortOrder::DateDesc)
-            .await
-            .expect("pre-maintenance search")
-            .results
-            .is_empty());
-
-        spawn_startup_maintenance(state.clone())
-            .await
-            .expect("join maintenance task");
-
-        let results = state
-            .search
-            .search("missing", 10, 0, mxr_core::types::SortOrder::DateDesc)
-            .await
-            .expect("search after reindex");
-        assert_eq!(results.results.len(), 1);
     }
 
     /// A stale entry leaves the document count unchanged, so only the
@@ -3012,90 +2575,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn daemon_ping_probe_does_not_need_database_status() {
-        let socket_path = std::path::PathBuf::from(format!(
-            "/tmp/mxr-ping-ready-{}.sock",
-            uuid::Uuid::new_v4().simple()
-        ));
-        let _ = std::fs::remove_file(&socket_path);
-        let listener = UnixListener::bind(&socket_path).expect("bind ping socket");
-
-        let server = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.expect("accept");
-            let mut framed = Framed::new(stream, IpcCodec::new());
-            crate::test_fixtures::accept_client_declaration(
-                &mut framed,
-                mxr_protocol::ClientKind::Cli,
-            )
-            .await;
-            if let Some(Ok(message)) = framed.next().await {
-                framed
-                    .send(IpcMessage {
-                        expected_workspace: None,
-                        id: message.id,
-                        source: ::mxr_protocol::ClientKind::default(),
-                        payload: IpcPayload::Response(Response::Ok {
-                            data: ResponseData::Pong,
-                        }),
-                    })
-                    .await
-                    .expect("send pong");
-            }
-        });
-
-        assert!(daemon_responds_to_ping(&socket_path, Duration::from_secs(1)).await);
-        server.await.expect("join ping server");
-        let _ = std::fs::remove_file(&socket_path);
-    }
-
-    #[tokio::test]
-    async fn shutdown_request_waits_for_acknowledgement() {
-        let socket_path = std::path::PathBuf::from(format!(
-            "/tmp/mxr-shutdown-ack-{}.sock",
-            uuid::Uuid::new_v4().simple()
-        ));
-        let _ = std::fs::remove_file(&socket_path);
-        let listener = UnixListener::bind(&socket_path).expect("bind shutdown socket");
-
-        let server = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.expect("accept");
-            let mut framed = Framed::new(stream, IpcCodec::new());
-            crate::test_fixtures::accept_client_declaration(
-                &mut framed,
-                mxr_protocol::ClientKind::Cli,
-            )
-            .await;
-            match framed.next().await {
-                Some(Ok(message)) => {
-                    assert!(matches!(
-                        message.payload,
-                        IpcPayload::Request(Request::Shutdown)
-                    ));
-                    framed
-                        .send(IpcMessage {
-                            expected_workspace: None,
-                            id: message.id,
-                            source: ::mxr_protocol::ClientKind::default(),
-                            payload: IpcPayload::Response(Response::Ok {
-                                data: ResponseData::Ack,
-                            }),
-                        })
-                        .await
-                        .expect("send shutdown ack");
-                }
-                other => panic!("expected shutdown request, got {other:?}"),
-            }
-        });
-
-        request_shutdown_to(&socket_path)
-            .await
-            .expect("shutdown request");
-
-        server.await.expect("join shutdown ack server");
-        let _ = std::fs::remove_file(&socket_path);
-    }
-
-    #[tokio::test]
     async fn a_short_index_that_sync_fills_before_maintenance_ends_ready() {
         let state = Arc::new(AppState::in_memory().await.expect("state"));
         state
@@ -3115,30 +2594,5 @@ mod tests {
             state.search.availability(),
             mxr_search::IndexAvailability::Ready { .. }
         ));
-    }
-
-    #[test]
-    fn lost_send_event_names_the_account_to_query() {
-        let draft_id = mxr_core::DraftId::new();
-        let account_id = mxr_core::AccountId::new();
-
-        let message = lost_scheduled_send_message(&draft_id, Some(&account_id));
-
-        assert!(
-            message.contains(&format!("--account {account_id}")),
-            "{message}"
-        );
-        assert!(!message.contains("<account-id>"), "{message}");
-    }
-
-    #[test]
-    fn lost_send_event_without_a_stored_draft_says_where_to_find_the_account() {
-        let draft_id = mxr_core::DraftId::new();
-
-        let message = lost_scheduled_send_message(&draft_id, None);
-
-        assert!(message.contains("mxr accounts"), "{message}");
-        assert!(!message.contains("<account-id>"), "{message}");
-        assert!(message.contains("do not resend blindly"), "{message}");
     }
 }

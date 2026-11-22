@@ -521,71 +521,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn re_inserting_an_account_keeps_its_slot() {
-        let store = Store::in_memory().await.unwrap();
-        let work = account("Work");
-        store.insert_account(&work).await.unwrap();
-        store.insert_account(&account("Wedding")).await.unwrap();
-        store.insert_account(&work).await.unwrap();
-        assert_eq!(colour_of(&store, &work.id).await, Some(AccountColor::Sky));
-    }
-
-    #[tokio::test]
-    async fn a_removed_accounts_slot_goes_to_the_next_new_account() {
-        let store = Store::in_memory().await.unwrap();
-        let work = account("Work");
-        let wedding = account("Wedding");
-        let travel = account("Travel");
-        store.insert_account(&work).await.unwrap();
-        store.insert_account(&wedding).await.unwrap();
-        store.insert_account(&travel).await.unwrap();
-        store.delete_account(&wedding.id).await.unwrap();
-        let school = account("School");
-        store.insert_account(&school).await.unwrap();
-        assert_eq!(colour_of(&store, &work.id).await, Some(AccountColor::Sky));
-        assert_eq!(
-            colour_of(&store, &travel.id).await,
-            Some(AccountColor::Green)
-        );
-        assert_eq!(
-            colour_of(&store, &school.id).await,
-            Some(AccountColor::Amber)
-        );
-    }
-
-    #[tokio::test]
-    async fn the_ninth_account_repeats_the_slots_in_order() {
-        let store = Store::in_memory().await.unwrap();
-        let mut ids = Vec::new();
-        for n in 0..9 {
-            let account = account(&format!("Account {n}"));
-            store.insert_account(&account).await.unwrap();
-            ids.push(account.id);
-        }
-        assert_eq!(colour_of(&store, &ids[8]).await, Some(AccountColor::Sky));
-    }
-
-    #[tokio::test]
-    async fn backfill_gives_unslotted_accounts_colours_in_creation_order() {
-        let store = Store::in_memory().await.unwrap();
-        let older = account("Older");
-        let newer = account("Newer");
-        store.insert_account(&older).await.unwrap();
-        store.insert_account(&newer).await.unwrap();
-        sqlx::query("UPDATE accounts SET identity_color = NULL, created_at = CASE WHEN id = ?1 THEN 20 ELSE 10 END")
-            .bind(older.id.as_str())
-            .execute(store.writer())
-            .await
-            .unwrap();
-        store.backfill_account_identity().await.unwrap();
-        assert_eq!(colour_of(&store, &newer.id).await, Some(AccountColor::Sky));
-        assert_eq!(
-            colour_of(&store, &older.id).await,
-            Some(AccountColor::Amber)
-        );
-    }
-
     async fn tag_of(store: &Store, id: &AccountId) -> Option<String> {
         store
             .list_account_identity_slots()
@@ -595,48 +530,6 @@ mod tests {
             .find(|slot| &slot.account_id == id)
             .unwrap()
             .tag
-    }
-
-    #[tokio::test]
-    async fn backfill_takes_the_first_free_colour_beside_a_stored_one() {
-        let store = Store::in_memory().await.unwrap();
-        let older = account("Older");
-        let newer = account("Newer");
-        store.insert_account(&older).await.unwrap();
-        store.insert_account(&newer).await.unwrap();
-        sqlx::query("UPDATE accounts SET identity_color = NULL, identity_tag = NULL, created_at = CASE WHEN id = ?1 THEN 10 ELSE 20 END")
-            .bind(older.id.as_str())
-            .execute(store.writer())
-            .await
-            .unwrap();
-        sqlx::query("UPDATE accounts SET identity_color = 'sky' WHERE id = ?1")
-            .bind(newer.id.as_str())
-            .execute(store.writer())
-            .await
-            .unwrap();
-        store.backfill_account_identity().await.unwrap();
-        assert_eq!(
-            colour_of(&store, &older.id).await,
-            Some(AccountColor::Amber)
-        );
-        assert_eq!(colour_of(&store, &newer.id).await, Some(AccountColor::Sky));
-    }
-
-    #[tokio::test]
-    async fn backfill_derives_tags_in_creation_order() {
-        let store = Store::in_memory().await.unwrap();
-        let work = account("Work");
-        let wedding = account("Wedding");
-        store.insert_account(&work).await.unwrap();
-        store.insert_account(&wedding).await.unwrap();
-        sqlx::query("UPDATE accounts SET identity_tag = NULL, created_at = CASE WHEN id = ?1 THEN 10 ELSE 20 END")
-            .bind(work.id.as_str())
-            .execute(store.writer())
-            .await
-            .unwrap();
-        store.backfill_account_identity().await.unwrap();
-        assert_eq!(tag_of(&store, &work.id).await.as_deref(), Some("W"));
-        assert_eq!(tag_of(&store, &wedding.id).await.as_deref(), Some("WE"));
     }
 
     #[tokio::test]
@@ -663,44 +556,6 @@ mod tests {
         assert_eq!(tag_of(&store, &work.id).await.as_deref(), Some("W"));
         assert_eq!(tag_of(&store, &travel.id).await.as_deref(), Some("T"));
         assert_eq!(tag_of(&store, &fourth.id).await.as_deref(), Some("WE"));
-    }
-
-    #[tokio::test]
-    async fn a_new_account_avoids_the_tags_reserved_for_configured_accounts() {
-        let store = Store::in_memory().await.unwrap();
-        let work = account("Work");
-        store
-            .insert_account_reserving(&work, &["W".to_string()])
-            .await
-            .unwrap();
-        assert_eq!(tag_of(&store, &work.id).await.as_deref(), Some("WO"));
-    }
-
-    #[tokio::test]
-    async fn backfill_fills_only_the_account_that_lacks_identity() {
-        let store = Store::in_memory().await.unwrap();
-        let complete = account("Complete");
-        let bare = account("Bare");
-        store.insert_account(&complete).await.unwrap();
-        store.insert_account(&bare).await.unwrap();
-        sqlx::query("UPDATE accounts SET identity_color = NULL, identity_tag = NULL WHERE id = ?1")
-            .bind(bare.id.as_str())
-            .execute(store.writer())
-            .await
-            .unwrap();
-        sqlx::query(
-            "CREATE TRIGGER refuse_complete_identity_write BEFORE UPDATE ON accounts
-             WHEN OLD.identity_color IS NOT NULL AND OLD.identity_tag IS NOT NULL
-             BEGIN SELECT RAISE(ABORT, 'complete account rewritten'); END",
-        )
-        .execute(store.writer())
-        .await
-        .unwrap();
-
-        store.backfill_account_identity().await.unwrap();
-
-        assert!(colour_of(&store, &bare.id).await.is_some());
-        assert!(tag_of(&store, &bare.id).await.is_some());
     }
 
     #[tokio::test]

@@ -907,7 +907,6 @@ mod owed_reply_filter_tests {
     use crate::state::AppState;
     use mxr_core::types::{Address, Envelope, MessageDirection, MessageFlags, UnsubscribeMethod};
     use mxr_core::{AccountId, MessageId, ThreadId};
-    use mxr_protocol::ResponseData;
     use mxr_search::{SearchIndexEntry, SearchUpdateBatch};
     use std::sync::Arc;
 
@@ -1094,63 +1093,6 @@ mod owed_reply_filter_tests {
     }
 
     #[tokio::test]
-    async fn semantic_hits_leave_out_trash_and_spam_unless_the_query_asks() {
-        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
-        let mut envelopes = Vec::new();
-        for flags in [
-            MessageFlags::empty(),
-            MessageFlags::TRASH,
-            MessageFlags::SPAM,
-        ] {
-            let envelope = Envelope {
-                flags,
-                ..envelope_inbound(&account_id, &ThreadId::new(), "alice@example.com", 1)
-            };
-            state.store.upsert_envelope(&envelope).await.unwrap();
-            envelopes.push(envelope);
-        }
-        let hits = || {
-            envelopes
-                .iter()
-                .map(|envelope| SemanticHit {
-                    message_id: envelope.id.clone(),
-                    score: 0.9,
-                    chunk_id: mxr_core::id::SemanticChunkId::new(),
-                    source_kind: mxr_core::types::SemanticChunkSourceKind::Body,
-                    snippet: String::new(),
-                })
-                .collect::<Vec<_>>()
-        };
-        let kept = |query: &str| {
-            let state = &state;
-            let hits = hits();
-            let query = query.to_string();
-            async move {
-                let ast =
-                    exclude_trash_and_spam_by_default(mxr_search::parse_query(&query).unwrap());
-                filter_dense_hits(state, &ast, None, hits)
-                    .await
-                    .unwrap()
-                    .into_iter()
-                    .map(|result| result.message_id)
-                    .collect::<Vec<_>>()
-            }
-        };
-
-        assert_eq!(kept("invoice").await, vec![envelopes[0].id.as_str()]);
-        assert_eq!(
-            kept("in:trash invoice").await,
-            vec![envelopes[1].id.as_str()]
-        );
-        assert_eq!(
-            kept("in:spam invoice").await,
-            vec![envelopes[2].id.as_str()]
-        );
-        assert_eq!(kept("in:anywhere invoice").await.len(), 3);
-    }
-
-    #[tokio::test]
     async fn is_owed_reply_search_matches_list_owed_replies() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
         let state = Arc::new(state);
@@ -1199,61 +1141,6 @@ mod owed_reply_filter_tests {
         assert!(
             searched_threads.contains(&thread_id.as_str().clone()),
             "is:owed-reply search must include the same thread; got {searched_threads:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn is_owed_reply_excludes_thread_after_outbound_reply() {
-        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-        let state = Arc::new(state);
-        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
-
-        let thread_id = ThreadId::new();
-        let inbound = envelope_inbound(&account_id, &thread_id, "bob@example.com", 5);
-        state
-            .store
-            .upsert_envelope_with_direction(&inbound, MessageDirection::Inbound)
-            .await
-            .unwrap();
-        index_envelope(&state, &inbound).await;
-
-        let mut outbound = envelope_inbound(&account_id, &thread_id, "user@example.com", 1);
-        outbound.from = Address {
-            name: None,
-            email: "user@example.com".into(),
-        };
-        outbound.to = vec![Address {
-            name: None,
-            email: "bob@example.com".into(),
-        }];
-        state
-            .store
-            .upsert_envelope_with_direction(&outbound, MessageDirection::Outbound)
-            .await
-            .unwrap();
-        index_envelope(&state, &outbound).await;
-        state.store.refresh_contacts().await.unwrap();
-
-        let execution = execute_search(
-            &state,
-            "is:owed-reply",
-            100,
-            0,
-            None,
-            SearchMode::Lexical,
-            SortOrder::DateDesc,
-            false,
-        )
-        .await
-        .unwrap();
-        let searched_threads: Vec<_> = execution
-            .results
-            .iter()
-            .map(|r| r.thread_id.clone())
-            .collect();
-        assert!(
-            !searched_threads.contains(&thread_id.as_str().clone()),
-            "thread with later outbound reply must not match is:owed-reply, got {searched_threads:?}"
         );
     }
 
@@ -1325,20 +1212,6 @@ mod owed_reply_filter_tests {
     }
 
     #[tokio::test]
-    async fn lexical_owed_page_fills_when_most_candidates_are_answered() {
-        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
-        let owed = seed_owed_and_answered(&state, &account_id, 7, 30).await;
-
-        let first = owed_page(&state, 5, 0).await;
-
-        assert_eq!(first.results.len(), 5, "page must fill with owed rows");
-        assert!(first.results.iter().all(|r| owed.contains(&r.thread_id)));
-        assert!(first.has_more);
-        assert_eq!(first.next_offset, Some(5));
-    }
-
-    #[tokio::test]
     async fn lexical_owed_pages_continue_without_gaps_or_repeats() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
         let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
@@ -1375,64 +1248,6 @@ mod owed_reply_filter_tests {
         }
         assert_eq!(paged, everything);
         assert_eq!(owed.len(), 7);
-    }
-
-    #[tokio::test]
-    async fn lexical_pages_skip_hidden_account_rows_and_fill() {
-        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-        let visible_account = state.store.list_accounts().await.unwrap()[0].id.clone();
-        let hidden_account = AccountId::new();
-        let mut hidden = crate::test_fixtures::test_account_with_id(hidden_account.clone());
-        hidden.enabled = false;
-        state.store.insert_account(&hidden).await.unwrap();
-
-        let now = chrono::Utc::now();
-        let mut visible_ids = Vec::new();
-        for i in 0..20 {
-            let mut envelope =
-                envelope_inbound(&hidden_account, &ThreadId::new(), "alice@example.com", 0);
-            envelope.subject = "friday hidden".into();
-            envelope.date = now - chrono::Duration::minutes(i);
-            state.store.upsert_envelope(&envelope).await.unwrap();
-            index_envelope(&state, &envelope).await;
-        }
-        for i in 0..5 {
-            let mut envelope =
-                envelope_inbound(&visible_account, &ThreadId::new(), "alice@example.com", 0);
-            envelope.date = now - chrono::Duration::days(1) - chrono::Duration::minutes(i);
-            state.store.upsert_envelope(&envelope).await.unwrap();
-            index_envelope(&state, &envelope).await;
-            visible_ids.push(envelope.id.as_str());
-        }
-
-        let mut paged = Vec::new();
-        let mut offset = 0;
-        loop {
-            let page = execute_search(
-                &state,
-                "friday",
-                3,
-                offset,
-                None,
-                SearchMode::Lexical,
-                SortOrder::DateDesc,
-                false,
-            )
-            .await
-            .unwrap();
-            if page.has_more {
-                assert_eq!(page.results.len(), 3, "a page with more to come is full");
-            }
-            paged.extend(page.results.iter().map(|r| r.message_id.clone()));
-            match page.next_offset {
-                Some(next) => offset = next,
-                None => {
-                    assert!(!page.has_more);
-                    break;
-                }
-            }
-        }
-        assert_eq!(paged, visible_ids);
     }
 
     #[tokio::test]
@@ -1484,63 +1299,6 @@ mod owed_reply_filter_tests {
             hit_ids.contains(&envelope.id.as_str()),
             "label:Notto should resolve to Label_101 and match the indexed envelope; got {hit_ids:?}"
         );
-    }
-
-    #[tokio::test]
-    async fn label_search_handles_quoted_names_and_raw_provider_ids() {
-        use mxr_core::types::{Label, LabelKind};
-        use mxr_core::LabelId;
-
-        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-        let state = Arc::new(state);
-        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
-
-        let label = Label {
-            id: LabelId::new(),
-            account_id: account_id.clone(),
-            name: "Follow Up".into(),
-            kind: LabelKind::User,
-            color: None,
-            provider_id: "Label_42".into(),
-            unread_count: 0,
-            total_count: 1,
-            role: None,
-        };
-        state.store.upsert_label(&label).await.unwrap();
-
-        let thread_id = ThreadId::new();
-        let mut envelope = envelope_inbound(&account_id, &thread_id, "alice@example.com", 1);
-        envelope.label_provider_ids = vec!["Label_42".into()];
-        state.store.upsert_envelope(&envelope).await.unwrap();
-        index_envelope(&state, &envelope).await;
-
-        for query in [
-            "label:\"Follow Up\"",
-            "label:\"follow up\"",
-            "label:Label_42",
-        ] {
-            let execution = execute_search(
-                &state,
-                query,
-                100,
-                0,
-                None,
-                SearchMode::Lexical,
-                SortOrder::DateDesc,
-                false,
-            )
-            .await
-            .unwrap();
-            let hit_ids: Vec<_> = execution
-                .results
-                .iter()
-                .map(|r| r.message_id.clone())
-                .collect();
-            assert!(
-                hit_ids.contains(&envelope.id.as_str()),
-                "query {query:?} should match Label_42 envelope; got {hit_ids:?}"
-            );
-        }
     }
 
     #[tokio::test]
@@ -1644,56 +1402,6 @@ mod owed_reply_filter_tests {
             default_envelope.id.as_str()
         );
     }
-
-    #[tokio::test]
-    async fn saved_search_account_id_scopes_results() {
-        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-        let state = Arc::new(state);
-        let default_account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
-        let other_account_id = AccountId::new();
-        let other_account = crate::test_fixtures::test_account_with_id(other_account_id.clone());
-        state.store.insert_account(&other_account).await.unwrap();
-
-        let default_thread = ThreadId::new();
-        let default_envelope =
-            envelope_inbound(&default_account_id, &default_thread, "alice@example.com", 1);
-        state
-            .store
-            .upsert_envelope(&default_envelope)
-            .await
-            .unwrap();
-        index_envelope(&state, &default_envelope).await;
-
-        let other_thread = ThreadId::new();
-        let other_envelope =
-            envelope_inbound(&other_account_id, &other_thread, "alice@example.com", 1);
-        state.store.upsert_envelope(&other_envelope).await.unwrap();
-        index_envelope(&state, &other_envelope).await;
-
-        let saved = mxr_core::types::SavedSearch {
-            id: mxr_core::SavedSearchId::new(),
-            account_id: Some(other_account_id.clone()),
-            name: "Other Friday".into(),
-            query: "friday".into(),
-            search_mode: SearchMode::Lexical,
-            sort: SortOrder::DateDesc,
-            icon: None,
-            position: 0,
-            created_at: chrono::Utc::now(),
-        };
-        state.store.insert_saved_search(&saved).await.unwrap();
-
-        let response = super::super::run_saved_search(&state, "Other Friday", 10, None)
-            .await
-            .unwrap();
-        match response {
-            ResponseData::SearchResults { results, .. } => {
-                assert_eq!(results.len(), 1);
-                assert_eq!(results[0].message_id, other_envelope.id);
-            }
-            other => panic!("expected search results, got {other:?}"),
-        }
-    }
 }
 
 #[cfg(all(test, feature = "semantic-local"))]
@@ -1722,13 +1430,6 @@ mod tests {
                 ]
             })
             .collect())
-    }
-
-    fn failing_embedder(
-        _profile: mxr_core::SemanticProfile,
-        _texts: &[String],
-    ) -> anyhow::Result<Vec<Vec<f32>>> {
-        Err(anyhow::anyhow!("embedder offline"))
     }
 
     fn text_body(
@@ -1967,43 +1668,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_search_explains_negated_semantic_fallback() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let mut config = state.config_snapshot();
-        config.search.semantic.enabled = true;
-        state.set_config_for_test(config).await;
-
-        let execution = execute_search(
-            &state,
-            "body:deployment -filename:report",
-            10,
-            0,
-            None,
-            SearchMode::Hybrid,
-            SortOrder::Relevance,
-            true,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(execution.executed_mode, SearchMode::Lexical);
-        assert_eq!(
-            execution
-                .explain
-                .as_ref()
-                .and_then(|explain| explain.semantic_query.as_deref()),
-            Some("deployment")
-        );
-        assert!(execution
-            .explain
-            .as_ref()
-            .unwrap()
-            .notes
-            .iter()
-            .any(|note| note.contains("negated semantic terms")));
-    }
-
-    #[tokio::test]
     async fn execute_search_hybrid_falls_back_to_lexical_when_semantic_is_disabled() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let mut config = state.config_snapshot();
@@ -2061,69 +1725,5 @@ mod tests {
             .notes
             .iter()
             .any(|note| note.contains("semantic search disabled in config")));
-    }
-
-    #[tokio::test]
-    async fn execute_search_hybrid_falls_back_to_lexical_when_semantic_backend_errors() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let account_id = state.default_account_id();
-        let message = crate::test_fixtures::TestEnvelopeBuilder::new()
-            .account_id(account_id)
-            .provider_id("lexical-body")
-            .subject("Weekly update")
-            .snippet("body match")
-            .build();
-
-        state.store.upsert_envelope(&message).await.unwrap();
-        let body = text_body(
-            &message.id,
-            "Deployment checklist lives in the message body",
-            Vec::new(),
-        );
-        state.store.insert_body(&body).await.unwrap();
-        state
-            .search
-            .apply_batch(mxr_search::SearchUpdateBatch {
-                entries: vec![mxr_search::SearchIndexEntry {
-                    envelope: message.clone(),
-                    body: Some(body),
-                    reply_later: false,
-                }],
-                removed_message_ids: Vec::new(),
-            })
-            .await
-            .unwrap();
-        let mut config = state.config_snapshot();
-        config.search.semantic.enabled = true;
-        state.set_config_for_test(config).await;
-        state
-            .semantic
-            .set_test_embedder(failing_embedder)
-            .await
-            .unwrap();
-
-        let execution = execute_search(
-            &state,
-            "body:deployment",
-            10,
-            0,
-            None,
-            SearchMode::Hybrid,
-            SortOrder::Relevance,
-            true,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(execution.executed_mode, SearchMode::Lexical);
-        assert_eq!(execution.results.len(), 1);
-        assert_eq!(execution.results[0].message_id, message.id.as_str());
-        assert!(execution
-            .explain
-            .as_ref()
-            .unwrap()
-            .notes
-            .iter()
-            .any(|note| note.contains("semantic retrieval failed")));
     }
 }

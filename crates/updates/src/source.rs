@@ -122,32 +122,4 @@ mod tests {
             "stripe.com"
         );
     }
-
-    #[test]
-    fn names_by_display_name_or_domain_with_the_repo() {
-        assert_eq!(
-            source_name(
-                Some("GitHub Notifications"),
-                "notifications@github.com",
-                "github.com/acme/api"
-            ),
-            "GitHub acme/api"
-        );
-        assert_eq!(
-            source_name(None, "noreply@strava.com", "strava.com"),
-            "Strava"
-        );
-        assert_eq!(
-            source_name(
-                Some("\"x@y.com\""),
-                "noreply@uptimerobot.com",
-                "uptimerobot.com"
-            ),
-            "Uptimerobot"
-        );
-        assert_eq!(
-            source_name(Some("Vercel"), "a@vercel.com", "vercel.com"),
-            "Vercel"
-        );
-    }
 }

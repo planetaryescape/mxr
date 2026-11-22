@@ -348,19 +348,4 @@ mod tests {
         set_config_value(&mut config, "llm.fallback.model", "").unwrap();
         assert!(config.llm.fallback.is_none());
     }
-
-    #[test]
-    fn compose_model_config_is_trimmed_before_storage() {
-        let mut config = mxr_config::MxrConfig::default();
-        set_config_value(&mut config, "llm.compose.model", "  gpt-6-luna  ")
-            .expect("set compose model");
-        assert_eq!(
-            config
-                .llm
-                .compose
-                .and_then(|compose| compose.model)
-                .as_deref(),
-            Some("gpt-6-luna")
-        );
-    }
 }

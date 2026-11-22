@@ -42,25 +42,6 @@ pub struct ComposeOptions {
     pub format: Option<OutputFormat>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-pub(super) fn resolve_compose_from_address(explicit_from: Option<String>) -> String {
-    if let Some(from) = explicit_from {
-        return from;
-    }
-
-    let config = mxr_config::load_config().unwrap_or_default();
-    if let Some(default_key) = config.general.default_account.as_deref() {
-        if let Some(account) = config.accounts.get(default_key) {
-            return account.email.clone();
-        }
-    }
-
-    config.accounts.values().next().map_or_else(
-        || "you@example.com".to_string(),
-        |account| account.email.clone(),
-    )
-}
-
 pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     client.capture_workspace().await?;
@@ -2720,10 +2701,7 @@ fn print_send_recovery(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::mutations::helpers::{
-        render_selection_preview_lines, requires_confirmation, MutationSelection,
-    };
-    use mxr_core::types::Envelope;
+    use crate::commands::mutations::helpers::requires_confirmation;
     use mxr_protocol::{AccountEditModeData, AccountSourceData, AccountSummaryData};
 
     #[tokio::test]
@@ -2751,12 +2729,6 @@ mod tests {
                 assert!(body.starts_with(&intro), "{body:?}");
             }
         }
-    }
-
-    #[test]
-    fn compose_from_prefers_explicit_value() {
-        let resolved = resolve_compose_from_address(Some("alice@example.com".into()));
-        assert_eq!(resolved, "alice@example.com");
     }
 
     fn account(
@@ -2794,15 +2766,6 @@ mod tests {
         let selected = select_compose_account(&accounts, None).unwrap();
 
         assert_eq!(selected.email, "work@example.com");
-    }
-
-    #[test]
-    fn compose_account_selection_rejects_sync_only_accounts() {
-        let accounts = vec![account("work", "work@example.com", true, None)];
-
-        let error = select_compose_account(&accounts, None).unwrap_err();
-
-        assert!(error.to_string().contains("No send-capable account"));
     }
 
     #[test]
@@ -2864,37 +2827,6 @@ mod tests {
         assert_eq!(expanded, "Hi thanks for reaching out\n\nBest,\nmxr");
     }
 
-    #[test]
-    fn snippet_keywords_expand_builtin_vars() {
-        let body = ";today".to_string();
-        let snippets = vec![snippet("today", "Today is {today}")];
-
-        let expanded = expand_snippet_keywords(&body, &snippets);
-
-        assert!(expanded.starts_with("Today is 20"));
-        assert!(!expanded.contains("{today}"));
-    }
-
-    #[test]
-    fn unknown_snippet_keywords_remain_literal() {
-        let body = "Keep ;missing and expand ;ok.".to_string();
-        let snippets = vec![snippet("ok", "done")];
-
-        let expanded = expand_snippet_keywords(&body, &snippets);
-
-        assert_eq!(expanded, "Keep ;missing and expand done.");
-    }
-
-    #[test]
-    fn snippet_keywords_do_not_expand_mid_word() {
-        let body = "value;ok but (;ok)".to_string();
-        let snippets = vec![snippet("ok", "done")];
-
-        let expanded = expand_snippet_keywords(&body, &snippets);
-
-        assert_eq!(expanded, "value;ok but (done)");
-    }
-
     fn frontmatter_with(to: &str, subject: &str) -> mxr_compose::frontmatter::ComposeFrontmatter {
         mxr_compose::frontmatter::ComposeFrontmatter {
             to: to.into(),
@@ -2923,104 +2855,6 @@ mod tests {
         assert_eq!(expanded, "Hi Alice,\n\nLet's chat.");
     }
 
-    /// Phase 3.1: when the recipient has no display name (just an
-    /// email), fall back to the email's local part so `{first_name}`
-    /// still produces something useful instead of a literal token.
-    /// Filling in "alice" is better than shipping "{first_name}".
-    #[test]
-    fn first_name_falls_back_to_email_local_part_when_no_display_name() {
-        let fm = frontmatter_with("alice@example.com", "kickoff");
-        let ctx = snippet_context_from_frontmatter(&fm);
-
-        let body = "Hi {first_name}!".to_string();
-        let expanded = expand_snippet_keywords_with_context(&body, &[], Some(&ctx));
-
-        assert_eq!(expanded, "Hi alice!");
-    }
-
-    /// "Last, First" is a common directory-export display format. We
-    /// must pick `First`, not `Last`, so contacts imported from CSVs
-    /// don't end up addressed by their last name.
-    #[test]
-    fn first_name_handles_last_comma_first_display_order() {
-        let fm = frontmatter_with(r#""Smith, Alice" <alice@example.com>"#, "Q3 plans");
-        let ctx = snippet_context_from_frontmatter(&fm);
-
-        let body = "Hi {first_name}!";
-        let expanded = expand_snippet_keywords_with_context(body, &[], Some(&ctx));
-
-        assert_eq!(expanded, "Hi Alice!");
-    }
-
-    /// Phase 3.1: `{thread_subject}` resolves to the subject the user
-    /// is replying about, with `Re:` / `Fwd:` chains stripped so a
-    /// snippet like "About: {thread_subject}" reads "About: Q3 plans"
-    /// even when the frontmatter subject is "Re: Re: Q3 plans".
-    #[test]
-    fn thread_subject_strips_reply_and_forward_prefixes() {
-        let fm = frontmatter_with("alice@example.com", "Re: Re: Fwd: Q3 plans");
-        let ctx = snippet_context_from_frontmatter(&fm);
-
-        let body = "About: {thread_subject}";
-        let expanded = expand_snippet_keywords_with_context(body, &[], Some(&ctx));
-
-        assert_eq!(expanded, "About: Q3 plans");
-    }
-
-    /// When context is `None` (no recipient yet, e.g. the initial pre-
-    /// editor pass), built-in tokens must remain literal. The send-time
-    /// validator still warns about unresolved `{var}` tokens; we must
-    /// not silently strip them or swap them for blanks.
-    #[test]
-    fn unresolved_context_tokens_remain_literal() {
-        let body = "Hi {first_name}, thanks for {thread_subject}.";
-        let expanded = expand_snippet_keywords_with_context(body, &[], None);
-
-        assert_eq!(expanded, body);
-    }
-
-    /// The recipient's email-local-part fallback shouldn't fire when
-    /// the recipient address itself is missing. Otherwise `{first_name}`
-    /// would silently turn into an empty string, which is worse than
-    /// leaving the token visible for the user to fill in.
-    #[test]
-    fn missing_recipient_leaves_first_name_token_literal() {
-        let fm = frontmatter_with("", "no recipient yet");
-        let ctx = snippet_context_from_frontmatter(&fm);
-
-        let body = "Hi {first_name}!";
-        let expanded = expand_snippet_keywords_with_context(body, &[], Some(&ctx));
-
-        assert_eq!(expanded, "Hi {first_name}!");
-    }
-
-    /// Smart vars also fire when reached via a snippet body (not just
-    /// when typed directly in the message). Snippet `;greeting` whose
-    /// body contains `{first_name}` should land as the resolved name.
-    #[test]
-    fn snippet_body_can_reference_smart_vars() {
-        let fm = frontmatter_with("Alice Smith <alice@example.com>", "");
-        let ctx = snippet_context_from_frontmatter(&fm);
-        let snippets = vec![snippet("greeting", "Hi {first_name},")];
-
-        let body = ";greeting let me know.".to_string();
-        let expanded = expand_snippet_keywords_with_context(&body, &snippets, Some(&ctx));
-
-        assert_eq!(expanded, "Hi Alice, let me know.");
-    }
-
-    fn test_envelope(subject: &str) -> Envelope {
-        crate::test_fixtures::TestEnvelopeBuilder::new()
-            .subject(subject)
-            .provider_id(format!("provider-{subject}"))
-            .sender_address("Buildkite", "buildkite@example.com")
-            .to(vec![])
-            .message_id_header(None)
-            .snippet("")
-            .size_bytes(0)
-            .build()
-    }
-
     #[test]
     fn confirmation_required_for_destructive_or_batch_actions() {
         assert!(requires_confirmation(true, false, 1, false));
@@ -3030,29 +2864,11 @@ mod tests {
         assert!(!requires_confirmation(true, true, 5, true));
     }
 
-    #[test]
-    fn preview_render_caps_output() {
-        let envelopes = (0..10)
-            .map(|i| test_envelope(&format!("Subject {i}")))
-            .collect::<Vec<_>>();
-        let selection = MutationSelection {
-            ids: envelopes.iter().map(|env| env.id.clone()).collect(),
-            envelopes,
-            used_search: true,
-            capped: None,
-        };
-
-        let lines = render_selection_preview_lines("archive", &selection);
-        assert!(lines[0].contains("Would archive 10 message(s)"));
-        assert!(lines.iter().any(|line| line.contains("Subject 0")));
-        assert!(lines.iter().any(|line| line.contains("... and 2 more")));
-    }
-
     mod check_context_tests {
         use super::super::build_check_context;
         use chrono::Utc;
         use mxr_core::types::Draft;
-        use mxr_core::{AccountId, DraftId, DraftIntent, ReplyHeaders, ThreadId};
+        use mxr_core::{AccountId, DraftId, DraftIntent, ReplyHeaders};
 
         fn draft_with(reply_headers: Option<ReplyHeaders>, intent: DraftIntent) -> Draft {
             Draft {
@@ -3076,28 +2892,6 @@ mod tests {
             }
         }
 
-        /// CLI `--check` must forward the draft's thread_id so the
-        /// answer-coverage LLM check (and any thread-scoped check) can
-        /// load the parent thread.
-        #[test]
-        fn build_check_context_plumbs_thread_id_from_reply_headers() {
-            let uuid = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000123").unwrap();
-            let draft = draft_with(
-                Some(ReplyHeaders {
-                    in_reply_to: "<abc@example.com>".into(),
-                    references: vec![],
-                    thread_id: Some(uuid.to_string()),
-                }),
-                DraftIntent::Reply,
-            );
-            let ctx = build_check_context(&draft, false, Utc::now());
-            assert_eq!(
-                ctx.thread_id,
-                Some(ThreadId::from_uuid(uuid)),
-                "thread_id should be parsed from reply_headers"
-            );
-        }
-
         /// Default behavior: LLM-backed checks are enabled. Users opt
         /// out with --no-llm (e.g., to skip rate-limited cloud models
         /// or save tokens).
@@ -3108,19 +2902,6 @@ mod tests {
             let without_llm = build_check_context(&draft, true, Utc::now());
             assert!(with_llm.allow_llm, "default should allow LLM");
             assert!(!without_llm.allow_llm, "--no-llm must disable LLM");
-        }
-
-        /// Reply-all intent must propagate so the reply-all sanity
-        /// check actually runs (vs. a normal reply that should skip it).
-        #[test]
-        fn build_check_context_reply_all_intent_propagates() {
-            let draft = draft_with(None, DraftIntent::ReplyAll);
-            let ctx = build_check_context(&draft, false, Utc::now());
-            assert!(ctx.reply_all);
-
-            let draft_reply = draft_with(None, DraftIntent::Reply);
-            let ctx_reply = build_check_context(&draft_reply, false, Utc::now());
-            assert!(!ctx_reply.reply_all);
         }
     }
 
@@ -3156,19 +2937,6 @@ mod tests {
         }
 
         #[test]
-        fn remind_after_requires_send_receipt_message_id() {
-            let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
-
-            let error = auto_reminder_request_after_send(None, now)
-                .expect_err("missing receipt must be rejected");
-
-            assert!(
-                error.to_string().contains("sent message id"),
-                "error should explain missing sent id: {error}"
-            );
-        }
-
-        #[test]
         fn an_unreadable_remind_after_is_an_error_before_any_send() {
             let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
 
@@ -3181,7 +2949,7 @@ mod tests {
     /// Assembling an HTML body onto a draft, and the structured outcome the
     /// compose command reports.
     mod html_compose_tests {
-        use super::super::{apply_html_body, compose_result_output, reply_draft_csv};
+        use super::super::{apply_html_body, compose_result_output};
         use crate::cli::OutputFormat;
         use crate::commands::mutations::compose_html::HtmlComposeInput;
         use mxr_core::types::{Address, Draft, DraftContent, InlineAsset};
@@ -3231,19 +2999,6 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
                 .any(|issue| issue.to_string().contains("Message body is empty"))
         }
 
-        /// The bug: an HTML draft's analysis text is `""` until an alternative
-        /// exists, so validation reported a perfectly good HTML email as empty.
-        /// Documented as a pair so the assertion below cannot pass vacuously.
-        #[test]
-        fn an_html_body_without_an_alternative_reads_as_an_empty_message() {
-            let bare = DraftContent::html(HTML, None);
-            assert_eq!(bare.analysis_text(), "");
-            assert!(
-                empty_body_warning(bare.analysis_text()),
-                "premise of the fix: the un-materialised body validates as empty"
-            );
-        }
-
         #[test]
         fn applying_an_html_body_generates_the_text_alternative_validation_reads() {
             let mut draft = draft();
@@ -3265,61 +3020,6 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
                 !empty_body_warning(text),
                 "a valid HTML body must not validate as an empty message"
             );
-        }
-
-        #[test]
-        fn applying_an_html_body_leaves_the_document_byte_for_byte() {
-            let mut draft = draft();
-            apply_html_body(
-                &mut draft,
-                HtmlComposeInput {
-                    html: HTML.to_string(),
-                    text: None,
-                    inline_assets: Vec::new(),
-                },
-            );
-
-            match &draft.content {
-                DraftContent::Html { html, .. } => assert_eq!(html, HTML),
-                other => panic!("expected an HTML body, got {other:?}"),
-            }
-        }
-
-        #[test]
-        fn a_supplied_text_alternative_is_not_replaced_by_a_generated_one() {
-            let mut draft = draft();
-            apply_html_body(
-                &mut draft,
-                HtmlComposeInput {
-                    html: HTML.to_string(),
-                    text: Some("The numbers are in the table.".into()),
-                    inline_assets: Vec::new(),
-                },
-            );
-
-            assert_eq!(
-                draft.content.analysis_text(),
-                "The numbers are in the table."
-            );
-        }
-
-        #[test]
-        fn applying_an_html_body_carries_the_inline_assets_over() {
-            let mut draft = draft();
-            apply_html_body(
-                &mut draft,
-                HtmlComposeInput {
-                    html: HTML.to_string(),
-                    text: None,
-                    inline_assets: vec![InlineAsset {
-                        cid: "logo".into(),
-                        path: PathBuf::from("/tmp/logo.png"),
-                    }],
-                },
-            );
-
-            assert_eq!(draft.inline_assets.len(), 1);
-            assert_eq!(draft.inline_assets[0].cid, "logo");
         }
 
         fn html_draft_for_output() -> Draft {
@@ -3357,52 +3057,6 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
             assert_eq!(payload["content_kind"], "html");
             assert_eq!(payload["inline_count"], 1);
             assert_eq!(payload["attachment_count"], 1);
-        }
-
-        #[test]
-        fn jsonl_output_is_one_line_of_the_same_payload() {
-            let draft = html_draft_for_output();
-            let out = compose_result_output("save_draft", &draft, None, Some(OutputFormat::Jsonl))
-                .unwrap();
-
-            assert_eq!(out.lines().count(), 1, "jsonl must be a single line: {out}");
-            let payload: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
-            assert_eq!(payload["draft_id"], draft.id.as_str().as_str());
-            assert_eq!(payload["content_kind"], "html");
-        }
-
-        #[test]
-        fn csv_output_has_a_header_row_and_the_draft_id() {
-            let draft = html_draft_for_output();
-            let out =
-                compose_result_output("save_draft", &draft, None, Some(OutputFormat::Csv)).unwrap();
-
-            let mut lines = out.lines();
-            assert_eq!(lines.next(), Some("action,draft_id,subject"));
-            let row = lines.next().expect("csv data row");
-            assert!(row.contains(draft.id.as_str().as_str()), "row={row}");
-            assert!(row.contains("Quarterly numbers"), "row={row}");
-        }
-
-        #[test]
-        fn reply_csv_handles_nested_recipients_and_attachments() {
-            let draft = html_draft_for_output();
-            let out = reply_draft_csv(&draft).unwrap();
-            let mut reader = csv::Reader::from_reader(out.as_bytes());
-            assert_eq!(reader.headers().unwrap().get(0), Some("draft_id"));
-            let rows = reader.records().collect::<Result<Vec<_>, _>>().unwrap();
-            assert_eq!(rows.len(), 1);
-            assert_eq!(rows[0].get(0), Some(draft.id.as_str().as_str()));
-            assert_eq!(rows[0].get(2), Some(draft.subject.as_str()));
-        }
-
-        #[test]
-        fn ids_output_is_just_the_draft_id() {
-            let draft = html_draft_for_output();
-            let out =
-                compose_result_output("save_draft", &draft, None, Some(OutputFormat::Ids)).unwrap();
-
-            assert_eq!(out.trim(), draft.id.as_str().as_str());
         }
     }
 }

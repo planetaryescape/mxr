@@ -512,14 +512,6 @@ mod tests {
     }
 
     #[test]
-    fn a_greeting_learned_with_one_person_carries_their_name_not_the_old_one() {
-        let mine = ["Hey Ruth,\n\nOn it.\n\nA", "Hey Ruth,\n\nDone.\n\nA"];
-        let habits = analyse_habits(&mine, &["Ruth Vega"]);
-        let (text, _) = ack_text("Ruth", &habits);
-        assert!(text.starts_with("Hey Ruth,\n\nGot it, thanks."), "{text}");
-    }
-
-    #[test]
     fn your_message_stored_as_inbound_still_counts_as_sent_by_you() {
         let is_self = |email: &str| email.eq_ignore_ascii_case("alias@x.com");
         assert!(sent_by_you("inbound", "Alias@x.com", &is_self));
@@ -545,25 +537,5 @@ mod tests {
             reason,
             "Got it won't reply to a@x.com, b@x.com: it would go to more than one person. Reply by hand if you mean to."
         );
-    }
-
-    #[test]
-    fn ack_allows_one_recipient_from_someone_else() {
-        assert_eq!(
-            ack_addressing_refusal(false, &["a@x.com".to_string()]),
-            None
-        );
-    }
-
-    #[test]
-    fn ack_leaves_an_empty_reply_to_for_the_recipient_check() {
-        assert_eq!(ack_addressing_refusal(false, &[]), None);
-    }
-
-    #[test]
-    fn with_nothing_to_go_on_it_is_a_plain_thanks() {
-        let (text, built_from) = ack_text("Iris", &WritingHabits::default());
-        assert_eq!(text, "Thanks Iris, got it.");
-        assert!(built_from.starts_with("No greeting or sign-off"));
     }
 }

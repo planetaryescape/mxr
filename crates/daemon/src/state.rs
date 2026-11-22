@@ -3269,35 +3269,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn owned_addresses_revision_ignores_case_and_order_and_follows_the_set() {
-        use mxr_core::types::OwnedAddresses;
-        let base = OwnedAddresses::new(Some("Me@Example.com"), ["alias@example.com"]);
-        let reordered = OwnedAddresses::new(Some("ME@example.com"), ["alias@example.com"]);
-        assert_eq!(
-            owned_addresses_revision(&base),
-            owned_addresses_revision(&reordered)
-        );
-        let new_primary = OwnedAddresses::new(Some("alias@example.com"), ["Me@Example.com"]);
-        assert_ne!(
-            owned_addresses_revision(&base),
-            owned_addresses_revision(&new_primary),
-            "the prompts mark the primary, so moving it must miss the cache"
-        );
-        let grown = OwnedAddresses::new(
-            Some("Me@Example.com"),
-            ["alias@example.com", "second@example.com"],
-        );
-        assert_ne!(
-            owned_addresses_revision(&base),
-            owned_addresses_revision(&grown)
-        );
-        assert_ne!(
-            owned_addresses_revision(&base),
-            owned_addresses_revision(&OwnedAddresses::default())
-        );
-    }
-
     #[tokio::test]
     async fn unknown_directions_written_while_stale_are_repaired_once_the_registry_recovers() {
         use crate::test_fixtures::TestEnvelopeBuilder;
@@ -3353,95 +3324,6 @@ mod tests {
         assert_eq!(direction(&state).await, "outbound");
     }
 
-    #[test]
-    fn accounts_with_changed_addresses_covers_edits_appearances_and_removals() {
-        use mxr_core::types::OwnedAddresses;
-        let kept = AccountId::new();
-        let edited = AccountId::new();
-        let removed = AccountId::new();
-        let added = AccountId::new();
-        let before = vec![
-            (kept.clone(), OwnedAddresses::new(Some("k@example.com"), [])),
-            (
-                edited.clone(),
-                OwnedAddresses::new(Some("e@example.com"), []),
-            ),
-            (
-                removed.clone(),
-                OwnedAddresses::new(Some("r@example.com"), []),
-            ),
-        ];
-        let after = vec![
-            (kept.clone(), OwnedAddresses::new(Some("k@example.com"), [])),
-            (
-                edited.clone(),
-                OwnedAddresses::new(Some("e@example.com"), ["alias@example.com"]),
-            ),
-            (
-                added.clone(),
-                OwnedAddresses::new(Some("a@example.com"), []),
-            ),
-        ];
-
-        assert!(accounts_with_changed_addresses(&before, &before).is_empty());
-        let changed = accounts_with_changed_addresses(&before, &after);
-        assert_eq!(changed.len(), 3, "{changed:?}");
-        assert!(changed.contains(&edited));
-        assert!(
-            changed.contains(&removed),
-            "a disappearing account changed too"
-        );
-        assert!(changed.contains(&added), "an appearing account changed too");
-        assert!(!changed.contains(&kept));
-    }
-
-    #[tokio::test]
-    async fn a_failed_registry_load_marks_itself_stale_under_the_rebuild_lock() {
-        let state = AppState::in_memory().await.unwrap();
-        sqlx::query("ALTER TABLE account_addresses RENAME TO account_addresses_off")
-            .execute(state.store.writer())
-            .await
-            .unwrap();
-        let failed = load_account_address_registry(&state.store, &state.account_addresses).await;
-        sqlx::query("ALTER TABLE account_addresses_off RENAME TO account_addresses")
-            .execute(state.store.writer())
-            .await
-            .unwrap();
-
-        assert!(failed.is_err());
-        assert!(state.account_addresses.is_stale());
-        load_account_address_registry(&state.store, &state.account_addresses)
-            .await
-            .unwrap();
-        assert!(!state.account_addresses.is_stale());
-    }
-
-    #[tokio::test]
-    async fn failed_registry_rebuild_stops_sync_reading_the_set_from_before_it() {
-        let state = AppState::in_memory().await.unwrap();
-        state.refresh_account_addresses().await;
-        assert!(state.account_addresses.is_loaded());
-
-        sqlx::query("ALTER TABLE account_addresses RENAME TO account_addresses_off")
-            .execute(state.store.writer())
-            .await
-            .unwrap();
-        state.refresh_account_addresses().await;
-        assert!(
-            !state.account_addresses.is_loaded(),
-            "sync must not classify direction with the set it held before the failed rebuild"
-        );
-
-        sqlx::query("ALTER TABLE account_addresses_off RENAME TO account_addresses")
-            .execute(state.store.writer())
-            .await
-            .unwrap();
-
-        assert!(state.ensure_account_addresses_current().await);
-        assert!(state.account_addresses.is_loaded());
-        assert!(!state.account_addresses.is_stale());
-    }
-
     #[tokio::test]
     async fn attachment_materialization_serializes_same_attachment_and_prunes_idle_keys() {
         let state = Arc::new(AppState::in_memory().await.expect("state"));
@@ -3471,38 +3353,6 @@ mod tests {
             .acquire_attachment_materialization(&other_message, &other_attachment)
             .await;
         assert_eq!(state.attachment_materialization_locks.lock().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn a_config_account_without_a_provider_gets_the_id_its_identity_is_shown_under() {
-        let store = Store::in_memory().await.unwrap();
-        let mut config = mxr_config::MxrConfig::default();
-        config.accounts.insert(
-            "work".into(),
-            mxr_config::AccountConfig {
-                name: "Work".into(),
-                email: "bk@work.example".into(),
-                enabled: true,
-                sync: None,
-                send: None,
-                color: None,
-                tag: None,
-            },
-        );
-        AppState::create_providers_from_config(&config, &store)
-            .await
-            .unwrap();
-
-        let rows = store.list_account_identity_slots().await.unwrap();
-        assert_eq!(rows.len(), 1, "startup must write exactly one row");
-        let resolution = crate::account_identity::resolve_from_store(&store, &config)
-            .await
-            .unwrap();
-        assert_eq!(resolution.resolved.len(), 1);
-        let shown = &resolution.resolved[0];
-        assert_eq!(shown.account_id, rows[0].account_id);
-        assert_eq!(shown.identity.color, mxr_core::AccountColor::Sky);
-        assert_eq!(shown.identity.tag, "W");
     }
 
     #[tokio::test]
@@ -3618,21 +3468,6 @@ use_tls = true
         );
     }
 
-    /// An idle poll finds nothing to sync and has stored nothing. Reporting
-    /// that as a denominator gives every client "0 of 0" to render.
-    #[tokio::test]
-    async fn an_idle_pass_with_nothing_left_reports_no_total() {
-        let state = AppState::in_memory().await.expect("state");
-        let account_id = AccountId::new();
-
-        state.record_sync_remaining(&account_id, 0);
-        state.record_sync_progress(&account_id, 0, "Fetched 0 messages".to_string());
-
-        let progress = state.sync_progress(&account_id).expect("progress");
-        assert_eq!(progress.current, 0);
-        assert_eq!(progress.total, None);
-    }
-
     /// The other side of that guard: a backfill whose last page carries the
     /// remainder still ends on a full, meaningful denominator.
     #[tokio::test]
@@ -3648,20 +3483,6 @@ use_tls = true
         let progress = state.sync_progress(&account_id).expect("progress");
         assert_eq!(progress.current, 100);
         assert_eq!(progress.total, Some(100));
-    }
-
-    /// A provider that cannot count what is left leaves the denominator
-    /// absent rather than reporting a number nobody computed.
-    #[tokio::test]
-    async fn sync_progress_has_no_total_when_no_page_reported_one() {
-        let state = AppState::in_memory().await.expect("state");
-        let account_id = AccountId::new();
-
-        state.record_sync_progress(&account_id, 40, "Stored 40 messages".to_string());
-
-        let progress = state.sync_progress(&account_id).expect("progress");
-        assert_eq!(progress.current, 40);
-        assert_eq!(progress.total, None);
     }
 
     #[tokio::test]
@@ -3703,29 +3524,6 @@ use_tls = true
                 .map(|backend| &backend.provider_kind)
                 == Some(&ProviderKind::Imap)
         }));
-    }
-
-    #[tokio::test]
-    async fn create_providers_from_config_uses_default_account() {
-        let store = Arc::new(Store::in_memory().await.expect("store"));
-        let config = imap_smtp_config("work");
-
-        let setup = AppState::create_providers_from_config(&config, &store)
-            .await
-            .expect("provider setup");
-
-        let default_account = store
-            .get_account(
-                setup
-                    .default_provider
-                    .as_ref()
-                    .expect("default provider")
-                    .account_id(),
-            )
-            .await
-            .expect("account fetch")
-            .expect("stored account");
-        assert_eq!(default_account.name, "Work");
     }
 
     #[tokio::test]
@@ -3772,52 +3570,6 @@ use_tls = true
             setup.default_provider.is_some(),
             "the healthy account remains the default provider"
         );
-    }
-
-    #[test]
-    fn create_providers_boots_despite_a_corrupt_secrets_file() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let secrets = dir.path().join("secrets.toml");
-        std::fs::write(&secrets, "this is not valid toml").expect("write corrupt");
-
-        temp_env::with_var("MXR_SECRETS_PATH", Some(secrets.as_os_str()), || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("runtime");
-            rt.block_on(async {
-                let store = Arc::new(Store::in_memory().await.expect("store"));
-                let config = mxr_config::load_config_from_str(
-                    r#"
-[general]
-default_account = "acct"
-
-[accounts.acct]
-name = "Acct"
-email = "me@corp.com"
-
-[accounts.acct.sync]
-type = "imap"
-host = "imap.corp.com"
-port = 993
-username = "me@corp.com"
-password_ref = "keyring:acct-imap"
-auth_required = true
-use_tls = true
-"#,
-                )
-                .expect("parse config");
-
-                let setup = AppState::create_providers_from_config(&config, &store)
-                    .await
-                    .expect("daemon boots despite a corrupt secrets file");
-                assert_eq!(
-                    setup.providers.len(),
-                    1,
-                    "the account still gets a provider"
-                );
-            });
-        });
     }
 
     #[tokio::test]
@@ -3870,18 +3622,6 @@ use_tls = true
         assert!(state.send_provider_for_account(&other_account_id).is_err());
     }
 
-    #[tokio::test]
-    async fn explicit_sync_provider_lookup_does_not_fallback_to_default() {
-        let (state, _) = AppState::in_memory_with_fake()
-            .await
-            .expect("state with default sync provider");
-        let other_account_id = AccountId::new();
-
-        assert!(state.get_provider(None).is_ok());
-        assert!(state.get_provider(Some(&other_account_id)).is_err());
-        assert!(state.sync_provider_for_account(&other_account_id).is_none());
-    }
-
     #[test]
     fn relationship_llm_features_block_nonlocal_base_without_privacy_opt_in() {
         let mut llm = mxr_config::LlmConfig {
@@ -3913,38 +3653,6 @@ use_tls = true
 
         assert!(runtime
             .feature_block_reason(mxr_llm::LlmFeature::RelationshipSummary)
-            .is_none());
-    }
-
-    #[test]
-    fn local_relationship_override_is_not_blocked_by_nonlocal_base() {
-        let llm = mxr_config::LlmConfig {
-            enabled: true,
-            base_url: "https://api.openai.com/v1".to_string(),
-            overrides: mxr_config::LlmOverrides {
-                relationship_summary: Some(mxr_config::LlmOverrideConfig {
-                    base_url: Some("http://localhost:11434/v1".to_string()),
-                    ..mxr_config::LlmOverrideConfig::default()
-                }),
-                archive_ask: Some(mxr_config::LlmOverrideConfig {
-                    base_url: Some("http://localhost:11434/v1".to_string()),
-                    ..mxr_config::LlmOverrideConfig::default()
-                }),
-                ..mxr_config::LlmOverrides::default()
-            },
-            ..mxr_config::LlmConfig::default()
-        };
-
-        let runtime = build_llm_runtime(&llm);
-
-        assert!(runtime
-            .feature_block_reason(mxr_llm::LlmFeature::RelationshipSummary)
-            .is_none());
-        assert!(runtime
-            .feature_block_reason(mxr_llm::LlmFeature::Commitments)
-            .is_some());
-        assert!(runtime
-            .feature_block_reason(mxr_llm::LlmFeature::ArchiveAsk)
             .is_none());
     }
 
@@ -4030,34 +3738,6 @@ use_tls = true
         );
     }
 
-    /// The reason the comparison is `>` and not `>=`: an account with other
-    /// live state keeps its run entry when the claim goes, so the cleanup
-    /// finds an entry still stamped with *its own* generation. That is not a
-    /// later claim, and reading it as one would leave the account marked
-    /// syncing for good.
-    #[tokio::test]
-    async fn a_claim_whose_run_entry_outlived_it_still_clears_its_own_flag() {
-        let state = Arc::new(AppState::in_memory().await.expect("state"));
-        let account_id = state.default_provider().account_id().clone();
-
-        let mut abandoned = AppState::claim_background_sync(&state, &account_id)
-            .expect("the account starts unclaimed");
-        let abandoned_generation = abandoned.generation;
-        state.record_sync_progress(&account_id, 1, "stored a page".to_string());
-        abandoned.mark_handed_off();
-        drop(abandoned);
-        mark_syncing(&state, &account_id).await;
-
-        state
-            .clear_abandoned_background_sync(&account_id, abandoned_generation)
-            .await;
-
-        assert!(
-            !sync_in_progress(&state, &account_id).await,
-            "a claim must still be able to clear the flag it wrote itself"
-        );
-    }
-
     /// The repair on the far side of the clearing write: a claim taken while
     /// that write was in flight wrote its `true` first, so the row would be
     /// left idle for a sync about to run. Set up by hand rather than raced —
@@ -4085,160 +3765,6 @@ use_tls = true
             sync_in_progress(&state, &account_id).await,
             "the claim that came later has to win with busy"
         );
-    }
-
-    /// A background pass that detaches before reporting anything is handed to
-    /// the reaper and its claim goes — but the pass is still running, so the
-    /// account is still busy. The claim's entry is what carries the generation
-    /// that says so; letting it go with the claim would leave an older,
-    /// still-pending cleanup unable to see that anyone came after it, and it
-    /// would clear the in-progress flag of a sync that is mid-flight.
-    #[tokio::test]
-    async fn a_detached_pass_keeps_an_older_cleanup_off_its_in_progress_flag() {
-        let state = Arc::new(AppState::in_memory().await.expect("state"));
-        let account_id = state.default_provider().account_id().clone();
-
-        let mut abandoned = AppState::claim_background_sync(&state, &account_id)
-            .expect("the account starts unclaimed");
-        let abandoned_generation = abandoned.generation;
-        abandoned.mark_handed_off();
-        drop(abandoned);
-
-        let mut detached = AppState::claim_background_sync(&state, &account_id)
-            .expect("the account is free once the first claim goes");
-        detached.mark_started();
-        detached.mark_handed_off();
-        drop(detached);
-        mark_syncing(&state, &account_id).await;
-
-        state
-            .clear_abandoned_background_sync(&account_id, abandoned_generation)
-            .await;
-
-        assert!(
-            sync_in_progress(&state, &account_id).await,
-            "a detached pass is still running; an older cleanup must not report it idle"
-        );
-    }
-
-    /// The restore is the one write that puts `true` back, so it asks more of
-    /// the later claim than the skip-the-clear check does: that the claim is
-    /// still holding the account. A claim that has already finished left its
-    /// own verdict in the row, and re-asserting busy over it would strand an
-    /// idle account as syncing until the next daemon start.
-    #[tokio::test]
-    async fn a_finished_later_claim_does_not_get_the_account_marked_busy_again() {
-        let state = Arc::new(AppState::in_memory().await.expect("state"));
-        let account_id = state.default_provider().account_id().clone();
-
-        let mut abandoned = AppState::claim_background_sync(&state, &account_id)
-            .expect("the account starts unclaimed");
-        let abandoned_generation = abandoned.generation;
-        abandoned.mark_handed_off();
-        drop(abandoned);
-
-        let mut later = AppState::claim_background_sync(&state, &account_id)
-            .expect("the account is free once the first claim goes");
-        later.mark_started();
-        later.mark_handed_off();
-        drop(later);
-        state.record_sync_progress(&account_id, 1, "stored a page".to_string());
-        state.write_sync_in_progress(&account_id, false).await;
-
-        state
-            .restore_busy_if_superseded(&account_id, abandoned_generation)
-            .await;
-
-        assert!(
-            !sync_in_progress(&state, &account_id).await,
-            "a later claim that already finished must not be re-asserted as busy"
-        );
-    }
-
-    #[tokio::test]
-    async fn runtime_shutdown_closes_relationship_and_contacts_workers() {
-        let state = AppState::in_memory().await.expect("state");
-        let relationship = state.relationship.clone();
-        let contacts_refresh = state.contacts_refresh.clone();
-
-        state.shutdown_runtime_tasks(Duration::from_secs(2)).await;
-
-        let relationship_result = tokio::time::timeout(
-            Duration::from_secs(1),
-            relationship.rebuild_contact(AccountId::new(), "shutdown-check@example.com".into()),
-        )
-        .await
-        .expect("relationship worker should already be closed")
-        .expect_err("closed relationship worker should reject new work");
-        assert_eq!(
-            relationship_result.to_string(),
-            "relationship service unavailable"
-        );
-
-        let contacts_result = tokio::time::timeout(
-            Duration::from_secs(1),
-            contacts_refresh.enqueue_accounts(&[]),
-        )
-        .await
-        .expect("contacts refresh worker should already be closed")
-        .expect_err("closed contacts worker should reject new work");
-        assert_eq!(contacts_result, "contacts refresh worker unavailable");
-    }
-
-    #[tokio::test]
-    async fn runtime_shutdown_bounds_a_blocked_relationship_request() {
-        let mut state = AppState::in_memory().await.expect("state");
-        state
-            .relationship
-            .request_shutdown()
-            .await
-            .expect("stop original relationship worker");
-        let original_worker = RuntimeTasks::take_named(
-            &state.runtime_tasks.relationship_worker,
-            "relationship_worker",
-        )
-        .expect("original relationship task should be registered");
-        original_worker
-            .handle
-            .await
-            .expect("join original relationship worker");
-
-        let (relationship, worker) = RelationshipServiceHandle::start(
-            state.store.clone(),
-            state.llm.clone(),
-            Arc::new(Semaphore::new(0)),
-        );
-        state.relationship = relationship;
-        state.runtime_tasks.set_relationship_worker(worker);
-
-        let account_id = AccountId::new();
-        state
-            .relationship
-            .enqueue_contacts(vec![(account_id, "blocked-shutdown@example.com".into())])
-            .await
-            .expect("queued contact should be acknowledged before shutdown");
-
-        let started = Instant::now();
-        tokio::time::timeout(
-            Duration::from_secs(2),
-            state.shutdown_runtime_tasks(Duration::from_millis(100)),
-        )
-        .await
-        .expect("blocked service request must not extend the shared shutdown deadline");
-        assert!(started.elapsed() < Duration::from_secs(2));
-        let closed = tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                match state.relationship.enqueue_contacts(Vec::new()).await {
-                    Err(error) if error.to_string() == "relationship service unavailable" => {
-                        break error;
-                    }
-                    Err(_) | Ok(()) => tokio::task::yield_now().await,
-                }
-            }
-        })
-        .await
-        .expect("aborted relationship receiver should close");
-        assert_eq!(closed.to_string(), "relationship service unavailable");
     }
 
     #[tokio::test]

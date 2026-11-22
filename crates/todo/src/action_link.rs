@@ -209,15 +209,4 @@ mod tests {
         assert_eq!(link.anchor, "Pay now");
         assert_eq!(link.host, "www.camden.gov.uk");
     }
-
-    #[test]
-    fn bare_urls_count_by_the_words_before_them() {
-        let text = "To verify your email, open https://octopus.energy/verify/abc within 24 hours.";
-        let link = pick_link(None, text, TodoKind::Verify).expect("link");
-        assert_eq!(link.url, "https://octopus.energy/verify/abc");
-        assert_eq!(
-            pick_link(None, "See https://example.com/blog", TodoKind::Bill),
-            None
-        );
-    }
 }

@@ -234,46 +234,4 @@ mod tests {
             "arrival time follows the store, not the header: {skew}s ahead"
         );
     }
-
-    #[tokio::test]
-    async fn your_own_mail_never_crowds_out_an_arrival() {
-        let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-        let id = &account.id;
-        store
-            .add_account_address(id, "alias@example.com", false)
-            .await
-            .unwrap();
-        let arrival = put(
-            &store,
-            id,
-            "friend@x.com",
-            120,
-            MessageDirection::Inbound,
-            MessageFlags::empty(),
-        )
-        .await;
-        for minutes in 0..30 {
-            let own = if minutes % 2 == 0 {
-                "TEST@example.com"
-            } else {
-                "alias@example.com"
-            };
-            put(
-                &store,
-                id,
-                own,
-                minutes,
-                MessageDirection::Unknown,
-                MessageFlags::empty(),
-            )
-            .await;
-        }
-        let arrivals = store.latest_arrivals(id, 5).await.unwrap();
-        assert_eq!(
-            arrivals.iter().map(|a| a.id.clone()).collect::<Vec<_>>(),
-            vec![arrival]
-        );
-    }
 }

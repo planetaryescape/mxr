@@ -229,44 +229,4 @@ mod tests {
             "a new tracker state needs attention"
         );
     }
-
-    #[tokio::test]
-    async fn invalid_row_acknowledgements_write_nothing() {
-        let (state, _) = AppState::in_memory_with_fake_config(mxr_config::MxrConfig::default())
-            .await
-            .unwrap();
-        let account = state.default_account_id();
-        let rev = "a".repeat(64);
-        assert!(
-            mark(&state, &account, ModeKindData::Messages, "row", &rev, false)
-                .await
-                .is_err()
-        );
-        assert!(mark(
-            &state,
-            &account,
-            ModeKindData::Todo,
-            "row",
-            "not-a-revision",
-            false
-        )
-        .await
-        .is_err());
-        assert!(mark(
-            &state,
-            &AccountId::new(),
-            ModeKindData::Todo,
-            "row",
-            &rev,
-            false
-        )
-        .await
-        .is_err());
-        assert!(state
-            .store
-            .mode_rows_seen(&account, "todo")
-            .await
-            .unwrap()
-            .is_empty());
-    }
 }

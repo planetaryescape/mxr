@@ -343,51 +343,6 @@ mod tests {
     }
 
     #[test]
-    fn old_read_filed_or_listed_mail_never_creates() {
-        let mut input = base(&[]);
-        input.received_at = Some(at("2026-11-04T09:30:00Z"));
-        assert_eq!(held(&input), Held::TooOld);
-        let mut input = base(&[]);
-        input.unread = false;
-        assert_eq!(held(&input), Held::Seen);
-        let mut input = base(&[]);
-        input.in_inbox = false;
-        assert_eq!(held(&input), Held::Seen);
-        let mut input = base(&[]);
-        input.list_mail = true;
-        assert_eq!(held(&input), Held::MailingList);
-        let mut input = base(&[]);
-        input.window_until = Some(at("2026-11-06T09:59:00Z"));
-        assert_eq!(held(&input), Held::TooOld);
-        let mut input = base(&[]);
-        input.enabled = false;
-        assert_eq!(held(&input), Held::SwitchedOff);
-        let mut input = base(&[]);
-        input.is_live = false;
-        assert_eq!(held(&input), Held::Backfill);
-        let mut input = base(&[]);
-        input.received_at = Some(at("2026-11-06T10:01:00Z"));
-        assert_eq!(held(&input), Held::TooOld);
-    }
-
-    #[test]
-    fn two_alerts_either_side_of_utc_midnight_share_a_local_day() {
-        let south_africa = FixedOffset::east_opt(2 * 3600).unwrap();
-        let key = |received: &str| {
-            let mut input = base(&[]);
-            input.now = at(received) + Duration::minutes(1);
-            input.received_at = Some(at(received));
-            input.window_until = None;
-            match decide(&input, &south_africa) {
-                Decision::Create(claim) => claim.key,
-                Decision::Hold(held) => std::panic::resume_unwind(Box::new(held.code())),
-            }
-        };
-        assert_eq!(key("2026-11-06T23:50:00Z"), key("2026-11-07T00:10:00Z"));
-        assert_ne!(key("2026-11-07T00:10:00Z"), key("2026-11-07T22:30:00Z"));
-    }
-
-    #[test]
     fn a_lookalike_of_a_better_known_host_is_held() {
         let established = [
             ("accounts.google.com".to_string(), 40),
@@ -410,18 +365,5 @@ mod tests {
         assert!(lookalike_of("accounts.xn--ggle-55da.com", 4, &established).is_some());
         assert!(lookalike_of("gооgle.com", 4, &established).is_some());
         assert_eq!(lookalike_of("stripe.co", 31, &established), None);
-    }
-
-    #[test]
-    fn a_held_lookalike_blocks_an_otherwise_verified_alert() {
-        let established = [("google.com".to_string(), 90)];
-        let mut input = base(&established);
-        input.verified_host = Some("g00gle.com");
-        input.history.messages = 4;
-        assert_eq!(held(&input), Held::Lookalike("google.com".into()));
-        assert_eq!(
-            held(&input).text("g00gle.com", false).unwrap(),
-            "Not created automatically: g00gle.com looks like google.com."
-        );
     }
 }

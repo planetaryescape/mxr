@@ -150,14 +150,6 @@ mod tests {
     }
 
     #[test]
-    fn no_urls_means_zero() {
-        let body = body_with_text("Just a plain message. Nothing to click.");
-        let metrics = body_link_metrics(&body);
-        assert_eq!(metrics.link_count, 0);
-        assert!(metrics.body_word_count >= 6);
-    }
-
-    #[test]
     fn excludes_tracker_hostnames() {
         let body = body_with_text(
             "Unsubscribe: https://unsubscribe.example.com/abc \

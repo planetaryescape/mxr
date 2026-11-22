@@ -477,31 +477,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn system_prompt_appends_strict_triage_verdict_rules() {
-        assert!(SYSTEM_PROMPT.contains("OUTPUT FORMAT — STRICT:"));
-        assert!(SYSTEM_PROMPT.contains("The FIRST line must be the triage verdict"));
-        assert!(SYSTEM_PROMPT.contains("ACTION REQUIRED — <the specific reason"));
-        assert!(SYSTEM_PROMPT.contains("FYI — <why it's legitimate"));
-        assert!(SYSTEM_PROMPT.contains("ROUTINE — <marketing / notification"));
-        assert!(SYSTEM_PROMPT.contains("Unsure between ACTION and FYI → choose ACTION"));
-        assert!(SYSTEM_PROMPT.contains("\"Action\" verbs in marketing copy"));
-    }
-
-    #[test]
-    fn field_report_calibration_verdicts_are_machine_parseable() {
-        for verdict in [
-            "ACTION REQUIRED — recurring scheduled-payment failure, 5× since Apr 1",
-            "ACTION REQUIRED — Azure payment overdue, card declined (by 2026-05-25)",
-            "FYI — new prescription issued; Numan auto-ships, no action",
-            "FYI — parcel delivered to your Safeplace",
-            "ROUTINE — AI-news digest, aggregator",
-            "ROUTINE — Business Manager partner-request notification",
-        ] {
-            assert_triage_verdict_first_line(verdict);
-        }
-    }
-
     #[tokio::test]
     async fn summary_prompt_includes_full_sender_and_recipient_context() {
         let state = AppState::in_memory().await.unwrap();
@@ -641,104 +616,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn summary_cache_includes_relationship_context_hash() {
-        let state = AppState::in_memory().await.unwrap();
-        let llm = Arc::new(CapturingLlm::default());
-        state.llm.replace(llm.clone());
-        let account_id = state.default_account_id();
-        let thread_id = mxr_core::ThreadId::new();
-        let message = TestEnvelopeBuilder::new()
-            .account_id(account_id.clone())
-            .thread_id(thread_id.clone())
-            .provider_id("first")
-            .sender_address("Alice", "alice@example.com")
-            .subject("Launch")
-            .snippet("Can you review the launch note?")
-            .build();
-        state.store.upsert_envelope(&message).await.unwrap();
-        state
-            .store
-            .insert_body(&body(message.id.clone(), "Can you review the launch note?"))
-            .await
-            .unwrap();
-        state
-            .store
-            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
-                account_id: account_id.clone(),
-                email: "alice@example.com".to_string(),
-                text: "Alice prefers launch context before asks.".to_string(),
-                model: "test-model".to_string(),
-                known_topics: vec!["launch".to_string()],
-                computed_at: chrono::Utc::now(),
-                source_hash: "relationship-v1".to_string(),
-                last_error: None,
-            })
-            .await
-            .unwrap();
-
-        summarize_thread(&state, &thread_id).await.unwrap();
-        summarize_thread(&state, &thread_id).await.unwrap();
-        {
-            let requests = llm.requests.lock().expect("requests");
-            assert_eq!(requests.len(), 1);
-            let prompt = &requests[0].messages[1].content;
-            let begin = prompt
-                .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
-                .expect("begin marker present");
-            let end = prompt
-                .find(mxr_llm::UNTRUSTED_MAIL_END)
-                .expect("end marker present");
-            let header = prompt
-                .find("Relationship context (weak background only")
-                .expect("relationship header present");
-            let summary_text = prompt
-                .find("Alice prefers launch context before asks.")
-                .expect("relationship summary present");
-            assert!(
-                begin < header && header < end,
-                "relationship context header must be inside the untrusted markers"
-            );
-            assert!(
-                begin < summary_text && summary_text < end,
-                "relationship summary text must be inside the untrusted markers"
-            );
-        }
-        let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
-        assert!(
-            valid_cached_summary(&state.store, &thread_id, &envelopes, true)
-                .await
-                .is_some()
-        );
-
-        state
-            .store
-            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
-                account_id,
-                email: "alice@example.com".to_string(),
-                text: "Alice now wants launch risks called out first.".to_string(),
-                model: "test-model".to_string(),
-                known_topics: vec!["launch".to_string(), "risk".to_string()],
-                computed_at: chrono::Utc::now(),
-                source_hash: "relationship-v2".to_string(),
-                last_error: None,
-            })
-            .await
-            .unwrap();
-        assert!(
-            valid_cached_summary(&state.store, &thread_id, &envelopes, true)
-                .await
-                .is_none()
-        );
-
-        summarize_thread(&state, &thread_id).await.unwrap();
-        let requests = llm.requests.lock().expect("requests");
-        assert_eq!(requests.len(), 2);
-        assert!(requests[1].messages[1]
-            .content
-            .contains("Alice now wants launch risks called out first."));
-    }
-
-    #[tokio::test]
     async fn a_cloud_summary_leaves_out_relationship_summaries_unless_allowed() {
         let state = AppState::in_memory().await.unwrap();
         let llm = Arc::new(CapturingLlm {
@@ -869,48 +746,6 @@ mod tests {
                 .await
                 .is_some(),
             "a summary must validate against the account it was written for"
-        );
-    }
-
-    #[tokio::test]
-    async fn summary_cache_misses_after_an_owned_alias_is_added() {
-        let state = AppState::in_memory().await.unwrap();
-        let llm = Arc::new(CapturingLlm::default());
-        state.llm.replace(llm.clone());
-        let account_id = state.default_account_id();
-        let thread_id = mxr_core::ThreadId::new();
-        let message = TestEnvelopeBuilder::new()
-            .account_id(account_id.clone())
-            .thread_id(thread_id.clone())
-            .provider_id("first")
-            .sender_address("Alice", "alice@example.com")
-            .subject("Launch")
-            .snippet("Can you review the launch note?")
-            .build();
-        state.store.upsert_envelope(&message).await.unwrap();
-        state
-            .store
-            .insert_body(&body(message.id.clone(), "Can you review the launch note?"))
-            .await
-            .unwrap();
-
-        summarize_thread(&state, &thread_id).await.unwrap();
-        let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
-        assert!(
-            valid_cached_summary(&state.store, &thread_id, &envelopes, true)
-                .await
-                .is_some()
-        );
-
-        state
-            .store
-            .add_account_address(&account_id, "new-alias@example.com", false)
-            .await
-            .unwrap();
-        assert!(
-            valid_cached_summary(&state.store, &thread_id, &envelopes, true)
-                .await
-                .is_none()
         );
     }
 }

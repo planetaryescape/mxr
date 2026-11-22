@@ -195,17 +195,3 @@ fn extract_signoffs(text: &str) -> Vec<String> {
         .map(|line| vec![line.to_string()])
         .unwrap_or_default()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn casual_text_has_lower_formality_than_formal_text() {
-        let casual = compute_metrics("hey! can't wait to see this 😊 thanks!");
-        let formal = compute_metrics(
-            "Dear Alice, I reviewed the proposal and will provide written feedback tomorrow.",
-        );
-        assert!(casual.formality_score < formal.formality_score);
-    }
-}

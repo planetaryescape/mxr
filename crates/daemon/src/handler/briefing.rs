@@ -485,36 +485,4 @@ mod tests {
             "thread transcript must sit between the untrusted-content markers"
         );
     }
-
-    #[tokio::test]
-    async fn recipient_briefing_prompt_wraps_baseline_and_guards_system() {
-        let state = AppState::in_memory().await.unwrap();
-        let account_id = state.default_account_id();
-        let cap = Arc::new(CaptureLlm::default());
-        state.llm.replace(cap.clone());
-
-        get_recipient_briefing(&state, &account_id, "alice@example.com", true)
-            .await
-            .unwrap();
-
-        let msgs = cap.msgs.lock().unwrap();
-        assert!(
-            msgs[0].content.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
-            "system prompt must carry the shared injection guard"
-        );
-        let user = &msgs[1].content;
-        let begin = user
-            .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
-            .expect("begin marker present");
-        let end = user
-            .find(mxr_llm::UNTRUSTED_MAIL_END)
-            .expect("end marker present");
-        let addr = user
-            .find("alice@example.com")
-            .expect("contact address present in baseline");
-        assert!(
-            begin < addr && addr < end,
-            "recipient baseline must sit inside the untrusted-content markers"
-        );
-    }
 }

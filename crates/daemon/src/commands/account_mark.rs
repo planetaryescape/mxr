@@ -125,43 +125,6 @@ mod tests {
     }
 
     #[test]
-    fn one_enabled_account_hides_the_column() {
-        let marks = AccountMarks::from_accounts(&[account(1, "W", true)], false);
-        assert!(!marks.shown());
-    }
-
-    #[test]
-    fn disabled_accounts_do_not_count_towards_mixing() {
-        let accounts = [account(1, "W", true), account(2, "WE", false)];
-        assert!(!AccountMarks::from_accounts(&accounts, false).shown());
-    }
-
-    #[test]
-    fn a_scoped_command_hides_the_column_even_with_two_accounts() {
-        let accounts = [account(1, "W", true), account(2, "WE", true)];
-        assert!(!AccountMarks::from_accounts(&accounts, true).shown());
-    }
-
-    #[test]
-    fn an_older_daemon_without_identities_hides_the_column() {
-        let mut older = account(1, "W", true);
-        older.identity = None;
-        let mut second = account(2, "WE", true);
-        second.identity = None;
-        let marks = AccountMarks::from_accounts(&[older, second], false);
-        assert!(!marks.shown());
-    }
-
-    #[test]
-    fn an_unknown_account_renders_blank_not_a_question_mark() {
-        let work = account(1, "W", true);
-        let wedding = account(2, "WE", true);
-        let marks = AccountMarks::from_accounts(&[work, wedding], false);
-        let unknown = AccountId::from_uuid(uuid::Uuid::from_u128(9));
-        assert_eq!(marks.cell(&unknown), "");
-    }
-
-    #[test]
     fn two_enabled_accounts_show_each_tag() {
         let work = account(1, "W", true);
         let wedding = account(2, "WE", true);

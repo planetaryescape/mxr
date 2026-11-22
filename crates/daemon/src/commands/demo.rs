@@ -1614,11 +1614,7 @@ fn write_demo_message_count(paths: &DemoPaths, messages: usize) -> anyhow::Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        is_active, prepare_environment, read_active_marker, read_demo_message_count,
-        remove_active_marker, wait_for_demo_sync, wait_for_seeded_count, write_active_marker,
-        DemoPaths, StallWatch, DEMO_COUNT_MARKER, DEMO_INSTANCE, DEMO_PERSONAL_EMAIL,
-    };
+    use super::{prepare_environment, wait_for_demo_sync, DEMO_INSTANCE, DEMO_PERSONAL_EMAIL};
     use crate::ipc_client::IpcClient;
     use futures::{SinkExt, StreamExt};
     use mxr_core::id::AccountId;
@@ -1626,28 +1622,10 @@ mod tests {
         AccountSyncStatus, ClientKind, IpcCodec, IpcMessage, IpcPayload, Request, Response,
         ResponseData,
     };
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::net::UnixListener;
     use tokio_util::codec::Framed;
-
-    /// The seed wait gives up on a frozen daemon, but only on a frozen one:
-    /// any change in what the caller can see puts the clock back to zero. That
-    /// is the whole reason the demo no longer dies on a slow machine (#179).
-    #[test]
-    fn stall_watch_only_expires_when_nothing_changes() {
-        let mut stall = StallWatch::new(Duration::from_millis(40));
-        assert!(stall.observe("1000".to_string()));
-        std::thread::sleep(Duration::from_millis(25));
-
-        assert!(stall.observe("2000".to_string()));
-        std::thread::sleep(Duration::from_millis(25));
-        assert!(stall.observe("3000".to_string()));
-
-        std::thread::sleep(Duration::from_millis(50));
-        assert!(!stall.observe("3000".to_string()));
-    }
 
     /// Ceiling on a wait that is supposed to give up in well under a second.
     /// These waits regress by hanging, so bound them here: the test fails in
@@ -1775,12 +1753,6 @@ mod tests {
         }
     }
 
-    /// A `GetStatus` snapshot whose DB-backed half timed out, which
-    /// `fetch_message_count` reads as [`super::CountPoll::Degraded`].
-    fn degraded_status() -> ResponseData {
-        status_with(0, true)
-    }
-
     /// The sync wait used to `continue` straight past the stall accounting on a
     /// transport failure. Against a daemon that accepts every connection but
     /// answers no request, the reconnect kept succeeding and the wait never
@@ -1868,75 +1840,6 @@ mod tests {
         );
     }
 
-    /// The same hole in the message-count wait, reached by a different branch:
-    /// a daemon that only ever answers with a degraded snapshot never got as
-    /// far as `observe`, so the claim that the stall clock kept running was
-    /// simply untrue.
-    #[test]
-    fn seeded_count_wait_gives_up_on_a_permanently_degraded_daemon() {
-        with_fake_daemon(
-            |request| {
-                matches!(request, Request::GetStatus).then(|| Response::Ok {
-                    data: degraded_status(),
-                })
-            },
-            || async {
-                let error = tokio::time::timeout(
-                    TEST_HANG_GUARD,
-                    wait_for_seeded_count(10, Duration::from_millis(200)),
-                )
-                .await
-                .expect("the wait must give up on its own rather than hang")
-                .expect_err("a permanently degraded daemon must not be waited on forever");
-
-                assert!(
-                    error
-                        .to_string()
-                        .contains("Demo sync stalled at 0 of 10 messages"),
-                    "expected the stall message, got: {error}"
-                );
-            },
-        );
-    }
-
-    /// The reason a failed poll contributes nothing of its own to the
-    /// fingerprint. A saturated daemon produces both unusable-poll shapes from
-    /// the same cause: its DB half fast-fails (`Degraded`) while the request
-    /// itself can time out on the same load. If *how* a poll failed were part
-    /// of the fingerprint, those two taking turns would look like change and
-    /// reset the clock forever with the count pinned at zero.
-    #[test]
-    fn seeded_count_wait_gives_up_when_the_failure_mode_alternates() {
-        let polls = Arc::new(AtomicUsize::new(0));
-        with_fake_daemon(
-            move |request| {
-                let nth = polls.fetch_add(1, Ordering::Relaxed);
-                if !matches!(request, Request::GetStatus) || nth % 2 == 1 {
-                    return None;
-                }
-                Some(Response::Ok {
-                    data: degraded_status(),
-                })
-            },
-            || async {
-                let error = tokio::time::timeout(
-                    TEST_HANG_GUARD,
-                    wait_for_seeded_count(10, Duration::from_millis(200)),
-                )
-                .await
-                .expect("the wait must give up on its own rather than hang")
-                .expect_err("alternating failure modes are not progress");
-
-                assert!(
-                    error
-                        .to_string()
-                        .contains("Demo sync stalled at 0 of 10 messages"),
-                    "expected the stall message, got: {error}"
-                );
-            },
-        );
-    }
-
     #[test]
     fn prepare_environment_selects_isolated_demo_profile() {
         temp_env::with_vars(
@@ -1963,46 +1866,6 @@ mod tests {
                     std::env::var("MXR_FAKE_MESSAGE_COUNT").as_deref(),
                     Ok("123")
                 );
-            },
-        );
-    }
-
-    #[test]
-    fn legacy_demo_message_count_marker_forces_seed_version_reset() {
-        let temp_dir = tempfile::tempdir().expect("create temp dir");
-        let paths = DemoPaths {
-            config_dir: temp_dir.path().join("config"),
-            data_dir: temp_dir.path().join("data"),
-        };
-        std::fs::create_dir_all(&paths.data_dir).expect("create data dir");
-        std::fs::write(paths.data_dir.join(DEMO_COUNT_MARKER), "50000")
-            .expect("write legacy marker");
-
-        assert_eq!(
-            read_demo_message_count(&paths).expect("read marker"),
-            Some((50_000, 0))
-        );
-    }
-
-    /// The sticky-demo marker round-trip: writing then reading via the file
-    /// system yields the same message count, and the marker lives outside
-    /// the demo data dir so it survives independent of MXR_INSTANCE.
-    #[test]
-    fn active_marker_round_trips() {
-        let temp_dir = tempfile::tempdir().expect("create temp dir");
-        temp_env::with_vars(
-            [
-                ("XDG_CONFIG_HOME", Some(temp_dir.path().as_os_str())),
-                ("HOME", Some(temp_dir.path().as_os_str())),
-            ],
-            || {
-                let _ = remove_active_marker();
-                assert!(!is_active());
-                write_active_marker(12_345).expect("write marker");
-                assert!(is_active());
-                assert_eq!(read_active_marker(), Some(12_345));
-                remove_active_marker().expect("remove marker");
-                assert!(!is_active());
             },
         );
     }

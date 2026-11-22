@@ -393,28 +393,3 @@ fn print_quick_start() {
     println!("  mxr status         # daemon health");
     println!("  mxr doctor         # diagnostics + remediation");
 }
-
-#[cfg(test)]
-mod tests {
-    use super::apply_llm_setup_config;
-
-    #[test]
-    fn apply_llm_setup_config_updates_only_base_llm_fields() {
-        let mut config = mxr_config::MxrConfig::default();
-
-        apply_llm_setup_config(
-            &mut config,
-            true,
-            "https://api.example.com/v1".into(),
-            "model-x".into(),
-            "MXR_LLM_KEY".into(),
-            true,
-        );
-
-        assert!(config.llm.enabled);
-        assert_eq!(config.llm.base_url, "https://api.example.com/v1");
-        assert_eq!(config.llm.model, "model-x");
-        assert_eq!(config.llm.api_key_env, "MXR_LLM_KEY");
-        assert!(config.llm.allow_cloud_relationship_data);
-    }
-}

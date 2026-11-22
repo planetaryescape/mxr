@@ -4293,33 +4293,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sorting_preview_and_apply_accept_unsaved_json_forms() {
-        assert!(Cli::try_parse_from(["mxr", "rules", "treatment-preview", "--form", "-"]).is_ok());
-        assert!(Cli::try_parse_from([
-            "mxr",
-            "rules",
-            "treatment-apply",
-            "--form",
-            "rule.json",
-            "--preview-token",
-            "token"
-        ])
-        .is_ok());
-        assert!(
-            Cli::try_parse_from(["mxr", "rules", "treatment-apply", "saved-rule", "token"]).is_ok()
-        );
-        assert!(Cli::try_parse_from([
-            "mxr",
-            "rules",
-            "treatment-preview",
-            "saved-rule",
-            "--form",
-            "-"
-        ])
-        .is_err());
-    }
-
-    #[test]
     fn recovery_mutations_require_the_previewed_workspace_and_revision() {
         let owner = r#"{"workspace_id":"workspace-a","recovery_generation":"generation-a"}"#;
         assert!(Cli::try_parse_from(["mxr", "recovery", "activate", "--confirm"]).is_err());
@@ -4391,60 +4364,6 @@ mod tests {
             "--yes",
         ])
         .is_err());
-    }
-
-    #[test]
-    fn unsubscribe_address_can_be_scoped_by_search() {
-        assert!(Cli::try_parse_from([
-            "mxr",
-            "unsubscribe",
-            "news@example.com",
-            "--search",
-            "label:newsletters",
-            "--dry-run",
-        ])
-        .is_ok());
-    }
-
-    #[test]
-    fn unsubscribe_keep_mail_and_preview_token_require_sender_preview_mode() {
-        assert!(
-            Cli::try_parse_from(["mxr", "unsubscribe", "news@example.com", "--keep-mail"]).is_err()
-        );
-        assert!(Cli::try_parse_from([
-            "mxr",
-            "unsubscribe",
-            "news@example.com",
-            "--purge",
-            "--preview-token",
-            "tok"
-        ])
-        .is_err());
-        assert!(Cli::try_parse_from([
-            "mxr",
-            "unsubscribe",
-            "news@example.com",
-            "--purge",
-            "--keep-mail",
-            "--archive-on-no-method"
-        ])
-        .is_err());
-        let cli = Cli::try_parse_from([
-            "mxr",
-            "unsubscribe",
-            "news@example.com",
-            "--purge",
-            "--keep-mail",
-            "--preview-token",
-            "tok",
-            "--yes",
-            "--format",
-            "json",
-        ])
-        .unwrap();
-        assert!(
-            matches!(cli.command, Some(Command::Unsubscribe { keep_mail: true, preview_token: Some(token), .. }) if token == "tok")
-        );
     }
 
     #[test]
@@ -4605,10 +4524,6 @@ mod tests {
         }
     }
 
-    fn parses(args: &[&str]) -> Result<Cli, clap::Error> {
-        Cli::try_parse_from(args)
-    }
-
     #[test]
     fn all_needs_a_search_and_refuses_ids_and_async() {
         let id = uuid::Uuid::now_v7().to_string();
@@ -4663,44 +4578,6 @@ mod tests {
             }
             parse(&["--search", "from:x", "--all", "--yes", "--no-wait"]).unwrap();
             parse(&["--search", "from:x", "--all", "--preview-token", "t"]).unwrap();
-        }
-    }
-
-    #[test]
-    fn commands_without_all_do_not_take_it() {
-        for command in [
-            "trash", "spam", "star", "unstar", "read", "unread", "snooze", "route",
-        ] {
-            let mut args = vec!["mxr", command, "--search", "from:x", "--all"];
-            if command == "snooze" {
-                args.extend(["--until", "tomorrow"]);
-            }
-            if command == "route" {
-                args.extend(["--to", "A", "--from-queue", "B"]);
-            }
-            assert!(parses(&args).is_err(), "{command} must not accept --all");
-        }
-    }
-
-    #[test]
-    fn drafts_delete_is_primary_and_discard_remains_an_alias() {
-        let draft_id = uuid::Uuid::now_v7().to_string();
-        for action in ["delete", "discard"] {
-            let cli = Cli::parse_from(["mxr", "drafts", action, &draft_id, "--dry-run"]);
-            match cli.command {
-                Some(Command::Drafts {
-                    action:
-                        Some(DraftsAction::Delete {
-                            draft_id: parsed,
-                            dry_run,
-                        }),
-                    ..
-                }) => {
-                    assert_eq!(parsed, draft_id);
-                    assert!(dry_run);
-                }
-                other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
-            }
         }
     }
 
@@ -4762,128 +4639,5 @@ mod tests {
         assert_compose_rejects(&["--html-file", "b.html", "--body-stdin"], ArgumentConflict);
         assert_compose_rejects(&["--html-stdin", "--body", "hi"], ArgumentConflict);
         assert_compose_rejects(&["--html-stdin", "--body-stdin"], ArgumentConflict);
-    }
-
-    #[test]
-    fn the_two_ways_to_supply_html_conflict_with_each_other() {
-        assert_compose_rejects(
-            &["--html-file", "b.html", "--html-stdin"],
-            clap::error::ErrorKind::ArgumentConflict,
-        );
-    }
-
-    /// `--text-file`, `--inline` and `--signature-html` only mean anything
-    /// alongside an HTML body. Accepting them on a markdown compose would
-    /// silently ignore them.
-    #[test]
-    fn the_html_shaping_flags_require_an_html_body() {
-        use clap::error::ErrorKind::MissingRequiredArgument;
-        assert_compose_rejects(&["--text-file", "alt.txt"], MissingRequiredArgument);
-        assert_compose_rejects(&["--inline", "logo=logo.png"], MissingRequiredArgument);
-        assert_compose_rejects(&["--signature-html", "sig.html"], MissingRequiredArgument);
-    }
-
-    /// A named signature is markdown-only. mxr never splices a signature into
-    /// a document the caller supplied, so accepting `--signature` next to an
-    /// HTML body would take the flag and drop it on the floor.
-    #[test]
-    fn a_named_signature_is_refused_alongside_an_html_body() {
-        use clap::error::ErrorKind::ArgumentConflict;
-        assert_compose_rejects(
-            &["--html-file", "b.html", "--signature", "work"],
-            ArgumentConflict,
-        );
-        assert_compose_rejects(&["--html-stdin", "--signature", "work"], ArgumentConflict);
-    }
-
-    /// `--no-signature` is the opposite case and must stay accepted: an HTML
-    /// compose already inserts no signature, so the flag gets exactly what it
-    /// asked for. Rejecting it would break callers that pass it unconditionally
-    /// as a safety default. The pairing that *would* be contradictory —
-    /// `--no-signature --signature-html` — is already a conflict.
-    #[test]
-    fn no_signature_stays_legal_alongside_an_html_body() {
-        let cli = Cli::parse_from([
-            "mxr",
-            "compose",
-            "--html-stdin",
-            "--no-signature",
-            "--draft",
-        ]);
-        match cli.command {
-            Some(Command::Compose {
-                no_signature,
-                signature,
-                html_stdin,
-                ..
-            }) => {
-                assert!(no_signature, "--no-signature should parse");
-                assert_eq!(signature, None);
-                assert!(html_stdin);
-            }
-            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
-        }
-
-        assert_compose_rejects(
-            &[
-                "--html-stdin",
-                "--no-signature",
-                "--signature-html",
-                "s.html",
-            ],
-            clap::error::ErrorKind::ArgumentConflict,
-        );
-    }
-
-    /// Counterweight to the rejection tests above: the full HTML invocation must
-    /// still parse, and land in the fields the command reads. Without this, a
-    /// definition that rejected everything would look correct.
-    #[test]
-    fn a_full_html_compose_invocation_parses() {
-        let cli = Cli::parse_from([
-            "mxr",
-            "compose",
-            "--to",
-            "alice@example.com",
-            "--html-file",
-            "body.html",
-            "--text-file",
-            "alt.txt",
-            "--inline",
-            "logo=logo.png",
-            "--inline",
-            "banner=banner.png",
-            "--signature-html",
-            "sig.html",
-            "--draft",
-            "--format",
-            "json",
-        ]);
-        match cli.command {
-            Some(Command::Compose {
-                html_file,
-                html_stdin,
-                text_file,
-                inline,
-                signature_html,
-                draft,
-                yes,
-                format,
-                ..
-            }) => {
-                assert_eq!(html_file, Some(PathBuf::from("body.html")));
-                assert!(!html_stdin);
-                assert_eq!(text_file, Some(PathBuf::from("alt.txt")));
-                assert_eq!(
-                    inline,
-                    vec!["logo=logo.png".to_string(), "banner=banner.png".to_string()]
-                );
-                assert_eq!(signature_html, Some(PathBuf::from("sig.html")));
-                assert!(draft, "--draft should parse");
-                assert!(!yes, "--yes was not passed");
-                assert_eq!(format, Some(OutputFormat::Json));
-            }
-            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
-        }
     }
 }

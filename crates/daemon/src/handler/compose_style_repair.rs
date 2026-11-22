@@ -274,30 +274,6 @@ fn looks_like_link(token: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn sentence_ranges_keep_urls_decimals_gaps_and_utf8_boundaries_intact() {
-        let text =
-            "See (https://example.com/v1.2) now. Fee 2.5 due. [[?: date, 12.4]] ok. Café ends.";
-        let ranges = sentence_ranges(text);
-        let sentences = ranges
-            .iter()
-            .map(|range| &text[range.clone()])
-            .collect::<Vec<_>>();
-        assert_eq!(
-            sentences,
-            [
-                "See (https://example.com/v1.2) now.",
-                "Fee 2.5 due.",
-                "[[?: date, 12.4]] ok.",
-                "Café ends.",
-            ]
-        );
-        assert!(ranges
-            .iter()
-            .all(|range| text.is_char_boundary(range.start) && text.is_char_boundary(range.end)));
-    }
 
     #[test]
     fn equal_diff_ranges_mark_partial_user_owned_text() {

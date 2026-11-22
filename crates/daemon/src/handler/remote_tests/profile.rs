@@ -61,6 +61,71 @@ fn assert_profile_denial(
 }
 
 #[tokio::test]
+async fn paired_profile_refuses_excluded_reads_while_cli_reads_remain_ordinary() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let own = state.default_account_id();
+    let excluded = AccountId::new();
+    state
+        .store
+        .insert_account(&crate::test_fixtures::test_account_with_id(
+            excluded.clone(),
+        ))
+        .await
+        .unwrap();
+    set_profile(&state, ClientKind::Mcp, &own, false).await;
+    let (id, proof) = registered_client(&state).await;
+    let thread = mxr_core::ThreadId::new();
+    let mut mails = Vec::new();
+    for (account, subject) in [(own.clone(), "allowed"), (excluded, "excluded secret")] {
+        let mail = TestEnvelopeBuilder::new()
+            .account_id(account)
+            .thread_id(thread.clone())
+            .subject(subject)
+            .build();
+        state
+            .store
+            .upsert_envelope_with_direction(&mail, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        mails.push(mail);
+    }
+    let request = Request::GetEnvelope {
+        message_id: mails[1].id.clone(),
+    };
+    assert_profile_denial(
+        call(&state, &id, &proof, ClientKind::Mcp, &request).await,
+        &request,
+    );
+    assert!(
+        matches!(call(&state, &id, &proof, ClientKind::Cli, &request).await.unwrap(), ResponseData::Envelope { envelope } if envelope.id == mails[1].id)
+    );
+    let request = Request::ListEnvelopes {
+        label_id: None,
+        account_id: Some(own),
+        limit: 20,
+        offset: 0,
+        label_role: None,
+    };
+    let ResponseData::Envelopes { envelopes } =
+        call(&state, &id, &proof, ClientKind::Mcp, &request)
+            .await
+            .unwrap()
+    else {
+        panic!("envelopes");
+    };
+    assert_eq!(envelopes.len(), 1);
+    assert_eq!(envelopes[0].id, mails[0].id);
+    let request = Request::GetThread {
+        thread_id: thread,
+        window: None,
+    };
+    assert_profile_denial(
+        call(&state, &id, &proof, ClientKind::Mcp, &request).await,
+        &request,
+    );
+}
+
+#[tokio::test]
 async fn broad_registration_cannot_bypass_profiles_on_preview_send_or_attachment_paths() {
     for kind in [ClientKind::Agent, ClientKind::Mcp] {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -253,69 +318,4 @@ async fn permissive_profile_cannot_broaden_registration_and_missing_profiles_are
             ..
         }
     ));
-}
-
-#[tokio::test]
-async fn paired_profile_refuses_excluded_reads_while_cli_reads_remain_ordinary() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let own = state.default_account_id();
-    let excluded = AccountId::new();
-    state
-        .store
-        .insert_account(&crate::test_fixtures::test_account_with_id(
-            excluded.clone(),
-        ))
-        .await
-        .unwrap();
-    set_profile(&state, ClientKind::Mcp, &own, false).await;
-    let (id, proof) = registered_client(&state).await;
-    let thread = mxr_core::ThreadId::new();
-    let mut mails = Vec::new();
-    for (account, subject) in [(own.clone(), "allowed"), (excluded, "excluded secret")] {
-        let mail = TestEnvelopeBuilder::new()
-            .account_id(account)
-            .thread_id(thread.clone())
-            .subject(subject)
-            .build();
-        state
-            .store
-            .upsert_envelope_with_direction(&mail, MessageDirection::Inbound)
-            .await
-            .unwrap();
-        mails.push(mail);
-    }
-    let request = Request::GetEnvelope {
-        message_id: mails[1].id.clone(),
-    };
-    assert_profile_denial(
-        call(&state, &id, &proof, ClientKind::Mcp, &request).await,
-        &request,
-    );
-    assert!(
-        matches!(call(&state, &id, &proof, ClientKind::Cli, &request).await.unwrap(), ResponseData::Envelope { envelope } if envelope.id == mails[1].id)
-    );
-    let request = Request::ListEnvelopes {
-        label_id: None,
-        account_id: Some(own),
-        limit: 20,
-        offset: 0,
-        label_role: None,
-    };
-    let ResponseData::Envelopes { envelopes } =
-        call(&state, &id, &proof, ClientKind::Mcp, &request)
-            .await
-            .unwrap()
-    else {
-        panic!("envelopes");
-    };
-    assert_eq!(envelopes.len(), 1);
-    assert_eq!(envelopes[0].id, mails[0].id);
-    let request = Request::GetThread {
-        thread_id: thread,
-        window: None,
-    };
-    assert_profile_denial(
-        call(&state, &id, &proof, ClientKind::Mcp, &request).await,
-        &request,
-    );
 }

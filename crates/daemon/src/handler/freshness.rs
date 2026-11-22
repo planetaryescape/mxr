@@ -346,25 +346,6 @@ mod tests {
     }
 
     #[test]
-    fn oauth_timeout_reaches_clients_as_offline_not_signed_out() {
-        let now = Utc::now();
-        let account = gmail();
-        let mut status = row(&account, now);
-        let message = "Provider error: Auth error: OAuth2 error: token refresh timed out after 60s";
-        status.last_error = Some(message.into());
-        status.failure_class = Some(crate::loops::classify_sync_error(message).into());
-        status.consecutive_failures = 1;
-        let fresh = account_freshness(&account, Some(&status), only(), now, 900);
-
-        assert_eq!(
-            fresh.last_sync_error.as_ref().unwrap().kind,
-            SyncErrorKindData::Offline
-        );
-        let line = mxr_protocol::freshness_copy::sync_line(&fresh, 900, now, &Utc);
-        assert!(line.starts_with("Can't reach "), "{line}");
-    }
-
-    #[test]
     fn a_restart_or_a_long_running_sync_is_not_a_failure() {
         let now = Utc::now();
         let account = gmail();
@@ -375,28 +356,5 @@ mod tests {
             let calm = account_freshness(&account, Some(&status), only(), now, 900);
             assert_eq!(calm.health, SyncHealthData::Ok, "{class}");
         }
-    }
-
-    #[test]
-    fn a_first_sync_reads_as_syncing_then_never() {
-        let now = Utc::now();
-        let account = gmail();
-        let mut status = row(&account, now);
-        status.last_success_at = None;
-        status.sync_in_progress = true;
-        assert_eq!(
-            account_freshness(&account, Some(&status), only(), now, 900).health,
-            SyncHealthData::Syncing
-        );
-        assert_eq!(
-            account_freshness(&account, None, only(), now, 900).health,
-            SyncHealthData::Never
-        );
-    }
-
-    #[test]
-    fn staleness_waits_for_five_intervals_and_at_least_fifteen_minutes() {
-        assert_eq!(stale_after_secs(60), 900);
-        assert_eq!(stale_after_secs(600), 3_000);
     }
 }

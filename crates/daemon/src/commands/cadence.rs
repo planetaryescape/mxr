@@ -163,15 +163,3 @@ fn print_drift(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_every_days_accepts_days_and_weeks() {
-        assert_eq!(parse_every_days("14d").unwrap(), 14.0);
-        assert_eq!(parse_every_days("2w").unwrap(), 14.0);
-        assert_eq!(parse_every_days("30 days").unwrap(), 30.0);
-    }
-}

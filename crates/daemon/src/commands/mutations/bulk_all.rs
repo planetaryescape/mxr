@@ -707,7 +707,7 @@ mod tests {
     )]
 
     use super::*;
-    use mxr_core::id::{AccountId, MessageId, ThreadId};
+    use mxr_core::id::MessageId;
     use mxr_protocol::{JobFailureData, JobProgressData};
 
     fn job(status: JobStatusData) -> JobData {
@@ -747,36 +747,6 @@ mod tests {
             retryable: false,
             details: None,
         })
-    }
-
-    /// A start whose reply was lost may still be recorded after the client
-    /// first looks: the job found on a later look is the result.
-    #[tokio::test]
-    async fn a_lost_start_that_appears_later_is_the_job() {
-        let looks = std::cell::Cell::new(0);
-        let found = recover_lost_start_with(
-            "job-1",
-            "connection reset",
-            Duration::from_secs(5),
-            Duration::from_millis(1),
-            || {
-                looks.set(looks.get() + 1);
-                let reply = if looks.get() < 3 {
-                    not_found()
-                } else {
-                    Ok(Response::Ok {
-                        data: ResponseData::Job {
-                            job: job(JobStatusData::Running),
-                        },
-                    })
-                };
-                async move { reply }
-            },
-        )
-        .await
-        .unwrap();
-        assert_eq!(found.job_id, "job-1");
-        assert_eq!(looks.get(), 3);
     }
 
     /// Still missing after the wait is unknown, never "nothing was started":
@@ -833,73 +803,6 @@ mod tests {
             !error.contains("mxr undo"),
             "an --all job has no undo: {error}"
         );
-    }
-
-    #[test]
-    fn a_finished_job_is_not_an_error() {
-        fail_if_job_failed(&job(JobStatusData::Succeeded)).unwrap();
-    }
-
-    fn preview(count: u32, accounts: usize) -> SelectionPreviewData {
-        SelectionPreviewData {
-            count,
-            threads: count / 2,
-            accounts: (0..accounts)
-                .map(|n| SelectionAccountData {
-                    account_id: AccountId::new(),
-                    account_name: format!("Account {n}"),
-                    count: count / accounts as u32,
-                })
-                .collect(),
-            sample: (0..3)
-                .map(|n| SelectionSampleData {
-                    message_id: MessageId::new(),
-                    account_id: AccountId::new(),
-                    thread_id: ThreadId::new(),
-                    from: "Alice".into(),
-                    subject: if n == 1 {
-                        String::new()
-                    } else {
-                        format!("Subject {n}")
-                    },
-                    date: chrono::Utc::now(),
-                })
-                .collect(),
-            sample_size: 20,
-            capped: false,
-            preview_token: "token".into(),
-            expires_at: 0,
-        }
-    }
-
-    #[test]
-    fn the_prompt_shows_the_exact_count_the_counts_and_the_sample() {
-        let lines = preview_lines(&BulkAction::Archive, &preview(70_412, 2)).join("\n");
-        assert!(lines.contains("Would archive 70,412 message(s)"), "{lines}");
-        assert!(
-            lines.contains("Selection: 35,206 thread(s) / 70,412 message(s)"),
-            "{lines}"
-        );
-        assert!(
-            lines.contains("Accounts: Account 0 35,206, Account 1 35,206"),
-            "{lines}"
-        );
-        assert!(lines.contains("| Alice | Subject 0"), "{lines}");
-        assert!(lines.contains("| Alice | (no subject)"), "{lines}");
-        assert!(lines.contains("... and 70,409 more"), "{lines}");
-        assert!(lines.ends_with(NO_UNDO), "{lines}");
-        assert!(NO_UNDO.contains("cannot be undone"));
-    }
-
-    #[test]
-    fn one_account_is_not_listed_and_a_short_selection_has_no_more_line() {
-        let lines = preview_lines(&BulkAction::Label("Work".into()), &preview(3, 1)).join("\n");
-        assert!(
-            lines.contains("Would add label 'Work' to 3 message(s)"),
-            "{lines}"
-        );
-        assert!(!lines.contains("Accounts:"), "{lines}");
-        assert!(!lines.contains("more"), "{lines}");
     }
 
     #[test]

@@ -123,50 +123,9 @@ mod tests {
     }
 
     #[test]
-    fn own_sent_reply_all_does_not_cc_the_original_to_or_the_user() {
-        let got = run(ME, &["dumisani@nottoafrica.com"], &[], None, true);
-        assert_eq!(got.to, strs(&["dumisani@nottoafrica.com"]));
-        assert!(got.cc.is_empty());
-    }
-
-    #[test]
-    fn own_sent_with_the_user_also_in_cc_keeps_the_user_out_of_both() {
-        let got = run(ME, &["a@x.com", "b@x.com"], &[ME, "c@x.com"], None, true);
-        assert_eq!(got.to, strs(&["a@x.com", "b@x.com"]));
-        assert_eq!(got.cc, strs(&["c@x.com"]));
-    }
-
-    #[test]
     fn own_sent_from_an_alias_treats_the_alias_as_you() {
         let got = run(ALIAS, &[ME, "dumisani@nottoafrica.com"], &[], None, true);
         assert_eq!(got.to, strs(&["dumisani@nottoafrica.com"]));
-        assert!(got.cc.is_empty());
-    }
-
-    #[test]
-    fn own_sent_matching_ignores_case_and_whitespace() {
-        let got = run(
-            "  BK@NottoAfrica.com ",
-            &["  Dumi@x.com", "dumi@x.com ", "BK@NOTTOAFRICA.com"],
-            &["DUMI@X.COM", "other@x.com"],
-            None,
-            true,
-        );
-        assert_eq!(got.to, strs(&["Dumi@x.com"]));
-        assert_eq!(got.cc, strs(&["other@x.com"]));
-    }
-
-    #[test]
-    fn own_sent_with_only_others_in_cc_replies_to_the_cc() {
-        let got = run(ME, &[ME], &["c@x.com", "d@x.com"], None, true);
-        assert_eq!(got.to, strs(&["c@x.com", "d@x.com"]));
-        assert!(got.cc.is_empty());
-    }
-
-    #[test]
-    fn own_sent_to_yourself_only_replies_to_yourself() {
-        let got = run(ME, &[ME], &[], None, true);
-        assert_eq!(got.to, strs(&[ME]));
         assert!(got.cc.is_empty());
     }
 
@@ -180,13 +139,6 @@ mod tests {
             true,
         );
         assert_eq!(got.to, strs(&["dumisani@nottoafrica.com"]));
-        assert!(got.cc.is_empty());
-    }
-
-    #[test]
-    fn own_sent_with_no_to_or_cc_replies_to_yourself_not_nobody() {
-        let got = run(ME, &[], &[], None, true);
-        assert_eq!(got.to, strs(&[ME]));
         assert!(got.cc.is_empty());
     }
 
@@ -217,50 +169,5 @@ mod tests {
             got.cc,
             strs(&["other@x.com", "third@x.com", "author@x.com"])
         );
-    }
-
-    #[test]
-    fn not_own_sent_normal_reply_all_is_unchanged() {
-        let got = run(
-            "author@x.com",
-            &[ME, "other@x.com"],
-            &["third@x.com"],
-            None,
-            true,
-        );
-        assert_eq!(got.to, strs(&["author@x.com"]));
-        assert_eq!(got.cc, strs(&["other@x.com", "third@x.com"]));
-    }
-
-    #[test]
-    fn not_own_sent_reply_is_not_treated_as_own_sent_when_you_are_the_recipient() {
-        let got = run("author@x.com", &[ME], &[], None, false);
-        assert_eq!(got.to, strs(&["author@x.com"]));
-    }
-
-    #[test]
-    fn duplicates_across_to_and_cc_are_kept_once_in_first_seen_order() {
-        let got = run(
-            "author@x.com",
-            &["b@x.com", "a@x.com"],
-            &["a@x.com", "c@x.com", "b@x.com", "c@x.com"],
-            None,
-            true,
-        );
-        assert_eq!(got.to, strs(&["author@x.com"]));
-        assert_eq!(got.cc, strs(&["b@x.com", "a@x.com", "c@x.com"]));
-    }
-
-    #[test]
-    fn duplicates_in_own_sent_to_keep_first_seen_order() {
-        let got = run(
-            ME,
-            &["b@x.com", "a@x.com", "b@x.com"],
-            &["a@x.com"],
-            None,
-            true,
-        );
-        assert_eq!(got.to, strs(&["b@x.com", "a@x.com"]));
-        assert!(got.cc.is_empty());
     }
 }

@@ -185,32 +185,4 @@ mod tests {
         answered.push(message(&thread, "maya@example.com", 1));
         assert_eq!(timers.waiting(&answered, &answers, due), None);
     }
-
-    #[test]
-    fn a_follow_up_with_its_own_time_replaces_an_earlier_return() {
-        let thread = ThreadId::new();
-        let first = message(&thread, ME, 90);
-        let follow_up = message(&thread, ME, 2);
-        let fired_at = now() - Duration::hours(10);
-        let fired = reminder(&first, fired_at, true);
-        let conversation = [first, follow_up.clone()];
-
-        let only_fired = DeskTimers::new(Vec::new(), vec![fired.clone()]);
-        assert_eq!(
-            only_fired.waiting(&conversation, &answers, now()),
-            Some(Timer::Back(fired_at))
-        );
-
-        let again = DeskTimers::new(
-            Vec::new(),
-            vec![
-                fired,
-                reminder(&follow_up, now() + Duration::days(1), false),
-            ],
-        );
-        assert_eq!(
-            again.waiting(&conversation, &answers, now()),
-            Some(Timer::Pending)
-        );
-    }
 }

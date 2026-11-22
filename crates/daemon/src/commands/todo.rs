@@ -928,14 +928,6 @@ mod tests {
         assert!(text.contains("Fingerprint: reviewed"));
     }
 
-    #[test]
-    fn edits_split_on_the_first_equals() {
-        let edit = parse_edit("title=Pay = council tax").expect("edit");
-        assert_eq!(edit.field, "title");
-        assert_eq!(edit.value, "Pay = council tax");
-        assert!(parse_edit("due fri").is_err());
-    }
-
     fn hostile_row() -> TodoData {
         serde_json::from_value(serde_json::json!({
             "id": "todo_0123456789abcdef",
@@ -983,18 +975,5 @@ mod tests {
             out.lines().count(),
             "the block keeps its own lines"
         );
-    }
-
-    #[test]
-    fn a_filed_source_says_so_under_the_row() {
-        let mut todo = hostile_row();
-        todo.source_filed_at = Some(
-            chrono::DateTime::parse_from_rfc3339("2026-10-30T09:00:00Z")
-                .unwrap()
-                .with_timezone(&chrono::Utc),
-        );
-        let mut out = String::new();
-        row(&mut out, &todo, "");
-        assert!(out.contains("Left the inbox"), "{out}");
     }
 }

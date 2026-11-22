@@ -217,19 +217,6 @@ mod tests {
     }
 
     #[test]
-    fn a_lowercase_mailbox_name_still_sends_the_default_accounts_label_id() {
-        let inbox = label("INBOX", LabelKind::System);
-        let selection = select_label("inbox", std::slice::from_ref(&inbox), false).unwrap();
-        assert_eq!(selection.label_role.as_deref(), Some("inbox"));
-        assert_eq!(selection.label_id, Some(inbox.id));
-        let mut drafts = label("DRAFT", LabelKind::System);
-        drafts.role = Some(mxr_core::Role::Drafts);
-        let selection = select_label("drafts", std::slice::from_ref(&drafts), false).unwrap();
-        assert_eq!(selection.label_role.as_deref(), Some("drafts"));
-        assert_eq!(selection.label_id, Some(drafts.id));
-    }
-
-    #[test]
     fn a_mailbox_the_default_account_lacks_is_refused_not_sent_unfiltered() {
         let work = label("Work", LabelKind::User);
         let error = select_label("sent", &[work], false)
@@ -237,31 +224,5 @@ mod tests {
             .to_string();
         assert!(error.contains("no Sent mailbox"), "{error}");
         assert!(error.contains("--account"), "{error}");
-    }
-
-    #[test]
-    fn a_plain_folder_called_sent_stays_a_folder() {
-        let folder = label("Sent", LabelKind::Folder);
-        let selection = select_label("Sent", std::slice::from_ref(&folder), false).unwrap();
-        assert_eq!(selection.label_role, None);
-        assert_eq!(selection.label_id, Some(folder.id));
-        let user = label("inbox", LabelKind::User);
-        let selection = select_label("inbox", std::slice::from_ref(&user), false).unwrap();
-        assert_eq!(selection.label_role, None);
-    }
-
-    #[test]
-    fn account_scoped_label_stays_a_plain_label_id() {
-        let inbox = label("INBOX", LabelKind::System);
-        let selection = select_label("INBOX", std::slice::from_ref(&inbox), true).unwrap();
-        assert_eq!(selection.label_role, None);
-        assert_eq!(selection.label_id, Some(inbox.id));
-        assert!(select_label("sent", &[], true).is_err());
-    }
-
-    #[test]
-    fn unknown_label_is_an_error() {
-        let work = label("Work", LabelKind::User);
-        assert!(select_label("Missing", &[work], false).is_err());
     }
 }

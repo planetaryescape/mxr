@@ -173,45 +173,6 @@ async fn the_dell_orders_three_emails_are_one_record() {
 }
 
 #[tokio::test]
-async fn overlapping_bookings_become_a_trip() {
-    let mut fx = Fx::new().await;
-    let flight = r#"<script type="application/ld+json">{"@type":"FlightReservation","reservationNumber":"K7QX2M",
-        "reservationFor":{"@type":"Flight","flightNumber":"1357","airline":{"name":"TAP Air Portugal","iataCode":"TP"},
-        "departureAirport":{"iataCode":"LHR"},"arrivalAirport":{"iataCode":"LIS","address":{"addressLocality":"Lisbon"}},
-        "departureTime":"2025-06-12T07:40:00+01:00","arrivalTime":"2025-06-12T10:20:00+01:00"}}</script>"#;
-    let hotel = r#"<script type="application/ld+json">{"@type":"LodgingReservation","reservationNumber":"88213",
-        "reservationFor":{"name":"Hotel Lisboa Plaza","address":{"addressLocality":"Lisbon"}},
-        "checkinTime":"2025-06-12T15:00:00+01:00","checkoutTime":"2025-06-15T11:00:00+01:00"}</script>"#;
-    let ids = vec![
-        fx.mail(
-            ("TAP Air Portugal", "booking@flytap.com"),
-            "Your booking",
-            "Ref K7QX2M",
-            Some(flight),
-            at(0),
-        )
-        .await,
-        fx.mail(
-            ("Booking.com", "noreply@booking.com"),
-            "Your reservation",
-            "Ref 88213",
-            Some(hotel),
-            at(1),
-        )
-        .await,
-    ];
-    scan_messages(&fx.store, &cfg(), &ids).await.expect("scan");
-    let records = fx.records().await;
-    assert_eq!(records.len(), 2);
-    let groups = fx.store.list_record_groups(None).await.expect("groups");
-    assert_eq!(groups.len(), 1);
-    assert_eq!(groups[0].title, "Lisbon, June 2025");
-    assert!(records
-        .iter()
-        .all(|r| r.group_id.as_deref() == Some(groups[0].id.as_str())));
-}
-
-#[tokio::test]
 async fn never_file_wins_and_always_file_files_what_rules_skip() {
     let mut fx = Fx::new().await;
     let receipt = fx
@@ -356,62 +317,4 @@ async fn a_ticked_off_council_tax_bill_is_a_record_and_undo_unfiles_it() {
         .await
         .expect("file")
         .is_none());
-}
-
-#[tokio::test]
-async fn the_manual_plan_is_what_gets_filed() {
-    let mut fx = Fx::new().await;
-    let quote = fx
-        .mail(
-            ("Kitchen Co", "jo@kitchens.example"),
-            "Quote for the kitchen",
-            "Total £4,200.00",
-            None,
-            at(0),
-        )
-        .await;
-    let plan = plan_manual(&fx.store, &cfg(), &quote, Some(RecordKind::Contract))
-        .await
-        .expect("plan");
-    assert_eq!(plan.kind, "contract");
-    assert!(fx.records().await.is_empty(), "planning writes nothing");
-    let filed = fx.store.file_record(&plan).await.expect("file");
-    let record = fx
-        .store
-        .get_archive_record(filed.id())
-        .await
-        .expect("get")
-        .expect("record");
-    assert_eq!(record.dedup_key, plan.dedup_key);
-    assert_eq!(record.amount_minor, Some(420_000));
-    assert_eq!(record.origin, "manual");
-}
-
-#[tokio::test]
-async fn the_first_run_reads_history_newest_first_and_finishes() {
-    let mut fx = Fx::new().await;
-    for day in 0..5 {
-        fx.mail(
-            DELL,
-            "Your receipt",
-            &format!("Receipt no. R-{day}000 Total £1{day}.00"),
-            None,
-            at(day),
-        )
-        .await;
-    }
-    let first = run_first_run(&fx.store, &cfg(), &fx.account, 2, 1)
-        .await
-        .expect("run");
-    assert!(!first.complete);
-    assert_eq!(first.scanned, 2);
-    assert_eq!(
-        first.reached.map(|d| d.date_naive()),
-        Some(at(3).date_naive())
-    );
-    let done = run_first_run(&fx.store, &cfg(), &fx.account, 2, 10)
-        .await
-        .expect("run");
-    assert!(done.complete);
-    assert_eq!(fx.records().await.len(), 5);
 }

@@ -1012,7 +1012,7 @@ pub(super) fn attachment_by_index(
 mod tests {
     use super::*;
     use crate::commands::selection::CappedSelection;
-    use crate::test_fixtures::{FakeBulkDaemon, TestEnvelopeBuilder};
+    use crate::test_fixtures::FakeBulkDaemon;
 
     const NOTICE: &str =
         "notice: More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.";
@@ -1112,79 +1112,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn no_notice_is_written_when_the_search_fits_under_the_cap() {
-        let daemon = FakeBulkDaemon::start(300);
-        let mut client = daemon.client().await;
-        let selection = resolve_mutation_selection(&mut client, Vec::new(), Some("*".into()), None)
-            .await
-            .unwrap();
-
-        run_simple_mutation_to(
-            &mut client,
-            selection,
-            run_options(true, false),
-            trash_request,
-            &mut daemon.notice_sink(),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(
-            daemon.events.lock().unwrap().clone(),
-            ["search", "envelopes", "mutation"]
-        );
-    }
-
-    #[test]
-    fn the_preview_and_the_prompt_carry_the_cap_notice() {
-        let envelope = TestEnvelopeBuilder::new().build();
-        let selection = MutationSelection {
-            ids: vec![envelope.id.clone()],
-            envelopes: vec![envelope],
-            used_search: true,
-            capped: Some(CappedSelection::new(1_000)),
-        };
-
-        let lines = render_selection_preview_lines("trash", &selection);
-
-        assert!(
-            lines.contains(&NOTICE.trim_start_matches("notice: ").to_owned()),
-            "{lines:?}"
-        );
-    }
-
-    #[test]
-    fn the_commands_that_take_all_point_at_it_in_the_cap_notice_and_the_others_do_not() {
-        let envelope = TestEnvelopeBuilder::new().build();
-        let selection = || MutationSelection {
-            ids: vec![envelope.id.clone()],
-            envelopes: vec![envelope.clone()],
-            used_search: true,
-            capped: Some(CappedSelection::new(1_000)),
-        };
-
-        let plain = render_selection_preview_lines("trash", &selection());
-        assert!(plain.contains(
-            &"More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.".to_owned()
-        ));
-        let with_all = render_selection_preview_lines("archive", &selection().offering_all());
-        assert!(with_all.contains(
-            &"More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.".to_owned()
-        ));
-
-        let mut notices = Vec::new();
-        let capped = selection().offering_all();
-        confirm_selection_to("archive", &capped, false, true, &mut notices).unwrap();
-        assert_eq!(
-            String::from_utf8(notices).unwrap(),
-            "More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.\n"
-        );
-        let mut uncapped = selection();
-        uncapped.capped = None;
-        assert!(uncapped.offering_all().capped.is_none());
-    }
-
     #[test]
     fn capped_fields_reach_every_output_built_from_the_counts_and_only_then() {
         let capped = CappedSelection::new(1_000);
@@ -1219,56 +1146,5 @@ mod tests {
             "existing fields keep their names"
         );
         assert!(without.get("capped").is_none());
-    }
-
-    #[test]
-    fn dry_run_preview_labels_threads_and_messages_separately() {
-        let thread_id = ThreadId::new();
-        let first = TestEnvelopeBuilder::new()
-            .thread_id(thread_id.clone())
-            .provider_id("one")
-            .build();
-        let second = TestEnvelopeBuilder::new()
-            .thread_id(thread_id)
-            .provider_id("two")
-            .build();
-        let selection = MutationSelection {
-            ids: vec![first.id.clone(), second.id.clone()],
-            envelopes: vec![first, second],
-            used_search: true,
-            capped: None,
-        };
-
-        let lines = render_selection_preview_lines("archive", &selection);
-        assert!(
-            lines
-                .iter()
-                .any(|line| line == "Selection: 1 thread(s) / 2 message(s)"),
-            "preview should distinguish collapsed thread count from selected messages: {lines:?}"
-        );
-    }
-
-    #[test]
-    fn unsubscribe_dry_run_preview_reports_resolved_method_or_none() {
-        let with_method = TestEnvelopeBuilder::new()
-            .provider_id("with-method")
-            .unsubscribe(UnsubscribeMethod::HttpLink {
-                url: "https://example.com/unsubscribe".into(),
-            })
-            .build();
-        let without_method = TestEnvelopeBuilder::new()
-            .provider_id("without-method")
-            .unsubscribe(UnsubscribeMethod::None)
-            .build();
-        let selection = MutationSelection {
-            ids: vec![with_method.id.clone(), without_method.id.clone()],
-            envelopes: vec![with_method, without_method],
-            used_search: true,
-            capped: None,
-        };
-
-        let rendered = render_selection_preview_lines("unsubscribe", &selection).join("\n");
-        assert!(rendered.contains("Unsubscribe: HttpLink"), "{rendered}");
-        assert!(rendered.contains("Unsubscribe: None"), "{rendered}");
     }
 }

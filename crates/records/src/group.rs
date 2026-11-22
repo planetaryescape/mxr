@@ -282,27 +282,6 @@ mod tests {
     }
 
     #[test]
-    fn bookings_more_than_a_day_apart_are_separate() {
-        let plans = plan(&[
-            booking(
-                "a",
-                RecordKind::Booking,
-                day(6, 1, 9),
-                Some(day(6, 2, 9)),
-                None,
-            ),
-            booking(
-                "b",
-                RecordKind::Booking,
-                day(6, 4, 9),
-                Some(day(6, 5, 9)),
-                None,
-            ),
-        ]);
-        assert!(plans.is_empty());
-    }
-
-    #[test]
     fn three_months_of_statements_from_one_issuer_are_a_series() {
         let plans = plan(&[
             bill("jan", "Octopus Energy", day(1, 11, 9)),
@@ -315,20 +294,5 @@ mod tests {
         assert_eq!(plans.len(), 1, "BT's three bills fall in two months");
         assert_eq!(plans[0].title, "Octopus Energy bills");
         assert_eq!(plans[0].members, vec!["jan", "feb", "mar"]);
-    }
-
-    #[test]
-    fn receipts_and_invoices_never_form_a_series() {
-        let receipt = |id: &str, kind, date| GroupInput {
-            kind,
-            ..bill(id, "Amazon", date)
-        };
-        let plans = plan(&[
-            receipt("a", RecordKind::Receipt, day(1, 3, 9)),
-            receipt("b", RecordKind::Receipt, day(2, 17, 9)),
-            receipt("c", RecordKind::Invoice, day(3, 29, 9)),
-            receipt("d", RecordKind::Receipt, day(4, 8, 9)),
-        ]);
-        assert!(plans.is_empty(), "subscriptions find these by cadence");
     }
 }

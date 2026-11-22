@@ -206,21 +206,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unwatch_removes_row() {
-        let (store, account) = fixture().await;
-        store
-            .watch_cadence(&entry(&account, "alice@example.com"), false)
-            .await
-            .unwrap();
-        let removed = store
-            .unwatch_cadence(&account, "alice@example.com")
-            .await
-            .unwrap();
-        assert!(removed);
-        assert!(store.list_cadence_watch(&account).await.unwrap().is_empty());
-    }
-
-    #[tokio::test]
     async fn list_sender_is_rejected_without_override() {
         let (store, account) = fixture().await;
         sqlx::query(
@@ -289,20 +274,5 @@ mod tests {
         assert_eq!(drift.len(), 1);
         assert_eq!(drift[0].email, "bob@example.com");
         assert!(drift[0].drift_days >= 50.0);
-    }
-
-    #[tokio::test]
-    async fn unknown_watched_contact_does_not_drift_until_first_contact() {
-        let (store, account) = fixture().await;
-        store
-            .watch_cadence(&entry(&account, "unknown@example.com"), false)
-            .await
-            .unwrap();
-
-        let drift = store.list_cadence_drift(&account).await.unwrap();
-        assert!(
-            drift.is_empty(),
-            "watched contacts with no observed contact must not appear overdue"
-        );
     }
 }

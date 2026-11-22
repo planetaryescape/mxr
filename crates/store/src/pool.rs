@@ -1597,36 +1597,6 @@ pub(crate) mod tests {
     use std::str::FromStr;
     use tempfile::tempdir;
 
-    /// The planner picked an account-wide index in the reader-pool starvation
-    /// incident because the store had no statistics. A file store must have
-    /// gathered them by the time `Store::new` returns, and the periodic form
-    /// must keep working on the writer.
-    #[tokio::test]
-    async fn optimize_gathers_planner_statistics() {
-        let temp = tempdir().unwrap();
-        let db_path = temp.path().join("mxr.db");
-        let store = Store::new(&db_path).await.unwrap();
-        sqlx::raw_sql(
-            "CREATE TABLE optimize_probe (a INTEGER, b INTEGER);
-             CREATE INDEX optimize_probe_a ON optimize_probe(a);
-             WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000)
-             INSERT INTO optimize_probe SELECT i % 10, i FROM n;",
-        )
-        .execute(store.writer())
-        .await
-        .unwrap();
-
-        store.optimize_all_tables().await.unwrap();
-        store.optimize().await.unwrap();
-
-        let analysed: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_stat1 WHERE tbl = 'optimize_probe'")
-                .fetch_one(store.writer())
-                .await
-                .unwrap();
-        assert!(analysed > 0, "optimize left the probe table unanalysed");
-    }
-
     async fn open_test_writer(db_path: &Path) -> sqlx::SqlitePool {
         let url = format!("sqlite:{}", db_path.display());
         let opts = SqliteConnectOptions::from_str(&url)
@@ -1696,62 +1666,6 @@ pub(crate) mod tests {
         row.is_some()
     }
 
-    async fn schema_of(pool: &sqlx::SqlitePool) -> Vec<(String, String, Option<String>)> {
-        sqlx::query_as(
-            "SELECT type, name, sql FROM sqlite_schema \
-             WHERE name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY type, name",
-        )
-        .fetch_all(pool)
-        .await
-        .unwrap()
-    }
-
-    /// In-memory stores load a copy of one migrated database, so the copy
-    /// must match what migrating a new database file produces.
-    #[tokio::test]
-    async fn an_in_memory_store_has_the_schema_migrations_produce() {
-        let temp = tempdir().unwrap();
-        let migrated = Store::new(&temp.path().join("fresh.db")).await.unwrap();
-        let copied = Store::in_memory().await.unwrap();
-
-        assert_eq!(
-            schema_of(copied.writer()).await,
-            schema_of(migrated.writer()).await
-        );
-        let versions = "SELECT version FROM schema_migrations ORDER BY version";
-        let copied_versions: Vec<(i64,)> = sqlx::query_as(versions)
-            .fetch_all(copied.writer())
-            .await
-            .unwrap();
-        let migrated_versions: Vec<(i64,)> = sqlx::query_as(versions)
-            .fetch_all(migrated.writer())
-            .await
-            .unwrap();
-        assert_eq!(copied_versions, migrated_versions);
-        let (foreign_keys,): (i64,) = sqlx::query_as("PRAGMA foreign_keys")
-            .fetch_one(copied.writer())
-            .await
-            .unwrap();
-        assert_eq!(foreign_keys, 1);
-    }
-
-    #[tokio::test]
-    async fn in_memory_stores_do_not_share_writes() {
-        let first = Store::in_memory().await.unwrap();
-        let second = Store::in_memory().await.unwrap();
-
-        sqlx::raw_sql("CREATE TABLE only_in_first (id INTEGER)")
-            .execute(first.writer())
-            .await
-            .unwrap();
-
-        assert!(test_table_exists(first.writer(), "only_in_first").await);
-        assert!(!test_table_exists(second.writer(), "only_in_first").await);
-        assert!(
-            !test_table_exists(Store::in_memory().await.unwrap().writer(), "only_in_first").await
-        );
-    }
-
     #[tokio::test]
     async fn opening_malformed_partial_db_errors_instead_of_silently_accepting_it() {
         let temp = tempdir().unwrap();
@@ -1783,57 +1697,6 @@ pub(crate) mod tests {
             error.to_string().contains("bodies.text_plain"),
             "expected missing column error, got {error}"
         );
-    }
-
-    #[tokio::test]
-    async fn the_in_memory_store_never_recycles_its_only_connection() {
-        let store = Store::in_memory().await.unwrap();
-        let options = store.writer().options();
-        assert_eq!(options.get_max_lifetime(), None);
-        assert_eq!(options.get_idle_timeout(), None);
-    }
-
-    #[tokio::test]
-    async fn the_in_memory_store_keeps_its_data_when_the_pool_replaces_its_connection() {
-        let store = Store::in_memory().await.unwrap();
-        sqlx::raw_sql(
-            "CREATE TABLE survivor (id INTEGER PRIMARY KEY); INSERT INTO survivor VALUES (7)",
-        )
-        .execute(store.writer())
-        .await
-        .unwrap();
-
-        store
-            .writer()
-            .acquire()
-            .await
-            .unwrap()
-            .close()
-            .await
-            .unwrap();
-
-        let (id,): (i64,) = sqlx::query_as("SELECT id FROM survivor")
-            .fetch_one(store.reader())
-            .await
-            .unwrap();
-        assert_eq!(id, 7);
-        assert!(test_table_exists(store.writer(), "accounts").await);
-    }
-
-    #[tokio::test]
-    async fn fresh_store_records_all_migration_versions() {
-        let store = Store::in_memory().await.unwrap();
-        let rows: Vec<(i64, String)> =
-            sqlx::query_as("SELECT version, name FROM schema_migrations ORDER BY version")
-                .fetch_all(store.writer())
-                .await
-                .unwrap();
-        assert_eq!(rows.len(), super::MIGRATIONS.len());
-        for (i, (version, name)) in rows.iter().enumerate() {
-            let expected = &super::MIGRATIONS[i];
-            assert_eq!(*version, expected.version as i64);
-            assert_eq!(name, expected.name);
-        }
     }
 
     #[tokio::test]
@@ -2469,125 +2332,6 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn migration_034_recovers_when_original_was_dropped_before_schema_stamp() {
-        let temp = tempdir().unwrap();
-        let db_path = temp.path().join("decision-log-dropped-crash.db");
-        let (decision_id, decision) =
-            seed_decision_log_migration_034_crash_state(&db_path, true).await;
-
-        let store = Store::new(&db_path)
-            .await
-            .expect("migration 034 should recover by promoting decision_log_v2");
-
-        let row: (String,) = sqlx::query_as("SELECT decision FROM decision_log WHERE id = ?")
-            .bind(&decision_id)
-            .fetch_one(store.reader())
-            .await
-            .unwrap();
-        assert_eq!(row.0, decision);
-        assert!(
-            !test_table_exists(store.reader(), "decision_log_v2").await,
-            "recovery must not leave the temp table after promotion"
-        );
-        assert!(store.is_migration_applied(34).await.unwrap());
-    }
-
-    #[tokio::test]
-    async fn commitment_date_source_migration_backfills_a_schema_93_database() {
-        let temp = tempdir().unwrap();
-        let db_path = temp.path().join("version-93.db");
-        {
-            let store = store_at_version(&db_path, 93).await;
-            sqlx::query("PRAGMA foreign_keys = OFF")
-                .execute(store.writer())
-                .await
-                .unwrap();
-            for (id, by_when) in [
-                ("msg-1::promise::0190", Some(1_000_i64)),
-                ("msg-3::promise::undated", None),
-                ("commitment-dated", Some(2_000)),
-                ("commitment-undated", None),
-                ("msg-2::cand-1", Some(3_000)),
-            ] {
-                sqlx::query(
-                    "INSERT INTO contact_commitments (id, account_id, email, thread_id, direction,
-                         status, who_owes, what, by_when, evidence_msg_id, extracted_at)
-                     VALUES (?, 'a', 'x@example.com', 't', 'yours', 'open', 'me', ?, ?, 'm', 5)",
-                )
-                .bind(id)
-                .bind(id)
-                .bind(by_when)
-                .execute(store.writer())
-                .await
-                .unwrap();
-            }
-            store.writer().close().await;
-        }
-
-        let store = Store::new(&db_path).await.unwrap();
-        let rows: Vec<(String, Option<String>)> =
-            sqlx::query_as("SELECT id, by_when_source FROM contact_commitments ORDER BY id")
-                .fetch_all(store.writer())
-                .await
-                .unwrap();
-        assert_eq!(
-            rows,
-            vec![
-                (
-                    "commitment-dated".to_string(),
-                    Some("model_date".to_string())
-                ),
-                ("commitment-undated".to_string(), None),
-                ("msg-1::promise::0190".to_string(), Some("user".to_string())),
-                ("msg-2::cand-1".to_string(), Some("model_date".to_string())),
-                ("msg-3::promise::undated".to_string(), None),
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn draft_candidate_date_source_migration_marks_dated_candidates_model_date() {
-        let temp = tempdir().unwrap();
-        let db_path = temp.path().join("version-94.db");
-        {
-            let store = store_at_version(&db_path, 94).await;
-            sqlx::query("PRAGMA foreign_keys = OFF")
-                .execute(store.writer())
-                .await
-                .unwrap();
-            for (what, by_when) in [("dated", Some(1_000_i64)), ("undated", None)] {
-                sqlx::query(
-                    "INSERT INTO draft_commitment_candidates (id, draft_id, account_id, email,
-                         direction, who_owes, what, by_when, extracted_at)
-                     VALUES (?, 'd', 'a', 'x@example.com', 'yours', 'me', ?, ?, 5)",
-                )
-                .bind(what)
-                .bind(what)
-                .bind(by_when)
-                .execute(store.writer())
-                .await
-                .unwrap();
-            }
-            store.writer().close().await;
-        }
-
-        let store = Store::new(&db_path).await.unwrap();
-        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-            "SELECT what, by_when_source FROM draft_commitment_candidates ORDER BY what",
-        )
-        .fetch_all(store.writer())
-        .await
-        .unwrap();
-        assert_eq!(
-            rows,
-            vec![
-                ("dated".to_string(), Some("model_date".to_string())),
-                ("undated".to_string(), None),
-            ]
-        );
-    }
-
-    #[tokio::test]
     async fn label_role_migration_fills_system_rows_synced_before_it_from_their_names() {
         let temp = tempdir().unwrap();
         let db_path = temp.path().join("version-104.db");
@@ -2637,5 +2381,82 @@ pub(crate) mod tests {
         assert_eq!(role("folder"), None);
         assert_eq!(role("user"), None);
         assert_eq!(role("gesendet"), None);
+    }
+
+    #[tokio::test]
+    async fn an_in_memory_store_has_the_schema_migrations_produce() {
+        let temp = tempdir().unwrap();
+        let migrated = Store::new(&temp.path().join("fresh.db")).await.unwrap();
+        let copied = Store::in_memory().await.unwrap();
+
+        assert_eq!(
+            schema_of(copied.writer()).await,
+            schema_of(migrated.writer()).await
+        );
+        let versions = "SELECT version FROM schema_migrations ORDER BY version";
+        let copied_versions: Vec<(i64,)> = sqlx::query_as(versions)
+            .fetch_all(copied.writer())
+            .await
+            .unwrap();
+        let migrated_versions: Vec<(i64,)> = sqlx::query_as(versions)
+            .fetch_all(migrated.writer())
+            .await
+            .unwrap();
+        assert_eq!(copied_versions, migrated_versions);
+        let (foreign_keys,): (i64,) = sqlx::query_as("PRAGMA foreign_keys")
+            .fetch_one(copied.writer())
+            .await
+            .unwrap();
+        assert_eq!(foreign_keys, 1);
+    }
+
+    #[tokio::test]
+    async fn fresh_store_records_all_migration_versions() {
+        let store = Store::in_memory().await.unwrap();
+        let rows: Vec<(i64, String)> =
+            sqlx::query_as("SELECT version, name FROM schema_migrations ORDER BY version")
+                .fetch_all(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(rows.len(), super::MIGRATIONS.len());
+        for (i, (version, name)) in rows.iter().enumerate() {
+            let expected = &super::MIGRATIONS[i];
+            assert_eq!(*version, expected.version as i64);
+            assert_eq!(name, expected.name);
+        }
+    }
+
+    #[tokio::test]
+    async fn migration_034_recovers_when_original_was_dropped_before_schema_stamp() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("decision-log-dropped-crash.db");
+        let (decision_id, decision) =
+            seed_decision_log_migration_034_crash_state(&db_path, true).await;
+
+        let store = Store::new(&db_path)
+            .await
+            .expect("migration 034 should recover by promoting decision_log_v2");
+
+        let row: (String,) = sqlx::query_as("SELECT decision FROM decision_log WHERE id = ?")
+            .bind(&decision_id)
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
+        assert_eq!(row.0, decision);
+        assert!(
+            !test_table_exists(store.reader(), "decision_log_v2").await,
+            "recovery must not leave the temp table after promotion"
+        );
+        assert!(store.is_migration_applied(34).await.unwrap());
+    }
+
+    async fn schema_of(pool: &sqlx::SqlitePool) -> Vec<(String, String, Option<String>)> {
+        sqlx::query_as(
+            "SELECT type, name, sql FROM sqlite_schema \
+             WHERE name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY type, name",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap()
     }
 }

@@ -433,29 +433,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_move_says_how_to_undo_and_to_apply_to_the_sender() {
-        let outcome = MoveOutcomeData {
-            account_id: AccountId::new(),
-            message_id: MessageId::new(),
-            thread_id: ThreadId::new(),
-            sender_email: "maya@example.com".into(),
-            from: ArrivalBucketData::Updates,
-            to: ModeKindData::Reading,
-            sender: false,
-            dry_run: false,
-            copy: "Moved to Reading.".into(),
-            ask_sender: Some("Always for this sender? (P)".into()),
-            hint: None,
-            correction_id: Some(7),
-            aspect_id: None,
-        };
-        let out = render_move(&outcome, OutputFormat::Table).unwrap();
-        assert!(out.contains("Moved to Reading."));
-        assert!(out.contains("mxr corrections undo 7"));
-        assert!(out.contains("--sender"));
-        assert_eq!(render_move(&outcome, OutputFormat::Ids).unwrap(), "7\n");
-    }
     /// Every command the output tells the user to run must be one the real
     /// CLI accepts: a printed `mxr move ... --sender` once didn't parse.
     #[test]

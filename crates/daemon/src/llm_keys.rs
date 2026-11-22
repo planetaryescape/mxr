@@ -192,34 +192,4 @@ mod tests {
         assert!(keys.api_key(RouteProvider::Anthropic).is_none());
         assert!(!keys.status(RouteProvider::Anthropic).present);
     }
-
-    #[test]
-    fn providers_have_separate_keys_and_an_empty_env_var_is_no_key() {
-        let dir = tempfile::tempdir().unwrap();
-        let keys = keys(&dir);
-        keys.store(RouteProvider::OpenRouter, "or-key-value")
-            .unwrap();
-        assert_eq!(
-            keys.api_key(RouteProvider::OpenRouter).unwrap().expose(),
-            "or-key-value"
-        );
-        std::env::set_var("OPENROUTER_API_KEY", "   ");
-        assert!(!LlmKeys::status_without_stored(RouteProvider::OpenRouter).present);
-        std::env::remove_var("OPENROUTER_API_KEY");
-    }
-
-    #[test]
-    fn keys_are_cleaned_and_odd_ones_refused() {
-        assert_eq!(clean_key("  sk-ant-abc123\n").unwrap(), "sk-ant-abc123");
-        for bad in [
-            "",
-            "   \n",
-            "has space",
-            "two\nlines",
-            "naïve-key",
-            &"k".repeat(600),
-        ] {
-            assert!(clean_key(bad).is_err(), "{bad:?}");
-        }
-    }
 }

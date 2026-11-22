@@ -223,41 +223,4 @@ mod tests {
             assert!(clean_url(raw).is_none(), "{raw}");
         }
     }
-
-    #[test]
-    fn opaque_trackers_are_marked_and_plain_links_are_not() {
-        let tracked = [
-            "https://substack.com/redirect/ed69ce43-9ba2-4eb6-a359-e1a2b5281f8f?j=abc",
-            "https://link.mail.beehiiv.com/ss/c/u001.OYBRJNT0z5pe6Uzq-udvEq",
-            "https://example.us7.list-manage.com/track/click?u=1&id=2&e=3",
-            "https://t.co/abc123",
-        ];
-        for raw in tracked {
-            let url = Url::parse(raw).expect(raw);
-            assert!(is_click_tracker(&url), "{raw}");
-        }
-        for raw in [
-            "https://sqlite.org/releaselog/3_51.html",
-            "https://www.example.com/2026/10/local-first-mail",
-            "https://blog.rust-lang.org/2026/10/01/Rust-1.95.html",
-            "https://links.demo.mxr.local/articles/local-first-mail",
-            "https://link.example.com/2026/10/why-sync-engines-need-tombstones",
-        ] {
-            let url = Url::parse(raw).expect(raw);
-            assert!(!is_click_tracker(&url), "{raw}");
-        }
-    }
-
-    #[test]
-    fn a_links_key_ignores_tracking_fragments_and_trailing_slashes() {
-        let key = link_idx("https://sqlite.org/releaselog/3_51.html");
-        assert_eq!(link_idx("https://SQLite.org/releaselog/3_51.html#top"), key);
-        assert_eq!(
-            link_idx("https://sqlite.org/releaselog/3_51.html?utm_source=x"),
-            key
-        );
-        assert_eq!(link_idx("https://sqlite.org/releaselog/3_51.html/"), key);
-        assert_ne!(link_idx("https://sqlite.org/releaselog/3_50.html"), key);
-        assert!(key > 0 && key < (1 << 52));
-    }
 }

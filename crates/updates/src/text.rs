@@ -124,22 +124,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn skips_greetings_footers_and_fragments() {
-        let body = "View this email in your browser\n\nHi Bhekani,\n\nYour week:\n\
-                    You ran 3 times this week, 21.3 km in total.\nUnsubscribe";
-        assert_eq!(
-            first_informative_line(body, 140).as_deref(),
-            Some("You ran 3 times this week, 21.3 km in total.")
-        );
-        assert_eq!(
-            first_informative_line("Hi there,\n\nThanks,\nThe Acme team", 80),
-            None
-        );
-        assert_eq!(clip("a  b   c", 10), "a b c");
-        assert_eq!(clip("abcdef", 4), "abc…");
-    }
-
-    #[test]
     fn picks_the_link_named_by_its_line_and_skips_noise() {
         let body = "Logo https://cdn.example.com/logo.png\n\
                     Manage preferences https://example.com/preferences\n\

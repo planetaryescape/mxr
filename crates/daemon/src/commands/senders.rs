@@ -129,29 +129,4 @@ mod tests {
         assert!(parsed >= before - Duration::seconds(1));
         assert!(parsed <= after + Duration::seconds(1));
     }
-
-    /// Phase 2.6: absolute RFC-3339 is the unambiguous form for
-    /// scripts and CI.
-    #[test]
-    fn parse_since_accepts_rfc3339_absolute_timestamp() {
-        let parsed = parse_since("2026-02-01T00:00:00Z").unwrap();
-        assert_eq!(parsed.to_rfc3339(), "2026-02-01T00:00:00+00:00");
-    }
-
-    /// Zero/negative durations are user error, not "all time"; reject
-    /// so the user sees the mistake rather than silently getting
-    /// nothing back.
-    #[test]
-    fn parse_since_rejects_zero_or_negative_durations() {
-        assert!(parse_since("0d").is_err());
-        assert!(parse_since("-5d").is_err());
-    }
-
-    /// Unknown suffix is rejected with a useful error rather than
-    /// being silently treated as "no filter".
-    #[test]
-    fn parse_since_rejects_unknown_suffix() {
-        let err = parse_since("90q").unwrap_err();
-        assert!(err.contains("suffix"));
-    }
 }

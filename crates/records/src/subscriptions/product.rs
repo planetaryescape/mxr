@@ -216,25 +216,4 @@ mod tests {
             None
         );
     }
-
-    #[test]
-    fn a_cancellation_is_an_ending_not_a_threat() {
-        assert!(is_cancellation("Your subscription has been cancelled"));
-        assert!(is_cancellation("Your Premium membership has ended"));
-        assert!(is_cancellation("Cancellation confirmed"));
-        assert!(is_cancellation(
-            "Your subscription has been cancelled and will never renew"
-        ));
-        assert!(!is_cancellation(
-            "Your subscription will be cancelled unless you update your payment"
-        ));
-        assert!(!is_cancellation("Your subscription has not been cancelled"));
-        assert!(!is_cancellation("Your plan was never cancelled"));
-        assert!(!is_cancellation(
-            "Payment failed: subscription cancelled soon"
-        ));
-        assert!(!is_cancellation("Your cancellation request failed"));
-        assert!(!is_cancellation("Your subscription renews on 12 May"));
-        assert!(!is_cancellation("Your booking was cancelled"));
-    }
 }

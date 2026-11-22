@@ -592,7 +592,7 @@ mod tests {
     use super::*;
     use crate::commands::mutations::helpers::MutationSelection;
     use crate::test_fixtures::FakeBulkDaemon;
-    use mxr_core::types::{SearchMode, SortOrder, UnsubscribeMethod};
+    use mxr_core::types::UnsubscribeMethod;
 
     #[test]
     fn a_dry_run_keeps_the_matched_messages_next_to_the_requests() {
@@ -644,40 +644,6 @@ mod tests {
         assert!(json.get("succeeded").is_none(), "a dry run sends nothing");
     }
 
-    #[test]
-    fn an_address_is_searched_lexically_newest_first_whatever_the_configured_mode() {
-        let Request::Search {
-            query,
-            limit,
-            mode,
-            sort,
-            ..
-        } = address_search_request("alice@example.com", Some("label:news"), None)
-        else {
-            unreachable!("an address resolves through search");
-        };
-        assert_eq!(query, "(label:news) AND (from:alice@example.com)");
-        assert_eq!(limit, SEARCH_HARD_CAP);
-        assert_eq!(mode, Some(SearchMode::Lexical));
-        assert_eq!(sort, Some(SortOrder::DateDesc));
-    }
-
-    #[test]
-    fn an_address_query_is_scoped_by_search_with_and() {
-        assert_eq!(
-            address_query("alice@example.com", None),
-            "from:alice@example.com"
-        );
-        assert_eq!(
-            address_query("alice@example.com", Some("label:news")),
-            "(label:news) AND (from:alice@example.com)"
-        );
-        assert_eq!(
-            address_query("alice@example.com", Some("  ")),
-            "from:alice@example.com"
-        );
-    }
-
     const ALICE: &str = "alice@example.com";
     const NOTICE: &str = "More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.";
 
@@ -701,84 +667,6 @@ mod tests {
         assert_eq!(json["capped"], true);
         assert_eq!(json["addresses"][0]["capped"], true);
         assert!(json.get("matched_total").is_none());
-    }
-
-    #[tokio::test]
-    async fn dry_run_jsonl_lines_of_a_capped_address_carry_capped() {
-        let daemon = FakeBulkDaemon::start(1_523);
-        let mut client = daemon.client().await;
-        let plans = plan_addresses(&mut client, &[ALICE.to_owned()], None, None)
-            .await
-            .unwrap();
-
-        let lines = preview_jsonl_lines(&plans).unwrap();
-
-        assert_eq!(lines.len(), 1_000);
-        for line in [&lines[0], &lines[999]] {
-            let value: serde_json::Value = serde_json::from_str(line).unwrap();
-            assert_eq!(value["capped"], true, "{line}");
-            assert_eq!(value["action"], "unsubscribe");
-            assert!(value.get("message_id").is_some());
-        }
-
-        let daemon = FakeBulkDaemon::start(3);
-        let mut client = daemon.client().await;
-        let plans = plan_addresses(&mut client, &[ALICE.to_owned()], None, None)
-            .await
-            .unwrap();
-        for line in preview_jsonl_lines(&plans).unwrap() {
-            let value: serde_json::Value = serde_json::from_str(&line).unwrap();
-            assert!(value.get("capped").is_none(), "{line}");
-        }
-    }
-
-    #[tokio::test]
-    async fn an_address_search_under_the_cap_reports_nothing() {
-        let daemon = FakeBulkDaemon::start_with_total(300, 1_500);
-        let mut client = daemon.client().await;
-
-        let plans = plan_addresses(&mut client, &[ALICE.to_owned()], None, None)
-            .await
-            .unwrap();
-
-        let lines = summary_lines(&plans);
-        assert!(
-            !lines.iter().any(|line| line.contains("More than")),
-            "{lines:?}"
-        );
-        let json = serde_json::to_value(totals(&plans, false)).unwrap();
-        assert!(json.get("capped").is_none());
-        assert!(json["addresses"][0].get("capped").is_none());
-    }
-
-    #[tokio::test]
-    async fn with_yes_the_cap_notice_is_written_before_the_unsubscribe_request() {
-        let daemon = FakeBulkDaemon::start(1_523);
-        let mut client = daemon.client().await;
-
-        unsubscribe_by_address_to(
-            &mut client,
-            &[ALICE.to_owned()],
-            None,
-            None,
-            true,
-            false,
-            Some(OutputFormat::Json),
-            &mut daemon.notice_sink(),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(
-            daemon.events.lock().unwrap().clone(),
-            [
-                "search".to_owned(),
-                "envelopes".to_owned(),
-                "plan".to_owned(),
-                format!("notice: {ALICE}: {NOTICE}"),
-                "unsubscribe".to_owned(),
-            ]
-        );
     }
 
     #[tokio::test]

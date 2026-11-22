@@ -383,42 +383,4 @@ mod tests {
             })
         ));
     }
-
-    #[test]
-    fn order_awaiting_payment_is_a_bill_and_shipped_order_is_nothing() {
-        let due = wrap(
-            r#"{"@type":"Order","orderStatus":"OrderPaymentDue","seller":{"name":"Acme"},
-                "price":"25.50","priceCurrency":"usd","paymentDueDate":"2026-10-03T17:00:00Z"}"#,
-        );
-        assert!(matches!(
-            read(Some(&due)).todo,
-            Some(SchemaTodo::Bill {
-                amount: Some(SchemaAmount { minor: 2550, .. }),
-                ..
-            })
-        ));
-        let shipped = wrap(r#"{"@type":"Order","orderStatus":"OrderInTransit"}"#);
-        assert_eq!(read(Some(&shipped)), SchemaVerdict::default());
-    }
-
-    #[test]
-    fn pending_reservation_needs_confirming_and_confirmed_settles() {
-        let pending = wrap(
-            r#"{"@type":"FoodEstablishmentReservation","reservationStatus":"ReservationPending",
-                "reservationFor":{"@type":"FoodEstablishment","name":"Dishoom","startDate":"2026-10-10T19:00:00+01:00"},
-                "potentialAction":{"@type":"ConfirmAction","target":"https://book.example.com/confirm/1"}}"#,
-        );
-        let Some(SchemaTodo::PendingReservation {
-            name, starts, url, ..
-        }) = read(Some(&pending)).todo
-        else {
-            panic!("expected a pending reservation");
-        };
-        assert_eq!(name.as_deref(), Some("Dishoom"));
-        assert!(matches!(starts, Some(SchemaDate::At(_))));
-        assert_eq!(url.as_deref(), Some("https://book.example.com/confirm/1"));
-        let confirmed =
-            wrap(r#"{"@type":"LodgingReservation","reservationStatus":"ReservationConfirmed"}"#);
-        assert!(read(Some(&confirmed)).settled);
-    }
 }

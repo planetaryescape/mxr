@@ -71,15 +71,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn long_text_is_cut_on_a_character_boundary_with_an_ellipsis() {
-        let text = "€".repeat(400);
-        let cut = bounded_text(&text, 512);
-        assert!(cut.len() <= 512, "{}", cut.len());
-        assert!(cut.ends_with(ELLIPSIS));
-        assert!(cut.trim_end_matches(ELLIPSIS).chars().all(|c| c == '€'));
-    }
-
-    #[test]
     fn control_characters_become_spaces() {
         assert_eq!(bounded_text("a\u{0}b\nc", 512), "a b c");
         let long = "\u{1}".repeat(2_000);

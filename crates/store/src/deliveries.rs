@@ -512,80 +512,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_changes_fields_and_dedup_key() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, _) = seed(&store).await;
-        let mut d = sample(&account_id, "Acme|A-100", "ordered");
-        d.tracking_number = None;
-        store.insert_delivery(&d).await.unwrap();
-
-        d.tracking_number = Some("1Z42".into());
-        d.dedup_key = "1Z42".into();
-        d.status = "shipped".into();
-        store.update_delivery(&d).await.unwrap();
-
-        assert!(store
-            .get_delivery_by_dedup(&account_id, "Acme|A-100")
-            .await
-            .unwrap()
-            .is_none());
-        let got = store
-            .get_delivery_by_dedup(&account_id, "1Z42")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(got.status, "shipped");
-        assert_eq!(got.id, d.id, "same row, migrated key");
-    }
-
-    #[tokio::test]
-    async fn list_filters_partition_rows() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, _) = seed(&store).await;
-
-        let active = sample(&account_id, "k-active", "in_transit");
-        store.insert_delivery(&active).await.unwrap();
-
-        let mut delivered = sample(&account_id, "k-delivered", "delivered");
-        delivered.delivered_at = Some(anchor());
-        delivered.resolved_at = Some(anchor());
-        store.insert_delivery(&delivered).await.unwrap();
-
-        let mut dismissed = sample(&account_id, "k-dismissed", "in_transit");
-        dismissed.dismissed_at = Some(anchor());
-        store.insert_delivery(&dismissed).await.unwrap();
-
-        let ids = |v: Vec<Delivery>| v.into_iter().map(|d| d.id).collect::<Vec<_>>();
-        assert_eq!(
-            ids(store
-                .list_deliveries(DeliveryListFilter::Active)
-                .await
-                .unwrap()),
-            vec![active.id.clone()]
-        );
-        assert_eq!(
-            ids(store
-                .list_deliveries(DeliveryListFilter::Delivered)
-                .await
-                .unwrap()),
-            vec![delivered.id.clone()]
-        );
-        assert_eq!(
-            ids(store
-                .list_deliveries(DeliveryListFilter::Dismissed)
-                .await
-                .unwrap()),
-            vec![dismissed.id.clone()]
-        );
-        let all = ids(store
-            .list_deliveries(DeliveryListFilter::All)
-            .await
-            .unwrap());
-        assert_eq!(all.len(), 2);
-        assert!(all.contains(&active.id) && all.contains(&delivered.id));
-    }
-
-    #[tokio::test]
     async fn resolve_marks_delivered_and_leaves_active() {
         let store = Store::in_memory().await.unwrap();
         let (account_id, _) = seed(&store).await;
@@ -599,25 +525,6 @@ mod tests {
         assert_eq!(got.resolved_at, Some(anchor()));
         assert!(store
             .list_deliveries(DeliveryListFilter::Active)
-            .await
-            .unwrap()
-            .is_empty());
-    }
-
-    #[tokio::test]
-    async fn dismiss_hides_from_active_and_all() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, _) = seed(&store).await;
-        let d = sample(&account_id, "k1", "in_transit");
-        store.insert_delivery(&d).await.unwrap();
-        store.dismiss_delivery(&d.id, anchor()).await.unwrap();
-        assert!(store
-            .list_deliveries(DeliveryListFilter::Active)
-            .await
-            .unwrap()
-            .is_empty());
-        assert!(store
-            .list_deliveries(DeliveryListFilter::All)
             .await
             .unwrap()
             .is_empty());

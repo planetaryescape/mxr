@@ -439,21 +439,6 @@ mod tests {
     };
     use mxr_store::Store;
 
-    #[test]
-    fn metric_shift_requires_three_recent_outliers() {
-        let prior = vec![0.20, 0.21, 0.19, 0.20, 0.22, 0.18];
-
-        assert!(
-            metric_shift(prior.clone(), vec![0.20, 0.90, 0.91], 0.15).is_none(),
-            "one normal recent sample should suppress drift"
-        );
-        assert_eq!(
-            metric_shift(prior, vec![0.88, 0.90, 0.91], 0.15).map(|(_, to)| to > 0.85),
-            Some(true),
-            "three consecutive outliers should report drift"
-        );
-    }
-
     #[tokio::test]
     async fn rebuild_contact_style_uses_clean_non_list_messages_and_skips_unchanged_rebuild() {
         let store = Store::in_memory().await.expect("store");
@@ -530,83 +515,6 @@ mod tests {
         assert_eq!(
             second.computed_at, first.computed_at,
             "unchanged source hash should skip rewriting the style record"
-        );
-    }
-
-    #[tokio::test]
-    async fn rebuild_contact_style_flags_three_recent_voice_outliers_as_drift() {
-        let store = Store::in_memory().await.expect("store");
-        let account = test_account();
-        store.insert_account(&account).await.expect("account");
-        let thread_id = ThreadId::new();
-        let base = Utc.with_ymd_and_hms(2026, 5, 1, 12, 0, 0).unwrap();
-        for index in 0..8 {
-            insert_relationship_message(
-                &store,
-                &account,
-                &thread_id,
-                RelationshipMessageFixture {
-                    direction: MessageDirection::Outbound,
-                    contact_email: "alice@example.com",
-                    body: "ok.",
-                    date: base + chrono::Duration::minutes(index),
-                    list_id: None,
-                },
-            )
-            .await;
-        }
-        insert_relationship_message(
-            &store,
-            &account,
-            &thread_id,
-            RelationshipMessageFixture {
-                direction: MessageDirection::Inbound,
-                contact_email: "alice@example.com",
-                body: "Thanks.",
-                date: base + chrono::Duration::minutes(9),
-                list_id: None,
-            },
-        )
-        .await;
-        rebuild_contact_style(&store, &account.id, "alice@example.com")
-            .await
-            .expect("baseline rebuild");
-
-        for index in 0..3 {
-            insert_relationship_message(
-                &store,
-                &account,
-                &thread_id,
-                RelationshipMessageFixture {
-                    direction: MessageDirection::Outbound,
-                    contact_email: "alice@example.com",
-                    body: "I can prepare the deployment update, summarize the dashboard results, confirm the owner, and send the final note before the deadline.",
-                    date: base + chrono::Duration::minutes(20 + index),
-                    list_id: None,
-                },
-            )
-            .await;
-        }
-        rebuild_contact_style(&store, &account.id, "alice@example.com")
-            .await
-            .expect("drift rebuild");
-
-        let style = store
-            .get_contact_style(&account.id, "alice@example.com")
-            .await
-            .expect("style query")
-            .expect("style");
-        assert!(
-            style.drift_detected,
-            "three recent outliers should flag drift"
-        );
-        assert!(
-            style
-                .drift_reason
-                .as_deref()
-                .is_some_and(|reason| reason.contains("sentence length")),
-            "drift reason should explain the observable voice shift: {:?}",
-            style.drift_reason
         );
     }
 

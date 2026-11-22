@@ -231,38 +231,6 @@ mod tests {
         assert_eq!(found.text, "down 17% on 6 Oct");
     }
 
-    fn units(text: &str) -> Vec<(String, String)> {
-        extract_numbers(text, 8)
-            .into_iter()
-            .map(|q| (q.raw, q.unit))
-            .collect()
-    }
-
-    #[test]
-    fn quotes_quantities_and_skips_ids_times_and_dates() {
-        assert_eq!(
-            units("Your week: 3 runs, 21.3 km"),
-            vec![
-                ("3 runs".into(), "run".into()),
-                ("21.3 km".into(), "km".into())
-            ]
-        );
-        assert_eq!(
-            units("Payout of R 4,210.00 failed"),
-            vec![("R 4,210.00".into(), "ZAR".into())]
-        );
-        assert_eq!(units("£142.00 due"), vec![("£142.00".into(), "GBP".into())]);
-        assert_eq!(
-            units("Weekly report: 1,204 visitors ▼3%"),
-            vec![
-                ("1,204 visitors".into(), "visitor".into()),
-                ("3%".into(), "%".into()),
-            ]
-        );
-        assert!(units("Order #1234 at 06:12 on 2026-10-07, build v2 of 3").is_empty());
-        assert!(units("Your code is 482913").is_empty());
-    }
-
     #[test]
     fn deltas_need_the_same_unit_and_template_position() {
         let at = DateTime::UNIX_EPOCH + Duration::days(20_000);

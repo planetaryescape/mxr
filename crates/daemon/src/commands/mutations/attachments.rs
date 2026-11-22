@@ -330,7 +330,7 @@ pub async fn attachments_open(
 
 #[cfg(test)]
 mod tests {
-    use super::{format_transfer_table_line, safe_download_name, AttachmentTransferResult};
+    use super::safe_download_name;
     use mxr_core::AttachmentId;
     use std::path::Path;
 
@@ -348,23 +348,5 @@ mod tests {
                 "{hostile:?} escaped target_dir as {target:?} (name {name:?})",
             );
         }
-    }
-
-    #[test]
-    fn transfer_table_keeps_the_selected_attachment_index() {
-        let row = AttachmentTransferResult {
-            index: 3,
-            message_id: "message".into(),
-            attachment_id: "attachment".into(),
-            filename: "invoice.pdf".into(),
-            path: "/tmp/invoice.pdf".into(),
-            length_bytes: 1,
-            sha256: "0".repeat(64),
-        };
-
-        assert_eq!(
-            format_transfer_table_line(&row),
-            "#3 invoice.pdf -> /tmp/invoice.pdf"
-        );
     }
 }

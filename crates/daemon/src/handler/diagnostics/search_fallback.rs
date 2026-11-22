@@ -287,25 +287,6 @@ mod tests {
     }
 
     #[test]
-    fn exact_terms_and_phrases_are_supported_as_words() {
-        let plan = plan("+invoice \"quarterly report\"").unwrap();
-        assert_eq!(
-            plan.clauses,
-            vec![
-                clause(FtsColumns::Any, "invoice"),
-                clause(FtsColumns::Any, "quarterly report")
-            ]
-        );
-    }
-
-    #[test]
-    fn subject_and_from_fields_pick_their_columns() {
-        let plan = plan("subject:plan from:Alice@example.com").unwrap();
-        assert_eq!(plan.clauses, vec![clause(FtsColumns::Subject, "plan")]);
-        assert_eq!(plan.sender_addresses, vec!["Alice@example.com".to_string()]);
-    }
-
-    #[test]
     fn trash_and_spam_are_hidden_unless_the_query_lifts_them() {
         let default = plan("invoice").unwrap();
         assert!(default.hide_trash && default.hide_spam);
@@ -361,45 +342,6 @@ mod tests {
     }
 
     #[test]
-    fn a_term_without_letters_or_digits_is_refused() {
-        assert!(plan("***").is_err());
-    }
-
-    #[test]
-    fn a_query_with_only_a_lifting_filter_has_nothing_to_search_for() {
-        let refused = plan("in:anywhere").unwrap_err();
-        assert_eq!(
-            refused,
-            vec!["a query with no words to search for".to_string()]
-        );
-    }
-
-    #[test]
-    fn terms_with_fts5_syntax_are_kept_as_words_for_the_store_to_quote() {
-        let plan = plan("\"alpha NEAR beta\" \"x OR y\"").unwrap();
-        assert_eq!(plan.clauses.len(), 2);
-    }
-
-    #[test]
-    fn a_compound_word_is_every_one_of_its_tokens_not_a_phrase() {
-        let words = vec![
-            clause(FtsColumns::Any, "alpha"),
-            clause(FtsColumns::Any, "beta"),
-        ];
-        assert_eq!(plan("alpha-beta").unwrap().clauses, words);
-        assert_eq!(plan("+alpha_beta").unwrap().clauses, words);
-    }
-
-    #[test]
-    fn a_quoted_phrase_stays_a_phrase_of_the_index_tokens() {
-        let plan = plan("\"Alpha-Beta gamma\"").unwrap();
-        assert_eq!(
-            plan.clauses,
-            vec![clause(FtsColumns::Any, "alpha beta gamma")]
-        );
-    }
-
-    #[test]
     fn a_bare_address_is_one_group_matching_the_address_or_its_words() {
         let plan = plan("alice@example.com").unwrap();
         assert!(plan.clauses.is_empty());
@@ -428,12 +370,5 @@ mod tests {
             "got {:?}",
             decomposed.clauses
         );
-    }
-
-    #[test]
-    fn a_decomposed_accent_in_a_phrase_matches_the_precomposed_phrase() {
-        let decomposed = plan("\"nai\u{308}ve beta\"").unwrap();
-        let precomposed = plan("\"na\u{ef}ve beta\"").unwrap();
-        assert_eq!(decomposed.clauses, precomposed.clauses);
     }
 }

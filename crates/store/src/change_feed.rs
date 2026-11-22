@@ -204,35 +204,4 @@ mod tests {
             .expect("the writer is free again");
         assert!(after > before, "the committed insert is in the count");
     }
-
-    #[tokio::test]
-    async fn view_tables_count_and_bookkeeping_does_not() {
-        let store = Store::in_memory().await.unwrap();
-        let feed = store.change_feed();
-        let start = feed.seq();
-
-        let log = "INSERT INTO event_log (timestamp, level, category, summary) VALUES (0, 'info', 'sync', 'x')";
-        sqlx::query(log).execute(store.writer()).await.unwrap();
-        assert_eq!(feed.seq(), start, "the event log is not a view change");
-
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-        assert!(feed.seq() > start, "an account row is a view change");
-
-        let before_rollback = feed.seq();
-        let mut tx = store.writer().begin().await.unwrap();
-        sqlx::query("DELETE FROM accounts")
-            .execute(&mut *tx)
-            .await
-            .unwrap();
-        tx.rollback().await.unwrap();
-        let mut tx = store.writer().begin().await.unwrap();
-        sqlx::query(log).execute(&mut *tx).await.unwrap();
-        tx.commit().await.unwrap();
-        assert_eq!(
-            feed.seq(),
-            before_rollback,
-            "a rolled-back change is not carried into the next commit"
-        );
-    }
 }

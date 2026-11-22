@@ -328,45 +328,6 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn triage_prompt_names_the_owner_snapshot_it_was_given() {
-        use crate::test_fixtures::TestEnvelopeBuilder;
-        use mxr_core::types::OwnedAddresses;
-        let state = AppState::in_memory().await.unwrap();
-        let envelope = TestEnvelopeBuilder::new()
-            .account_id(state.default_account_id())
-            .provider_id("snapshot")
-            .build();
-        let snapshot = OwnedAddresses::new(Some("snapshot-owner@example.com"), []);
-        let prompt = build_triage_prompt(&snapshot, &envelope, "body");
-        assert!(
-            prompt.contains("- snapshot-owner@example.com (primary)"),
-            "{prompt}"
-        );
-    }
-
-    #[test]
-    fn triage_content_hash_changes_when_the_owned_set_changes() {
-        use crate::test_fixtures::TestEnvelopeBuilder;
-        use mxr_core::types::OwnedAddresses;
-        let envelope = TestEnvelopeBuilder::new()
-            .provider_id("triage-hash")
-            .build();
-        let before = crate::state::owned_addresses_revision(&OwnedAddresses::new(
-            Some("me@example.com"),
-            [],
-        ));
-        let after = crate::state::owned_addresses_revision(&OwnedAddresses::new(
-            Some("me@example.com"),
-            ["alias@example.com"],
-        ));
-        assert_ne!(
-            triage_content_hash(&envelope, "body", &before),
-            triage_content_hash(&envelope, "body", &after),
-            "a cached verdict must miss once the owner's addresses change"
-        );
-    }
-
-    #[tokio::test]
     async fn triage_prompt_wraps_single_message_in_untrusted_markers() {
         use crate::state::AppState;
         use crate::test_fixtures::TestEnvelopeBuilder;

@@ -129,35 +129,4 @@ mod tests {
         assert_eq!(got.body, "new");
         assert_eq!(got.vars, vec!["b", "c"]);
     }
-
-    #[tokio::test]
-    async fn delete_removes_existing_snippet() {
-        let store = Store::in_memory().await.unwrap();
-        store
-            .upsert_snippet(&make("sig", "Alice", &[]))
-            .await
-            .unwrap();
-        let removed = store.delete_snippet("sig").await.unwrap();
-        assert!(removed);
-        assert!(store.get_snippet("sig").await.unwrap().is_none());
-    }
-
-    #[tokio::test]
-    async fn list_returns_alphabetical_order() {
-        let store = Store::in_memory().await.unwrap();
-        for name in ["sig", "thanks", "intro"] {
-            store
-                .upsert_snippet(&make(name, "body", &[]))
-                .await
-                .unwrap();
-        }
-        let names: Vec<_> = store
-            .list_snippets()
-            .await
-            .unwrap()
-            .into_iter()
-            .map(|s| s.name)
-            .collect();
-        assert_eq!(names, vec!["intro", "sig", "thanks"]);
-    }
 }

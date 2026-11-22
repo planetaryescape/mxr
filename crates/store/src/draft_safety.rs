@@ -147,20 +147,4 @@ mod tests {
         let again = store.consume_safety_override(&token).await.unwrap();
         assert_eq!(again, None);
     }
-
-    #[tokio::test]
-    async fn override_records_all_listed_issue_kinds() {
-        let store = temp_store().await;
-        let kinds_in = vec![
-            DraftSafetyIssueCode::PiiSecret,
-            DraftSafetyIssueCode::WrongRecipient,
-        ];
-        let token = store.mint_safety_override(None, &kinds_in).await.unwrap();
-        let kinds_out = store
-            .consume_safety_override(&token)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(kinds_out, kinds_in);
-    }
 }

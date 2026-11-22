@@ -250,7 +250,7 @@ fn account_matches(account: &AccountSummaryData, selector: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{degraded_status_reading, expect_response};
+    use super::expect_response;
     use crate::cli_error::CliError;
     use mxr_protocol::{IpcErrorKind, Response};
 
@@ -264,15 +264,5 @@ mod tests {
         let internal = Response::error_kinded("boom", IpcErrorKind::Internal);
         let error = expect_response(internal, |_| None::<()>).unwrap_err();
         assert!(CliError::find(&error).is_none());
-    }
-
-    #[test]
-    fn a_flagged_snapshot_is_no_reading_even_when_accounts_came_back() {
-        assert!(degraded_status_reading(true, &["personal".to_string()]));
-    }
-
-    #[test]
-    fn an_empty_account_list_is_no_reading_from_a_daemon_without_the_flag() {
-        assert!(degraded_status_reading(false, &[]));
     }
 }

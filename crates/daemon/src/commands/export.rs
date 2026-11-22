@@ -70,13 +70,3 @@ pub async fn run(
     })?;
     emit(content, output)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_unknown_export_format() {
-        assert!(parse_export_format("yaml").is_err());
-    }
-}

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.249](https://github.com/planetaryescape/mxr/compare/v0.6.248...v0.6.249) (2026-11-22)
+
+
+### Documentation
+
+* explain grant replacement, remote denials and host upgrades ([#1001](https://github.com/planetaryescape/mxr/issues/1001)) ([9684231](https://github.com/planetaryescape/mxr/commit/96842311b21de4ba5aded94ad959a43a675c4cca))
+
 ## [0.6.248](https://github.com/planetaryescape/mxr/compare/v0.6.247...v0.6.248) (2026-11-20)
 
 

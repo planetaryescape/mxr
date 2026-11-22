@@ -132,8 +132,9 @@ the reason.
 
 Comments are ratcheted: CI fails when a file gains a comment, and when a file
 loses one without the baseline being lowered. Say it in code instead (a name, a
-type, a test). Put a decision and its reason in
-`docs/blueprint/15-decision-log.md`, and a workaround's fix in `docs/issues/`.
+type, a test). Put a code decision and its reason in `docs/code-decisions/`,
+a product or architecture decision in `docs/blueprint/15-decision-log.md`, and
+a workaround's fix in `docs/issues/`.
 Doc comments and tool directives (`// SAFETY:`, lint suppressions) are not
 counted. After deleting comments, lock the lower count in:
 

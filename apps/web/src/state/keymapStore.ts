@@ -17,7 +17,12 @@ export const useKeymapStore = create<KeymapState>((set) => ({
   version: 0,
   catalogLoaded: false,
   setServed: (served) => set((state) => ({ ...served, version: state.version + 1 })),
-  markCatalogLoaded: () => set((state) => ({ catalogLoaded: true, version: state.version + 1 })),
+  markCatalogLoaded: () => {
+    set((state) => ({ catalogLoaded: true, version: state.version + 1 }));
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-keys-ready", "true");
+    }
+  },
 }));
 
 export function isCharacterKey(chord: string): boolean {

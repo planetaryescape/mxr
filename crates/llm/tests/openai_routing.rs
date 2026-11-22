@@ -123,8 +123,6 @@ async fn a_gpt_model_goes_to_openai_with_its_key_and_the_parameters_openai_accep
     let sent = bodies(&rig.openai).await;
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0]["model"], MODEL);
-    // OpenAI's current models refuse `max_tokens` and a non-default
-    // temperature; the cap leaves room for reasoning on top of the 400 asked.
     assert!(sent[0].get("max_tokens").is_none(), "{}", sent[0]);
     assert!(sent[0].get("temperature").is_none(), "{}", sent[0]);
     assert_eq!(sent[0]["max_completion_tokens"], 400 + 2048);
@@ -165,7 +163,6 @@ async fn a_failing_openai_key_falls_over_to_openrouter_under_its_slug() {
     assert_eq!(response.model, "openai/gpt-6-luna via OpenRouter");
     let sent = bodies(&rig.openrouter).await;
     assert_eq!(sent[0]["model"], "openai/gpt-6-luna");
-    // OpenRouter takes the usual name for the cap.
     assert_eq!(sent[0]["max_tokens"], 400 + 2048);
     assert!(sent[0].get("max_completion_tokens").is_none());
 }
@@ -244,7 +241,6 @@ async fn a_tool_chat_turn_carries_the_cap_and_tools_in_openai_form() {
     assert_eq!(response.model, "gpt-6-luna via OpenAI");
     let sent = bodies(&rig.openai).await;
     assert_eq!(sent[0]["max_completion_tokens"], 1000);
-    // GPT-6 Luna takes tool calls only with reasoning off.
     assert_eq!(sent[0]["reasoning_effort"], "none");
     assert!(sent[0].get("max_tokens").is_none());
     assert_eq!(sent[0]["tools"][0]["function"]["name"], "mxr_search");

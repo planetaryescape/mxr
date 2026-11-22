@@ -17,14 +17,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use tokio::time::Instant;
 
-/// First cooling period; doubles on each further failure.
 pub(crate) const COOLING_MIN: Duration = Duration::from_secs(60);
 pub(crate) const COOLING_MAX: Duration = Duration::from_secs(30 * 60);
 /// A route that is broken until a key or the config changes is still
 /// retried this often, in case the change happened somewhere mxr can't see
 /// (a key rotated at the provider, a model that became available).
 pub(crate) const BROKEN_TTL: Duration = Duration::from_secs(60 * 60);
-/// A `retry-after` longer than this is not honoured in full.
 const RETRY_AFTER_MAX: Duration = Duration::from_secs(60 * 60);
 const RETRY_AFTER_MIN: Duration = Duration::from_secs(1);
 
@@ -58,7 +56,6 @@ impl fmt::Display for FailureReason {
     }
 }
 
-/// A route-level failure: the route itself is the problem, not the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RouteFailure {
     /// Temporary (rate limit, overload, outage, timeout). Retried after a
@@ -77,13 +74,10 @@ pub enum RouteState {
     Ok,
     Cooling,
     Broken,
-    /// The wait is over; the next request will probe the route.
     Recovering,
-    /// A probe is in flight.
     Probing,
 }
 
-/// A route's health at one moment, for choosing and for display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RouteView {
     pub state: RouteState,
@@ -157,7 +151,6 @@ impl Book {
     }
 }
 
-/// Shared health of every route. Cheap to clone; clones share state.
 #[derive(Debug, Clone, Default)]
 pub struct RouteHealth {
     book: Arc<Mutex<Book>>,
@@ -168,9 +161,7 @@ pub struct RouteHealth {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TicketKind {
-    /// The route looked healthy.
     Use,
-    /// The route's wait was over and this request is the one trying it.
     Probe,
     /// Tried although the route is out, because nothing else was left. Its
     /// success clears the route; its failure says nothing new.
@@ -257,7 +248,6 @@ impl RouteHealth {
         }
     }
 
-    /// A hosted route (`&Route`) or the user's endpoint (`&EndpointRoute`).
     pub fn view(&self, route: impl Into<RouteKey>) -> RouteView {
         let route = route.into();
         let now = Instant::now();
@@ -304,7 +294,6 @@ impl RouteHealth {
         }
     }
 
-    /// Records the outcome; true when it brought a route back.
     fn settle_book(&self, ticket: &Ticket, failure: Option<RouteFailure>) -> bool {
         let mut book = self.book();
         let next_epoch = book.next_epoch();
@@ -378,7 +367,6 @@ impl RouteHealth {
     }
 }
 
-/// 1 min for the first failure, doubling to 30 min.
 fn cooling_backoff(failures: u32) -> Duration {
     let doublings = failures.saturating_sub(1).min(16);
     COOLING_MIN
@@ -387,7 +375,6 @@ fn cooling_backoff(failures: u32) -> Duration {
 }
 
 impl Ticket {
-    /// The route answered (even if the answer was a refusal): healthy.
     pub(crate) fn succeeded(mut self) {
         self.settled = true;
         self.health.settle(&self, None);
@@ -547,7 +534,6 @@ mod tests {
         assert_eq!(health.view(&anthropic()), RouteView::OK);
         assert!(matches!(health.admit(&anthropic()), Admission::Use(_)));
 
-        // The next failure starts again from a minute.
         fail(&health, cooling());
         assert_eq!(health.view(&anthropic()).retry_in, COOLING_MIN);
     }
@@ -580,14 +566,12 @@ mod tests {
         drop(health.admit(&anthropic()));
         let view = health.view(&anthropic());
         assert_eq!(view.state, RouteState::Recovering);
-        // Same failure count: the next failure is the second, not the third.
         assert!(matches!(health.admit(&anthropic()), Admission::Probe(_)));
     }
 
     #[tokio::test(start_paused = true)]
     async fn failures_from_requests_already_in_flight_do_not_escalate_the_backoff() {
         let health = RouteHealth::default();
-        // Eight requests were admitted while the route looked healthy.
         let tickets: Vec<_> = (0..8).map(|_| ticket(health.admit(&anthropic()))).collect();
         for ticket in tickets {
             ticket.failed(cooling());
@@ -620,7 +604,6 @@ mod tests {
         fail(&health, RouteFailure::Broken { reason: BAD_KEY });
         ticket(health.admit(&openrouter)).failed(cooling());
 
-        // A request to Anthropic is in flight when the key changes.
         health.forget_provider(RouteProvider::Anthropic);
         assert_eq!(health.view(&anthropic()), RouteView::OK);
         assert_eq!(health.view(&openrouter).state, RouteState::Cooling);
@@ -662,8 +645,6 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn concurrent_callers_after_the_wait_share_exactly_one_probe() {
-        // Real time: `pause` needs a single-threaded runtime, and this test is
-        // about callers racing on separate threads.
         let health = RouteHealth::default();
         fail(
             &health,
@@ -683,7 +664,6 @@ mod tests {
                 barrier.wait().await;
                 match health.admit(&anthropic()) {
                     Admission::Probe(probe) => {
-                        // Hold the probe while the others have all asked.
                         tokio::task::yield_now().await;
                         Some(probe)
                     }
@@ -692,9 +672,6 @@ mod tests {
                 }
             }));
         }
-        // Keep every ticket alive until all callers have asked: dropping an
-        // unsettled probe frees it, so a caller still asking could then get a
-        // second one, which is correct but not what this test measures.
         let mut held = Vec::new();
         for task in tasks {
             held.push(task.await.unwrap());

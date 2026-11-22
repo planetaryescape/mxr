@@ -89,7 +89,6 @@ pub(crate) fn reply(req: &ToolChatRequest) -> ToolChatResponse {
     ))
 }
 
-/// (id, subject, sender) for each message a result lists.
 fn envelopes(content: &str) -> Vec<(String, String, String)> {
     let (Some(start), Some(end)) = (content.find('{'), content.rfind('}')) else {
         return Vec::new();

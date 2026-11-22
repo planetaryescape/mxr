@@ -104,7 +104,6 @@ fn ask(input: &str) -> CompletionRequest {
     }
 }
 
-/// What a background worker does with each input it is handed.
 async fn run_inputs(feature: &FeatureLlmRuntime, keys: &[String]) {
     for key in keys {
         if !feature.background_attempt_due(key, FP) {
@@ -117,7 +116,6 @@ async fn run_inputs(feature: &FeatureLlmRuntime, keys: &[String]) {
     }
 }
 
-/// What the daemon's recovery loop does on each tick.
 async fn recovery_tick(runtime: &Arc<LlmRuntime>) -> bool {
     if runtime.background_recovery_due(&[FEATURE]).await.is_empty() {
         return false;
@@ -157,7 +155,6 @@ async fn a_two_day_outage_gives_up_no_input_and_runs_each_once_after() {
     while elapsed < outage {
         tokio::time::advance(tick).await;
         elapsed += tick;
-        // New mail for a few contacts each hour sends them through again.
         if elapsed.as_secs().is_multiple_of(3600) {
             let hour = (elapsed.as_secs() / 3600) as usize;
             let some: Vec<String> = inputs
@@ -179,7 +176,6 @@ async fn a_two_day_outage_gives_up_no_input_and_runs_each_once_after() {
         BREAKER_THRESHOLD as usize,
         "after the breaker opened only the cheap check reached the endpoint"
     );
-    // One check per cooldown: 5 minutes, then every 10 for two days.
     assert!(
         (280..=290).contains(&endpoint.probes()),
         "{} probes",
@@ -278,8 +274,6 @@ async fn the_pause_reports_when_it_ends() {
     assert_eq!(runtime.background_paused_until(), None);
     open_the_breaker(&runtime.for_feature(FEATURE)).await;
 
-    // The monotonic clock is paused, so the pause has exactly the cooldown
-    // left; only the wall clock moves between these reads.
     let before = SystemTime::now();
     let until = runtime.background_paused_until().expect("paused");
     let after = SystemTime::now();
@@ -311,7 +305,6 @@ async fn a_failed_check_spends_no_input_and_doubles_the_cooldown() {
     );
 }
 
-/// The endpoint answers, but not usably: a refusal or an empty reply.
 struct Unhelpful {
     calls: AtomicU32,
 }
@@ -391,8 +384,6 @@ async fn a_call_from_before_a_config_reload_does_not_count_against_the_new_endpo
     });
     assert!(stale.unwrap_err().is_endpoint_failure());
 
-    // Four failures on the new endpoint leave the breaker closed; the stale
-    // failure would have made them five.
     for n in 0..BREAKER_THRESHOLD - 1 {
         let _ = feature.complete_background(ask(&format!("new-{n}"))).await;
     }
@@ -419,7 +410,6 @@ async fn saved_state_survives_a_restart() {
     feature.record_background_failure("waiting", FP, &LlmError::Timeout(Duration::from_secs(45)));
     open_the_breaker(&feature).await;
 
-    // Whole seconds, as saved.
     let wall = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
     let saved_at = Clocks {
         now: Instant::now(),
@@ -434,7 +424,6 @@ async fn saved_state_survives_a_restart() {
     let state: BackgroundState = serde_json::from_str(&json).unwrap();
     assert!(state.is_supported());
 
-    // A daemon started a minute later: the breaker is still open.
     let soon_after = Arc::new(LlmRuntime::new(endpoint.clone()));
     soon_after.restore_background_state_at(
         &state,
@@ -453,8 +442,6 @@ async fn saved_state_survives_a_restart() {
         "{error:?}"
     );
 
-    // One started 30 minutes later: "soon" (due 2 h before the save) is
-    // due, "later" (due 1 h after it) still waits half an hour.
     let restarted = Arc::new(LlmRuntime::new(endpoint.clone()));
     restarted.restore_background_state_at(
         &state,
@@ -476,8 +463,6 @@ async fn saved_state_survives_a_restart() {
         "a restore is what the file already says"
     );
 
-    // A config reload clears the verdicts but keeps the owed inputs, and the
-    // next save says so.
     restarted.replace(endpoint.clone());
     let reloaded = restarted.take_unsaved_background_state().expect("changed");
     let after_reload = Arc::new(LlmRuntime::new(endpoint.clone()));
@@ -525,7 +510,6 @@ async fn a_recovered_route_signals_recovery() {
     assert!(recovered.has_changed().unwrap());
 }
 
-// --- What the HTTP client says about each failure --------------------------
 
 fn client_for(server: &wiremock::MockServer, api_key: Option<&str>) -> OpenAiCompatibleProvider {
     OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
@@ -658,7 +642,6 @@ async fn the_cheap_check_lists_models_and_reads_failures_like_a_request() {
         "the check never follows a redirect"
     );
 
-    // Nothing listening: unreachable.
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()

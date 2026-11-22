@@ -11,7 +11,6 @@
 use std::fmt;
 use std::sync::Arc;
 
-/// A hosted API mxr can reach with a stored key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RouteProvider {
     Anthropic,
@@ -22,7 +21,6 @@ pub enum RouteProvider {
 impl RouteProvider {
     pub const ALL: [Self; 3] = [Self::Anthropic, Self::OpenAI, Self::OpenRouter];
 
-    /// Stable machine name, used in IPC, CLI arguments and the key store.
     pub const fn key(self) -> &'static str {
         match self {
             Self::Anthropic => "anthropic",
@@ -39,7 +37,6 @@ impl RouteProvider {
         }
     }
 
-    /// The environment variable read when no key is stored.
     pub const fn env_var(self) -> &'static str {
         match self {
             Self::Anthropic => "ANTHROPIC_API_KEY",
@@ -175,12 +172,10 @@ const OPENROUTER_VENDORS: &[&str] = &[
     "microsoft",
 ];
 
-/// Where `llm.base_url` points, as far as routing cares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Endpoint {
     /// The default local Ollama.
     Default,
-    /// A server of the user's own on this machine (LM Studio, another port).
     Local,
     /// A server of the user's own off this machine, whose model names are
     /// theirs: only Anthropic's own ids still route.
@@ -226,7 +221,6 @@ pub fn routes_for_model(model: &str, endpoint: Endpoint) -> Option<Vec<Route>> {
     if name.is_empty() {
         return None;
     }
-    // `anthropic/...` names the OpenRouter slug directly: OpenRouter only.
     let openrouter_only = vendor == "anthropic"
         || (endpoint == Endpoint::Default && OPENROUTER_VENDORS.contains(&vendor));
     openrouter_only.then(|| {
@@ -364,8 +358,6 @@ mod tests {
                 route(RouteProvider::OpenRouter, "anthropic/claude-haiku-5.5"),
             ])
         );
-        // A server of the user's own doesn't change where Anthropic's own
-        // ids go.
         assert_eq!(
             routes_for_model("  claude-opus-5-5 ", Endpoint::Remote),
             Some(vec![
@@ -401,7 +393,6 @@ mod tests {
                 "google/gemini-2.5-flash"
             )])
         );
-        // The user's own server names models like this too.
         assert_eq!(routes_for_model("google/gemma-3-4b", Endpoint::Local), None);
     }
 
@@ -435,12 +426,9 @@ mod tests {
                 route(RouteProvider::OpenAI, id),
                 route(RouteProvider::OpenRouter, &format!("openai/{id}")),
             ]);
-            // The default Ollama and a server on this machine don't serve
-            // these ids, so both route.
             for endpoint in [Endpoint::Default, Endpoint::Local] {
                 assert_eq!(routes_for_model(id, endpoint), expected, "{id}");
             }
-            // A remote server of the user's own keeps its model names.
             assert_eq!(routes_for_model(id, Endpoint::Remote), None, "{id}");
         }
     }

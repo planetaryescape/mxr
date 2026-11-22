@@ -247,8 +247,6 @@ async fn a_local_outage_costs_one_attempt_for_a_batch_then_the_fallback_answers(
     );
     assert_eq!(rig.endpoint_state(), RouteState::Cooling);
 
-    // The endpoint got the request as written; the fallback got it the way
-    // OpenAI's models take it.
     let local = bodies(&rig.local).await;
     assert_eq!(local[0]["model"], LOCAL_MODEL);
     assert!(local[0]["temperature"].is_number());
@@ -259,8 +257,6 @@ async fn a_local_outage_costs_one_attempt_for_a_batch_then_the_fallback_answers(
 
 #[tokio::test]
 async fn a_closed_local_port_falls_back_within_the_same_call() {
-    // A port nothing listens on: connection refused, as from a machine
-    // that is off.
     let closed = {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.local_addr().unwrap()
@@ -310,7 +306,6 @@ async fn traffic_returns_to_the_endpoint_after_its_wait_with_a_cheap_check() {
     );
     rig.local.reset().await;
     local_answers(&rig).await;
-    // Still cooling: the fallback keeps answering without asking the endpoint.
     assert_eq!(
         rig.background(LlmFeature::Summarize).await.unwrap().content,
         "from openrouter"
@@ -383,8 +378,6 @@ async fn an_answer_says_whether_it_came_from_this_machine() {
     openrouter_answers(&rig).await;
     let pinned = rig.runtime.for_feature(LlmFeature::Summarize).pin();
     assert!(pinned.leaves_machine(), "the fallback may take a request");
-    // The hosted routes add room for thinking, so prompts reserve it too;
-    // the endpoint alone takes only what was asked.
     assert_eq!(pinned.answer_tokens(400), 400 + 2048);
     let withheld = Rig::withheld().await;
     assert_eq!(
@@ -439,7 +432,6 @@ async fn racing_callers_share_one_check_of_the_endpoint() {
     rig.foreground().await.unwrap();
 
     rig.local.reset().await;
-    // A slow listing, so every caller arrives while the check is running.
     Mock::given(method("GET"))
         .and(path("/v1/models"))
         .respond_with(
@@ -498,7 +490,6 @@ async fn racing_callers_share_one_check_of_the_endpoint() {
 #[tokio::test]
 async fn a_withheld_feature_waits_for_its_endpoint_and_resumes_there() {
     let rig = Rig::withheld().await;
-    // OpenRouter would answer, if anything were sent there.
     openrouter_answers(&rig).await;
     local_is_out(&rig, out_for_a_second()).await;
     const FEATURE: LlmFeature = LlmFeature::RelationshipSummary;
@@ -507,7 +498,6 @@ async fn a_withheld_feature_waits_for_its_endpoint_and_resumes_there() {
     let error = rig.background(FEATURE).await.unwrap_err();
     assert!(error.is_endpoint_failure(), "{error:?}");
     feature.record_background_failure("contact", "fp", &error);
-    // While the endpoint cools, more work is put off without a request.
     let error = rig.background(FEATURE).await.unwrap_err();
     assert!(matches!(error, LlmError::CircuitOpen { .. }), "{error:?}");
     assert!(rig
@@ -585,7 +575,6 @@ async fn a_foreground_call_with_every_route_out_tries_the_soonest_once() {
         "{error}"
     );
 
-    // Background work is put off without a request.
     let error = rig.background(LlmFeature::Summarize).await.unwrap_err();
     assert!(matches!(error, LlmError::CircuitOpen { .. }), "{error:?}");
     assert_eq!(rig.local_calls().await.len(), 1);

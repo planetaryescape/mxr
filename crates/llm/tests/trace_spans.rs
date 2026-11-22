@@ -83,8 +83,6 @@ fn json_attribute(span: &SpanData, key: &str) -> Value {
 async fn a_feature_call_is_one_span_with_a_generation_per_request() {
     let exporter = exporter();
     let server = MockServer::start().await;
-    // A thinking model that spends the budget on reasoning, then answers
-    // when asked again with reasoning off.
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
         .and(body_partial_json(json!({"reasoning_effort": "none"})))
@@ -239,7 +237,6 @@ fn chat_request() -> ToolChatRequest {
     }
 }
 
-/// The one generation under the feature span named `feature`.
 fn generation_of<'a>(spans: &'a [SpanData], feature: &str) -> &'a SpanData {
     let parent = spans
         .iter()
@@ -261,7 +258,6 @@ async fn a_streamed_chat_asks_for_usage_and_keeps_its_thinking() {
         json!({"model": MODEL, "choices": [{"index": 0, "delta": {"role": "assistant", "reasoning": "Check the "}}]}),
         json!({"model": MODEL, "choices": [{"index": 0, "delta": {"reasoning": "calendar."}}]}),
         json!({"model": MODEL, "choices": [{"index": 0, "delta": {"content": "Friday is free."}, "finish_reason": "stop"}]}),
-        // Sent only because the request asked for it.
         json!({"model": MODEL, "choices": [], "usage": {"prompt_tokens": 20, "completion_tokens": 5}}),
     ];
     let body: String = chunks

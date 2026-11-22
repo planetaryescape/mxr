@@ -23,7 +23,6 @@ use std::sync::OnceLock;
 
 const TRACER: &str = "mxr";
 
-/// Langfuse observation types mxr emits.
 #[derive(Debug, Clone, Copy)]
 pub enum Kind {
     Span,
@@ -56,7 +55,6 @@ pub fn set_shared_attributes(environment: Option<String>, release: String) {
     let _ = SHARED.set(shared);
 }
 
-/// Carried in the context so everything under a session's span gets its id.
 struct SessionId(String);
 
 /// The root observation's name, carried to every observation under it:
@@ -72,7 +70,6 @@ pub struct Observation {
 }
 
 impl Observation {
-    /// Start an observation under the current one, if any.
     pub fn start(name: impl Into<Cow<'static, str>>, kind: Kind) -> Self {
         let name = name.into();
         let parent = Context::current();
@@ -118,7 +115,6 @@ impl Observation {
         self.cx.span().is_recording()
     }
 
-    /// Run `future` with this observation as the parent of the ones it starts.
     pub fn instrument<F: Future>(&self, future: F) -> impl Future<Output = F::Output> {
         future.with_context(self.cx.clone())
     }
@@ -132,7 +128,6 @@ impl Observation {
         self.json("langfuse.observation.output", value);
     }
 
-    /// A filterable metadata key on this observation.
     pub fn metadata(&self, key: &str, value: impl Into<String>) {
         if self.is_recording() {
             self.cx.span().set_attribute(KeyValue::new(
@@ -156,7 +151,6 @@ impl Observation {
         }
     }
 
-    /// Unset parameters are left out: Langfuse shows a null as `"null"`.
     fn model_parameters(&self, value: impl FnOnce() -> Value) {
         self.json("langfuse.observation.model.parameters", || match value() {
             Value::Object(mut parameters) => {
@@ -221,7 +215,6 @@ impl Drop for Observation {
     }
 }
 
-// --- What the llm crate records ------------------------------------------
 
 /// The span around one feature's call, named by its config key so a trace
 /// lines up with `[llm.overrides.<key>]` and `mxr llm status`. Route
@@ -372,7 +365,6 @@ fn assistant_message(content: Value, thinking: Option<&str>) -> Value {
     message
 }
 
-/// Claude's thinking, from the turn kept for replay.
 fn anthropic_thinking(response: &ToolChatResponse) -> Option<String> {
     let blocks = response.provider_turn.as_ref()?.content.as_array()?;
     let thinking: Vec<&str> = blocks

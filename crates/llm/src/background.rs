@@ -45,12 +45,10 @@ pub(crate) struct BackgroundBreaker {
     probing: bool,
 }
 
-/// What the breaker lets one background call do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Gate {
     Closed,
     Open(Duration),
-    /// The cooldown is over and this caller checks the endpoint for everyone.
     Probe,
 }
 
@@ -63,7 +61,6 @@ impl BackgroundBreaker {
             return Gate::Open(until - now);
         }
         if self.probing {
-            // Another caller is checking right now; its answer is moments away.
             return Gate::Open(Duration::from_secs(1));
         }
         self.probing = true;
@@ -81,7 +78,6 @@ impl BackgroundBreaker {
         self.probing = false;
     }
 
-    /// The endpoint answered. Returns true when that ends an outage.
     pub(crate) fn record_success(&mut self) -> bool {
         let recovered = self.cooldown > Duration::ZERO;
         if recovered {
@@ -94,8 +90,6 @@ impl BackgroundBreaker {
     pub(crate) fn record_failure(&mut self, now: Instant, error: &LlmError) {
         self.probing = false;
         self.consecutive_failures = self.consecutive_failures.saturating_add(1);
-        // Past the threshold every failure is a half-open probe failing, so
-        // it re-opens straight away with a longer cooldown.
         if self.consecutive_failures < BREAKER_THRESHOLD {
             return;
         }
@@ -280,7 +274,6 @@ impl RecoverySignal {
     }
 }
 
-// --- Saved across restarts ------------------------------------------------
 
 /// The breaker and ledger as saved between daemon runs. Times are wall-clock
 /// seconds since the Unix epoch, because a monotonic instant means nothing
@@ -439,7 +432,6 @@ impl BackgroundState {
         (breaker, ledger)
     }
 
-    /// Whether this state was written by a version this build understands.
     pub fn is_supported(&self) -> bool {
         self.version == STATE_VERSION
     }

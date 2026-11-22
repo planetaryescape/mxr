@@ -30,7 +30,6 @@ async fn a_loopback_endpoint_skips_the_system_proxy() {
         })))
         .mount(&endpoint)
         .await;
-    // Process-wide, which is why this test has its own binary.
     for name in ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"] {
         std::env::set_var(name, proxy.uri());
     }
@@ -38,7 +37,6 @@ async fn a_loopback_endpoint_skips_the_system_proxy() {
         std::env::remove_var(name);
     }
 
-    // The environment really does route plain clients through the proxy.
     let plain = reqwest::Client::new()
         .get(format!("{}/ping", endpoint.uri()))
         .send()

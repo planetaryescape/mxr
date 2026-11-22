@@ -100,7 +100,6 @@ impl ToolChatResponse {
     }
 }
 
-// --- OpenAI chat-completions wire format --------------------------------
 
 #[derive(Serialize)]
 pub(crate) struct OpenAiToolChatBody<'a> {
@@ -179,7 +178,6 @@ pub(crate) fn openai_body<'a>(
                                 "type": "function",
                                 "function": {
                                     "name": call.name,
-                                    // The API wants the arguments as a JSON string.
                                     "arguments": call.arguments.to_string(),
                                 },
                             })
@@ -363,7 +361,6 @@ fn portable(schema: &Value, defs: &serde_json::Map<String, Value>, depth: u8) ->
                         return serde_json::json!({"type": "object"});
                     }
                     let mut inlined = portable(target, defs, depth + 1);
-                    // Keywords beside the $ref (a description) still apply.
                     if let Value::Object(target_map) = &mut inlined {
                         for (key, value) in map {
                             if key != "$ref" {
@@ -379,7 +376,6 @@ fn portable(schema: &Value, defs: &serde_json::Map<String, Value>, depth: u8) ->
                     .filter(|(key, _)| !matches!(key.as_str(), "$schema" | "$defs" | "definitions"))
                     .map(|(key, value)| {
                         let value = match key.as_str() {
-                            // Maps of name -> schema.
                             "properties" | "patternProperties" => match value {
                                 Value::Object(entries) => Value::Object(
                                     entries
@@ -391,7 +387,6 @@ fn portable(schema: &Value, defs: &serde_json::Map<String, Value>, depth: u8) ->
                                 ),
                                 other => other.clone(),
                             },
-                            // A schema, or a list of schemas.
                             "items"
                             | "additionalProperties"
                             | "not"
@@ -501,7 +496,6 @@ mod tests {
         .unwrap();
         assert_eq!(openai["max_completion_tokens"], 100);
         assert!(openai.get("max_tokens").is_none());
-        // Other servers get no reasoning field; OpenAI's reasoning models get "none".
         assert!(plain.get("reasoning_effort").is_none());
         assert_eq!(openai["reasoning_effort"], "none");
     }
@@ -520,7 +514,6 @@ mod tests {
         .unwrap();
         assert_eq!(body["reasoning"], serde_json::json!({"effort": "none"}));
         assert!(body.get("reasoning_effort").is_none());
-        // OpenRouter translates `max_tokens` for the model behind it.
         assert_eq!(body["max_tokens"], 100);
         let plain =
             serde_json::to_value(openai_body("m", &request(), OpenAiDialect::default())).unwrap();
@@ -678,7 +671,6 @@ mod tests {
             json!({"enum": ["archive", "star"], "type": "string", "description": "What to do"})
         );
         assert!(portable.get("$defs").is_none());
-        // A recursive type stops at an open object instead of looping.
         assert!(!portable.to_string().contains("$ref"));
     }
 }

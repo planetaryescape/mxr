@@ -40,7 +40,6 @@ pub async fn run(
         .request(Request::ResolveTime {
             input,
             now,
-            // The CLI runs next to the daemon, so the daemon's zone is ours.
             time_zone: None,
         })
         .await?;

@@ -27,8 +27,6 @@ pub async fn run(
                 .request(Request::EnableSemantic { enabled: false })
                 .await?
         }
-        // Re-embeds every message before answering; minutes on a large
-        // mailbox, so it must not run under the 120s request cap (#179).
         SemanticAction::Reindex { force } => {
             request_with_progress(
                 &mut client,
@@ -40,7 +38,6 @@ pub async fn run(
         }
         SemanticAction::Profile { action } => match action.unwrap_or(SemanticProfileAction::List) {
             SemanticProfileAction::List => client.request(Request::GetSemanticStatus).await?,
-            // Downloads and verifies the model before answering.
             SemanticProfileAction::Install { profile } => {
                 request_with_progress(
                     &mut client,

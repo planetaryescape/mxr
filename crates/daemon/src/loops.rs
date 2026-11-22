@@ -182,9 +182,6 @@ pub(crate) async fn begin_sync_pass(
             &account_id,
             &SyncRuntimeStatusUpdate {
                 last_attempt_at: Some(chrono::Utc::now()),
-                // The last error stays until a pass succeeds: a retry that is
-                // running has not recovered, and a client polling mid-retry
-                // must not announce that it has.
                 sync_in_progress: Some(true),
                 current_cursor_summary: Some(Some(describe_sync_cursor(
                     provider.as_ref(),
@@ -224,8 +221,6 @@ fn progress_sink(pass: &SyncPass) -> impl Fn(mxr_sync::SyncProgress) + Send + Sy
         if !live.load(Ordering::Relaxed) {
             return;
         }
-        // A page that knows how much is left turns into the run's
-        // denominator, added to what the run has already stored.
         if let mxr_sync::SyncProgress::PageFetched {
             remaining_estimate: Some(remaining),
             ..
@@ -283,8 +278,6 @@ fn progress_sink(pass: &SyncPass) -> impl Fn(mxr_sync::SyncProgress) + Send + Sy
 /// to completion; the limit only bounds how long the caller waits before
 /// handing finalization to a reaper task.
 pub(crate) async fn run_sync_pass(mut pass: SyncPass, limit: Duration) -> SyncWait {
-    // A pass that cannot get a current address set classifies direction as
-    // Unknown (`ensure_account_addresses_current` logs why), not from a stale set.
     pass.state.ensure_account_addresses_current().await;
     let task_state = pass.state.clone();
     let task_provider = pass.provider.clone();
@@ -305,12 +298,6 @@ pub(crate) async fn run_sync_pass(mut pass: SyncPass, limit: Duration) -> SyncWa
             SyncWait::Finished { pass, result }
         }
         Err(_) => {
-            // Tell whoever was waiting that their sync outlived the wait but
-            // is still alive. `sync_in_progress` stays true — it genuinely is.
-            //
-            // Only for a caller that *was* waiting: `last_error` is what makes
-            // an account read as unhealthy, and a background sync nobody is
-            // blocked on outrunning its limit is a long backfill, not a fault.
             if pass.started_by != SyncStarter::BackgroundClient {
                 let _ = pass
                     .state
@@ -327,9 +314,6 @@ pub(crate) async fn run_sync_pass(mut pass: SyncPass, limit: Duration) -> SyncWa
                     )
                     .await;
             }
-            // A blocking caller reports the detach to its own client itself;
-            // leaving the operation on the pass would have the reaper emit a
-            // second terminal event for the same operation id.
             if pass.started_by == SyncStarter::BlockingClient {
                 pass.operation = None;
             }
@@ -377,11 +361,6 @@ async fn reap_detached_sync(
                     account = %account_id,
                     "detached sync reported no progress for {DETACHED_SYNC_GRACE:?}; aborting to release the provider lock"
                 );
-                // `abort` only takes effect when the task next reaches an
-                // await point, so joining it is what actually makes the engine
-                // stop. Skipping the join would release the provider guard
-                // below while the old sync was still writing, and the next
-                // sync would take the lock and run alongside it.
                 let _ = (&mut task).await;
                 break Err(MxrError::Provider(format!(
                     "sync aborted: no progress for {DETACHED_SYNC_GRACE:?}"
@@ -468,8 +447,6 @@ pub(crate) async fn finalize_sync_pass(
                         last_error: Some(Some(err_str.clone())),
                         failure_class: Some(Some(failure_class.to_string())),
                         consecutive_failures: Some(prior_consecutive_failures.saturating_add(1)),
-                        // Left as the sync loop set it: the loop owns the
-                        // retry schedule and writes the next try after this.
                         sync_in_progress: Some(state.background_sync_queued(&account_id)),
                         current_cursor_summary: Some(Some(cursor_summary.clone())),
                         ..Default::default()
@@ -498,11 +475,6 @@ pub(crate) async fn finalize_sync_pass(
                 )
                 .await;
             tracing::error!(account = %account_id, "Sync error: {err_str}");
-            // Both events, always. `SyncError` is how a client that is not
-            // watching this particular operation hears about it — which now
-            // includes the client that asked for a background sync and got its
-            // ack long before this. `OperationFailed` carries the operation id
-            // so a client that *is* streaming can tie it to its request.
             crate::chimes::emit_daemon_event(
                 &state,
                 DaemonEvent::SyncError {
@@ -544,14 +516,6 @@ pub(crate) async fn finalize_sync_pass(
                 failure_class: Some(None),
                 consecutive_failures: Some(0),
                 backoff_until: Some(None),
-                // Two reasons the account is still busy. A batch that
-                // reports `has_more` is one page of a backfill, not a
-                // finished sync — the account keeps re-polling. And a
-                // background sync that has been acked but is still queued
-                // behind the provider lock is work the client is waiting for;
-                // this pass finishing says nothing about it. Reporting "idle"
-                // in either gap makes a waiting client (`mxr demo`, `mxr sync
-                // --wait`) stop short.
                 sync_in_progress: Some(
                     outcome.has_more || state.background_sync_queued(&account_id),
                 ),
@@ -568,21 +532,12 @@ pub(crate) async fn finalize_sync_pass(
             .await;
     }
     reassert_busy_if_background_sync_queued(&state, &account_id).await;
-    // Reconciled under the provider guard, before it is released. A pass that
-    // took the guard after this one has not prepared its batch yet, so the
-    // debt cannot be consumed ahead of a batch it has to repair.
     let reconciled = reconcile_pass_directions(&state, &account_id).await;
     drop(provider_guard);
     if reconciled {
         crate::handler::diagnostics_impl::refresh_direction_derived(&state, &account_id).await;
     }
     state.finish_sync_run(&account_id, outcome.has_more);
-    // A pass returns after one page. Without a wake, the account would sit at
-    // `sync_in_progress = true` until the sync loop's next tick, a full
-    // interval away: the loop only re-polls by itself when it is still
-    // mid-cycle, which it is not once it has given up on a detached pass and
-    // gone to sleep on its backoff. `notify_one` keeps a permit if the loop is
-    // busy, so the wake is never lost.
     if outcome.has_more && (detached || started_by != SyncStarter::AccountLoop) {
         state.idle_notify_for_account(&account_id).notify_one();
     }
@@ -607,19 +562,12 @@ pub(crate) async fn finalize_sync_pass(
         .as_ref()
         .is_some_and(|c| provider.is_backfill_cursor(c));
 
-    // The whole-table analytics repair is settled per backfill, not per page,
-    // and the decision cannot live behind "this page carried messages": a
-    // provider ends a backfill by handing back an empty final page (Gmail when
-    // the page after a `nextPageToken` turns out empty, IMAP when the last UID
-    // chunk is all deleted), and that page is the one that owes the repair.
     let analytics_due = if outcome.has_more || initial_backfill_in_progress {
         if count > 0 {
             state.owe_analytics_repair(&account_id);
         }
         false
     } else {
-        // An idle tick that synced nothing and owes nothing has no reason to
-        // rescan the whole mailbox.
         let owed = state.take_analytics_repair_debt(&account_id);
         count > 0 || owed
     };
@@ -644,10 +592,6 @@ pub(crate) async fn finalize_sync_pass(
             ),
         }
 
-        // Collect this page's contacts into the account's deferred set. The
-        // relationship worker does per-message reads, so running it per page
-        // during a backfill would put a query storm behind every page; the set
-        // is handed over in one go when the backfill ends.
         if initial_backfill_in_progress
             || was_initial_backfill
             || state.has_deferred_relationship_contacts(&account_id)
@@ -670,13 +614,6 @@ pub(crate) async fn finalize_sync_pass(
             }
         }
 
-        // Slice before the query, not after: an initial backfill upserts tens
-        // of thousands of ids and loading every envelope only to throw most
-        // away costs a large read for nothing. The sync engine appends ids in
-        // the order it processed the page, so the tail is the most recently
-        // handled; the loaded slice is then sorted newest-first so consumers
-        // that show `envelopes[0]` (the web app's new-mail notification) name
-        // the newest message.
         let event_ids =
             &upserted_ids[upserted_ids.len().saturating_sub(NEW_MESSAGES_EVENT_LIMIT)..];
         match state.store.list_envelopes_by_ids(event_ids).await {
@@ -697,11 +634,6 @@ pub(crate) async fn finalize_sync_pass(
         }
     }
 
-    // Hand the deferred contacts to the relationship worker on the same edge
-    // as the analytics repair, and outside `count > 0` for the same reason: a
-    // provider ends a backfill with an empty final page, and a handover gated
-    // on "this page carried messages" would never happen for it — leaving the
-    // whole backfill's contacts stranded in memory until the process exits.
     let contacts_handed_over = if initial_backfill_in_progress {
         false
     } else {
@@ -721,21 +653,6 @@ pub(crate) async fn finalize_sync_pass(
     };
 
     if count > 0 {
-        // Critical: the post-sync fan-out (semantic ingest, contacts refresh,
-        // relationship profile, rules engine, analytics backfill) used to run
-        // inline here. That kept the sync loop blocked until every downstream
-        // worker had ack'd the enqueue and any network call inside the rules
-        // engine had returned. On a busy mailbox that meant 10+ minutes
-        // between "Gmail has new mail" and "mxr shows new mail". Move the
-        // fan-out to a detached task so the loop returns immediately to its
-        // periodic sleep / IDLE wait. Each downstream worker has its own
-        // bounded channel; if a worker is slow, only that worker backs up.
-        //
-        // No automatic summary backfill: even gated by `llm.enabled`, that
-        // previously spawned unbounded tokio tasks (one per changed thread) on
-        // every sync tick. On a 100k-message initial backfill that saturates
-        // the tokio runtime + LLM and the TUI grinds to a halt. Summaries are
-        // generated strictly on demand when the user opens a thread.
         let fanout_state = state.clone();
         let fanout_account = account_id.clone();
         let fanout_provider = provider.clone();
@@ -752,9 +669,6 @@ pub(crate) async fn finalize_sync_pass(
         });
     }
 
-    // Outside `count > 0`: a page that only deleted mail upserts nothing,
-    // and gating on upserts left the semantic index, attachment files and
-    // contacts of deleted mail behind.
     if !outcome.deleted.message_ids.is_empty() {
         let fanout_state = state.clone();
         let fanout_account = account_id.clone();
@@ -850,9 +764,6 @@ pub fn spawn_sync_loops(state: Arc<AppState>) {
             state.register_sync_loop_handle(account_id.clone(), handle);
         }
 
-        // Phase 3.1: spawn the IDLE watcher iff the provider returns a
-        // watcher from `idle_watch`. Default impl returns Ok(None) so
-        // poll-only providers (Gmail, SMTP, fake-with-no-trigger) skip.
         if state.mark_idle_loop_spawned(&account_id) {
             let loop_state = state.clone();
             let watcher_account_id = account_id.clone();
@@ -879,10 +790,6 @@ async fn idle_loop_for_account(
     mut shutdown_rx: watch::Receiver<bool>,
 ) {
     let notify = state.idle_notify_for_account(&account_id);
-    // Re-fetch the provider from the runtime each cycle and reconnect whenever
-    // the providers are reloaded, so a rotated credential takes effect without a
-    // daemon restart (the watcher would otherwise keep an old provider Arc and a
-    // long-lived connection using the stale password).
     let mut reload_rx = state.reload_receiver();
     let mut backoff_secs: u64 = 0;
     loop {
@@ -900,30 +807,15 @@ async fn idle_loop_for_account(
             }
         }
 
-        // Snapshot the reload generation as seen BEFORE reading the provider.
-        // `reload_accounts_from_disk` swaps the provider runtime and THEN bumps
-        // this generation, so observing a bump happens-after the swap. Marking
-        // first is what closes the race: any reload landing after this point
-        // leaves `reload_rx` observably changed (caught by the re-check below or
-        // the select arm), instead of being masked. Marking AFTER the provider
-        // read would let a concurrent reload (multi-threaded runtime) swap in a
-        // fresh provider while we open a long-lived watcher on the stale one and
-        // never notice — the exact stale-credential bug this loop exists to fix.
         reload_rx.mark_unchanged();
         let Some(provider) = state.sync_provider_for_account(&account_id) else {
             tracing::info!(account = %account_id, "IDLE loop exiting: account removed from runtime");
             return;
         };
 
-        // Test-only seam: inject a reload at exactly the read→snapshot window so
-        // the race guard is deterministic. No-op (and compiled out) in release.
         #[cfg(test)]
         idle_race_hook::fire(&account_id);
 
-        // A reload landed between the snapshot and the provider read: re-fetch
-        // before opening a long-lived watcher, so the watcher we block on always
-        // reflects any reload already signaled. `mark_unchanged` at the top of
-        // the next iteration clears the flag, so this cannot busy-spin.
         if reload_rx.has_changed().unwrap_or(false) {
             continue;
         }
@@ -931,8 +823,6 @@ async fn idle_loop_for_account(
         let mut watcher = match provider.idle_watch().await {
             Ok(Some(w)) => w,
             Ok(None) => {
-                // Provider doesn't support IDLE — exit; the sync loop
-                // continues its periodic poll.
                 return;
             }
             Err(error) => {
@@ -966,8 +856,6 @@ async fn idle_loop_for_account(
                 changed = reload_rx.changed() => {
                     if changed.is_ok() {
                         tracing::info!(account = %account_id, "providers reloaded; dropping IDLE connection to reconnect with refreshed credentials");
-                        // Drop the current watcher (and its connection) and let the
-                        // outer loop re-fetch the refreshed provider.
                         break;
                     }
                 }
@@ -985,7 +873,6 @@ async fn sync_loop_for_account(
     let mut skip_sleep = true;
     let mut consecutive_has_more: u32 = 0;
     let mut last_message_sync_at = chrono::Utc::now();
-    // Phase 3.1: wake the sleep early when an IDLE watcher signals.
     let idle_notify = state.idle_notify_for_account(&account_id);
 
     loop {
@@ -993,10 +880,6 @@ async fn sync_loop_for_account(
             tracing::info!(account = %account_id, "Sync loop exiting: daemon shutdown requested");
             break;
         }
-        // Re-fetched each iteration, so a reload's refreshed provider is picked
-        // up on the next cycle. A reload mid-cycle can cause at most ONE stale
-        // sync cycle (the provider was read before the sleep); that self-corrects
-        // next cycle and sync is retried/idempotent, so it needs no signal here.
         let Some(provider) = state.sync_provider_for_account(&account_id) else {
             tracing::info!(account = %account_id, "Sync loop exiting: account removed from runtime");
             break;
@@ -1100,8 +983,6 @@ async fn sync_loop_for_account(
                     backoff_secs,
                     "sync failed; next try scheduled"
                 );
-                // Every failure records when the next try is, so clients can
-                // say "retrying 14:05" instead of only "failing".
                 let backoff_until = chrono::Utc::now()
                     + chrono::Duration::seconds(i64::try_from(backoff_secs).unwrap_or(300));
                 let _ = state
@@ -1131,8 +1012,6 @@ pub(crate) async fn post_sync_fanout(
     account_id: AccountId,
     provider: Arc<dyn MailSyncProvider>,
     upserted_message_ids: Vec<mxr_core::MessageId>,
-    // The caller already enqueued the account's deferred backfill contacts, so
-    // this page's own contacts are part of that batch.
     contacts_handed_over: bool,
     initial_backfill_in_progress: bool,
 ) {
@@ -1160,9 +1039,6 @@ pub(crate) async fn post_sync_fanout(
         }
     }
 
-    // Keep the user's voice profile current so AI drafts can write in their
-    // voice. `rebuild_user_voice_profile` self-skips when there are <20 sent
-    // messages or the source hash is unchanged, so this is naturally debounced.
     if !initial_backfill_in_progress {
         let voice_state = Arc::clone(&state);
         let voice_account = account_id.clone();
@@ -1209,8 +1085,6 @@ pub(crate) async fn post_sync_classification(
         tracing::error!(account = %account_id, %error, "rule execution failed");
     }
 
-    // Scan newly-upserted mail for deliveries (heuristic + optional LLM).
-    // Respects `[deliveries].enabled`; failures are logged, never propagated.
     let delivery_summary =
         crate::handler::deliveries::scan_messages(state, upserted_message_ids).await;
     if delivery_summary.created > 0 || delivery_summary.updated > 0 {
@@ -1223,24 +1097,16 @@ pub(crate) async fn post_sync_classification(
         );
     }
 
-    // To-dos and confirmations of them in the new mail. Local rules only;
-    // windows apply here too, so a backfill page never floods To do.
     crate::handler::todos::scan_messages_at(state, upserted_message_ids, now).await;
 
-    // Records in the new mail: receipts, orders, bookings, bills. Rules and
-    // schema.org only; an order's later emails join its record.
     crate::handler::records::scan_messages_at(state, upserted_message_ids, now).await;
 
-    // Reading: extract the new newsletters and let go of what faded.
     if !initial_backfill_in_progress {
         Box::pin(crate::handler::reading::after_sync(state, account_id, now)).await;
     }
 
-    // Facts for new Updates mail, so the next digest reads them cached.
     crate::handler::updates::scan_messages(state, upserted_message_ids, now).await;
 
-    // Where each new arrival went (D119). Last, so a delivery or a record
-    // found above is placed as one.
     if let Err(error) = crate::handler::assessments::reconcile_messages_at(
         state,
         account_id,
@@ -1360,8 +1226,6 @@ pub(crate) fn next_backoff_secs(previous_secs: u64, error: &MxrError) -> u64 {
 
 pub(crate) fn classify_sync_error(error: &str) -> &'static str {
     let lower = error.to_ascii_lowercase();
-    // Emitted by the Gmail provider when a refreshed token could not be saved.
-    // The grant is intact, so this is neither a sign-in nor a network problem.
     if lower.contains("local token cache write failed") {
         "store_index"
     } else if lower.contains("rate limit") || lower.contains("retry after") {
@@ -1442,8 +1306,6 @@ mod classify_sync_error_tests {
             classify_sync_error("rate limit: retry after 60s"),
             "rate_limit"
         );
-        // The Gmail text names the refused endpoint and Gmail's reason. Neither
-        // may pull the class away from rate_limit.
         assert_eq!(
             classify_sync_error(
                 "Rate limited by Gmail messages.get (rateLimitExceeded: User-rate limit exceeded; 412 requests in the last hour) — retry after 1234s"
@@ -1589,8 +1451,6 @@ pub(crate) async fn apply_rules_to_messages(
             }
         }
 
-        // The summary repeats the subject, so the row carries the message id:
-        // deleting the message deletes the row with it.
         let _ = state
             .store
             .insert_event_refs(
@@ -1606,11 +1466,6 @@ pub(crate) async fn apply_rules_to_messages(
             )
             .await;
 
-        // Yield between messages so a large rule fan-out doesn't
-        // monopolize the single writer connection. Sync mutations,
-        // snooze wake, activity-log writes — anything else that needs
-        // the writer — gets to interleave instead of waiting for the
-        // entire batch to finish.
         tokio::task::yield_now().await;
     }
 
@@ -1642,9 +1497,6 @@ async fn execute_rule_action(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Provider ID not found for message {message_id}"))?;
 
-    // Rule-driven actions get their own mutation_id per execution so a
-    // re-run of the same rule (e.g. after a daemon restart mid-batch)
-    // dedupes against the existing apply within the 24h window.
     let mutation_id = uuid::Uuid::now_v7().to_string();
     let mutation_to_apply = match action {
         RuleAction::AddLabel { label } => Some(mxr_core::Mutation::ModifyLabels {
@@ -1830,8 +1682,6 @@ impl RuleMessage {
             for attachment in &body.attachments {
                 let mut local_path = None;
                 if let Some(path) = &attachment.local_path {
-                    // A stored cache pointer may be stale or refer to a directory.
-                    // Never materialize remote data just to invoke a hook.
                     if tokio::fs::metadata(path)
                         .await
                         .is_ok_and(|meta| meta.is_file())
@@ -1858,7 +1708,6 @@ impl RuleMessage {
             },
             subject: self.envelope.subject.clone(),
             date: self.envelope.date.to_rfc3339(),
-            // The public field is plain text, not a rendering of stored HTML.
             body_text: self.body.as_ref().and_then(|body| body.text_plain.clone()),
             attachments,
         }
@@ -1902,8 +1751,6 @@ impl mxr_rules::MessageView for RuleMessage {
         )
     }
     fn body_parts(&self) -> Option<Vec<&str>> {
-        // Part 0 is the stored plain text as it was before HTML was matched;
-        // part 1 is the HTML converted to text. See `mxr_reader::body_match_parts`.
         self.searchable_body
             .get_or_init(|| {
                 let body = self.body.as_ref()?;
@@ -1979,8 +1826,6 @@ pub async fn contacts_refreshed_announcer(
     mut refreshed: tokio::sync::broadcast::Receiver<()>,
 ) {
     use tokio::sync::broadcast::error::RecvError;
-    // A lagged receiver missed wakes, but one announcement still covers them:
-    // clients refetch everything the rebuild touched. Closed ends the loop.
     while let Ok(()) | Err(RecvError::Lagged(_)) = refreshed.recv().await {
         crate::chimes::emit_daemon_event(&state, mxr_protocol::DaemonEvent::ContactsRefreshed);
     }
@@ -1997,13 +1842,9 @@ pub async fn contacts_refreshed_announcer(
 /// before it would naturally roll over. Errors are logged and the
 /// loop keeps running; warming is best-effort.
 pub async fn wrapped_warmer_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
-    // Prime once immediately at startup — the whole point is to absorb
-    // the first cold call before the user gets to the Wrapped tab.
     warm_default_wrapped(&state).await;
 
     let mut ticker = interval(Duration::from_secs(15 * 60));
-    // The first tick of `interval` fires immediately; we already
-    // warmed once above, so consume that first tick.
     ticker.tick().await;
 
     loop {
@@ -2031,11 +1872,6 @@ async fn warm_default_wrapped(state: &Arc<AppState>) {
     let until_unix = now.timestamp();
     let label = format!("{} year-to-date", now.year());
 
-    // Account scopes to warm: the implicit "all accounts" key (which the
-    // TUI sends when no `--account` filter is set) plus every configured
-    // account. This way the first Wrapped open after switching accounts
-    // is also instant. Each scope is its own cache key so they don't
-    // collide.
     let mut scopes: Vec<Option<mxr_core::id::AccountId>> = vec![None];
     for (account_id, _) in state.sync_provider_entries() {
         scopes.push(Some(account_id));
@@ -2111,9 +1947,6 @@ pub(crate) async fn process_due_timers_with_gap(
     if state.is_restore_pending() {
         return Ok(0);
     }
-    // Fail closed: a reminder never fires on a pass whose reply check
-    // failed. Its claim also refuses while a possible reply stored after
-    // the check exists, so the next pass classifies that one first.
     let checked_through =
         match crate::handler::deferral::settle_answered_reminders(state, now).await {
             Ok(checked_through) => Some(checked_through),
@@ -2169,7 +2002,6 @@ pub(crate) async fn process_due_timers_with_gap(
         .into_iter()
         .map(|envelope| (envelope.id, envelope.thread_id))
         .collect();
-    // Keyed by conversation; a message whose row is gone stands for itself.
     let mut announced: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut first_in_thread = |id: &mxr_core::MessageId| {
         announced.insert(
@@ -2218,18 +2050,10 @@ pub async fn process_due_scheduled_sends(
         .map_err(|e| e.to_string())?;
     let count = due.len() as u32;
     for draft_id in due {
-        // Held from claim to outcome: scheduling and editing the draft wait
-        // for it, so nothing new is accepted while this send goes out.
         let _draft_guard = state.acquire_draft_operation(&draft_id).await;
-        // Clear `send_at` and record a durable attempt marker in one
-        // transaction, BEFORE sending — so a retry from a crashed prior
-        // attempt can't re-fire indefinitely (at-most-once), and a crash
-        // mid-send leaves an unresolved marker we can surface at startup
-        // rather than a silent loss.
         let identity = match state.store.claim_due_scheduled_send(&draft_id, now).await {
             Ok(Some(identity)) => identity,
             Ok(None) => {
-                // Cancelled (Undo Send) or moved later since it was listed.
                 tracing::debug!(draft_id = %draft_id, "scheduled-send: no longer due");
                 continue;
             }
@@ -2259,10 +2083,6 @@ pub async fn process_due_scheduled_sends(
                     {
                         "uncertain"
                     } else if e.to_string().contains("draft safety blocked send") {
-                        // Keep the draft; the schedule is already cleared by
-                        // claim_due_scheduled_send above. The error
-                        // already carries a freshly-minted single-use override
-                        // token and the exact resend command, so just surface it.
                         tracing::warn!(
                             draft_id = %draft_id,
                             "scheduled-send: blocked by safety pipeline; schedule cleared. {e}"
@@ -2274,7 +2094,6 @@ pub async fn process_due_scheduled_sends(
                     }
                 }
             };
-        // Resolve the attempt marker so it isn't surfaced as a lost send.
         if let Err(e) = state
             .store
             .record_scheduled_send_outcome(&draft_id, now, outcome)
@@ -2327,7 +2146,6 @@ pub async fn activity_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
     use mxr_store::Tier;
 
     const DAY_MS: i64 = 86_400_000;
-    // Run once shortly after startup, then every 24 h.
     let mut ticker = interval(Duration::from_secs(86_400));
     loop {
         tokio::select! {
@@ -2382,8 +2200,6 @@ pub async fn activity_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
 /// Starts the history prune loop. Both daemon entry points call this, so a
 /// new entry point gets pruning by calling it too.
 pub fn spawn_history_prune_loop(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
-    // Subscribe before spawning. A receiver made inside the task can miss a
-    // shutdown sent just before the task first runs, and then never exit.
     let shutdown_rx = state.shutdown_receiver();
     tokio::spawn(history_prune_loop(state, shutdown_rx))
 }
@@ -2393,7 +2209,6 @@ pub fn spawn_history_prune_loop(state: Arc<AppState>) -> tokio::task::JoinHandle
 /// sync history). Unsubscribe receipts live in their own table and are never
 /// pruned here.
 async fn history_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
-    // First pass a minute after startup, then every 24 h.
     let first_pass = tokio::time::Instant::now() + Duration::from_secs(60);
     let mut ticker = tokio::time::interval_at(first_pass, Duration::from_secs(86_400));
     loop {
@@ -2450,14 +2265,11 @@ pub(crate) fn history_cutoff(now: chrono::DateTime<chrono::Utc>, retention_days:
 ///
 /// Takes the config writer's lock, so a save in progress is never half-read.
 pub(crate) fn retention_days_on_disk(config_path: &std::path::Path) -> Option<u32> {
-    // Held until the end of this function, across the read.
     let _lock = mxr_config::lock_config_file_at(config_path).ok()?;
     let contents = std::fs::read_to_string(config_path).ok()?;
     if contents.trim().is_empty() {
         return None;
     }
-    // Errors are not logged here: a parse error quotes the offending line,
-    // which can be a credential. Callers say only that the setting is unknown.
     mxr_config::load_config_from_str(&contents)
         .ok()
         .map(|config| config.logging.event_retention_days)
@@ -2504,11 +2316,6 @@ pub async fn mutation_dedup_prune_loop(
     state: Arc<AppState>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) {
-    // Mutation dedup rows have a 24h TTL; prune hourly so the table
-    // stays bounded under heavy mutation traffic. The undo log gets
-    // pruned alongside since both tables share the daemon's
-    // maintenance cadence. `PRAGMA optimize` rides the same tick: SQLite
-    // recommends it hourly or daily on a long-lived connection.
     let mut ticker = interval(Duration::from_secs(3600));
     loop {
         tokio::select! {
@@ -2603,8 +2410,6 @@ pub async fn todo_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bo
         if state.is_restore_pending() {
             continue;
         }
-        // Read Updates' mail into facts once after start, so the first
-        // digest (and Now's card) doesn't pay for a mailbox of them.
         if !updates_warm {
             if let Err(error) = crate::handler::messages::warm_history(&state).await {
                 tracing::warn!(%error, "could not warm conversation facts");
@@ -2941,10 +2746,8 @@ mod tests {
             idle_loop_for_account(loop_state, loop_account_id, shutdown_rx).await;
         });
 
-        // The loop acquires the OLD provider's watcher first.
         wait_until(&acquired, |log| log.contains(&"old")).await;
 
-        // Swap the runtime provider (as reload does) and signal the reload.
         let new_provider = Arc::new(IdleReloadProvider::new(
             account_id.clone(),
             "new",
@@ -2953,7 +2756,6 @@ mod tests {
         state.add_sync_provider_for_test(new_provider);
         state.signal_providers_reloaded();
 
-        // The loop must drop the old watcher and reconnect with the NEW provider.
         wait_until(&acquired, |log| log.contains(&"new")).await;
 
         state.request_shutdown();
@@ -2996,7 +2798,6 @@ mod tests {
                 .unwrap(),
         );
 
-        // Inject the reload at exactly the read→mark window. Fires once.
         let hook_state = state.clone();
         let hook_account_id = account_id.clone();
         let hook_acquired = acquired.clone();
@@ -3020,8 +2821,6 @@ mod tests {
             idle_loop_for_account(loop_state, loop_account_id, shutdown_rx).await;
         });
 
-        // The loop must open its watcher on NEW, having re-fetched after the
-        // injected reload — it must never establish a watcher on OLD.
         wait_until(&acquired, |log| log.contains(&"new")).await;
 
         state.request_shutdown();
@@ -3123,7 +2922,6 @@ mod tests {
             message.payload,
             mxr_protocol::IpcPayload::Event(mxr_protocol::DaemonEvent::ContactsRefreshed)
         ));
-        // The worker stopping closes the channel and ends the announcer.
         drop(wake);
         tokio::time::timeout(Duration::from_secs(5), announcer)
             .await
@@ -3207,8 +3005,6 @@ mod tests {
             .unwrap();
 
         let status = observed.expect("sync timeout should mark runtime status");
-        // The sync was detached, not cancelled: it is genuinely still
-        // running, and the row says so.
         assert!(status.sync_in_progress);
         assert_eq!(status.failure_class.as_deref(), Some("timeout"));
         assert!(
@@ -3251,8 +3047,6 @@ mod tests {
             "200ms sync must outlive a 20ms wait"
         );
 
-        // The reaper finalizes once the sync completes: poll for the
-        // cleared flag, then confirm the guard was released.
         let mut finalized = None;
         for _ in 0..50 {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -3311,8 +3105,6 @@ mod tests {
             "a never-finishing sync must outlive the caller wait"
         );
 
-        // The reaper aborts after DETACHED_SYNC_GRACE: poll well past it
-        // for the cleared flag, then confirm the guard was released.
         let mut finalized = None;
         for _ in 0..200 {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -3411,7 +3203,6 @@ mod tests {
                     arrival: Default::default(),
                 }]
             } else {
-                // The empty final page: nothing synced, nothing left to page.
                 Vec::new()
             };
             let _ = cursor;
@@ -3527,7 +3318,6 @@ mod tests {
             SyncStarter::AccountLoop,
         )
         .await;
-        // The alias is registered while this pass holds the guard.
         crate::handler::diagnostics_impl::add_account_address(
             &state,
             &account_id,
@@ -3537,7 +3327,6 @@ mod tests {
         )
         .await
         .unwrap();
-        // The pass then writes a batch it classified before the change.
         let late = crate::test_fixtures::TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
             .provider_id("late-batch")
@@ -3656,7 +3445,6 @@ mod tests {
         );
         let provider = provider as std::sync::Arc<dyn MailSyncProvider>;
 
-        // Page one: one message, more to come. The repair waits.
         let pass = begin_sync_pass(&state, provider.clone(), None, SyncStarter::AccountLoop).await;
         let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
         else {
@@ -3676,8 +3464,6 @@ mod tests {
             "a mid-backfill page defers its contacts instead of enqueueing them"
         );
 
-        // Page two: empty, and the end of the backfill. The debt falls due
-        // even though this page synced nothing.
         let pass = begin_sync_pass(&state, provider, None, SyncStarter::AccountLoop).await;
         let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
         else {
@@ -3829,7 +3615,6 @@ mod tests {
             "a queued background sync keeps the account busy"
         );
 
-        // And once the claim goes, the next pass is free to report idle.
         drop(claim);
         let pass = begin_sync_pass(
             &state,
@@ -3928,8 +3713,6 @@ mod tests {
         let account_id = state.default_provider().account_id().clone();
         let (_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-        // Default fake provider has `idle_trigger = None` → idle_watch
-        // returns Ok(None) → loop returns immediately.
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(2),
             idle_loop_for_account(state.clone(), account_id, shutdown_rx),
@@ -3954,16 +3737,11 @@ mod tests {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let account_id = state.default_provider().account_id().clone();
 
-        // Enable IDLE on the fake provider. Get the trigger handle so
-        // the test can simulate a server-pushed event. Install it in the runtime
-        // (overwriting the default fake) so the loop re-fetches it from state —
-        // the loop no longer takes a provider argument.
         let mut fake = mxr_provider_fake::FakeProvider::new(account_id.clone());
         let trigger = fake.enable_idle();
         let provider: StdArc<dyn mxr_core::MailSyncProvider> = StdArc::new(fake);
         state.add_sync_provider_for_test(provider);
 
-        // The notify that the sync loop awaits.
         let notify = state.idle_notify_for_account(&account_id);
 
         let (_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -3973,8 +3751,6 @@ mod tests {
             idle_loop_for_account(watcher_state, watcher_account, shutdown_rx).await;
         });
 
-        // Race: fire the trigger; the watcher's next_event awaits resolve;
-        // notify.notify_one() is called; our notified() future returns.
         trigger.notify_one();
 
         let woken = tokio::time::timeout(std::time::Duration::from_secs(2), notify.notified())
@@ -4118,15 +3894,12 @@ mod history_prune_tests {
         let (state, account_id) = seeded_state(3, 55).await;
         let now = chrono::Utc::now();
 
-        // 89 days on, every row is still inside the window.
         let early = prune_history(&state.store, 90, now + ChronoDuration::days(89))
             .await
             .unwrap();
         assert_eq!(early, HistoryPruneCounts::default());
         assert_eq!(remaining(&state, &account_id).await, (3, 55));
 
-        // 91 days on, the events are past the cutoff. Sync keeps the newest 50
-        // per account, so 5 of the 55 go.
         let late = prune_history(&state.store, 90, now + ChronoDuration::days(91))
             .await
             .unwrap();
@@ -4224,7 +3997,6 @@ mod history_prune_tests {
 
         let invalid = dir.path().join("invalid.toml");
         std::fs::write(&invalid, "[logging\nevent_retention_days = ").unwrap();
-        // A directory where the file should be is a read error, not "missing".
         let not_a_file = dir.path().join("dir-config.toml");
         std::fs::create_dir(&not_a_file).unwrap();
 
@@ -4324,7 +4096,6 @@ mod rule_message_text_tests {
 
     #[test]
     fn exact_and_anchored_rules_match_a_plain_and_html_duplicate() {
-        // The same word in both parts must still satisfy a whole-text rule.
         let view = message(Some("invoice"), Some("<p>invoice</p>"));
         let exact = Conditions::Field(FieldCondition::BodyContains {
             pattern: StringMatch::Exact("invoice".to_string()),
@@ -4350,8 +4121,6 @@ mod rule_message_text_tests {
 
     #[test]
     fn a_long_html_paragraph_matches_a_phrase_rule_across_its_display_wrap() {
-        // The reader breaks this paragraph at 80 columns; the rule must still
-        // see "payment overdue" as the words the sender wrote.
         let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
         let view = message(None, Some(&html));
         assert_eq!(
@@ -4366,8 +4135,6 @@ mod rule_message_text_tests {
 
     #[test]
     fn pre_html_plain_rules_keep_their_exact_results() {
-        // A trailing newline is part of the stored plain text, so an exact rule
-        // written against it still matches.
         let plain = message(Some("invoice\n"), None);
         assert_eq!(
             body_rule(StringMatch::Exact("invoice\n".to_string())).evaluate_known(&plain),
@@ -4381,7 +4148,6 @@ mod rule_message_text_tests {
 
     #[test]
     fn a_negated_empty_check_on_empty_mail_is_unchanged() {
-        // Empty plain text matches ^$, so NOT ^$ is false, as before HTML matching.
         let empty = message(Some(""), None);
         let not_empty = Conditions::Not {
             condition: Box::new(body_rule(StringMatch::Regex("^$".to_string()))),

@@ -27,7 +27,6 @@ fn cadence_watch_list_unwatch_round_trip() {
     let temp = TempDir::new().expect("temp dir");
     let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "cadence-rt");
 
-    // Empty start state.
     let list0 = run_json(
         &instance,
         &data_dir,
@@ -37,9 +36,6 @@ fn cadence_watch_list_unwatch_round_trip() {
     let arr0 = list0.as_array().expect("list returns JSON array");
     assert!(arr0.is_empty(), "fresh daemon has no watchlist: {list0}");
 
-    // Watch a contact with a 14-day expected cadence. The watch
-    // subcommand prints "watching" on success — no JSON contract there,
-    // so we exit-status-only it.
     run_status_only(
         &instance,
         &data_dir,
@@ -54,7 +50,6 @@ fn cadence_watch_list_unwatch_round_trip() {
         ],
     );
 
-    // List shows the row with expected_days = 14.
     let list1 = run_json(
         &instance,
         &data_dir,
@@ -69,9 +64,6 @@ fn cadence_watch_list_unwatch_round_trip() {
         "expected_days echoes the input: {list1}"
     );
 
-    // Unknown watched contacts are allowed, but they do not start
-    // drifting until mxr has observed at least one inbound/outbound
-    // contact timestamp for that address.
     let drift = run_json(
         &instance,
         &data_dir,
@@ -84,8 +76,6 @@ fn cadence_watch_list_unwatch_round_trip() {
         "never-seen watched contacts are not overdue yet: {drift}"
     );
 
-    // Unwatch removes the row from list AND drift — the spec is
-    // explicit that drift is watchlist-scoped.
     run_status_only(
         &instance,
         &data_dir,
@@ -135,7 +125,6 @@ fn send_time_zero_history_returns_low_confidence_json() {
     assert_eq!(rows.len(), 1, "single recipient returns one row: {resp}");
     assert_eq!(rows[0]["email"], "ghost@example.com");
     assert_eq!(rows[0]["sample_count"], 0);
-    // No samples → Low confidence. The enum serializes as a string.
     assert_eq!(
         resp["confidence"].as_str(),
         Some("low"),
@@ -189,8 +178,6 @@ fn send_time_with_at_echoes_proposed_slot() {
     let hr = resp["proposed_hour"]
         .as_u64()
         .unwrap_or_else(|| panic!("proposed_hour missing: {resp}"));
-    // "9am" is local wall-clock time; the response buckets by the UTC hour
-    // of that instant, like the stored reply-time buckets.
     let local_nine = chrono::Local
         .from_local_datetime(
             &(chrono::Local::now().date_naive() + chrono::Days::new(1))
@@ -212,7 +199,6 @@ fn send_time_with_at_echoes_proposed_slot() {
         Some(Ok(expected.timestamp())),
         "proposed_at is tomorrow 09:00 local: {resp}"
     );
-    // No history means no expected p50 for the proposed slot.
     assert!(
         resp["recipient_rows"][0]
             .get("proposed_expected_reply_seconds")

@@ -42,8 +42,6 @@ impl AccountMarks {
 
     pub fn from_accounts(accounts: &[AccountSummaryData], scoped: bool) -> Self {
         let enabled = accounts.iter().filter(|account| account.enabled).count();
-        // A daemon from before identities sends none. Showing a column of
-        // blanks would tell the user nothing, so the column stays hidden.
         let any_identity = accounts.iter().any(|account| account.identity.is_some());
         if scoped || enabled < 2 || !any_identity {
             return Self::hidden();

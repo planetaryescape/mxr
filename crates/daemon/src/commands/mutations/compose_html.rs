@@ -73,12 +73,6 @@ pub fn read_html_input(args: &HtmlComposeArgs) -> anyhow::Result<Option<HtmlComp
         })
         .transpose()?;
 
-    // A caller who passes `--text-file` means to supply the alternative, so an
-    // empty one is a mistake — and a mistake that survives all the way to the
-    // reader. Consumers prefer a supplied alternative over the document, and
-    // `Some("")` is still "supplied", so the message renders blank despite
-    // carrying a perfectly good HTML document. Omitting the flag is how you ask
-    // mxr to generate the alternative.
     if text.as_ref().is_some_and(|text| text.trim().is_empty()) {
         bail!(
             "--text-file is empty; a blank plain-text alternative renders as an empty \
@@ -88,9 +82,6 @@ pub fn read_html_input(args: &HtmlComposeArgs) -> anyhow::Result<Option<HtmlComp
 
     let inline_assets = parse_inline_assets(&args.inline)?;
 
-    // Report before anything is created. The daemon re-checks at its own
-    // boundary; this copy exists so the CLI can fail fast with the same
-    // message and a non-zero exit.
     if let Err(error) = mxr_outbound::html::validate_html(&html) {
         bail!("{error}");
     }
@@ -264,7 +255,6 @@ mod tests {
 
     #[test]
     fn without_a_signature_flag_the_html_is_untouched() {
-        // The whole point: no implicit mutation of a supplied document.
         let html = "<html><body><p>hi</p></body></html>";
         let mut a = args();
         let file = std::env::temp_dir().join("mxr-html-untouched.html");
@@ -306,8 +296,6 @@ mod tests {
         let err = read_html_input(&a).unwrap_err();
         assert!(err.to_string().contains("--text-file is empty"), "{err}");
 
-        // Counterweight: a real alternative must still come through untouched,
-        // or the check is just a ban on the flag.
         std::fs::write(&text, "hi").unwrap();
         let input = read_html_input(&a).unwrap().unwrap();
         assert_eq!(input.text.as_deref(), Some("hi"));

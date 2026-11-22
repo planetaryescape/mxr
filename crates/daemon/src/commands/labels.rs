@@ -183,7 +183,6 @@ pub async fn run(
 fn confirm_destructive(prompt: &str) -> anyhow::Result<bool> {
     use std::io::{self, IsTerminal, Write};
     if !io::stdin().is_terminal() {
-        // Refuse to silently proceed when there is no human to confirm.
         anyhow::bail!(
             "destructive action requires confirmation; pass --yes to proceed non-interactively"
         );

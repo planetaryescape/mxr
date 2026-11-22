@@ -67,12 +67,7 @@ async fn reindex_in_batches(
     reason: &str,
     mut progress: impl FnMut(ReindexProgress),
 ) -> Result<u32, MxrError> {
-    // Searches answer from SQLite while the index is wiped and refilled,
-    // instead of from the part of it that exists so far.
-    // Only a complete rebuild clears the incomplete state. A rebuild that fails
-    // part way drops this guard unfinished, so search keeps answering from SQLite.
     let rebuilding = search.begin_rebuild();
-    // Count only the bodies this rebuild falls back on, not earlier syncs.
     search.take_clean_fallbacks();
     let total = store
         .count_all_messages()
@@ -80,15 +75,12 @@ async fn reindex_in_batches(
         .map_err(|e| MxrError::Store(e.to_string()))?;
     progress(ReindexProgress::Starting { total });
 
-    // Clear existing index
     search.clear().await?;
 
     let mut indexed: u32 = 0;
     let mut after: Option<MessageId> = None;
 
     loop {
-        // Taken before the page is read: a live update numbered after this
-        // point may or may not be in the page, and the worker resolves it.
         let read_seq = search.read_seq();
         let envelopes = store
             .list_envelopes_for_reindex(after.as_ref(), batch_size)
@@ -135,7 +127,6 @@ async fn reindex_in_batches(
         );
     }
 
-    // Verify
     let doc_count = search.num_docs().await?;
     if doc_count != indexed as u64 {
         tracing::warn!(
@@ -178,7 +169,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(result, 0);
-        assert!(progress_calls.len() >= 2); // Starting + Complete
+        assert!(progress_calls.len() >= 2);
     }
 
     #[tokio::test]
@@ -190,8 +181,6 @@ mod tests {
             .await
             .unwrap();
         let total = state.store.count_all_messages().await.unwrap();
-        // 55 fake messages in batches of 7: eight full-or-partial pages, with
-        // the last page short.
         assert!(total > 7 * 7, "need enough messages for several batches");
 
         state.search.clear().await.unwrap();
@@ -208,7 +197,6 @@ mod tests {
     async fn reindex_after_sync_indexes_all_messages() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
 
-        // Sync to populate store (FakeProvider creates 55 messages)
         state
             .sync_engine
             .sync_account(state.default_provider().as_ref())
@@ -221,21 +209,16 @@ mod tests {
         state.search.clear().await.unwrap();
         assert_eq!(state.search.num_docs().await.unwrap(), 0);
 
-        // Reindex
         let indexed = reindex(&state.search, &state.store, |_| {}).await.unwrap();
 
         assert_eq!(indexed, total);
 
-        // Verify search works after reindex
         assert_eq!(state.search.num_docs().await.unwrap(), total as u64);
 
-        // Should be able to find messages
         let results = state
             .search
             .search("deployment", 10, 0, mxr_core::types::SortOrder::DateDesc)
             .await;
-        // FakeProvider messages may or may not contain "deployment",
-        // but search itself should not error
         drop(results);
     }
 
@@ -243,7 +226,6 @@ mod tests {
     async fn reindex_replaces_existing_index() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
 
-        // Sync and index normally
         state
             .sync_engine
             .sync_account(state.default_provider().as_ref())
@@ -252,7 +234,6 @@ mod tests {
 
         let before = state.search.num_docs().await.unwrap();
 
-        // Reindex should produce same count
         let indexed = reindex(&state.search, &state.store, |_| {}).await.unwrap();
 
         let after = state.search.num_docs().await.unwrap();
@@ -321,12 +302,10 @@ mod tests {
         .unwrap();
 
         let calls = progress.lock().unwrap();
-        // First call should be Starting
         assert!(matches!(
             calls.first(),
             Some(ReindexProgress::Starting { total: t }) if *t == total
         ));
-        // Last call should be Complete
         assert!(matches!(
             calls.last(),
             Some(ReindexProgress::Complete { indexed: i }) if *i == total
@@ -366,8 +345,6 @@ mod tests {
             details.starts_with("reason=content_version "),
             "got {details:?}"
         );
-        // The retention predicate keeps the newest rebuilt row, so this reason
-        // survives pruning for doctor and status to read.
         assert_eq!(rebuilt[0].summary, "Lexical index rebuilt");
     }
 
@@ -410,7 +387,6 @@ mod tests {
         let stored = stored_with_subject(&state, "stalepageword").await;
         let rebuild = state.search.begin_rebuild();
 
-        // The rebuild reads the page, then a live sync commits and applies a newer row.
         let read_seq = state.search.read_seq();
         let old_page = page_of(&stored);
         let mut newer = stored.clone();
@@ -430,7 +406,6 @@ mod tests {
             .unwrap();
         assert_eq!(state.search.live_record_len().await.unwrap(), 1);
 
-        // The page is submitted after the live update; the newer row must win.
         state
             .search
             .apply_rebuild_batch(old_page, read_seq)
@@ -468,7 +443,6 @@ mod tests {
             .await
             .unwrap();
 
-        // The rebuild reads after the live update, so its page holds the newer row.
         let read_seq = state.search.read_seq();
         let page = page_of(&newer);
         state
@@ -515,7 +489,6 @@ mod tests {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let stored = stored_with_subject(&state, "failedrunword").await;
 
-        // A rebuild that fails after a live update: its guard is dropped unfinished.
         let failed = state.search.begin_rebuild();
         state
             .search
@@ -529,7 +502,6 @@ mod tests {
         drop(failed);
         assert_eq!(state.search.live_record_len().await.unwrap(), 0);
 
-        // The next rebuild starts with an empty record and keeps its page's row.
         let next = state.search.begin_rebuild();
         assert_eq!(state.search.live_record_len().await.unwrap(), 0);
         let read_seq = state.search.read_seq();
@@ -547,14 +519,11 @@ mod tests {
 
     #[tokio::test]
     async fn an_overlapping_guard_ending_keeps_the_record_a_running_rebuild_needs() {
-        // A startup hold and a reindex overlap. B ends first; A's page must still
-        // respect the delete a live sync applied during the overlap.
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let stored = stored_with_subject(&state, "deletedduringword").await;
 
         let a = state.search.begin_rebuild();
         let b = state.search.begin_rebuild();
-        // A reads its page at sequence 0, before the live delete.
         let read_seq = state.search.read_seq();
         let a_page = page_of(&stored);
         state

@@ -70,24 +70,17 @@ pub async fn run(options: LogRunOptions) -> anyhow::Result<()> {
     );
     if options.purge {
         let days = mxr_config::load_config()?.logging.event_retention_days;
-        // Same cutoff rule as the daily history prune. Event and sync rows
-        // store whole Unix seconds, so this exact instant also selects the
-        // archives and is reported back.
         let cutoff_secs = crate::loops::history_cutoff(Utc::now(), days);
         let cutoff = DateTime::from_timestamp(cutoff_secs, 0).ok_or_else(|| {
             anyhow::anyhow!("logging.event_retention_days exceeds supported cutoff range")
         })?;
-        // Retention 0 keeps everything, so a manual purge deletes nothing.
         let (events, sync_logs, selected) = if days == 0 {
             (0, 0, Vec::new())
         } else {
-            // Database work can wait for a writer. Never hold the archive lock
-            // across that await: a database writer may itself need to trace.
             let db = mxr_config::data_dir().join("mxr.db");
             let (events, sync_logs) =
                 purge_history(&db, cutoff.timestamp(), options.dry_run).await?;
             let selected = {
-                // Preview opens an existing lock read-only, without creating logs.
                 let _lock = if dir.exists() {
                     logging::lock(&dir, !options.dry_run)?
                 } else {
@@ -190,8 +183,6 @@ fn scan(
     wait_for_newline: bool,
     mut emit: impl FnMut(String),
 ) -> anyhow::Result<()> {
-    // Pin inode handles and lengths while writers cannot rotate. Release the
-    // lock before scanning history, so a large read does not stall the daemon.
     let snapshots = {
         let _lock = logging::lock(dir, false)?;
         let mut snapshots = Vec::new();
@@ -382,7 +373,6 @@ mod tests {
                 .unwrap();
         }
         drop(store);
-        // Rows were written now, so a cutoff 91 days ahead selects them all.
         let cutoff = Utc::now().timestamp() + 91 * 86_400 - 90 * 86_400;
 
         let preview = purge_history(&db, cutoff, true).await.unwrap();

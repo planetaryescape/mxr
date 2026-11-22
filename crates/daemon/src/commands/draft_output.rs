@@ -114,9 +114,6 @@ pub(crate) fn length_data(value: DraftLengthArg) -> DraftLengthHintData {
 mod tests {
     use super::*;
 
-    // Behavior 9: the shared JSON renderer surfaces the inferred tone/length
-    // + context note — the contract both `mxr draft` and `draft-assist` rely
-    // on for parity.
     #[test]
     fn draft_suggestion_json_surfaces_inferred_tone() {
         let view = DraftSuggestionView {

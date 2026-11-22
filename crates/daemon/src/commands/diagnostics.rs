@@ -28,8 +28,6 @@ pub(super) fn client_local_metadata() -> anyhow::Result<serde_json::Value> {
         "runtime_instance": mxr_config::app_instance_name(),
         "config_path": mxr_config::config_file_path(),
         "data_dir": mxr_config::data_dir(),
-        // MXR_DAEMON_ADDR may select a different Unix socket. This field
-        // always describes the client's own default profile.
         "socket_path": mxr_config::socket_path(),
     }))
 }

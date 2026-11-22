@@ -71,9 +71,6 @@ pub async fn run_daemon() -> anyhow::Result<()> {
 /// this path writes to stdout before or during serving. Diagnostics and the
 /// index-lock conflict message go to stderr.
 pub async fn run_stdio() -> anyhow::Result<()> {
-    // Acquire the exclusive runtime state (search-index lock included). A
-    // running socket daemon holds this, so `--stdio` cannot collide with one;
-    // surface that as a clear stderr message rather than a raw lock error.
     let state = Arc::new(match AppState::new().await {
         Ok(state) => state,
         Err(error) if is_index_lock_error(&error.to_string()) => {
@@ -87,8 +84,6 @@ pub async fn run_stdio() -> anyhow::Result<()> {
     #[cfg(feature = "langfuse")]
     let llm_tracing = crate::llm_tracing::start();
 
-    // Same history prune as the socket daemon. The stdio daemon exits on
-    // request_shutdown below, which ends the loop.
     loops::spawn_history_prune_loop(state.clone());
 
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
@@ -96,8 +91,6 @@ pub async fn run_stdio() -> anyhow::Result<()> {
     let event_rx = state.event_tx.subscribe();
     let shutdown_rx = state.shutdown_receiver();
 
-    // One connection over stdin/stdout. `LocalProcess` peer trust: no token
-    // gate (the spawner vouches for the peer). Returns when stdin hits EOF.
     let stream = tokio::io::join(tokio::io::stdin(), tokio::io::stdout());
     serve_client_connection(
         stream,
@@ -111,7 +104,6 @@ pub async fn run_stdio() -> anyhow::Result<()> {
     )
     .await;
 
-    // Drain any in-flight background work spawned by handlers, then exit.
     state.request_shutdown();
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
     #[cfg(feature = "langfuse")]
@@ -129,13 +121,10 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
             "Hosted daemon was explicitly stopped; client startup was cancelled"
         );
     }
-    // Bind where every CLI-side probe/request will look (honors MXR_DAEMON_ADDR).
     let sock_path = resolve_daemon_socket()?;
     if let Some(parent) = sock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    // A responsive daemon already owns the socket — refuse immediately,
-    // without touching anything.
     if matches!(
         inspect_socket_state(&sock_path).await,
         SocketState::Reachable
@@ -146,16 +135,6 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         );
     }
 
-    // Acquire exclusive resources (the search-index write lock) BEFORE
-    // touching the socket file. The index lock — not the socket probe — is
-    // the authoritative singleton guard: a busy daemon whose socket probe
-    // momentarily times out still holds it, so we bail here with its socket
-    // left intact.
-    //
-    // Ordering is load-bearing. The previous code removed a "stale" socket
-    // first, then failed `AppState::new` on the lock and exited — which
-    // orphaned the still-running daemon with no socket and permanently
-    // wedged IPC (clients could neither connect nor restart it).
     let state = Arc::new(match AppState::new().await {
         Ok(state) => state,
         Err(error) if is_index_lock_error(&error.to_string()) => {
@@ -166,8 +145,6 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
         Err(error) => return Err(error),
     });
-    // Initialization may take minutes. Serialize the final start boundary with
-    // desired-state writes so a stop committed during initialization wins.
     let startup_gate = if client_autostart {
         let gate = tokio::task::spawn_blocking(mxr_config::lock_hosting_daemon_startup).await??;
         anyhow::ensure!(
@@ -178,24 +155,12 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     } else {
         None
     };
-    // Only the daemon that holds the lock traces, so a refused second start
-    // never opens an exporter.
     #[cfg(feature = "langfuse")]
     let llm_tracing = crate::llm_tracing::start();
 
-    // We hold the exclusive lock, so we are the sole daemon. Build the
-    // configured transports (factory match over config — UDS always on, TCP
-    // opt-in) and bind each. `UdsServerTransport::bind` owns the socket
-    // lifecycle that used to live inline here: clear a genuinely-stale socket,
-    // bind, chmod 0600, and remember our socket identity for successor-safe
-    // cleanup. The pid file and index-lock singleton stay daemon-level.
     let tcp_cfg = mxr_config::load_config()
         .map(|config| config.transports.tcp)
         .unwrap_or_default();
-    // When the TCP transport is enabled, resolve (creating on first run) the
-    // shared daemon token that its connections must present. `None` for a
-    // UDS-only daemon; the serve core only consults it for `TokenRequired`
-    // peers, so UDS/memory connections are never affected.
     let auth_token: Option<Arc<str>> = if tcp_cfg.enabled {
         match mxr_config::resolve_daemon_token(true) {
             Ok(Some(token)) => Some(Arc::from(token.as_str())),
@@ -216,8 +181,6 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                 listeners.push(listener);
             }
             Err(error) => {
-                // A partial bind must not leave earlier listeners' sockets
-                // behind: clean them up before failing.
                 for listener in &mut listeners {
                     let _ = listener.cleanup().await;
                 }
@@ -226,9 +189,6 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
     }
 
-    // Install process-stop handlers only after all startup checks and binds
-    // succeed. They are polled by the accept loop itself, so no detached task
-    // can outlive an embedded daemon invocation.
     let mut shutdown_signals = match ShutdownSignals::install() {
         Ok(signals) => signals,
         Err(error) => {
@@ -240,50 +200,28 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
     };
 
-    // Every post-bind exit — a clean shutdown OR any error (pid-file write,
-    // bridge startup, accept failure) — must funnel through the ordered
-    // teardown after this block, so no exit path leaves a stale socket. The
-    // serving body runs in a guarded scope; teardown then runs unconditionally.
     let mut connections = JoinSet::new();
     let serve_result: anyhow::Result<()> = async {
         write_daemon_pid_file()?;
         let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
         let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
 
-        // All syncing happens in the background sync loops — no blocking initial sync.
-        // The daemon starts accepting clients immediately. The sync loops detect
-        // Initial/GmailBackfill cursors and handles them with no startup delay.
-
-        // A previous daemon that died mid-sync leaves sync_in_progress=true
-        // behind; clear it before any loop can read it as "already syncing".
         loops::reconcile_interrupted_syncs(&state).await;
 
-        // An assistant turn the previous daemon was running died with it.
-        // Calls waiting for the user stay waiting.
         if let Err(error) = state.store.mark_interrupted_assistant_turns().await {
             tracing::warn!(%error, "could not mark interrupted assistant turns");
         }
 
-        // A bulk job the previous daemon was running died with it. Mark it,
-        // with the counts it had, instead of leaving it running forever.
         crate::handler::job_recovery::mark_interrupted_mutation_jobs(&state).await;
 
-        // Cleanup a previous daemon owed for deleted mail (it failed or died
-        // between the delete and the cleanup). Off the startup path: it only
-        // touches files and the semantic worker.
-        // Also retries cleanups that failed (a file that could not be
-        // removed) on a timer, not only at the next delete.
         tokio::spawn(crate::message_deletion::drain_pending_forgets_periodically(
             state.clone(),
         ));
 
-        // Spawn background loops
         loops::spawn_sync_loops(state.clone());
         let startup_handle = spawn_startup_maintenance(state.clone());
         state.register_startup_maintenance(startup_handle);
 
-        // Saves the LLM background state and re-runs work an endpoint
-        // outage put off. Its last save happens in the shutdown drain.
         crate::llm_background::spawn(state.clone());
 
         let snooze_state = state.clone();
@@ -342,7 +280,6 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         });
         state.register_contacts_refresher(contacts_handle);
 
-        // Ends by itself when the refresh worker shuts down.
         tokio::spawn(loops::contacts_refreshed_announcer(
             state.clone(),
             state.contacts_refresh.subscribe_refreshed(),
@@ -355,49 +292,32 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         });
         state.register_wrapped_warmer(wrapped_warmer_handle);
 
-        // Materialize history too; evaluation never needs to open a mode first.
         let assessment_state = state.clone();
         tokio::spawn(async move {
             let shutdown_rx = assessment_state.shutdown_receiver();
             crate::handler::assessments::reconciler_loop(assessment_state, shutdown_rx).await;
         });
 
-        // Keeps recently read Now/mode views rebuilt after mail changes.
-        // Fire-and-forget like the prune loops: a lost pass costs nothing.
         let mode_cache_state = state.clone();
         tokio::spawn(async move {
             let shutdown_rx = mode_cache_state.shutdown_receiver();
             crate::handler::mode_cache::refresher_loop(mode_cache_state, shutdown_rx).await;
         });
 
-        // Activity prune loop: enforces the tiered retention windows from
-        // config. Fire-and-forget; on shutdown the watch channel exits the
-        // loop. Not registered with `runtime_tasks` because we don't need to
-        // join on it during graceful shutdown — losing the last sweep is
-        // harmless.
         let activity_prune_state = state.clone();
         tokio::spawn(async move {
             let shutdown_rx = activity_prune_state.shutdown_receiver();
             loops::activity_prune_loop(activity_prune_state, shutdown_rx).await;
         });
 
-        // History prune: keeps event_log and sync_log to
-        // `logging.event_retention_days`. Same fire-and-forget shape as the
-        // activity prune; losing the last pass costs nothing.
         loops::spawn_history_prune_loop(state.clone());
 
-        // Mutation dedup + undo prune. 24h dedup TTL means rows older
-        // than that are safe to drop; hourly cadence keeps the table
-        // bounded under heavy mutation traffic.
         let mutation_dedup_state = state.clone();
         tokio::spawn(async move {
             let shutdown_rx = mutation_dedup_state.shutdown_receiver();
             loops::mutation_dedup_prune_loop(mutation_dedup_state, shutdown_rx).await;
         });
 
-        // Managed HTTP bridge. Reads [bridge] from config, applies CLI
-        // overrides, and keeps daemon-hosted serving loopback-only until remote
-        // bridge TLS is a validated product decision.
         if !bridge_overrides.disabled {
             match crate::bridge::spawn_bridge_loop(
                 state.clone(),
@@ -431,12 +351,9 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         let mut desired_state_tick=tokio::time::interval(Duration::from_secs(1));
         let mut operator_stop_deadline:Option<tokio::time::Instant>=None;
         let mut shutdown_rx = state.shutdown_receiver();
-        // The bridge reaches the daemon over the socket too, so an open web
-        // tab or TUI shows up as an open connection here.
         let idle_exit_after = crate::idle_exit::idle_exit_after();
         let mut idle_since = tokio::time::Instant::now();
 
-        // Accept connections from every bound transport.
         loop {
             let idle_deadline = idle_exit_after
                 .filter(|_| connections.is_empty())
@@ -468,8 +385,6 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                     }
                 }
                 () = sleep_until_deadline(idle_deadline) => {
-                    // Read accounts at the deadline, not at startup: one can
-                    // be added while the daemon runs.
                     match state.store.list_accounts().await {
                         Ok(accounts) if !crate::idle_exit::has_real_account(&accounts) => {
                             tracing::info!(
@@ -527,27 +442,15 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     }
     .await;
 
-    // ── Ordered teardown — runs on EVERY post-bind exit (clean or error) ──
-    // Stop accepting FIRST — before the drains — so new clients get a prompt
-    // connection-refused during shutdown instead of hanging against a listening
-    // socket that no longer has an accept loop. The socket file is NOT unlinked
-    // yet: that is deferred to `cleanup` below.
     for listener in &mut listeners {
         listener.stop_accepting().await;
     }
     drain_connection_tasks(&mut connections, CONNECTION_DRAIN_TIMEOUT).await;
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
-    // After the drains, so the traces of work they finished are sent too.
     #[cfg(feature = "langfuse")]
     if let Some(llm_tracing) = llm_tracing {
         llm_tracing.shutdown().await;
     }
-    // Release each transport's resources LAST — after the connection and
-    // runtime-task drains. `UdsListener::cleanup` removes the socket file only
-    // if it is still ours: a successor daemon spawned during the drain window
-    // may have already re-bound the socket path, and deleting it here would
-    // orphan that successor (alive and syncing, but unreachable by every
-    // client). The pid file cleanup stays daemon-level for the same reason.
     for listener in &mut listeners {
         let _ = listener.cleanup().await;
     }
@@ -707,10 +610,6 @@ fn build_transports(
 /// socket through `mxr_config::socket_path()` and do NOT yet honor
 /// `MXR_DAEMON_ADDR`; that adoption lands in phase 5 (see decision log D053).
 pub(crate) fn resolve_daemon_socket() -> anyhow::Result<PathBuf> {
-    // The daemon's own UDS bind, autostart, and the UDS liveness probe are
-    // Unix-only concepts. A `tcp://` / `cmd://` value in `MXR_DAEMON_ADDR` is a
-    // *client-side* transport override — it does not relocate the daemon's Unix
-    // socket, so those schemes fall back to the default UDS path here.
     match resolve_daemon_addr()? {
         mxr_transport::TransportAddr::Unix(path) => Ok(path),
         mxr_transport::TransportAddr::Tcp(_) | mxr_transport::TransportAddr::Cmd(_) => {
@@ -761,9 +660,6 @@ pub(crate) fn selected_daemon_target() -> anyhow::Result<mxr_client::SelectedDae
 }
 
 pub async fn ensure_daemon_running() -> anyhow::Result<()> {
-    // Autostart, stale-socket probes, and pid-file recovery manage only local
-    // daemons. TCP/cmd targets and saved paired remotes own their own
-    // reachability, so skip local lifecycle management for those selections.
     if selected_daemon_target()?.is_remote() {
         return Ok(());
     }
@@ -860,8 +756,6 @@ pub async fn restart_daemon() -> anyhow::Result<()> {
 
 pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
     let target = selected_daemon_target()?;
-    // Remote targets perform their own identity/protocol handshake when the
-    // TUI connects; never probe the default local socket for them.
     let Some(sock_path) = target.unix_path() else {
         return Ok(());
     };
@@ -869,11 +763,6 @@ pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
         match fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT).await {
             Ok(snapshot) => snapshot,
             Err(error) => {
-                // The status query can still time out if the daemon is
-                // pathologically busy. A live daemon that answers ping is
-                // protocol-compatible enough to launch into — don't block the
-                // TUI on a transient status stall (mirrors the daemon-match
-                // path's ping fallback).
                 if daemon_responds_to_ping(sock_path, Duration::from_secs(2)).await {
                     eprintln!(
                     "Daemon status check failed ({error}); daemon is responsive, launching anyway."
@@ -984,9 +873,6 @@ pub(crate) async fn inspect_socket_state(path: &std::path::Path) -> SocketState 
 async fn socket_accepts_connections(path: &Path) -> bool {
     let connector = UnixConnector::new(path.to_path_buf());
     for attempt in 0..SOCKET_PROBE_ATTEMPTS {
-        // Connect-and-drop liveness probe, dialed through the transport
-        // `Connector` (no raw `UnixStream` in daemon code outside the UDS
-        // transport). The connect error's `io::ErrorKind` still drives retry.
         match connector.connect().await {
             Ok(_io) => return true,
             Err(TransportError::Connect { source, .. })
@@ -1220,29 +1106,14 @@ impl VerifiedDaemon {
         runs_our_profile: impl FnOnce() -> bool,
     ) -> bool {
         match (started_at, observed_start_time) {
-            // The ordinary case: a recycled pid has a different start time.
             (Some(before), Some(now)) if before != now => return false,
-            // The process is gone, or `ps` stopped answering about it. Either
-            // way there is nothing left here that we recognise.
             (Some(_), None) => return false,
             _ => {}
         }
-        // Same second, or no start time either time: fall back on the rest of
-        // the evidence rather than read an indistinguishable timestamp as
-        // proof.
-        //
-        // Only a definite "that is not a daemon" rejects. A `ps` that will not
-        // answer says nothing, and reading silence as a rejection here would
-        // strand a live daemon exactly as it did at verification time: the pid
-        // file gets cleared, a successor spawns, and it dies on the
-        // search-index lock. Both phases treat an unreadable argv the same way.
         if runs_daemon_argv() == Some(false) {
             return false;
         }
         match evidence {
-            // The profile is what identified a scanned pid in the first place,
-            // so unlike the argv it has to hold up again — an environment we
-            // cannot read is not an identity we can act on.
             DaemonEvidence::PidFile => true,
             DaemonEvidence::ProcessScan => runs_our_profile(),
         }
@@ -1302,9 +1173,6 @@ fn live_daemon_pid() -> Option<VerifiedDaemon> {
     let pid = fallback_live_daemon_pid_without_pid_file()?;
     let adopted = VerifiedDaemon::verify(pid, DaemonEvidence::ProcessScan);
     let _ = std::fs::write(daemon_pid_file_path(), pid.to_string());
-    // Restore the record alongside the pid file. An older record left in place
-    // would name a pid the file no longer does, which the next run rightly
-    // reads as stale.
     adopt_daemon_identity_file(&adopted);
     Some(adopted)
 }
@@ -1383,12 +1251,6 @@ fn pid_file_verdict(
     runs_daemon_argv: impl FnOnce() -> Option<bool>,
 ) -> bool {
     match record {
-        // A record that names a different pid, or another profile, contradicts
-        // the pid file rather than saying nothing about it: the two are written
-        // and cleared together, so disagreement means one of them is stale.
-        // Falling back to the argv check here would let a neighbouring
-        // profile's daemon inherit this profile's pid file and be signalled on
-        // its behalf.
         Some((identity, profile_matches)) if identity.pid != pid || !profile_matches => {
             tracing::info!(
                 pid,
@@ -1400,12 +1262,8 @@ fn pid_file_verdict(
         }
         Some((identity, _)) => match observed_start_time() {
             Some(started_at) => started_at == identity.started_at,
-            // No start time to compare is not evidence against the record.
             None => true,
         },
-        // No record at all: a daemon older than the record, or one whose write
-        // failed. All that is left is the weak check — and an argv nobody will
-        // report is not grounds for stranding a live daemon.
         None => runs_daemon_argv().unwrap_or(true),
     }
 }
@@ -1452,8 +1310,6 @@ fn command_names_another_instance(words: &[String], instance: &str) -> bool {
     words.iter().enumerate().any(|(index, word)| {
         let named = match word.strip_prefix("--instance=") {
             Some(named) => Some(named),
-            // A trailing `--instance` names nobody, and silence is not
-            // evidence.
             None if word == "--instance" => words.get(index + 1).map(String::as_str),
             None => None,
         };
@@ -1482,8 +1338,6 @@ fn fallback_live_daemon_pid_without_pid_file() -> Option<u32> {
         &current_instance,
     );
 
-    // Profile first, then uniqueness: two daemons of the same build in
-    // different profiles would otherwise make each other unadoptable.
     let ours: Vec<u32> = candidates
         .into_iter()
         .filter(|pid| process_runs_our_profile(*pid))
@@ -1493,8 +1347,6 @@ fn fallback_live_daemon_pid_without_pid_file() -> Option<u32> {
         [pid] => Some(*pid),
         [] => None,
         more => {
-            // Two live daemons for one profile is already broken; restarting
-            // an arbitrary one of them would just pick a side.
             tracing::warn!(
                 pids = ?more,
                 "found several `{current_instance}` daemons for this profile; not adopting any"
@@ -1648,15 +1500,8 @@ async fn recover_broken_running_daemon(
     eprint!("{message}");
     let daemon_pid = daemon.pid;
 
-    // Last check before the signal: the daemon may have exited while we were
-    // deciding — quite possibly because of the status request we sent it — and
-    // its number may already belong to something else.
     if daemon.is_unchanged() {
         send_signal(daemon_pid, Signal::SIGTERM)?;
-        // The wait for a graceful exit is the widest recycle window of the
-        // lot: the whole point of it is that the process is expected to go
-        // away, and its number is free the moment it does. Re-check before
-        // escalating rather than sending SIGKILL to whatever holds it now.
         if !wait_for_process_exit(daemon_pid, ORPHAN_DAEMON_EXIT_TIMEOUT).await {
             if daemon.is_unchanged() {
                 send_signal(daemon_pid, Signal::SIGKILL)?;
@@ -1667,11 +1512,6 @@ async fn recover_broken_running_daemon(
                     );
                 }
             } else {
-                // Something still holds the number, but it is no longer the
-                // daemon we signalled — so that daemon is gone, which is what
-                // the wait was for. Not killing a stranger is worth the small
-                // chance that the successor now races a daemon whose identity
-                // we simply could not read.
                 tracing::info!(
                     pid = daemon_pid,
                     "daemon pid changed identity while shutting down; not escalating to SIGKILL"
@@ -1692,8 +1532,6 @@ async fn recover_broken_running_daemon(
     ) {
         RecoveryCleanup::AlreadyRecovered => {
             eprintln!(" already recovered.");
-            // Somebody else's replacement, so it is not necessarily this
-            // binary's — the same check every other live-socket path makes.
             ensure_current_daemon_matches_binary(sock_path).await
         }
         RecoveryCleanup::ClearAndSpawn => {
@@ -1706,13 +1544,6 @@ async fn recover_broken_running_daemon(
                 pid = daemon_pid,
                 "the pid file names a replacement daemon; leaving its lifecycle files alone"
             );
-            // The successor spawned here is the one that loses the
-            // search-index lock to that replacement, and it exits fast enough
-            // that `spawn_daemon_process` can give up before the replacement's
-            // socket starts answering again. Losing that race is the
-            // replacement proving it is alive, so re-probe before passing the
-            // verdict on: telling someone to go debug a daemon that is running
-            // sends them after nothing.
             match spawn_daemon_process(sock_path, "").await {
                 Ok(()) => Ok(()),
                 Err(error) => {
@@ -1775,8 +1606,6 @@ fn recovery_cleanup(
     }
     match pid_file_now {
         Some(pid) if pid != signalled_pid => RecoveryCleanup::SpawnWithoutClearing,
-        // Absent is the ordinary case: a daemon that exits gracefully clears
-        // its own pid file.
         _ => RecoveryCleanup::ClearAndSpawn,
     }
 }
@@ -1874,14 +1703,6 @@ async fn restart_daemon_process(
 ) -> anyhow::Result<()> {
     eprint!("{message}");
 
-    // Capture the old daemon's pid before shutdown clears the pid file. The
-    // socket stops accepting the moment the old daemon leaves its accept
-    // loop, but the process keeps draining connections and background tasks
-    // for up to ~10s after that — and still holds the search-index lock.
-    // Spawning the successor inside that window loses a race: the old
-    // daemon's exit cleanup runs after the successor binds the socket, and
-    // an unguarded cleanup deletes the successor's socket, orphaning it
-    // (alive and syncing, but unreachable by every client).
     let old_pid = daemon_pid.or_else(read_daemon_pid_file);
 
     if matches!(
@@ -1938,18 +1759,10 @@ pub(crate) async fn shutdown_daemon_for_maintenance(
         return Ok(state);
     }
 
-    // Capture the daemon PID before it has a chance to clear its
-    // pid file. We use this to wait for the actual process to exit
-    // (not just the socket to disappear) so callers like `reset
-    // --hard` can rely on the daemon being fully gone before they
-    // start mutating shared state.
     let pid_before_shutdown = read_daemon_pid_file();
 
     let _ = request_shutdown_to(sock_path).await;
 
-    // Phase 1: poll the socket until it's gone. The daemon removes
-    // the socket file at the very end of its shutdown sequence, so
-    // socket-gone is a strong signal that cleanup finished.
     let deadline = std::time::Instant::now() + wait_timeout;
     while std::time::Instant::now() < deadline {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1959,13 +1772,6 @@ pub(crate) async fn shutdown_daemon_for_maintenance(
         }
     }
 
-    // Phase 2: even after the socket is gone, the process may still
-    // be in tokio runtime drop / final flushes. The shutdown sequence
-    // can take up to drain (5s) + runtime tasks (5s) in pathological
-    // cases. Wait an additional generous window for the process
-    // itself to exit. This is what fixes the `reset_cli` flake:
-    // previously the CLI returned while the daemon was mid-shutdown,
-    // the test then asserted process-gone, and lost the race.
     if let Some(pid) = pid_before_shutdown {
         let process_deadline = std::time::Instant::now() + Duration::from_secs(12);
         while std::time::Instant::now() < process_deadline {
@@ -2046,8 +1852,6 @@ fn lost_scheduled_send_message(
 }
 
 async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
-    // Decisions whose cited mail was deleted before decision evidence was
-    // tracked are invisible to every later delete; clear them once.
     match state.store.prune_decisions_without_evidence().await {
         Ok(0) => {}
         Ok(pruned) => tracing::info!(
@@ -2058,11 +1862,6 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
     }
 
     if !state.is_restore_pending() {
-        // Lost scheduled sends: a scheduled-send attempt whose outcome was
-        // never recorded means the daemon died between clearing `send_at` and
-        // the send resolving — the message may or may not have gone out.
-        // Surface each so the user can query its outcome, then mark it resolved
-        // (`interrupted`) so it isn't reported again on the next startup.
         if let Ok(lost) = state.store.list_lost_scheduled_sends().await {
             for entry in &lost {
                 tracing::warn!(
@@ -2118,18 +1917,12 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
         total_messages,
         indexed_messages,
     ) {
-        // The index holds text from before the reader-text change. Its marker is
-        // recorded only after this rebuild completes, so an interrupted rebuild
-        // runs again on the next start.
         let reason = if stale_content.is_some() {
             tracing::info!("Lexical index predates the current indexed text; rebuilding");
             crate::reindex::REASON_CONTENT_VERSION
         } else {
             crate::reindex::REASON_FULL_REINDEX
         };
-        // Startup maintenance only repairs the lexical Tantivy index from SQLite.
-        // Semantic chunks/embeddings remain an optional platform layer and are not
-        // part of this mandatory mail-readiness repair path.
         tracing::info!(
             indexed_messages,
             total_messages,
@@ -2161,12 +1954,9 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
             mxr_search::record_lexical_content_version(index_path)?;
         }
     } else {
-        // Sync may have filled a gap a short index had. Nothing needs rebuilding,
-        // so the index is complete.
         state.search.end_startup_rebuild(true);
     }
 
-    // The count check above cannot see a stale entry, only a missing one.
     crate::handler::drain_search_reindex_pending(&state).await;
 
     if state.warm_lexical_search(true).await? {
@@ -2183,8 +1973,6 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
 
     let exe = std::env::current_exe()?;
     let mut command = std::process::Command::new(exe);
-    // Recovery compares selectors exactly, including absent defaults. The
-    // inherited environment already resolves the same instance and socket.
     command
         .arg("daemon")
         .env("MXR_DAEMON_CLIENT_AUTOSTART", "1")
@@ -2202,19 +1990,11 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
             eprintln!(" ready.");
             return Ok(());
         }
-        // A dead child will never answer; fail fast with the log tail
-        // instead of pinging into the void for the rest of the window.
         if matches!(child.try_wait(), Ok(Some(_))) {
             break;
         }
     }
 
-    // Past the normal window. Startup legitimately takes minutes after an
-    // upgrade — schema migrations and WAL recovery on a multi-GB store, or
-    // a search-index rebuild — and those run before the socket binds.
-    // While the process is alive, keep waiting instead of declaring
-    // failure and tempting the user (or a wrapper script) into spawning a
-    // second daemon against a half-migrated store.
     if matches!(child.try_wait(), Ok(None)) {
         eprintln!();
         eprintln!(
@@ -2375,8 +2155,6 @@ mod tests {
     fn broken_socket_leaves_processes_alone_while_the_socket_answers() {
         use super::{classify_broken_socket, BrokenSocketRecovery};
 
-        // A daemon answering on our socket is not something to restart,
-        // whichever pid the earlier scan turned up.
         assert_eq!(
             classify_broken_socket(|| Some(verified(4242)), Some(4242)),
             BrokenSocketRecovery::SocketAlive
@@ -2431,8 +2209,6 @@ mod tests {
         let temp = tempfile::TempDir::new().expect("temp dir");
         let ours = std::fs::canonicalize(std::env::current_exe().expect("current exe"))
             .expect("canonical exe");
-        // Another checkout's build of the same binary name: a real file, so
-        // the path comparison is what rejects it.
         let neighbour = decoy_binary(&temp);
         let ours_display = ours.display();
         let neighbour_display = neighbour.display();
@@ -2462,10 +2238,6 @@ mod tests {
         let ours = std::fs::canonicalize(std::env::current_exe().expect("current exe"))
             .expect("canonical exe");
         let exe = ours.display();
-        // `mxr daemon --foreground` and friends take their instance from the
-        // environment. Skipping them would leave a hand-started daemon that
-        // lost its pid file unadoptable — and the successor dies on the
-        // search-index lock.
         let command_lines = vec![
             (100, format!("{exe} daemon --foreground")),
             (200, format!("{exe} daemon --no-bridge --bridge-port 7777")),
@@ -2527,7 +2299,6 @@ mod tests {
             .collect();
         assert!(environment_selects_our_profile(&ours));
 
-        // The case that bit: same binary, same instance, different profile.
         let mut neighbour: Vec<String> = ours
             .iter()
             .filter(|entry| !entry.starts_with("MXR_DATA_DIR="))
@@ -2539,7 +2310,6 @@ mod tests {
             "a daemon pointed at another data dir must not be adoptable"
         );
 
-        // And the reverse: an environment missing something ours sets.
         assert!(
             !environment_selects_our_profile(&["HOME=/nowhere".to_string()]),
             "an environment that disagrees about HOME is another profile"
@@ -2582,9 +2352,6 @@ mod tests {
     fn an_identity_record_that_contradicts_the_pid_file_rejects_it() {
         use super::pid_file_verdict;
 
-        // Both ways a record can contradict: a different pid, and a different
-        // profile. Neither may fall through to "is it running the `daemon`
-        // subcommand", which a neighbouring profile's daemon would pass.
         let other_pid = identity_for(99, "Wed Aug 20 00:11:22 2026");
         assert!(!pid_file_verdict(
             4242,
@@ -2601,8 +2368,6 @@ mod tests {
             || Some(true),
         ));
 
-        // And a matching record whose start time moved on: the number was
-        // recycled.
         let recycled = identity_for(4242, "Wed Aug 20 00:11:22 2026");
         assert!(!pid_file_verdict(
             4242,
@@ -2628,9 +2393,6 @@ mod tests {
     fn a_pid_recycled_between_the_decision_and_the_signal_is_not_signalled() {
         use super::{DaemonEvidence, VerifiedDaemon};
 
-        // The window this closes: the daemon exits while we are asking it for
-        // status, and its number is handed to something else before the
-        // SIGTERM goes out.
         assert!(!VerifiedDaemon::still_the_same_process(
             Some("Wed Aug 20 00:11:22 2026"),
             DaemonEvidence::PidFile,
@@ -2639,7 +2401,6 @@ mod tests {
             || panic!("a changed start time settles it on its own"),
         ));
 
-        // Gone entirely, or `ps` stopped answering: nothing here to recognise.
         assert!(!VerifiedDaemon::still_the_same_process(
             Some("Wed Aug 20 00:11:22 2026"),
             DaemonEvidence::PidFile,
@@ -2667,8 +2428,6 @@ mod tests {
 
         assert!(same_second(DaemonEvidence::PidFile, Some(true), false));
         assert!(!same_second(DaemonEvidence::PidFile, Some(false), true));
-        // A scan-sourced pid was only ever identified by its profile, so that
-        // is what has to hold up again.
         assert!(same_second(DaemonEvidence::ProcessScan, Some(true), true));
         assert!(!same_second(DaemonEvidence::ProcessScan, Some(true), false));
     }
@@ -2677,20 +2436,13 @@ mod tests {
     fn an_unreadable_argv_is_read_the_same_way_by_both_phases() {
         use super::{pid_file_verdict, DaemonEvidence, VerifiedDaemon};
 
-        // A `ps` that will not answer is not evidence of anything. The two
-        // phases used to disagree about that: verification kept the daemon,
-        // the pre-signal re-check threw it away — so one transient `ps`
-        // failure stranded a live daemon behind a successor that then died on
-        // the search-index lock.
         let record = identity_for(4242, "Wed Aug 20 00:11:22 2026");
 
-        // Verification, with no record to decide it.
         assert!(
             pid_file_verdict(4242, None, || None, || None),
             "verification keeps a pid whose argv nobody will report"
         );
 
-        // The pre-signal re-check, at the same silence.
         assert!(
             VerifiedDaemon::still_the_same_process(
                 Some(&record.started_at),
@@ -2702,8 +2454,6 @@ mod tests {
             "the re-check must read that silence the same way"
         );
 
-        // The profile is different: it is what identified a scanned pid, so an
-        // environment we cannot read still rejects.
         assert!(!VerifiedDaemon::still_the_same_process(
             Some(&record.started_at),
             DaemonEvidence::ProcessScan,
@@ -2717,26 +2467,15 @@ mod tests {
     fn a_late_recovery_does_not_clear_a_replacement_daemon_s_files() {
         use super::{recovery_cleanup, RecoveryCleanup, SocketState};
 
-        // The interleaving: two clients see the same broken socket and both
-        // decide to restart pid 4242. The first gets there, and its
-        // replacement (pid 5150) binds the socket and writes the pid file.
-        // The second arrives out of the graceful-exit wait and must not
-        // unlink what the replacement just wrote — a daemon alive behind a
-        // deleted socket is unreachable to every client, and the successor
-        // this client would then spawn dies on the search-index lock.
         assert_eq!(
             recovery_cleanup(4242, SocketState::Reachable, Some(5150)),
             RecoveryCleanup::AlreadyRecovered
         );
-        // The same replacement, caught while its socket probe is failing (a
-        // busy daemon answers late): the pid file still says it exists.
         assert_eq!(
             recovery_cleanup(4242, SocketState::Stale, Some(5150)),
             RecoveryCleanup::SpawnWithoutClearing
         );
 
-        // And the ordinary case this must keep doing: the daemon we signalled
-        // exited and cleared its own pid file, or died leaving it behind.
         assert_eq!(
             recovery_cleanup(4242, SocketState::Stale, None),
             RecoveryCleanup::ClearAndSpawn
@@ -2751,10 +2490,6 @@ mod tests {
     async fn a_process_that_exits_during_the_shutdown_wait_is_not_escalated_to() {
         use super::{DaemonEvidence, VerifiedDaemon};
 
-        // Stands in for the escalation window: SIGTERM lands, the daemon
-        // exits during the wait, and its number is free before the SIGKILL
-        // would go out. The re-check has to notice, or the kill goes to
-        // whatever holds the number next.
         let mut child = std::process::Command::new("sleep")
             .arg("30")
             .spawn()
@@ -2778,8 +2513,6 @@ mod tests {
     fn a_pid_file_without_an_identity_record_is_not_rejected() {
         use super::DaemonIdentity;
 
-        // Daemons older than the record wrote a bare pid file and no record at
-        // all; the caller must fall back rather than treat that as a mismatch.
         assert!(toml::from_str::<DaemonIdentity>("4242").is_err());
         assert!(toml::from_str::<DaemonIdentity>("").is_err());
     }
@@ -2788,10 +2521,6 @@ mod tests {
     fn a_hand_started_daemon_is_still_this_profile_s_daemon() {
         use super::command_runs_a_daemon;
 
-        // The wedge this reproduces: requiring the argv autostart happens to
-        // use rejected every explicitly started daemon, so the CLI deleted a
-        // live daemon's pid file and then spawned a successor that died on
-        // the search-index lock.
         assert!(command_runs_a_daemon(&words("/opt/bin/mxr daemon")));
         assert!(command_runs_a_daemon(&words(
             "/opt/bin/mxr daemon --foreground"
@@ -2803,8 +2532,6 @@ mod tests {
             "/opt/bin/mxr daemon --instance mxr-demo"
         )));
 
-        // The pid file established the profile; all this has to catch is the
-        // number having been handed to something else entirely.
         assert!(!command_runs_a_daemon(&words("/usr/bin/vim notes.txt")));
         assert!(!command_runs_a_daemon(&words("/opt/bin/mxr status")));
         assert!(!command_runs_a_daemon(&words("/opt/bin/mxr")));
@@ -2814,11 +2541,6 @@ mod tests {
     fn a_pid_file_with_no_record_weighs_the_instance_name_against_the_pid() {
         use super::{command_names_another_instance, command_runs_a_daemon, pid_file_verdict};
 
-        // With no identity record, "is argv[1] `daemon`" says yes to every mxr
-        // daemon on the machine — including one that inherited this pid while
-        // serving another profile. The instance name is the only thing on the
-        // command line that points the other way, and autostart always passes
-        // it.
         let another_profile = words("/opt/bin/mxr daemon --instance mxr-dev");
         assert!(command_names_another_instance(&another_profile, "mxr"));
         assert!(
@@ -2834,8 +2556,6 @@ mod tests {
             "a pid now running another profile's daemon must not be signalled on this one's behalf"
         );
 
-        // Clap takes the name either way round, and a spelling this does not
-        // read misses toward signalling a neighbour.
         assert!(command_names_another_instance(
             &words("/opt/bin/mxr daemon --instance=mxr-dev"),
             "mxr"
@@ -2849,9 +2569,6 @@ mod tests {
             "mxr"
         ));
 
-        // Every way of naming nobody: no flag, a value-less flag, and a name
-        // `ps` output cannot be reassembled into. None of them is evidence
-        // that the daemon belongs to somebody else.
         let hand_started = words("/opt/bin/mxr daemon --foreground");
         assert!(!command_names_another_instance(&hand_started, "mxr"));
         assert!(!command_names_another_instance(
@@ -2877,13 +2594,6 @@ mod tests {
     fn the_pre_signal_recheck_does_not_weigh_the_instance_name() {
         use super::{command_names_another_instance, DaemonEvidence, VerifiedDaemon};
 
-        // Verification can afford the instance heuristic: rejecting there
-        // drops through to the `ps` scan, which can still adopt the daemon by
-        // canonical executable and full environment. The re-check cannot — it
-        // runs where the start times agree or are both missing, and its "no"
-        // goes straight to clearing the pid file and unlinking the socket of a
-        // daemon that was never signalled. `--instance` is a marker the daemon
-        // discards, so it is not worth that.
         let foreign_name = words("/opt/bin/mxr daemon --instance mxr-dev");
         assert!(command_names_another_instance(&foreign_name, "mxr"));
 
@@ -2903,15 +2613,10 @@ mod tests {
     async fn wait_for_process_exit_observes_an_unreaped_child() {
         use super::wait_for_process_exit;
 
-        // Spawn a child that exits immediately and deliberately do not
-        // reap it: it stays a zombie, which `kill(pid, 0)` reports as
-        // alive. The exit probe must still observe it as exited.
         let child = std::process::Command::new("true")
             .spawn()
             .expect("spawn child");
         let pid = child.id();
-        // Drop the handle without wait() so nothing reaps the zombie
-        // before the probe runs.
         std::mem::forget(child);
 
         assert!(
@@ -2978,9 +2683,6 @@ mod tests {
 
     #[test]
     fn a_degraded_snapshot_never_reads_as_healthy() {
-        // A degraded snapshot empties `sync_statuses`, so the unhealthy-account
-        // check has nothing left to look at: the same status object would
-        // otherwise carry `degraded: true` and `health_class: "healthy"`.
         assert_eq!(
             classify_health(&[], false, false, true),
             DaemonHealthClass::Degraded
@@ -2989,8 +2691,6 @@ mod tests {
             classify_health(&[], false, false, false),
             DaemonHealthClass::Healthy
         );
-        // The version fields are read without touching the database, so a
-        // snapshot that timed out still knows the daemon is the wrong build.
         assert_eq!(
             classify_health(&[], false, true, true),
             DaemonHealthClass::RestartRequired
@@ -3404,8 +3104,6 @@ mod tests {
             .sync_account(state.default_provider().as_ref())
             .await
             .unwrap();
-        // Startup found the index short and flagged it, then sync filled the gap
-        // before startup maintenance ran, so maintenance has no rebuild to do.
         state.search.mark_incomplete();
         assert_eq!(
             state.search.availability(),

@@ -105,7 +105,6 @@ impl Lifecycle {
             .values()
             .cloned()
             .map(|mut s| {
-                // A closed session stays closed even if the clock steps back.
                 s.active = s.active && s.expires_at > now;
                 s
             })
@@ -135,7 +134,6 @@ impl Lifecycle {
     }
     pub(crate) fn admit(&self, request: &Request) -> Result<Admission, String> {
         let mut inner = self.lock();
-        // Outcome recovery stays available during a planned remote drain.
         if inner.draining
             && !matches!(
                 request,

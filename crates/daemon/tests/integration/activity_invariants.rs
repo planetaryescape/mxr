@@ -17,13 +17,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {
-    // This test target belongs to the `mxr` package, whose manifest *is* the
-    // workspace root Cargo.toml (the sources live under `crates/daemon/` via
-    // explicit `path =` entries, so there is no `crates/daemon/Cargo.toml`).
-    // `CARGO_MANIFEST_DIR` is therefore already the repo root. The previous
-    // `../..` landed two levels above it and scanned every unrelated
-    // repository sitting next to this one — the single-writer scan would have
-    // false-positived on any sibling checkout containing `record_activity(`.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
@@ -44,10 +37,6 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
             .and_then(|n| n.to_str())
             .unwrap_or_default()
             .to_string();
-        // Skip build outputs, node_modules, and dot-directories. The last one
-        // matters now that the walk starts at the repo root: `.claude/worktrees/`
-        // holds full checkouts of this same repo, and scanning them would judge
-        // another branch's in-progress edits as this branch's violation.
         if name == "target"
             || name == "target-cli"
             || name == "node_modules"
@@ -67,11 +56,6 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 #[test]
 fn no_forbidden_keys_appear_in_recorder_outputs() {
     use mxr_protocol::{ClientKind, MutationCommand, Request};
-    // Build a representative sample of Request variants the mapper handles
-    // and assert the resulting `OwnedEntry` context never serializes any
-    // forbidden top-level key. This is a *structural* check on what the
-    // mapper produces — it doesn't go through the store, so it's the right
-    // place to fail loudly if the mapper starts leaking sensitive fields.
     let make_search = || Request::Search {
         limit_from_config: false,
         query: "user@example.com password reset".into(),
@@ -122,9 +106,6 @@ fn no_forbidden_keys_appear_in_recorder_outputs() {
         let serialized = serde_json::to_string(&ctx).unwrap_or_default();
         let lower = serialized.to_lowercase();
         for forbidden_key in &forbidden {
-            // The key would have to appear as a JSON property (`"key":`) for it to be
-            // a real concern. The query body may legitimately contain literal substrings
-            // (e.g. `"password reset"` as user search text). Check for the property form.
             let property = format!("\"{forbidden_key}\":");
             assert!(
                 !lower.contains(&property),
@@ -209,7 +190,6 @@ async fn activity_privacy_config_filters_real_mapper_shapes_before_persistence()
     for request in requests {
         recorder.record(map_request(&request, ClientKind::Agent, None, true).unwrap());
     }
-    // A changed pause edge is an ordered barrier behind both writes.
     recorder.pause(None);
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         while !recorder.pause_status().0 {
@@ -255,7 +235,6 @@ fn only_activity_module_writes_to_user_activity_table() {
     let mut offenders: Vec<String> = Vec::new();
     for rs in collect_rs_files(&root) {
         let path_str = rs.display().to_string();
-        // Skip test files, benches that aren't the activity bench, and docs.
         if path_str.contains("/tests/") || path_str.contains("/docs/") {
             continue;
         }

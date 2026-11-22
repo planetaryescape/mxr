@@ -20,7 +20,6 @@ pub async fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
         ConfigAction::Edit => {
             let config_path = mxr_config::config_file_path();
             if !config_path.exists() {
-                // Ensure config file exists with defaults before opening
                 mxr_config::update_config(|_| Ok::<_, mxr_config::ConfigError>(()))?;
             }
             let editor = mxr_compose::editor::resolve_editor(None);
@@ -48,8 +47,6 @@ pub async fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
                 println!("Would set {key} = {value}");
                 return Ok(());
             }
-            // Held from the read to the write: the running daemon saves config
-            // too, and must not restore what this changes.
             mxr_config::update_config(|config| set_config_value(config, &key, &value))?;
             println!("Set {key} = {value}");
             if key.starts_with("llm.") {
@@ -74,9 +71,6 @@ async fn apply_llm_change_to_running_daemon() {
     match client.request(Request::ReloadLlmConfig).await {
         Ok(Response::Ok { .. }) => {
             println!("Applied to the running daemon.");
-            // A hand-edited `[llm.fallback]` mxr can't use is left out
-            // rather than holding back the change; say so while someone is
-            // looking.
             if let Ok(Response::Ok {
                 data: mxr_protocol::ResponseData::LlmStatus { snapshot },
             }) = client.request(Request::GetLlmStatus).await
@@ -97,7 +91,6 @@ async fn apply_llm_change_to_running_daemon() {
 
 fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result<String> {
     match key {
-        // general
         "general.editor" => Ok(config
             .general
             .editor
@@ -111,7 +104,6 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         "general.sync_interval" => Ok(config.general.sync_interval.to_string()),
         "general.hook_timeout" => Ok(config.general.hook_timeout.to_string()),
         "general.attachment_dir" => Ok(config.general.attachment_dir.display().to_string()),
-        // render
         "render.html_command" => Ok(config
             .render
             .html_command
@@ -120,11 +112,9 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         "render.reader_mode" => Ok(config.render.reader_mode.to_string()),
         "render.show_reader_stats" => Ok(config.render.show_reader_stats.to_string()),
         "render.html_remote_content" => Ok(config.render.html_remote_content.to_string()),
-        // search
         "search.default_sort" => Ok(format!("{:?}", config.search.default_sort).to_lowercase()),
         "search.max_results" => Ok(config.search.max_results.to_string()),
         "search.semantic.enabled" => Ok(config.search.semantic.enabled.to_string()),
-        // llm
         "llm.enabled" => Ok(config.llm.enabled.to_string()),
         "llm.base_url" => Ok(config.llm.base_url.clone()),
         "llm.model" => Ok(config.llm.model.clone()),
@@ -141,18 +131,15 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
             .fallback
             .as_ref()
             .map_or_else(|| "(no fallback)".into(), |fallback| fallback.model.clone())),
-        // snooze
         "snooze.morning_hour" => Ok(config.snooze.morning_hour.to_string()),
         "snooze.evening_hour" => Ok(config.snooze.evening_hour.to_string()),
         "snooze.weekend_day" => Ok(config.snooze.weekend_day.clone()),
         "snooze.weekend_hour" => Ok(config.snooze.weekend_hour.to_string()),
-        // logging
         "logging.level" => Ok(config.logging.level.clone()),
         "logging.max_size_mb" => Ok(config.logging.max_size_mb.to_string()),
         "logging.max_files" => Ok(config.logging.max_files.to_string()),
         "logging.stderr" => Ok(config.logging.stderr.to_string()),
         "logging.event_retention_days" => Ok(config.logging.event_retention_days.to_string()),
-        // appearance
         "appearance.theme" => Ok(config.appearance.theme.clone()),
         key if mxr_config::RETIRED_CONFIG_KEYS.contains(&key) => anyhow::bail!(retired_key_message(key)),
         _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  llm.enabled, llm.base_url, llm.model, llm.compose.model, llm.models, llm.api_key_env, llm.context_window, llm.request_timeout_secs, llm.allow_cloud_relationship_data, llm.fallback.model\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme"),
@@ -165,7 +152,6 @@ fn set_config_value(
     value: &str,
 ) -> anyhow::Result<()> {
     match key {
-        // general
         "general.editor" => config.general.editor = Some(value.to_string()),
         "general.default_account" => config.general.default_account = Some(value.to_string()),
         "general.sync_interval" => {
@@ -181,7 +167,6 @@ fn set_config_value(
         "general.attachment_dir" => {
             config.general.attachment_dir = std::path::PathBuf::from(value);
         }
-        // render
         "render.html_command" => config.render.html_command = Some(value.to_string()),
         "render.reader_mode" => {
             config.render.reader_mode = parse_bool(value)?;
@@ -192,7 +177,6 @@ fn set_config_value(
         "render.html_remote_content" => {
             config.render.html_remote_content = parse_bool(value)?;
         }
-        // search
         "search.max_results" => {
             config.search.max_results = value
                 .parse()
@@ -201,7 +185,6 @@ fn set_config_value(
         "search.semantic.enabled" => {
             config.search.semantic.enabled = parse_bool(value)?;
         }
-        // llm
         "llm.enabled" => {
             config.llm.enabled = parse_bool(value)?;
         }
@@ -252,7 +235,6 @@ fn set_config_value(
         "llm.allow_cloud_relationship_data" => {
             config.llm.allow_cloud_relationship_data = parse_bool(value)?;
         }
-        // An empty value turns the fallback off.
         "llm.fallback.model" => {
             if value.trim().is_empty() {
                 config.llm.fallback = None;
@@ -262,7 +244,6 @@ fn set_config_value(
                 crate::state::llm_fallback(&config.llm).map_err(|error| anyhow::anyhow!(error))?;
             }
         }
-        // snooze
         "snooze.morning_hour" => {
             config.snooze.morning_hour = value
                 .parse()
@@ -279,7 +260,6 @@ fn set_config_value(
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid integer: {value}"))?;
         }
-        // logging
         "logging.level" => config.logging.level = value.to_string(),
         "logging.max_size_mb" => {
             config.logging.max_size_mb = value
@@ -299,7 +279,6 @@ fn set_config_value(
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid integer: {value}"))?;
         }
-        // appearance
         "appearance.theme" => config.appearance.theme = value.to_string(),
         key if mxr_config::RETIRED_CONFIG_KEYS.contains(&key) => anyhow::bail!(retired_key_message(key)),
         _ => anyhow::bail!("Unknown or read-only config key: {key}\n\nRun 'mxr config get <key>' to see available keys."),

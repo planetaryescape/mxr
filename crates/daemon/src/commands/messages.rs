@@ -101,9 +101,6 @@ pub async fn run(
                 print!("{}", render_ack(&preview, format)?);
                 return Ok(());
             }
-            // As in the apps: the exact text first, a countdown you can
-            // stop, then a send that carries the preview's token, so the
-            // daemon refuses it if anything changed.
             if !countdown(&preview).await? {
                 eprintln!("Got it not sent.");
                 return Ok(());
@@ -276,7 +273,6 @@ fn render_list(
             }
             out
         }
-        // Row ids, so they feed `mxr messages person`.
         OutputFormat::Ids => {
             let mut out = String::new();
             for (_, rows) in bands(messages) {
@@ -395,7 +391,6 @@ fn row_lines(out: &mut String, row: &MessagesRowData, marks: &AccountMarks) {
         age(when),
         facts.join(" · ")
     );
-    // Your unsent reply takes the preview's place, as in the TUI and web.
     if let Some(draft) = &row.draft {
         let _ = writeln!(out, "    Draft: {}", terminal_text(&draft.text));
     } else if let Some(preview) = &row.preview {

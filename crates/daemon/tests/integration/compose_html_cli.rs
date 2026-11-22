@@ -226,14 +226,11 @@ fn compose_draft_with_html_emits_the_structured_json_contract() {
     assert_eq!(payload["inline_count"], 1);
     assert_eq!(payload["attachment_count"], 1);
 
-    // The bug this replaced: an HTML body with no `--text-file` validated as an
-    // empty message, because the draft's analysis text was the empty string.
     assert!(
         !stderr.contains("Message body is empty"),
         "a valid HTML body must not warn about an empty message; stderr={stderr}"
     );
 
-    // And the draft really landed, so the JSON is not describing a no-op.
     let ids = env
         .run(&["drafts", "--format", "ids"])
         .success()

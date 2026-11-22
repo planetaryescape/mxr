@@ -61,7 +61,6 @@ pub async fn run(
                 }));
             }
             OutputFormat::Csv => {
-                // Single-line CSV record per thread (text quoted by csv).
                 let mut writer = csv::Writer::from_writer(Vec::new());
                 if index == 0 {
                     writer.write_record(["thread_id", "model", "summary"])?;

@@ -99,8 +99,6 @@ fn models_for(config: &LlmConfig, keys: &dyn ApiKeySource) -> AssistantModelsDat
         .model
         .trim()
         .to_string();
-    // Name the listed id when the configured one is the same model, so the
-    // picker can mark it.
     let current = ids
         .iter()
         .find(|id| same_model(id, &configured))
@@ -227,8 +225,6 @@ pub(crate) async fn set_model(
         let restore_pending = state.is_restore_pending();
         let config = state
             .try_mutate_config(|config| {
-                // The file as it is now. A restored workspace keeps AI off
-                // in the daemon whatever the file says, so judge it that way.
                 let mut judged = config.llm.clone();
                 if restore_pending {
                     judged.enabled = false;
@@ -425,9 +421,7 @@ mod tests {
         let models = models_for(&config, &keys(&[]));
         let mystery = choice(&models, "mystery-model-9");
         assert_eq!(mystery.label, "mystery-model-9");
-        // Not routed: it goes to the local endpoint like any other name.
         assert!(!mystery.cloud && mystery.available);
-        // A vendor/model slug is OpenRouter's, so it needs that key.
         assert_eq!(
             choice(&models, "openai/gpt-4o")
                 .unavailable_reason

@@ -130,9 +130,6 @@ pub(super) async fn setup(
             format,
         );
     }
-    // Persist both the old receipt and new intent before replacing a service file.
-    // A crash on either side of the rename can then be reconciled without adopting
-    // unrelated contents or losing ownership of the previous file.
     let new_digest = supervisor::digest(&rendering);
     let reload_service = previous.as_ref().is_some_and(|old| {
         old.service_installed
@@ -269,8 +266,6 @@ pub(super) async fn stop(
         config.daemon_enabled = false;
     }
     state::write(&config)?;
-    // Close admission atomically before closing the gateway. Existing accepted
-    // operations get the same bounded drain window as a daemon shutdown.
     let drain = drain_remote().await;
     let service_stop = supervisor::stop(&config).await;
     let proxy_remove = proxy::remove(&config).await;
@@ -292,9 +287,6 @@ pub(super) async fn stop(
     service_stop?;
     proxy_remove?;
     if all {
-        // The tagged daemon may finish its own desired-state drain before this
-        // command's next IPC call. Its original verified process exiting is a
-        // successful stop, even when the final drain/Shutdown reply is gone.
         anyhow::ensure!(owner_stopped(&config,original_pid,original_started.as_deref()).await,"Remote hosting is stopped, but the original local daemon has not exited; inspect it before treating the provider owner as stopped");
     } else {
         daemon_stop?;
@@ -322,8 +314,6 @@ pub(super) async fn drain_remote() -> anyhow::Result<()> {
     else {
         anyhow::bail!("Unexpected remote drain response")
     };
-    // Concurrent CLI and supervisor drains share the first deadline. An empty
-    // in-flight set does not remove idle clients' opportunity to read the notice.
     let remaining =
         drain_notice_remaining(status.deadline_at, chrono::Utc::now().timestamp_millis());
     tokio::time::sleep(remaining).await;

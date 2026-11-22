@@ -26,7 +26,6 @@ pub enum AccountsAction {
         /// Display name shown in From: headers; defaults to account name.
         #[arg(long)]
         display_name: Option<String>,
-        // Gmail-specific.
         /// Use the bundled OAuth client (true) or supply your own (false).
         #[arg(long)]
         gmail_bundled: Option<bool>,
@@ -36,7 +35,6 @@ pub enum AccountsAction {
         /// Custom Gmail OAuth client secret.
         #[arg(long)]
         gmail_client_secret: Option<String>,
-        // IMAP-specific.
         #[arg(long)]
         imap_host: Option<String>,
         #[arg(long, default_value_t = 993)]
@@ -60,7 +58,6 @@ pub enum AccountsAction {
         /// self-signed. `mxr accounts test <account>` prints it.
         #[arg(long)]
         imap_tls_cert_sha256: Option<String>,
-        // SMTP-specific.
         #[arg(long)]
         smtp_host: Option<String>,
         #[arg(long, default_value_t = 587)]

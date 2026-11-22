@@ -6,8 +6,6 @@ use std::collections::{BTreeMap, BTreeSet};
 fn visible_command_paths(command: &clap::Command, path: &[String]) -> BTreeSet<Vec<String>> {
     let mut paths = BTreeSet::from([path.to_vec()]);
     for child in command.get_subcommands() {
-        // clap's generated help command is not an application command. Aliases
-        // are not separate children; retain old alias snapshots without requiring new ones.
         if child.is_hide_set() || child.get_name() == "help" {
             continue;
         }
@@ -579,7 +577,6 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_config_set", &["config", "set", "--help"]),
         ("cli_help_version", &["version", "--help"]),
         ("cli_help_completions", &["completions", "--help"]),
-        // Analytics commands (Slices 5, 11, 12+13, 14).
         ("cli_help_storage", &["storage", "--help"]),
         ("cli_help_stale", &["stale", "--help"]),
         ("cli_help_contacts", &["contacts", "--help"]),
@@ -594,7 +591,6 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ),
         ("cli_help_response_time", &["response-time", "--help"]),
         ("cli_help_wrapped", &["wrapped", "--help"]),
-        // AI-email roadmap commands.
         ("cli_help_owed", &["owed", "--help"]),
         ("cli_help_desk", &["desk", "--help"]),
         ("cli_help_desk_dismiss", &["desk", "dismiss", "--help"]),

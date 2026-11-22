@@ -42,8 +42,6 @@ pub(crate) fn summarize(
     account_name: String,
     rows: &[SyncLogEntry],
 ) -> AccountSyncHistory {
-    // Unfinished rows are excluded from durations entirely: a run with no end
-    // time says nothing about how long a sync takes.
     let durations: Vec<u64> = rows.iter().filter_map(duration_secs).collect();
     let recent_len = durations.len().min(TREND_RECENT);
     let (recent, prior) = durations.split_at(recent_len);
@@ -95,7 +93,6 @@ pub(crate) fn trend(recent: &[u64], prior: &[u64]) -> Option<SyncDurationTrend> 
     if now.abs_diff(before) < TREND_MIN_DIFF_SECS {
         return Some(SyncDurationTrend::Steady);
     }
-    // Cross-multiplied so the comparison stays in integers.
     if now * 100 >= before * (100 + TREND_RATIO_PERCENT) {
         Some(SyncDurationTrend::Slower)
     } else if now * 100 <= before * (100 - TREND_RATIO_PERCENT) {
@@ -260,15 +257,10 @@ mod tests {
 
     #[test]
     fn trend_uses_fifty_percent_and_five_second_floor() {
-        // 15 is exactly 1.5x 10, so it is slower.
         assert_eq!(trend(&[15; 5], &[10; 5]), Some(SyncDurationTrend::Slower));
-        // 14 is under 1.5x, so steady.
         assert_eq!(trend(&[14; 5], &[10; 5]), Some(SyncDurationTrend::Steady));
-        // 5 is exactly half of 10 and 5 seconds apart: faster.
         assert_eq!(trend(&[5; 5], &[10; 5]), Some(SyncDurationTrend::Faster));
-        // 0s to 4s is 4x but under the absolute floor.
         assert_eq!(trend(&[4; 5], &[0; 5]), Some(SyncDurationTrend::Steady));
-        // 0s to 5s crosses the floor.
         assert_eq!(trend(&[5; 5], &[0; 5]), Some(SyncDurationTrend::Slower));
     }
 
@@ -300,7 +292,6 @@ mod tests {
     #[test]
     fn recurring_errors_group_and_cap_at_five() {
         let mut rows = Vec::new();
-        // Group A appears 3 times with different ids and numbers.
         for (i, n) in [11, 22, 33].iter().enumerate() {
             rows.push(finished(
                 200 + i as i64,
@@ -309,11 +300,8 @@ mod tests {
                 Some(format!("timeout on uid {n}").as_str()),
             ));
         }
-        // A single occurrence is not recurring.
         rows.push(finished(300, 1, SyncStatus::Error, Some("one-off")));
-        // Successful rows never group.
         rows.push(finished(301, 1, SyncStatus::Success, Some("ignored")));
-        // Six more distinct recurring groups; only five may show.
         for group in 0..6 {
             for rep in 0..2 {
                 rows.push(finished(

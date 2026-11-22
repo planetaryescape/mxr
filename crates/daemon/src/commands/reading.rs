@@ -170,7 +170,6 @@ pub async fn run(
                     markdown
                 }
             );
-            // Markdown unless JSON was asked for by name.
             match (markdown, format) {
                 (false, OutputFormat::Json) => {
                     println!("{}", serde_json::to_string_pretty(&highlights)?);
@@ -495,7 +494,6 @@ async fn open(
         let saved = detail.article.is_some() && !refresh;
         if !saved {
             let domain = detail.item.domain.clone().unwrap_or_default();
-            // Name the site before it learns you clicked.
             eprintln!("Fetching from {domain}…");
         }
         let fetch = expect_data!(
@@ -572,7 +570,6 @@ fn reader_text(
     let item = &detail.item;
     let mut out = String::new();
     let _ = writeln!(out, "{}", item.title);
-    // The article's own length once it is the text on screen.
     let left = match (&detail.article, article) {
         (Some(saved), true) => saved.minutes,
         _ => detail.minutes_left,

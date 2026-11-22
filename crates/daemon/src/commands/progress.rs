@@ -54,9 +54,6 @@ impl ProgressPrinter {
     pub(crate) fn new(json_mode: bool) -> Self {
         let tty = std::io::stderr().is_terminal();
         let label = Arc::new(Mutex::new("Working".to_string()));
-        // The spinner only paints when we're on a TTY and not in
-        // JSON mode. Otherwise the JoinHandle holds an idle task that
-        // we abort on `finish` — cheap and avoids two code paths.
         let label_for_task = label.clone();
         let active = tty && !json_mode;
         let spinner_handle = tokio::spawn(async move {
@@ -90,8 +87,6 @@ impl ProgressPrinter {
         let label = self.label.clone();
         move |event: DaemonEvent| {
             let mut stderr = std::io::stderr();
-            // Clear the spinner line before printing so the event
-            // doesn't end up appended to the spinner glyph.
             if tty && !json_mode {
                 let _ = write!(stderr, "\r\x1b[K");
             }

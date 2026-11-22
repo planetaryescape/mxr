@@ -271,8 +271,6 @@ async fn set_primary_address(
         email: email.to_string(),
     };
     let changes = address_change(request).await?;
-    // Set-primary moves only the primary marker, so its change is always zero
-    // and it has no dry run.
     render_address_change(
         &format!("Promoted {email} to primary."),
         email,
@@ -866,7 +864,6 @@ async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
     let imap_host = or_prompt(args.imap_host.clone(), "IMAP host: ")?;
     let imap_port_default = args.imap_port.to_string();
     let imap_port = or_prompt_default(None, "IMAP port", &imap_port_default)?.parse::<u16>()?;
-    // Fail here, not on the first sync, for a plaintext remote host or a typo'd pin.
     mxr_provider_imap::transport::TransportMode::resolve(&imap_host, imap_port, !args.imap_no_tls)?;
     if let Some(pin) = &args.imap_tls_cert_sha256 {
         mxr_provider_imap::transport::CertFingerprint::parse(pin)?;
@@ -1119,8 +1116,6 @@ async fn reauth_account(name: &str) -> anyhow::Result<()> {
 }
 
 async fn repair_account(name: &str) -> anyhow::Result<()> {
-    // Read the account from disk in-process so repair works whether or not a
-    // daemon is running (the daemon's ListAccountsConfig reads the same file).
     let mut account = crate::handler::list_account_configs()
         .map_err(anyhow::Error::msg)?
         .into_iter()
@@ -1158,19 +1153,6 @@ async fn repair_account(name: &str) -> anyhow::Result<()> {
         anyhow::bail!("Account '{name}' has no password-backed IMAP/SMTP credentials to repair");
     }
 
-    // Prefer an already-running LOCAL daemon: it is the SecretStore's single
-    // writer, and letting it perform the write also makes it reload the repaired
-    // credential (dropping its stale in-memory cache) so the new password takes
-    // effect without a restart.
-    //
-    // Probe ONLY the local unix socket (`mxr_config::socket_path()`), never the
-    // `MXR_DAEMON_ADDR` transport: repair writes LOCAL credentials, so it must
-    // reuse only a local daemon. Going through the addr connector would let a
-    // `tcp://` value ship local credentials to a remote daemon and a `cmd://`
-    // value SPAWN a process — an autostart repair must never do. `connect_to`
-    // never autostarts; if no local daemon is listening it errors and we fall
-    // back to the in-process disk-first write (no running daemon means no stale
-    // cache and no writer to race).
     match IpcClient::connect_to(&mxr_config::socket_path()).await {
         Ok(mut client) => {
             let result =

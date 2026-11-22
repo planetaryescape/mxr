@@ -103,13 +103,9 @@ pub async fn run(
             )),
             _ => None,
         })?;
-    // On stderr in every format, so stdout stays results and nothing that
-    // pipes it has to know. JSON carries the same fact as a field.
     if let Some(degraded) = &degraded {
         eprintln!("{}", degraded.notice());
     }
-    // An older daemon omits the page size; the requested fallback is then the
-    // closest thing to the size it used.
     let limit = page_limit.or(limit).unwrap_or(FALLBACK_SEARCH_LIMIT);
 
     let envelopes = fetch_search_envelopes(&mut client, &results).await?;

@@ -23,8 +23,6 @@ pub async fn run_arrivals(
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     match action {
         None => {
-            // The CLI reads the line without starting a visit to Now, so
-            // checking from a script never empties what Now will show.
             let arrivals = expect_response(
                 client
                     .request(Request::GetArrivals {
@@ -500,7 +498,6 @@ mod tests {
         .join("\n");
         let mut commands = Vec::new();
         for line in printed.lines() {
-            // A command is quoted in backticks or follows a "label: ".
             let Some(start) = line
                 .find("`mxr ")
                 .map(|at| at + 1)
@@ -517,7 +514,6 @@ mod tests {
                     .replace("<mode>", "reading"),
             );
         }
-        // The not-sure answer, the undo and the sender follow-up at least.
         assert!(commands.len() >= 4, "found {commands:?}");
         for command in commands {
             let argv: Vec<&str> = command.split_whitespace().collect();

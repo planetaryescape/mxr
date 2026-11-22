@@ -99,9 +99,6 @@ async fn assist(
         model: args.model.clone(),
         revise: args.revise.clone(),
     };
-    // The model sets the pace and a local one can take minutes, so this takes
-    // the no-deadline path. Stage lines go to stderr, leaving stdout for the
-    // proposal.
     let response = client
         .request_with_events(request, |event| {
             if let DaemonEvent::OperationProgress {

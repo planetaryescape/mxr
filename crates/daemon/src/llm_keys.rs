@@ -48,7 +48,6 @@ impl LlmKeys {
         match self.store.get(&Self::service(), provider.key()) {
             Ok(key) => key.map(ApiKey::new),
             Err(error) => {
-                // The error text names the file, never its contents.
                 tracing::warn!(provider = provider.key(), %error, "couldn't read the stored LLM key");
                 None
             }
@@ -156,8 +155,6 @@ pub(crate) fn clean_key(raw: &str) -> Result<String, String> {
 mod tests {
     use super::*;
 
-    // Environment variables are process-wide: the first test owns
-    // ANTHROPIC_API_KEY and the second OPENROUTER_API_KEY.
     fn keys(dir: &tempfile::TempDir) -> LlmKeys {
         LlmKeys::at(dir.path().join("secrets.toml"))
     }
@@ -190,7 +187,6 @@ mod tests {
             Some(dir.path().join("secrets.toml").to_str().unwrap())
         );
 
-        // Removing the stored key falls back to the environment.
         assert!(keys.remove(RouteProvider::Anthropic).unwrap());
         assert_eq!(
             keys.api_key(RouteProvider::Anthropic).unwrap().expose(),

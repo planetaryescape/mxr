@@ -156,7 +156,6 @@ mod tests {
 
     #[test]
     fn the_due_day_is_the_day_in_the_readers_zone() {
-        // 00:30 on 23 October in London (BST), which is still the 22nd in UTC.
         let london = FixedOffset::east_opt(3600).unwrap();
         let mut late = commitment(true, false);
         late.by_when = Some(Utc.with_ymd_and_hms(2026, 10, 22, 23, 30, 0).unwrap());

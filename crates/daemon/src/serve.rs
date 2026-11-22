@@ -86,8 +86,6 @@ impl ConnectionAuth {
     /// error for anything sent before a successful `Authenticate`.
     fn gate(&mut self, msg: &IpcMessage) -> Option<IpcMessage> {
         if self.authenticated {
-            // Trusted already: even a redundant `Authenticate` flows to the
-            // dispatcher, which answers it as a harmless no-op.
             return None;
         }
         match &msg.payload {
@@ -245,11 +243,6 @@ pub(crate) async fn serve_client_connection<S>(
 ) where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    // Framed read/write halves rather than `Framed::split()`: a futures
-    // `SplitSink` buffers one item and defers the inner `start_send` — and so
-    // the codec's `encode` — until the next flush, which would put encode
-    // failures back on the flush path that `send_frame` exists to keep them
-    // off. `FramedWrite::feed` encodes inline.
     let (reader, writer) = tokio::io::split(stream);
     let mut sink = FramedWrite::new(writer, IpcCodec::new());
     let mut stream = FramedRead::new(reader, IpcCodec::new());
@@ -257,17 +250,9 @@ pub(crate) async fn serve_client_connection<S>(
     let mut accept_requests = true;
     let mut can_send = true;
     let mut shutdown_requested = false;
-    // Set when the client closed its end. Together with `!can_send` (a write
-    // failed) it means nobody is waiting for any response on this connection.
     let mut client_closed = false;
-    // Abort handles of in-flight read-only requests. Cancelling one frees its
-    // reader connection; see `request_is_abandonable` for what may be dropped.
     let mut abandonable: Vec<tokio::task::AbortHandle> = Vec::new();
-    // Connection-scoped auth state. Token transports start unauthenticated and
-    // gate every request; every other transport starts trusted.
     let mut auth = ConnectionAuth::new(&peer, auth_token);
-    // Identity is declared after transport authentication, before events or
-    // ordinary requests. It remains fixed even if later envelopes disagree.
     let mut client_kind: Option<ClientKind> = None;
     let mut event_profile: Option<&'static str> = None;
     let setup_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
@@ -277,7 +262,6 @@ pub(crate) async fn serve_client_connection<S>(
             biased;
 
             _ = tokio::time::sleep_until(setup_deadline), if client_kind.is_none() => {
-                // No peer data was released, and no ordinary request admitted.
                 tracing::debug!("client declaration timed out");
                 break;
             }
@@ -285,12 +269,6 @@ pub(crate) async fn serve_client_connection<S>(
                 match joined {
                     Some(Ok(response)) if can_send => {
                         let id = response.id;
-                        // Events a request emitted before it returned are already
-                        // queued. This arm outranks the event arm, so without
-                        // this they would go out after the response, and a
-                        // client that stops reading at the response (a CLI
-                        // following a long operation) would never see the last
-                        // of them.
                         if accept_requests
                             && !shutdown_requested
                             && auth.is_authenticated()
@@ -299,9 +277,6 @@ pub(crate) async fn serve_client_connection<S>(
                         {
                             can_send = false;
                             accept_requests = false;
-                            // `continue` would skip the exit check below, and
-                            // with nothing left to wait for the connection
-                            // would sit here until the daemon shuts down.
                             if request_tasks.is_empty() {
                                 break;
                             }
@@ -309,10 +284,6 @@ pub(crate) async fn serve_client_connection<S>(
                         }
                         match send_frame(&mut sink, response).await {
                             FrameSend::Sent => {}
-                            // The response could not be framed — almost always
-                            // a result set past the codec's cap. Nothing was
-                            // written, so the caller is still there waiting:
-                            // answer it instead of hanging up on it.
                             FrameSend::Unencodable(error) => {
                                 tracing::warn!(%error, id, "response could not be framed; replying with an error");
                                 let replacement = response_frame(
@@ -338,7 +309,6 @@ pub(crate) async fn serve_client_connection<S>(
                         }
                     }
                     Some(Ok(_)) => {}
-                    // Aborted because the client left; not a failure.
                     Some(Err(error)) if error.is_cancelled() => {}
                     Some(Err(error)) => {
                         tracing::warn!("ipc request task failed: {error}");
@@ -349,8 +319,6 @@ pub(crate) async fn serve_client_connection<S>(
             changed = shutdown_rx.changed(), if !shutdown_requested => {
                 match changed {
                     Ok(()) if *shutdown_rx.borrow_and_update() => {
-                        // The lifecycle notice was enqueued before shutdown intent. Deliver it
-                        // while the socket can still write, including for idle remote clients.
                         if can_send && auth.is_authenticated() && !flush_queued_events(&mut sink, &state, event_profile, &mut event_rx).await {can_send=false;}
                         shutdown_requested = true;
                         accept_requests = false;
@@ -364,16 +332,6 @@ pub(crate) async fn serve_client_connection<S>(
             }
             msg = stream.next(), if accept_requests => {
                 match msg {
-                    // Token gate: on a `TokenRequired` transport before a
-                    // successful handshake, `gate` returns a canned frame (an
-                    // `Authenticated` ack that flips this connection to trusted,
-                    // or an `Auth` error). Sent INLINE on the sink — not via a
-                    // spawned task — so it is guaranteed to precede any event the
-                    // now-enabled event branch would deliver (a pre-auth
-                    // `EventsLagged` must never race ahead of `Authenticated`).
-                    // No lane permit or dispatch is involved. This arm only runs
-                    // while unauthenticated, so `gate` always returns `Some`;
-                    // UDS/memory/stdio start trusted and dispatch unchanged below.
                     Some(Ok(ipc_msg)) if !auth.is_authenticated() => {
                         if let Some(canned) = auth.gate(&ipc_msg) {
                             if can_send && sink.send(canned).await.is_err() {
@@ -409,21 +367,12 @@ pub(crate) async fn serve_client_connection<S>(
                             _ => None,
                         };
                         if let Some(response) = setup_response {
-                            // Send inline so the declaration ack precedes every
-                            // event, including anything buffered before setup.
                             if sink.send(response_frame(ipc_msg.id, response)).await.is_err() || client_kind.is_none() {
                                 break;
                             }
                             continue;
                         }
                         let permit_wait_started = std::time::Instant::now();
-                        // Route the request to its lane semaphore before
-                        // spawning. Slow operations (LLM inference,
-                        // network downloads, full-store rebuilds) drain a
-                        // bounded bulk pool; everything else uses the hot
-                        // pool. Net effect: a burst of LLM calls can't
-                        // starve fast list/get/mutation commands of
-                        // permits.
                         let lane = match &ipc_msg.payload {
                             mxr_protocol::IpcPayload::Request(req) => request_lane(req),
                             _ => IpcLane::Hot,
@@ -440,10 +389,6 @@ pub(crate) async fn serve_client_connection<S>(
                             }
                         };
                         let state = state.clone();
-                        // The connection's peer identity rides into every
-                        // request's dispatch context. No policy reads it this
-                        // phase (UDS keeps implicit trust); the plumbing point
-                        // exists for phase 5's token gate.
                         let peer = peer.clone();
                         let abandonable_request = matches!(
                             &ipc_msg.payload,
@@ -457,11 +402,6 @@ pub(crate) async fn serve_client_connection<S>(
                                 "ipc request permit acquired"
                             );
                             guard_ipc_response(ipc_msg.id, async {
-                                // Test-only hook: lets a conformance scenario
-                                // hold a Bulk-lane request in flight
-                                // deterministically. Compiled out of every
-                                // non-test build; only intercepts the gated
-                                // sentinel request when a test installs a gate.
                                 #[cfg(test)]
                                 if let Some(response) =
                                     ipc_conformance::gate::maybe_intercept(&ipc_msg).await
@@ -539,12 +479,6 @@ where
     };
     match send_frame(sink, event_msg).await {
         FrameSend::Sent => true,
-        // An event whose payload will not fit a frame is the event's problem,
-        // not the connection's — and dropping the connection over it also
-        // drops the in-flight request's response, which is how a 27k-envelope
-        // `NewMessages` used to kill `mxr demo` (#179). Skip the event and
-        // tell the client to resync: same contract as a lagged stream, which
-        // is what this effectively is.
         FrameSend::Unencodable(error) => {
             tracing::warn!(%error, "daemon event could not be framed; dropped it and signalled resync");
             matches!(
@@ -959,10 +893,6 @@ mod tests {
         let event_rx = state.event_tx.subscribe();
         let shutdown_rx = state.shutdown_receiver();
 
-        // Overflow the 256-slot broadcast channel BEFORE the connection
-        // task starts draining it, so the first `recv()` returns
-        // `Lagged`. The account id is irrelevant — these events only exist
-        // to fill the channel.
         let account_id = AccountId::new();
         for _ in 0..400u32 {
             let _ = state.event_tx.send(IpcMessage {
@@ -992,8 +922,6 @@ mod tests {
 
         let mut client = Framed::new(client_stream, IpcCodec::new());
         declare(&mut client).await;
-        // The first frame the client sees must be the resync signal, not a
-        // silently-truncated event stream.
         let frame = tokio::time::timeout(Duration::from_secs(1), client.next())
             .await
             .expect("a frame should arrive")
@@ -1031,10 +959,8 @@ mod tests {
         let mut server = server;
         gate.wait_until_entered(1).await;
 
-        // The user's Ctrl-C.
         drop(client);
 
-        // The connection task must still be alive: its request is running.
         let still_running = tokio::time::timeout(Duration::from_millis(300), &mut server).await;
         assert!(
             still_running.is_err(),
@@ -1194,7 +1120,6 @@ mod tests {
             other => panic!("expected an error response, got {other:?}"),
         }
 
-        // Still usable afterwards.
         client
             .send(IpcMessage {
                 expected_workspace: None,
@@ -1251,7 +1176,6 @@ mod tests {
             .await;
         });
 
-        // Comfortably past the codec's 16 MiB cap, so `encode` refuses it.
         let _ = state_for_cleanup.event_tx.send(IpcMessage {
             expected_workspace: None,
             id: 0,
@@ -1274,9 +1198,6 @@ mod tests {
             .await
             .expect("send ping");
 
-        // Drain everything the daemon has to say rather than stopping at the
-        // first frame of interest: the order of the resync signal and the
-        // response is an implementation detail of the select loop.
         let (saw_resync, saw_pong) = drain_frames(&mut client).await;
         assert!(saw_pong, "the request must still be answered");
         assert!(

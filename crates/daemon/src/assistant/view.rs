@@ -42,16 +42,9 @@ pub(crate) fn conversation_view(
     let running = row.status == "running";
 
     let mut items: Vec<AssistantItemData> = Vec::new();
-    // Where each call's item sits, so its result can fill it in.
     let mut call_index: HashMap<String, usize> = HashMap::new();
-    // What the model was given, so the emails and people its replies name
-    // link to the right place.
     let mut links = KnownLinks::default();
-    // Everything each step listed, by the step's place in `items`, for the
-    // rows a reply names.
     let mut listed: HashMap<usize, Vec<AssistantReadoutRowData>> = HashMap::new();
-    // Each result whole, by its step's place in `items`: titles and the
-    // failure checks read these, since `result` is cut for clients.
     let mut wholes: HashMap<usize, String> = HashMap::new();
     for row in messages {
         let Ok(message) = serde_json::from_str::<ToolChatMessage>(&row.message_json) else {
@@ -241,8 +234,6 @@ fn fill_titles(
                 PendingKind::Approval { preview, .. } => preview.as_ref(),
                 PendingKind::Question { .. } => None,
             });
-        // A result that says nothing happened is a failure whatever state
-        // it was stored in, so the glyph, the title and the failure note agree.
         *state = settled_state(tool, *state, whole);
         *title = Some(step_title(
             tool,
@@ -288,8 +279,6 @@ fn plain_error(raw: &str) -> String {
     } else if has("tools didn't start") {
         "The assistant's tools didn't start. Send your message again; if it keeps happening, restart mxr.".to_string()
     } else if raw.len() > UNKNOWN_ERROR_SHOWN_CHARS || raw.contains('{') {
-        // A provider's error body (often JSON, kilobytes of it) is no
-        // sentence; it stays readable under Details.
         format!("The model's provider returned an error. Send your message again, or switch models in {settings}.")
     } else {
         crate::output::terminal_text(raw).into_owned()
@@ -572,7 +561,6 @@ mod tests {
             step("bad-shape", json!({"action": {"is_starred": true}}), Failed),
             reply(2),
             user(3),
-            // Refused for lacking confirm, then made with it: it happened.
             step("refused", star.clone(), Failed),
             step("preview", json!({"preview": true}), Done),
             step(
@@ -580,7 +568,6 @@ mod tests {
                 json!({"action": "star", "message_ids": ["m1"], "confirm": true}),
                 AutoApproved,
             ),
-            // A retry on another message doesn't redo this one.
             step(
                 "other",
                 json!({"action": "star", "message_ids": ["m2"]}),
@@ -636,7 +623,6 @@ mod tests {
 
     #[test]
     fn a_reply_gets_the_rows_it_names_in_the_order_it_names_them() {
-        // The step lists a, b, c, d; the reply names d then b.
         let listed = HashMap::from([(
             1,
             vec![
@@ -675,7 +661,6 @@ mod tests {
             "one each from two steps"
         );
 
-        // A step from an earlier turn is not this reply's.
         let listed = HashMap::from([(1, vec![row("A", "t-aaaaaaaa"), row("B", "t-bbbbbbbb")])]);
         let mut items = vec![
             user(0),
@@ -784,7 +769,6 @@ mod tests {
             },
         }) {
             AssistantPendingData::Approval { warning, .. } => warning,
-            // Fails every comparison below, so it can't pass unseen.
             AssistantPendingData::Question { .. } => Some("not an approval".into()),
         }
     }
@@ -829,8 +813,6 @@ mod tests {
 
     #[test]
     fn the_warning_is_the_daemons_text_whatever_the_model_sent() {
-        // A model-written `action` of the wrong type, or text posing as a
-        // warning, neither triggers nor shapes it.
         for action in [
             json!(7),
             json!(["trash"]),
@@ -897,7 +879,6 @@ mod tests {
         let mut items = vec![step("a", json!({}), AssistantCallStateData::Done)];
         if let Some(AssistantItemData::ToolCall { tool, result, .. }) = items.get_mut(0) {
             *tool = "mxr_sync".into();
-            // What a client got: cut, so not valid JSON.
             *result = Some("{\"results\":[{\"result\":\"failed\"},".into());
         }
         let whole = json!({"results": [{"result": "failed"}, {"result": "failed"}]}).to_string();
@@ -969,7 +950,6 @@ mod tests {
             message(
                 4,
                 ToolChatMessage::Assistant {
-                    // Plain prose: no mxr: links, as small local models write.
                     text: "Pay Patreon is due first, then Book an engineer to come out.".into(),
                     tool_calls: Vec::new(),
                     provider_turn: None,

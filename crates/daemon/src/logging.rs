@@ -150,8 +150,6 @@ impl LogWriter {
     }
 
     fn config(&self) -> io::Result<mxr_config::LoggingConfig> {
-        // Do not call load_config here: its missing-file DEBUG event would
-        // recursively enter this writer. Parsing itself emits no tracing.
         match std::fs::read_to_string(&self.config_path) {
             Ok(text) => Ok(mxr_config::load_config_from_str(&text)
                 .map_or_else(|_| self.fallback.clone(), |c| c.logging)),
@@ -183,8 +181,6 @@ impl LogWriter {
             return Err(io::Error::other("log diagnostic exceeds size cap"));
         }
         if len > limits.bytes || len.saturating_add(record.len() as u64) > limits.bytes {
-            // Allocate under the shared lock; order does not depend on clocks
-            // or per-process randomness during concurrent rollovers.
             let last = archives(&self.dir)?.last().and_then(|p| {
                 p.file_name()?
                     .to_str()?
@@ -215,8 +211,6 @@ impl LogWriter {
             };
         }
         let mut retained = archives(&self.dir)?;
-        // A reduced cap applies to old archives too. Unknown paths and symlinks
-        // never enter this namespace selection.
         for path in &retained {
             if path.symlink_metadata()?.len() > limits.bytes {
                 std::fs::remove_file(path)?;
@@ -261,7 +255,6 @@ impl Write for Record<'_> {
 impl Drop for Record<'_> {
     fn drop(&mut self) {
         if self.writer.commit(&self.bytes, self.oversized).is_err() && self.writer.mirror_allowed {
-            // No tracing, event contents, or protocol/TUI output on failure.
             if self.writer.config().is_ok_and(|c| c.stderr) {
                 let _ = std::io::stderr().write_all(b"mxr: local log write failed\n");
             }

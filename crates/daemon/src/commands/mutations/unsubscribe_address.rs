@@ -160,7 +160,6 @@ async fn unsubscribe_by_address_to(
     }
     if planned > 0 {
         if requires_confirmation(true, true, planned, yes) {
-            // The summary carries each capped address's notice.
             confirm_prompt(&summary_lines(&plans))?;
         } else {
             announce_caps(&plans, notices)?;
@@ -257,7 +256,6 @@ async fn address_selection(
     let resp = client
         .request(address_search_request(address, search, account_id))
         .await?;
-    // From the daemon's `has_more`, as for every other `--search` selection.
     let capped;
     let ids: Vec<String> = match resp {
         Response::Ok {
@@ -475,8 +473,6 @@ fn print_preview(plans: &[AddressPlan], format: Option<OutputFormat>) -> anyhow:
         }
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&output)?),
         OutputFormat::Jsonl => {
-            // The lines carry `capped`, and the notice goes to stderr as well,
-            // as for the formats that cannot carry a field at all.
             announce_caps(plans, &mut std::io::stderr())?;
             for line in preview_jsonl_lines(plans)? {
                 println!("{line}");
@@ -697,7 +693,6 @@ mod tests {
             .await
             .unwrap();
 
-        // The search is capped, the request is still the newest message.
         assert_eq!(plans[0].selection.ids, daemon.message_ids[..1_000]);
         assert_eq!(
             plans[0].plan.request.as_ref().map(|r| r.message_id.clone()),

@@ -94,7 +94,6 @@ pub async fn run(
             dry_run: dry_run || !confirm,
         },
     };
-    // Deliberately bypass selection/environment transports. No autostart or foreign restart.
     let mut client = IpcClient::connect_to(&mxr_config::socket_path()).await?;
     match client.request(Request::GetStatus).await? {
         Response::Ok {

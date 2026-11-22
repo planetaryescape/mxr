@@ -66,7 +66,6 @@ fn settings(source_config: Option<&Path>) -> anyhow::Result<mxr_config::MxrConfi
         for (key, account) in original.accounts {
             let original = serde_json::to_value(account)?;
             let mut account = serde_json::json!({"name":original["name"],"email":original["email"],"enabled":false});
-            // The colour and tag overrides are the user's own choices, not secrets.
             for field in ["color", "tag"] {
                 if let Some(value) = original.get(field).filter(|value| !value.is_null()) {
                     account[field] = value.clone();
@@ -181,7 +180,6 @@ pub async fn restore(
         std::fs::create_dir_all(target.parent().context("Bundle file has no parent")?)?;
         std::fs::copy(bundle.join(relative), target)?;
     }
-    // Verify the copied artifact too: a concurrently changed bundle never publishes.
     std::fs::write(
         stage.path().join("manifest.json"),
         serde_json::to_vec_pretty(&manifest)?,

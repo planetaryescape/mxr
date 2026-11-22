@@ -59,7 +59,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         pid: None,
     };
 
-    // Boot the daemon and capture its pid (so Drop can stop it).
     let status = run_json(
         &instance,
         &data_dir,
@@ -72,7 +71,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "daemon should auto-start with status: {status:#}"
     );
 
-    // accounts --format json shows the fake account.
     let accounts = run_json(
         &instance,
         &data_dir,
@@ -93,10 +91,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "fake account should be configured with fake sync provider"
     );
 
-    // Without --wait the trigger returns as soon as the daemon has started the
-    // sync, rather than holding the CLI open for the whole pass. Run it before
-    // the wait, so the wait covers the sync it started too — a trigger left
-    // running would race the "a run completed" assertion below.
     let triggered = run_json(&instance, &data_dir, &config_dir, &["sync"]);
     assert_eq!(
         triggered["status"].as_str(),
@@ -104,7 +98,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "plain `mxr sync` should trigger and return; got: {triggered:#}"
     );
 
-    // Trigger sync and wait for it to complete.
     run_status_only(
         &instance,
         &data_dir,
@@ -112,7 +105,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         &["sync", "--wait", "--wait-timeout-secs", "30"],
     );
 
-    // sync --status --format json returns a structured status array.
     let status_after = run_json(
         &instance,
         &data_dir,
@@ -130,11 +122,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "sync --status JSON should report a completed run; got: {status_after:#}"
     );
 
-    // search --format json returns result objects; modern output wraps them
-    // with paging metadata.
-    // Use a token from the fake fixtures (`buildkite`) rather than an empty
-    // query: Tantivy's parser rejects bare `*` and we want the test to assert
-    // a real query path, not match-all.
     let search = run_json(
         &instance,
         &data_dir,
@@ -151,7 +138,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         .as_str()
         .expect("first result needs message_id");
 
-    // Message mutations accept IDs from stdin and can preview as structured JSON.
     let archive_preview = run_json_with_stdin(
         &instance,
         &data_dir,
@@ -170,7 +156,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         Some(message_id)
     );
 
-    // count --format json reports the same query.
     let count = run_json(
         &instance,
         &data_dir,
@@ -185,7 +170,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "expected fixtures to match `buildkite`; got count={count_value}"
     );
 
-    // cat the message via JSON to confirm body fetch path works.
     let cat = run_json(
         &instance,
         &data_dir,
@@ -198,7 +182,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "cat JSON should report the requested message id; got: {cat:#}"
     );
 
-    // reply --body --yes should send via fake provider with no editor involvement.
     let reply_out = run_status_only(
         &instance,
         &data_dir,
@@ -218,10 +201,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         reply_out.stderr,
     );
 
-    // `reply` and `forward` honour `--format` exactly like `compose`. They used
-    // to `println!` the human line unconditionally and ignore the flag, so
-    // `--format json` produced prose an external client could not parse.
-    // `--draft` keeps this off the wire.
     let reply_json = run_json(
         &instance,
         &data_dir,
@@ -263,7 +242,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "forward --format json needs a draft_id: {forward_json:#}"
     );
 
-    // `--format ids` is the machine-shortest form: the draft id, nothing else.
     let reply_ids = run_status_only(
         &instance,
         &data_dir,
@@ -284,7 +262,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "reply --format ids should print one fresh draft id; got {ids_line:?}"
     );
 
-    // Without `--format`, both keep the human wording scripts already read.
     let forward_human = run_status_only(
         &instance,
         &data_dir,
@@ -305,9 +282,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         forward_human.stdout
     );
 
-    // The synthetic Sent envelope must be searchable immediately — no
-    // intervening sync. Regression for Bug 1 of the v1 ship gate (sent
-    // messages used to only appear after the next sync).
     let sent = run_json(
         &instance,
         &data_dir,
@@ -325,7 +299,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         "is:sent should include the just-sent reply; got {sent_subjects:?}"
     );
 
-    // archive the message — search should immediately reflect the dropped INBOX label.
     run_status_only(
         &instance,
         &data_dir,
@@ -333,7 +306,6 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         &["archive", message_id, "--yes"],
     );
 
-    // search for `label:inbox` should not surface the archived message anymore.
     let inbox = run_json(
         &instance,
         &data_dir,
@@ -383,7 +355,6 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
         pid: None,
     };
 
-    // Boot the daemon.
     let status = run_json(
         &instance,
         &data_dir,
@@ -396,8 +367,6 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
         "daemon should auto-start with status: {status:#}"
     );
 
-    // Initial sync so the fake account exists in store with a Sent label
-    // (matters for Gmail-style label application; harmless otherwise).
     run_status_only(
         &instance,
         &data_dir,
@@ -405,8 +374,6 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
         &["sync", "--wait", "--wait-timeout-secs", "30"],
     );
 
-    // Compose with a unique subject so the assertion can demand an exact match
-    // rather than the existing vacuous "or s.is_empty()" pattern.
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("now")
@@ -436,9 +403,6 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
         send_out.stderr,
     );
 
-    // Tantivy must return exactly one match for the unique subject — no
-    // intervening sync. If ingest_sent_message stops upserting, or stops
-    // applying the search batch, this fails.
     let results = run_json(
         &instance,
         &data_dir,
@@ -457,8 +421,6 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
         .iter()
         .filter(|item| item["subject"].as_str() == Some(unique_subject.as_str()))
         .collect();
-    // Keep receipt and local-ingestion evidence when a successful send is absent
-    // from search; acceptance alone can precede failed local reconciliation.
     let daemon_log_tail = || -> String {
         let path = data_dir.join("logs/mxr.log");
         let Ok(mut file) = std::fs::File::open(&path) else {
@@ -492,8 +454,6 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
         daemon_log_tail(),
     );
 
-    // The same envelope must surface under `is:sent`. Catches a regression
-    // where SENT flag or label fails to be set on the synthetic envelope.
     let sent = run_json(
         &instance,
         &data_dir,
@@ -572,9 +532,6 @@ fn cli_journey_compose_send_response_carries_message_id_matching_search() {
         ],
     );
 
-    // Extract the printed local message id from CLI stdout. If the daemon
-    // still returns Ack (Behavior 3 not implemented), this line is absent
-    // and the test fails immediately.
     let printed_id = send_out
         .stdout
         .lines()
@@ -590,9 +547,6 @@ fn cli_journey_compose_send_response_carries_message_id_matching_search() {
         "printed local message id must be non-empty"
     );
 
-    // Round-trip: search by the unique subject and verify the same id is
-    // returned. Catches regressions where the daemon emits a placeholder id
-    // unrelated to what the store/Tantivy record.
     let results = run_json(
         &instance,
         &data_dir,
@@ -655,7 +609,6 @@ fn cli_journey_archive_then_undo_restores_inbox() {
         &["sync", "--wait", "--wait-timeout-secs", "30"],
     );
 
-    // Pick a single inbox-tagged message via search.
     let inbox = run_json(
         &instance,
         &data_dir,
@@ -670,8 +623,6 @@ fn cli_journey_archive_then_undo_restores_inbox() {
             str::to_string,
         );
 
-    // Archive it via the CLI. Capture stdout so we can extract the
-    // mutation_id in the retained Archive receipt.
     let archive = run_status_only(
         &instance,
         &data_dir,
@@ -697,7 +648,6 @@ fn cli_journey_archive_then_undo_restores_inbox() {
             )
         });
 
-    // Sanity: the message has left the inbox label index.
     let inbox_after = run_json(
         &instance,
         &data_dir,
@@ -719,8 +669,6 @@ fn cli_journey_archive_then_undo_restores_inbox() {
         "post-archive: {target_id} must not be in `label:inbox`"
     );
 
-    // Undo via the CLI. Restores INBOX both locally and on the fake
-    // provider. The output is just "Undone".
     let undone = run_status_only(
         &instance,
         &data_dir,
@@ -733,8 +681,6 @@ fn cli_journey_archive_then_undo_restores_inbox() {
         undone.stdout
     );
 
-    // Post-undo: message back in the inbox label index. Strong assertion
-    // — exact id match, not a fuzzy contains.
     let inbox_post = run_json(
         &instance,
         &data_dir,
@@ -790,7 +736,6 @@ fn cli_journey_saved_search_create_list_delete_round_trip() {
     daemon.pid = status["daemon_pid"].as_u64();
     assert!(daemon.pid.is_some(), "daemon should auto-start");
 
-    // Empty list at start: clean ground for the round-trip.
     let initial = run_json(
         &instance,
         &data_dir,
@@ -799,8 +744,6 @@ fn cli_journey_saved_search_create_list_delete_round_trip() {
     );
     let initial_count = initial.as_array().map_or(0, std::vec::Vec::len);
 
-    // Create. Behavior 1: after a successful create, the list contains
-    // the new entry.
     run_status_only(
         &instance,
         &data_dir,
@@ -832,7 +775,6 @@ fn cli_journey_saved_search_create_list_delete_round_trip() {
         "query must round-trip exactly"
     );
 
-    // Delete. Behavior 3: removed from the list.
     run_status_only(
         &instance,
         &data_dir,
@@ -1413,7 +1355,6 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
         pid: None,
     };
 
-    // Boot the daemon (status auto-starts it).
     let status = run_json(
         &instance,
         &data_dir,
@@ -1423,7 +1364,6 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
     daemon.pid = status["daemon_pid"].as_u64();
     let original_pid = daemon.pid.expect("daemon pid");
 
-    // Sync so we have at least one envelope to flag.
     run_status_only(
         &instance,
         &data_dir,
@@ -1431,7 +1371,6 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
         &["sync", "--wait", "--wait-timeout-secs", "30"],
     );
 
-    // Pick the first message id from a non-empty search.
     let search = run_json(
         &instance,
         &data_dir,
@@ -1444,7 +1383,6 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
         .expect("at least one fixture matches `deployment`")
         .to_string();
 
-    // Flag for reply-later.
     run_status_only(
         &instance,
         &data_dir,
@@ -1467,15 +1405,10 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
         "flagged message must be visible in the reply queue before restart; got: {queue_before:#}"
     );
 
-    // Stop the daemon. SIGTERM + wait for exit; the improved shutdown
-    // path in `shutdown_daemon_for_maintenance` handles socket
-    // cleanup but we go straight to the process here.
     std::process::Command::new("kill")
         .arg(original_pid.to_string())
         .status()
         .expect("kill daemon");
-    // Wait for the process to actually exit before re-starting; otherwise
-    // the next CLI call could race the same socket path.
     for _ in 0..120 {
         let alive = std::process::Command::new("kill")
             .arg("-0")
@@ -1492,8 +1425,6 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
     daemon.pid = None;
     let _ = std::fs::remove_file(&socket_path);
 
-    // Auto-start a fresh daemon via the next CLI invocation. The
-    // status response carries the new pid for the guard.
     let status_after = run_json(
         &instance,
         &data_dir,
@@ -1509,7 +1440,6 @@ fn cli_journey_reply_later_flag_persists_across_daemon_restart() {
     );
     daemon.pid = Some(new_pid);
 
-    // The flag must still be present.
     let queue_after = run_json(
         &instance,
         &data_dir,
@@ -1580,7 +1510,6 @@ fn cli_journey_async_job_history_survives_daemon_restart() {
     .expect("at least one fixture matches `deployment`")
     .to_string();
 
-    // Star keeps using the generic job history; Archive has its own retained operation.
     run_status_only(
         &instance,
         &data_dir,
@@ -1588,7 +1517,6 @@ fn cli_journey_async_job_history_survives_daemon_restart() {
         &["star", &message_id, "--async", "--yes"],
     );
 
-    // Poll until the job row appears, then capture its id.
     let job_ids = |daemon_instance: &str| -> Vec<String> {
         let jobs = run_json(
             daemon_instance,
@@ -1616,7 +1544,6 @@ fn cli_journey_async_job_history_survives_daemon_restart() {
     }
     let job_id = job_id.expect("async star must record a job before restart");
 
-    // Bounce the daemon.
     std::process::Command::new("kill")
         .arg(original_pid.to_string())
         .status()
@@ -1652,13 +1579,9 @@ fn cli_journey_async_job_history_survives_daemon_restart() {
     );
     daemon.pid = Some(new_pid);
 
-    // The job must still be listed after the restart.
     assert!(
         job_ids(&instance).contains(&job_id),
         "async job {job_id} must survive a daemon restart; got jobs: {:?}",
         job_ids(&instance)
     );
 }
-
-// Daemon-spawning + run_* + write_fake_account_config helpers live in
-// `mxr_test_support::daemon` (shared with other integration tests).

@@ -5,8 +5,6 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::Account;
 
-// -- Account ------------------------------------------------------------------
-
 pub(crate) fn test_account() -> Account {
     Account {
         id: AccountId::new(),
@@ -35,8 +33,6 @@ pub(crate) fn test_account_with_id(id: AccountId) -> Account {
         enabled: true,
     }
 }
-
-// -- Envelope (builder) -------------------------------------------------------
 
 pub(crate) struct TestEnvelopeBuilder {
     id: MessageId,
@@ -221,8 +217,6 @@ pub(crate) fn test_envelope() -> Envelope {
     TestEnvelopeBuilder::new().build()
 }
 
-// -- Label --------------------------------------------------------------------
-
 #[allow(dead_code)]
 pub(crate) fn test_label(account_id: &AccountId, name: &str, provider_id: &str) -> Label {
     Label {
@@ -297,8 +291,6 @@ pub(crate) fn test_system_labels(account_id: &AccountId) -> Vec<Label> {
     ]
 }
 
-// -- MessageBody --------------------------------------------------------------
-
 #[allow(dead_code)]
 pub(crate) fn make_empty_body(message_id: &MessageId) -> MessageBody {
     MessageBody {
@@ -344,8 +336,6 @@ pub(crate) async fn accept_client_declaration<S>(
         .expect("declaration ack");
 }
 
-// -- Persistent store ---------------------------------------------------------
-
 /// Writes an already-migrated database image to `path`, a file that must not
 /// exist yet, so the store opened there next skips creating and migrating it.
 /// The file store commits every migration statement with `F_FULLFSYNC`, which
@@ -371,8 +361,6 @@ pub(crate) async fn write_migrated_database(path: &std::path::Path) {
         .write_all(&image)
         .unwrap();
 }
-
-// -- Fake daemon for bulk selection -------------------------------------------
 
 /// A daemon that answers only what a `--search` bulk command sends: the
 /// search, the envelope lookup, the unsubscribe plan and the mutation. It holds

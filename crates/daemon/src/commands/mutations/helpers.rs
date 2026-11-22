@@ -1062,8 +1062,6 @@ mod tests {
             ["search", "envelopes", NOTICE, "mutation"],
             "the user is told about the cap after the selection and before anything changes"
         );
-        // The run changes exactly the messages the selection holds, which are
-        // the ones the dry run lists.
         let requests = daemon.requests.lock().unwrap().clone();
         let Some(Request::StartMutationJob {
             mutation: MutationCommand::Trash { message_ids },
@@ -1111,8 +1109,6 @@ mod tests {
             )
             .unwrap()
         );
-        // The dry run says so in its own output, not through the notice, and
-        // changes nothing.
         assert_eq!(
             daemon.events.lock().unwrap().clone(),
             ["search", "envelopes"]
@@ -1153,7 +1149,6 @@ mod tests {
             capped: Some(CappedSelection::new(1_000)),
         };
 
-        // The same lines are the dry-run table and the confirmation prompt.
         let lines = render_selection_preview_lines("trash", &selection);
 
         assert!(
@@ -1181,7 +1176,6 @@ mod tests {
             &"More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.".to_owned()
         ));
 
-        // The same sentence goes to stderr with `--yes`.
         let mut notices = Vec::new();
         let capped = selection().offering_all();
         confirm_selection_to("archive", &capped, false, true, &mut notices).unwrap();
@@ -1189,7 +1183,6 @@ mod tests {
             String::from_utf8(notices).unwrap(),
             "More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.\n"
         );
-        // An uncapped selection offers nothing.
         let mut uncapped = selection();
         uncapped.capped = None;
         assert!(uncapped.offering_all().capped.is_none());

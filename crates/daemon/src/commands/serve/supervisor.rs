@@ -197,8 +197,6 @@ pub(super) async fn start(config: &Hosting) -> anyhow::Result<()> {
             )
             .await?;
         }
-        // A cleanly exited job can remain loaded. Without -k this starts a
-        // stopped job and leaves an already-running owner intact.
         command("launchctl", &["kickstart".into(), target]).await?;
     } else {
         command("systemctl", &["--user".into(), "daemon-reload".into()]).await?;

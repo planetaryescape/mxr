@@ -449,7 +449,6 @@ async fn list_state(
                     .await?;
             let mut out = String::new();
             for todo in &todos {
-                // The mark goes on the row's first line only.
                 let mut block = String::new();
                 row(&mut block, todo, "");
                 out.push_str(&marks.prefix(&todo.account_id));
@@ -530,10 +529,6 @@ fn print_change(change: TodoChangeData, format: OutputFormat) -> anyhow::Result<
     print!("{}", terminal_block(&change_text(&change)));
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Text
-// ---------------------------------------------------------------------------
 
 /// The short id printed with each row; any unique prefix works.
 fn short_id(id: &str) -> &str {

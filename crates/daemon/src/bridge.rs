@@ -67,16 +67,11 @@ pub async fn spawn_bridge_loop(
     let addr = SocketAddr::new(bind, bridge_cfg.port);
 
     let token = load_or_create_token(&bridge_cfg)?;
-    // The daemon already resolved and bound at `socket_path` (single-source
-    // resolution, honors MXR_DAEMON_ADDR); the bridge reaches the daemon there.
     let web_config = WebServerConfig::new(socket_path, token)
         .with_cors_allowlist(bridge_cfg.cors_allowlist.clone())
         .with_host_allowlist(bridge_cfg.host_allowlist.clone())
         .with_auto_local_token(bridge_cfg.auto_local_token);
 
-    // Keep the local web URL stable. If the preferred port is busy, the
-    // daemon keeps running without its managed bridge; `mxr web` will surface
-    // a user-facing conflict message with process-owner diagnostics.
     let listener = bind_listener(bind, bridge_cfg.port, false)
         .await
         .map_err(|error| BridgeStartupError::Bind {
@@ -122,9 +117,6 @@ fn enforce_non_loopback_safety(cfg: &BridgeConfig) -> Result<(), BridgeStartupEr
     if cfg.is_loopback_bind() {
         return Ok(());
     }
-    // Non-loopback bridge serving is future product/security work. It needs
-    // a validated remote-access story covering TLS termination, token
-    // distribution, and Host/CORS policy, so refuse the bind here.
     Err(BridgeStartupError::NonLoopbackWithoutTls {
         bind: cfg.bind.clone(),
     })

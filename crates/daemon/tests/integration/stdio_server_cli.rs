@@ -99,7 +99,6 @@ async fn stdio_server_declaration_ping_pong_pure_stdout_no_auth() {
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
 
-    // Declare identity, then Ping; LocalProcess needs no token authentication.
     stdin
         .write_all(&encode(&IpcMessage {
             expected_workspace: None,
@@ -115,8 +114,6 @@ async fn stdio_server_declaration_ping_pong_pure_stdout_no_auth() {
     stdin.write_all(&ping_frame()).await.unwrap();
     stdin.flush().await.unwrap();
 
-    // Declaration is policy metadata, separate from token authentication.
-    // Extra logs, ANSI bytes or an authentication demand fail this comparison.
     let expected = [
         encode(&IpcMessage {
             expected_workspace: None,
@@ -129,9 +126,6 @@ async fn stdio_server_declaration_ping_pong_pure_stdout_no_auth() {
         expected_pong_frame(),
     ]
     .concat();
-    // Read the replies before closing stdin: closing it means the client
-    // has left, and the server then cancels a read still in flight (#893),
-    // so a Ping racing the EOF could lose its Pong.
     let mut out = vec![0; expected.len()];
     tokio::time::timeout(BOUND, stdout.read_exact(&mut out))
         .await
@@ -142,7 +136,6 @@ async fn stdio_server_declaration_ping_pong_pure_stdout_no_auth() {
         "stdout must contain declaration Ack then Pong, without logs or an auth demand"
     );
 
-    // stdin EOF -> the one connection closes -> the stdio server exits.
     drop(stdin);
     let mut rest = Vec::new();
     tokio::time::timeout(BOUND, stdout.read_to_end(&mut rest))

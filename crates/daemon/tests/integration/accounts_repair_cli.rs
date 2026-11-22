@@ -69,7 +69,6 @@ fn repair_reaches_password_prompt_without_starting_daemon() {
         ))
         .stderr(predicate::str::contains("Starting daemon").not());
 
-    // No daemon was started to reach the prompt.
     assert!(
         !socket_path.exists(),
         "repair must not bind a daemon socket"
@@ -107,10 +106,8 @@ fn repair_persists_credential_in_process_when_no_daemon() {
             predicate::str::contains("Repaired credentials for 'consulting'.")
                 .and(predicate::str::contains("secrets.toml, mode 0600")),
         )
-        // No daemon was contacted or started for the repair.
         .stderr(predicate::str::contains("Starting daemon").not());
 
-    // No daemon in the loop: nothing bound a socket or wrote a pid file.
     assert!(
         !socket_path.exists(),
         "repair must not bind a daemon socket"
@@ -120,13 +117,11 @@ fn repair_persists_credential_in_process_when_no_daemon() {
         "repair must not write a daemon pid file"
     );
 
-    // The credential is authoritatively on disk, at 0600.
     assert!(
         secrets_path.exists(),
         "repair must write the disk-first secrets store"
     );
     let contents = std::fs::read_to_string(&secrets_path).expect("read secrets.toml");
-    // Prod instance name is not scoped, so the credential service is the raw ref.
     assert!(
         contents.contains("mxr/consulting-imap"),
         "secrets.toml must record the credential service, got:\n{contents}"
@@ -161,17 +156,12 @@ fn repair_ignores_cmd_daemon_addr_and_persists_locally() {
     let config_dir = temp.path().join("config");
     let socket_path = temp.path().join("runtime").join("mxr.sock");
     let secrets_path = config_dir.join("secrets.toml");
-    // If repair ever routed through MXR_DAEMON_ADDR, the cmd:// connector would
-    // spawn `touch <marker>`, creating this file. Its absence proves no spawn.
     let marker = temp.path().join("cmd-spawned.marker");
 
     std::fs::create_dir_all(&data_dir).expect("data dir");
     std::fs::create_dir_all(&config_dir).expect("config dir");
     std::fs::write(config_dir.join("config.toml"), IMAP_ACCOUNT_CONFIG).expect("write config");
 
-    // cmd:// splits the body on ASCII whitespace into argv (no shell quoting),
-    // so this yields ["touch", "<marker>"]. Requires a whitespace-free marker
-    // path, which the temp dir provides.
     let cmd_addr = format!("cmd://touch {}", marker.display());
 
     Command::cargo_bin("mxr")
@@ -257,8 +247,6 @@ fn repair_reuses_running_daemon_and_still_persists() {
 
     let mut daemon = TestDaemon::new(socket_path.clone());
 
-    // Autostart a real daemon via `status`; the bogus IMAP host is fine because
-    // 0.6.11 daemon boot degrades (log + skip) instead of hard-failing.
     let status = isolated_mxr(&instance, &data_dir, &config_dir, &socket_path)
         .args(["status", "--format", "json"])
         .assert()
@@ -277,8 +265,6 @@ fn repair_reuses_running_daemon_and_still_persists() {
         .expect("daemon pid should be present");
     daemon.pid = Some(pid);
 
-    // Repair while the daemon is up: it must reuse the running daemon (no fresh
-    // autostart) and the credential must land in the disk-first store.
     isolated_mxr(&instance, &data_dir, &config_dir, &socket_path)
         .env("MXR_SECRETS_PATH", &secrets_path)
         .args(["accounts", "repair", "consulting"])
@@ -300,8 +286,6 @@ fn repair_reuses_running_daemon_and_still_persists() {
         "secrets.toml must record the repaired credential, got:\n{contents}"
     );
 
-    // The daemon we started is still the same process (repair did not restart or
-    // duplicate it).
     let status2 = isolated_mxr(&instance, &data_dir, &config_dir, &socket_path)
         .args(["status", "--format", "json"])
         .assert()

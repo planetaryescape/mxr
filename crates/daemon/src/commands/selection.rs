@@ -351,17 +351,11 @@ pub async fn resolve_thread_selection(
         }),
         (false, Some(_)) => anyhow::bail!("Provide thread ID(s) or --search, not both"),
         (true, Some(query)) => {
-            // Pull a margin: dedup-by-thread shrinks the result set, so
-            // a `--limit 10` on threads needs us to fetch more messages
-            // up front. The cap protects against runaway over-fetch.
             let raw_cap = limit.cap();
             let fetch_cap = raw_cap.saturating_mul(4).min(SEARCH_HARD_CAP);
             let (results, has_more) =
                 run_selection_search(client, query, fetch_cap, account_id).await?;
             let capped = limit.capped(has_more, results.len());
-            // Dedup-preserving-order: the first occurrence of each
-            // thread_id wins, which (because results are date-desc) is
-            // the most recent message in that thread.
             let mut seen = std::collections::HashSet::new();
             let mut threads: Vec<ThreadId> = Vec::new();
             for result in results {
@@ -443,8 +437,6 @@ mod tests {
 
         let searches = daemon.search_requests();
         assert_eq!(searches.len(), 1);
-        // `mode: None` would follow `search.default_mode`, and hybrid ranks by
-        // relevance and ignores the sort.
         assert_eq!(
             search_shape(&searches[0]),
             (
@@ -471,7 +463,6 @@ mod tests {
         .await
         .unwrap();
 
-        // 10 threads fetch 40 messages as a margin for dedup.
         assert_eq!(
             search_shape(&daemon.search_requests()[0]),
             (
@@ -523,8 +514,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_total_is_never_the_signal_for_a_cap() {
-        // The daemon says no further visible match exists, so nothing was cut,
-        // whatever its estimate of the total says.
         let daemon = FakeBulkDaemon::start_with_total(990, 1_010);
         let mut client = daemon.client().await;
 
@@ -551,7 +540,6 @@ mod tests {
         assert_eq!(messages.capped, None);
         assert_eq!(threads.capped, None);
 
-        // And the reverse: more visible matches exist, but the estimate is 0.
         let daemon = FakeBulkDaemon::start_with_total(1_523, 0);
         let mut client = daemon.client().await;
         let selection = resolve_message_selection(
@@ -688,8 +676,6 @@ mod tests {
 
     #[test]
     fn selection_limit_at_most_clamps_to_hard_cap() {
-        // The hard cap saves users from `--search '*' --limit 100000`.
-        // Any value at or above SEARCH_HARD_CAP should clamp.
         assert_eq!(
             SelectionLimit::AtMost(SEARCH_HARD_CAP + 5).cap(),
             SEARCH_HARD_CAP
@@ -698,15 +684,11 @@ mod tests {
 
     #[test]
     fn selection_limit_unbounded_uses_hard_cap() {
-        // Unbounded still has a ceiling — the hard cap. This is the
-        // operator-protection guarantee.
         assert_eq!(SelectionLimit::Unbounded.cap(), SEARCH_HARD_CAP);
     }
 
     #[test]
     fn from_flags_prefers_first_over_limit() {
-        // Clap should make `--first` and `--limit` mutually exclusive,
-        // but defence-in-depth: if both arrive, `--first` wins.
         let limit = SelectionLimit::from_flags(true, Some(50));
         assert!(matches!(limit, SelectionLimit::First));
     }

@@ -57,19 +57,9 @@ use tokio::net::UnixStream;
 /// Autostarts the local daemon per repo convention, then pipes this process's
 /// stdin/stdout to the daemon socket until the daemon closes its side.
 pub async fn run() -> anyhow::Result<()> {
-    // Convention: CLI commands ensure the local daemon is up before talking to
-    // it. This runs before any byte is piped and before stdin is ever read, so a
-    // normal `?` here is safe; its progress output goes to stderr, keeping
-    // stdout byte-clean.
     crate::server::ensure_daemon_running().await?;
-    // Same resolution source as autostart/probe/request so the byte pipe always
-    // reaches the daemon we just ensured (honors MXR_DAEMON_ADDR).
     let socket_path = crate::server::resolve_daemon_socket()?;
 
-    // Once piping begins, stdin may be parked in tokio's uncancellable blocking
-    // read, so EVERY exit path must terminate the process explicitly — a normal
-    // return (even on error) would hang runtime shutdown trying to join that
-    // read. No `?` past this point.
     match pipe_stdio(&socket_path, tokio::io::stdin(), tokio::io::stdout()).await {
         Ok(()) => std::process::exit(0),
         Err(error) => {
@@ -104,17 +94,8 @@ where
     let mut reader = reader;
     let mut writer = writer;
 
-    // Upstream: local input (stdin) -> socket, then half-close (SHUT_WR) so the
-    // daemon sees end-of-input. `pump_upstream` distinguishes error sources — a
-    // stdin read failure is always genuine, only socket write/shutdown failures
-    // after the daemon has gone are normalized to clean (reporting the close is
-    // `downstream`'s job).
     let upstream = pump_upstream(&mut reader, &mut sock_write);
 
-    // Downstream: socket -> local output (stdout). The lifetime anchor: it
-    // completes when the daemon closes its side. Unlike upstream its errors are
-    // NOT normalized — a write failure here means the stdout consumer went away,
-    // which fails the session and must surface as a non-zero exit.
     let downstream = async {
         tokio::io::copy(&mut sock_read, &mut writer).await?;
         writer.flush().await?;
@@ -128,14 +109,7 @@ where
     loop {
         tokio::select! {
             biased;
-            // Daemon closed (or a stdout write failed): return the Result
-            // verbatim WITHOUT waiting on `upstream`, whose real-stdin read is
-            // parked in an uncancellable blocking read. This is the hang the
-            // two-direction split exists to avoid.
             result = &mut downstream => return result,
-            // stdin drained and the socket write half is shut down. A genuine
-            // upstream failure aborts the proxy; a clean finish just means keep
-            // draining `downstream` until the daemon closes.
             result = &mut upstream, if !upstream_done => {
                 result?;
                 upstream_done = true;
@@ -282,8 +256,6 @@ mod tests {
         });
 
         let ping_bytes = encode_frame(&ping);
-        // `&[u8]` is a tokio `AsyncRead` that hits EOF once drained, which
-        // half-closes the socket write side and lets the server complete.
         let reader: &[u8] = &ping_bytes;
         let mut stdout: Vec<u8> = Vec::new();
 
@@ -327,8 +299,6 @@ mod tests {
             "error should name the connect failure, got: {error}"
         );
     }
-
-    // --- pump_upstream error-source classification ---
 
     use std::pin::Pin;
     use std::task::{Context, Poll};

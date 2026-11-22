@@ -154,7 +154,6 @@ impl KnownLinks {
         }
         names.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.0.cmp(b.0)));
 
-        // The reply as pieces; linked pieces are never searched again.
         let mut pieces: Vec<(String, bool)> = Vec::new();
         let mut at = 0;
         for found in LINK_OR_CODE.find_iter(reply) {
@@ -315,8 +314,6 @@ mod tests {
 
     #[test]
     fn links_to_do_titles_from_the_rows_a_step_shows() {
-        // A to-do has a title and a thread but no subject, so only its row
-        // in the readout names it.
         let known = known(&[json!({"todos": {"your_turn": [
             {"title": "Pay Patreon", "thread_id": "thread-pat-1", "verb": "pay"},
             {"title": "Book an engineer to come out", "thread_id": "thread-eng-1"},

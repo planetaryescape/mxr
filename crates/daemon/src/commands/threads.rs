@@ -25,8 +25,6 @@ pub async fn run(
         None => None,
     };
 
-    // Resolve --label name → LabelId via the ListLabels endpoint so the
-    // CLI accepts the human-readable label name (matching `mxr labels`).
     let selection = match label {
         Some(name) => {
             let resp = client
@@ -143,8 +141,6 @@ fn select_label(
             label_role,
         });
     }
-    // Not a label of the default account by name: a canonical mailbox name
-    // still means that mailbox, through the default account's label for it.
     if !account_scoped {
         if let Some(role) = mxr_core::Role::from_system_label_name(name) {
             let label = labels
@@ -222,13 +218,10 @@ mod tests {
 
     #[test]
     fn a_lowercase_mailbox_name_still_sends_the_default_accounts_label_id() {
-        // `--label inbox` against a Gmail-style `INBOX`: the older-daemon
-        // fallback must not be an unfiltered request.
         let inbox = label("INBOX", LabelKind::System);
         let selection = select_label("inbox", std::slice::from_ref(&inbox), false).unwrap();
         assert_eq!(selection.label_role.as_deref(), Some("inbox"));
         assert_eq!(selection.label_id, Some(inbox.id));
-        // The default account calls it something else but has the role.
         let mut drafts = label("DRAFT", LabelKind::System);
         drafts.role = Some(mxr_core::Role::Drafts);
         let selection = select_label("drafts", std::slice::from_ref(&drafts), false).unwrap();
@@ -248,12 +241,10 @@ mod tests {
 
     #[test]
     fn a_plain_folder_called_sent_stays_a_folder() {
-        // IMAP folder with no special-use flag: kind Folder, no role.
         let folder = label("Sent", LabelKind::Folder);
         let selection = select_label("Sent", std::slice::from_ref(&folder), false).unwrap();
         assert_eq!(selection.label_role, None);
         assert_eq!(selection.label_id, Some(folder.id));
-        // A user label named "inbox" is not the Inbox either.
         let user = label("inbox", LabelKind::User);
         let selection = select_label("inbox", std::slice::from_ref(&user), false).unwrap();
         assert_eq!(selection.label_role, None);

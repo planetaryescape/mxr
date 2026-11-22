@@ -109,7 +109,6 @@ pub async fn run(
     })?;
 
     if rank {
-        // Lowest open-rate first; ties broken by larger archived_unread first.
         subscriptions.sort_by(|a, b| {
             open_rate(a)
                 .partial_cmp(&open_rate(b))
@@ -160,7 +159,6 @@ mod tests {
 
     #[test]
     fn rank_ordering_puts_low_open_rate_first() {
-        // Senders ordered by open-rate ASC; tie-break by archived_unread DESC.
         let high_rate = SubscriptionSummary {
             opened_count: 9,
             archived_unread_count: 0,

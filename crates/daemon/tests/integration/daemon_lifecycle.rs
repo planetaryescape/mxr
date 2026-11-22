@@ -240,7 +240,6 @@ fn demo_instance_and_real_instance_coexist_with_separate_state() {
     let mut real_daemon = TestDaemon::new(real_socket.clone(), real_pid_path.clone());
     let mut demo_daemon = TestDaemon::new(demo_socket.clone(), demo_pid_path.clone());
 
-    // Start the "real" daemon first.
     let (real_stdout, real_stderr) = run_status(&real_instance, &real_data_dir, &real_config_dir);
     let real_status = parse_status(&real_stdout);
     let real_daemon_pid = real_status["daemon_pid"]
@@ -252,7 +251,6 @@ fn demo_instance_and_real_instance_coexist_with_separate_state() {
         "expected real daemon to autostart, stderr={real_stderr:?}"
     );
 
-    // Start the "demo" daemon while the real one is still running.
     let (demo_stdout, demo_stderr) = run_status(&demo_instance, &demo_data_dir, &demo_config_dir);
     let demo_status = parse_status(&demo_stdout);
     let demo_daemon_pid = demo_status["daemon_pid"]
@@ -264,13 +262,11 @@ fn demo_instance_and_real_instance_coexist_with_separate_state() {
         "expected demo daemon to autostart, stderr={demo_stderr:?}"
     );
 
-    // Distinct processes.
     assert_ne!(
         real_daemon_pid, demo_daemon_pid,
         "real and demo daemons must run as distinct processes"
     );
 
-    // Data directories must be disjoint — neither nested under the other.
     assert!(
         !real_data_dir.starts_with(&demo_data_dir),
         "real data dir must not live under demo data dir"
@@ -280,7 +276,6 @@ fn demo_instance_and_real_instance_coexist_with_separate_state() {
         "demo data dir must not live under real data dir"
     );
 
-    // Each daemon owns a PID file inside its own data dir.
     assert!(
         real_pid_path.exists(),
         "real daemon must write its pid file at {}",
@@ -292,10 +287,6 @@ fn demo_instance_and_real_instance_coexist_with_separate_state() {
         demo_pid_path.display()
     );
 
-    // The Tantivy search index lives at `<data_dir>/search_index` (see
-    // `crates/daemon/src/state.rs`). Each daemon must materialize its own
-    // index dir, at distinct paths, so seeding the demo can never write into
-    // the real index.
     let real_index = real_data_dir.join("search_index");
     let demo_index = demo_data_dir.join("search_index");
     assert_ne!(
@@ -318,7 +309,6 @@ fn demo_instance_and_real_instance_coexist_with_separate_state() {
         "real and demo daemons must own distinct pid files"
     );
 
-    // Both daemons remain independently responsive after the other started.
     let (real_stdout2, real_stderr2) = run_status(&real_instance, &real_data_dir, &real_config_dir);
     let real_status2 = parse_status(&real_stdout2);
     let real_pid2 = real_status2["daemon_pid"]
@@ -460,7 +450,6 @@ fn status_recovers_default_instance_daemon_with_explicit_socket() {
 
 #[cfg(unix)]
 #[tokio::test]
-// Keep the shared daemon fixture serialized while the async client is active.
 #[allow(clippy::await_holding_lock, clippy::panic)]
 async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
     use futures::{SinkExt, StreamExt};
@@ -864,12 +853,9 @@ fn recovery_status_autostarts_the_selected_local_daemon() {
         .env("MXR_DAEMON_AUTOSTART", "on")
         .env_remove("MXR_DAEMON_ADDR")
         .env("MXR_SOCKET_PATH", &socket)
-        // A cold first start on a busy machine can pass 15 seconds.
         .timeout(Duration::from_secs(60))
         .args(["recovery", "status", "--format", "json"])
         .output();
-    // A CLI that timed out can leave its daemon still starting. Wait for the
-    // PID file so the guard stops the daemon either way instead of leaking it.
     for _ in 0..300 {
         if let Some(pid) = std::fs::read_to_string(data.join("daemon.pid"))
             .ok()

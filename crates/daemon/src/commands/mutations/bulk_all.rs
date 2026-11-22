@@ -148,8 +148,6 @@ pub async fn run(run: BulkAllRun) -> anyhow::Result<()> {
     };
     let mutation = run.action.mutation();
 
-    // The token from an earlier `--all --dry-run` is the confirmation: the
-    // user already saw that preview.
     let (token, counts) = match run.preview_token.clone() {
         Some(token) => (token, None),
         None => {
@@ -431,10 +429,6 @@ fn capitalise(text: &str) -> String {
         .unwrap_or_default()
 }
 
-// ---------------------------------------------------------------------------
-// Confirmation and output
-// ---------------------------------------------------------------------------
-
 /// How many sample rows the table shows.
 const TABLE_SAMPLE: usize = 8;
 
@@ -605,7 +599,6 @@ fn print_preview(
                 .collect();
             println!("{}", jsonl(&lines)?);
         }
-        // Refused before the daemon is asked.
         OutputFormat::Csv | OutputFormat::Ids => {
             anyhow::bail!("--all --dry-run does not support this format")
         }
@@ -701,7 +694,6 @@ fn print_job_table(action: &BulkAction, job: &JobData, waited: bool) {
                 );
             }
         }
-        // The caller turns a failed job into an error after this prints.
         _ => println!(
             "{} {} of {} message(s) before the job stopped.",
             action.did(),
@@ -811,7 +803,6 @@ mod tests {
         assert!(error.contains("mxr jobs job-1"), "{error}");
         assert!(!error.contains("nothing was started"), "{error}");
         assert!(!error.contains("Run the command again"), "{error}");
-        // A daemon that cannot be reached at all is the same: unknown.
         let error = recover_lost_start_with(
             "job-1",
             "connection reset",

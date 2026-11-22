@@ -142,23 +142,10 @@ pub async fn run(
         return Ok(());
     }
 
-    // The daemon acks as soon as the sync has started, so the trigger itself is
-    // quick. It still goes over `request_with_events` for the events the daemon
-    // emits before it answers — the "starting sync" line — and nothing after
-    // that: the printer is finished the moment the ack lands, and `--wait`
-    // below renders its own status polls.
     let json_mode = matches!(
         resolve_format(format.clone()),
         OutputFormat::Json | OutputFormat::Jsonl
     );
-    // Taken before the trigger: with the daemon acking up front, a sync that
-    // fails leaves the account idle-with-an-error, which is indistinguishable
-    // from an account that was already carrying an old error. The comparison
-    // is what makes `--wait` able to exit non-zero on a sync it started.
-    //
-    // `None` means we never got a reading. An empty baseline would be worse
-    // than none: every pre-existing error would then look new, and `mxr sync`
-    // would fail over something it did not cause.
     let before = if wait {
         match fetch_sync_statuses(&mut client, account_id.as_ref()).await {
             Ok(statuses) => Some(statuses),
@@ -182,8 +169,6 @@ pub async fn run(
         Response::Ok {
             data: ResponseData::Ack,
         } => match (json_mode, wait) {
-            // With --wait the final status is printed after quiescence, so
-            // don't also emit a "triggered" line ahead of it.
             (true, false) => println!(
                 "{}",
                 serde_json::to_string(&serde_json::json!({
@@ -194,16 +179,10 @@ pub async fn run(
             (true, true) => {}
             (false, _) => println!("Sync triggered"),
         },
-        // The daemon rejects a sync it could not start at all — an unknown
-        // account, no provider. Once started, failures show up on the status
-        // row instead, which is what `--wait` reports.
         Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 
-    // Starting is not finishing: a first backfill runs page after page, and
-    // the account's own sync loop may still have queued work. `--wait` is what
-    // turns "a sync started" into "the account is idle".
     if wait {
         let waited = wait_for_sync_quiescence(
             &mut client,
@@ -212,8 +191,6 @@ pub async fn run(
             json_mode,
         )
         .await;
-        // The status is what a JSON caller asked for, and it is most worth
-        // having when the sync failed — so render it either way, then report.
         if json_mode {
             if let Ok(statuses) = fetch_sync_statuses(&mut client, account_id.as_ref()).await {
                 render_status(&statuses, format);
@@ -305,8 +282,6 @@ async fn run_all(
         return Ok(());
     }
 
-    // The dispatch result is authoritative: preview and execution can be
-    // separated by a configuration change.
     let progress = ProgressPrinter::new(json_mode);
     let response = client
         .request_with_events(Request::SyncAll, progress.event_callback())
@@ -600,20 +575,11 @@ async fn wait_for_sync_quiescence(
     let deadline = Instant::now() + timeout;
     let mut last_line: Option<String> = None;
     loop {
-        // Four outcomes, four responses: the daemon rejecting the query is
-        // fatal, a dropped connection earns a reconnect, a degraded snapshot
-        // is no reading at all, and a status read that simply stalled while
-        // the daemon is busy with post-sync work says nothing about the sync —
-        // keep polling until the deadline.
         match poll_sync_statuses(client, account_id).await {
             StatusPoll::Statuses(statuses) => {
                 if !statuses.iter().any(|status| status.sync_in_progress) {
                     return Ok(statuses);
                 }
-                // Only when the line actually changes: the poll runs ten times
-                // a second and piped output gets one line per call, so an
-                // unthrottled note buries a five-minute backfill in thousands
-                // of identical lines.
                 let line = sync_progress_line(&statuses);
                 if line.is_some() && line != last_line {
                     if let Some(line) = line.as_deref() {

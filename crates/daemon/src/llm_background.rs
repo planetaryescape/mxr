@@ -84,7 +84,6 @@ fn write(path: &Path, snapshot: &BackgroundState) -> std::io::Result<()> {
 
 /// Starts the loop that saves the state and re-runs put-off work.
 pub(crate) fn spawn(state: Arc<AppState>) -> JoinHandle<()> {
-    // Subscribe before spawning so a shutdown sent first is still seen.
     let shutdown_rx = state.shutdown_receiver();
     tokio::spawn(background_loop(state, shutdown_rx))
 }
@@ -108,7 +107,6 @@ async fn background_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<
                 recovery_open = changed.is_ok();
             }
         }
-        // One pass at a time: a pass still running holds this pass's inputs.
         if rerun.as_ref().is_some_and(|pass| !pass.is_finished()) {
             continue;
         }

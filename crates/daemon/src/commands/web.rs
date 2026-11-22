@@ -112,7 +112,6 @@ async fn run_local_foreground(args: Args) -> anyhow::Result<()> {
         eprintln!("warning: could not write bridge-port file ({err})");
     }
 
-    // Token precedence: env override > persisted file > generate-and-persist.
     let auth_token = load_auth_token()?;
 
     let bridge_cfg = mxr_config::load_config()
@@ -180,7 +179,6 @@ async fn run_selected_remote(args: &Args) -> anyhow::Result<()> {
     let saved = state
         .selected
         .ok_or_else(|| anyhow::anyhow!("Saved remote selection changed; retry mxr web"))?;
-    // Identity/version/grants are checked through the same saved target as other clients.
     let _connection =
         mxr_client::selected_daemon::connect_registration(&saved, mxr_protocol::ClientKind::Web)
             .await?;
@@ -215,8 +213,6 @@ async fn run_selected_remote(args: &Args) -> anyhow::Result<()> {
             "Opening the mxr sign-in form. Enter this single-use code in the browser (expires in two minutes):\n{}",
             code.expose()
         );
-        // A clean URL only: the code is typed into the page and never appears
-        // in the URL, its query or its fragment.
         let launch = format!("{}/api/v1/remote/browser-launch", saved.origin);
         present_launch_url(&launch, &launch, args.print_url, args.no_open);
     }
@@ -285,9 +281,6 @@ async fn existing_bridge(fallback_host: &str, requested_port: u16) -> Option<(St
             let host = display_host(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
             return Some((host, port));
         }
-        // The cached port no longer responds. Clear it, then also check the
-        // configured port below: a previous probe may have cleared this file
-        // while the daemon bridge stayed healthy and kept the stable port.
         mxr_config::clear_bridge_port();
     }
 
@@ -388,8 +381,6 @@ fn ss_port_owner(port: u16) -> Option<String> {
 
 fn present_launch_url(bridge_url: &str, display_url: &str, print_url: bool, no_open: bool) {
     if print_url || no_open {
-        // Never print the coded URL: a single-use sign-in code shared or
-        // captured here would let someone else claim it.
         println!("{display_url}");
         return;
     }
@@ -420,10 +411,6 @@ fn print_install_tip(print_url: bool, no_open: bool) {
 fn spawn_detached_web_child(args: &Args) -> anyhow::Result<std::process::Child> {
     let exe = std::env::current_exe()?;
     let mut command = std::process::Command::new(exe);
-    // Capture stderr so a child that fails to bind / connect can still
-    // surface its error after the parent times out. Previously this
-    // went to /dev/null, leaving "timed out waiting for mxr web bridge
-    // to start" as the only signal — and no way to tell why.
     let stderr_path = web_child_stderr_path();
     let stderr_target = std::fs::File::options()
         .append(true)
@@ -497,13 +484,8 @@ async fn wait_for_detached_web_ready(
             }
         }
 
-        // `try_wait` reaps the child: a dead child left unreaped stays a
-        // zombie that `kill(pid, 0)` still reports alive until the timeout.
         if !matches!(child.try_wait(), Ok(None)) {
             clear_web_state();
-            // The usual reason it died: the daemon's own bridge took the
-            // port between the first probe and the child's bind, as it does
-            // right after `mxr web` restarts the daemon. Use that bridge.
             if let Some(bridge) = existing_bridge(fallback_host, requested_port).await {
                 return Ok(bridge);
             }
@@ -848,7 +830,6 @@ mod tests {
                         .unwrap();
                     let port = listener.local_addr().unwrap().port();
                     let server = spawn_health_server(listener, true);
-                    // Stands in for a child whose bind failed: it exits at once.
                     let child = std::process::Command::new("true").spawn().unwrap();
                     let host = display_host(IpAddr::V4(Ipv4Addr::LOCALHOST));
 
@@ -877,7 +858,6 @@ mod tests {
             ],
             || {
                 runtime.block_on(async {
-                    // A port nothing listens on.
                     let port = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
                         .unwrap()
                         .local_addr()

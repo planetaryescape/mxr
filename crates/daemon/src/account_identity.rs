@@ -508,7 +508,6 @@ mod tests {
         let mut tango = input("Tango", None);
         tango.name = "Tango".into();
         let resolution = resolve_identities(&[work, travel, tango]).unwrap();
-        // "T" is configured on Travel, so Travel's derived tag moves on to TR.
         assert_eq!(resolution.resolved[1].stored_tag, "TR");
         assert_eq!(resolution.resolved[2].stored_tag, "TA");
     }
@@ -593,8 +592,6 @@ mod tests {
 
     #[test]
     fn a_tag_configured_on_another_account_is_refused_and_hidden_from_a_scoped_caller() {
-        // Personal is configured with Q but has no stored row yet, so only
-        // config holds Q. The scoped refusal must not name Personal.
         let wedding = resolved("Wedding", "WE", "WE");
         let configured = [("Personal".to_string(), "Q".to_string())];
         let scoped =
@@ -685,8 +682,6 @@ mod tests {
         store.insert_account(&wedding).await.unwrap();
         store.insert_account(&travel).await.unwrap();
 
-        // Rename Work, remove Wedding, then add a fourth account in the same
-        // second as the others, which could tie on creation time.
         store
             .insert_account(&mxr_core::Account {
                 name: "Office".into(),
@@ -717,9 +712,6 @@ mod tests {
 
     #[tokio::test]
     async fn an_unstored_config_account_shows_the_colour_and_tag_insertion_stores() {
-        // Config-only accounts have no row yet. The colour and tag shown before
-        // insertion must be the ones insertion stores, so startup inserts them in
-        // key order, as the resolver counts them.
         let store = mxr_store::Store::in_memory().await.unwrap();
         let mut config = mxr_config::MxrConfig::default();
         config
@@ -763,7 +755,6 @@ mod tests {
                 resolved.name
             );
         }
-        // Sorted by key, "wedding" is first, so it takes sky.
         assert_eq!(before.resolved[0].identity.color, AccountColor::Sky);
     }
 }

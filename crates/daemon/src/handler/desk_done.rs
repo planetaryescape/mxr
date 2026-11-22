@@ -506,4 +506,3 @@ pub(super) async fn restore_desk_state(
     }
     super::deferral::restore_timers(state, desk, applied_at).await
 }
-

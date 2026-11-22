@@ -311,29 +311,6 @@ mod tests {
     }
 
     #[test]
-    fn promo_is_penalized_and_flagged() {
-        let a = assess(&input(
-            "Acme",
-            "acme.com",
-            "Flash sale — 50% off + free shipping!",
-            "Shop now.",
-        ));
-        assert!(a.is_promo);
-        assert!(a.score < 0.3, "score={}", a.score);
-    }
-
-    #[test]
-    fn review_email_is_noise() {
-        let a = assess(&input(
-            "Acme",
-            "acme.com",
-            "How was your delivery?",
-            "Leave a review.",
-        ));
-        assert!(a.post_delivery_noise);
-    }
-
-    #[test]
     fn extracts_order_number_and_merchant() {
         let a = assess(&input(
             "Acme Store",

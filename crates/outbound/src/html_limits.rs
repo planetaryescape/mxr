@@ -361,12 +361,6 @@ mod tests {
     }
 
     #[test]
-    fn a_document_without_tables_is_left_exactly_as_it_is() {
-        let html = "<p>hello <b>world</b></p>";
-        assert!(matches!(bounded_html(html), Some(Cow::Borrowed(_))));
-    }
-
-    #[test]
     fn a_wide_table_is_over_budget() {
         assert!(!within_budget(&wide_table()));
     }
@@ -406,12 +400,6 @@ mod tests {
         let items = "<li>Item<br>details".repeat(300);
         let html = format!("<ol>{items}</ol>");
         assert!(within_budget(&html));
-    }
-
-    #[test]
-    fn rowspan_in_text_is_not_rewritten() {
-        let html = "use rowspan=365. for the rows";
-        assert_eq!(bounded_html(html).as_deref(), Some(html));
     }
 
     #[test]

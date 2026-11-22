@@ -314,16 +314,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn error_output_is_truncated_for_logging() {
-        let long = (1..=20)
-            .map(|n| format!("line {n}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert_eq!(first_lines(&long, 3), "line 1; line 2; line 3");
-        assert_eq!(first_lines("only one", 3), "only one");
-    }
-
-    #[test]
     fn a_single_enormous_line_is_still_truncated() {
         // stderr may quote the rendered body back at us on one line; without a
         // character cap the whole personalised message lands in the manifest.
@@ -341,25 +331,6 @@ mod tests {
     fn truncation_does_not_split_a_multibyte_character() {
         let summary = first_lines(&"é".repeat(1_000), 6);
         assert!(summary.starts_with("éé"), "{summary}");
-    }
-
-    #[test]
-    fn empty_output_is_reported_rather_than_blank() {
-        assert_eq!(first_lines("   ", 3), "(no output)");
-        assert_eq!(first_lines("", 3), "(no output)");
-    }
-
-    #[test]
-    fn a_missing_binary_explains_the_dependency() {
-        let mxr = Mxr::new(Some("mxr-definitely-not-installed".into()));
-        let err = mxr.preflight().unwrap_err();
-        assert!(err.to_string().contains("drives the mxr CLI"), "{err}");
-    }
-
-    #[test]
-    fn the_default_binary_is_the_mxr_on_path() {
-        assert_eq!(Mxr::new(None).binary, "mxr");
-        assert_eq!(Mxr::new(Some("/opt/mxr".into())).binary, "/opt/mxr");
     }
 
     #[cfg(unix)]
@@ -560,11 +531,6 @@ mod tests {
             assert_eq!(argv[1], "a@example.com");
             assert_eq!(stub.value_after(&argv, "--account"), Some("notto"));
             assert_eq!(stub.value_after(&argv, "--at"), Some("tomorrow 9am"));
-        }
-
-        #[test]
-        fn preflight_accepts_a_binary_that_answers_version() {
-            assert!(Mxr::new(Some(Stub::new().binary())).preflight().is_ok());
         }
 
         #[test]

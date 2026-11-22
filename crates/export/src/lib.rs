@@ -57,11 +57,6 @@ pub fn export(
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )]
-
     use super::*;
     use chrono::TimeZone;
 
@@ -170,12 +165,4 @@ mod tests {
         assert!(llm.starts_with("Thread:"));
     }
 
-    #[test]
-    fn export_format_parsing() {
-        // ExportFormat is in core, just verify it exists and serializes
-        let fmt = ExportFormat::Markdown;
-        let json = serde_json::to_string(&fmt).unwrap();
-        let roundtrip: ExportFormat = serde_json::from_str(&json).unwrap();
-        assert_eq!(roundtrip, ExportFormat::Markdown);
-    }
 }

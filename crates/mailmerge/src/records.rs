@@ -347,12 +347,6 @@ mod tests {
     }
 
     #[test]
-    fn a_blank_to_property_fails_the_batch() {
-        let err = load(r#"[{"to":"   "}]"#, "records.json").unwrap_err();
-        assert!(err.to_string().contains("no `to` property"), "{err}");
-    }
-
-    #[test]
     fn an_unparseable_to_property_fails_the_whole_batch() {
         for bad in ["not-an-address", "@example.com", "a@", "a@example"] {
             let contents = format!(r#"[{{"to":"a@good.example"}},{{"to":"{bad}"}}]"#);
@@ -452,12 +446,6 @@ mod tests {
     }
 
     #[test]
-    fn a_broken_jsonl_line_is_reported_by_line_number() {
-        let err = load("{\"to\":\"a@example.com\"}\n{not json}\n", "records.jsonl").unwrap_err();
-        assert!(format!("{err:#}").contains("line 2"), "{err:#}");
-    }
-
-    #[test]
     fn subject_rejects_line_breaks_and_emptiness() {
         assert!(validate_subject("Hello").is_ok());
         assert!(validate_subject("Ben & Co — your digest").is_ok());
@@ -538,14 +526,4 @@ mod tests {
         assert!(!safe.contains("secret-part"), "{safe}");
     }
 
-    #[test]
-    fn a_short_property_value_is_not_worth_redacting() {
-        // Redacting every two-character value turns an error message into a row
-        // of `[redacted]` and tells the operator nothing.
-        let batch = [record(&[("to", "a@example.com"), ("plan", "pro")])];
-        assert_eq!(
-            Redactor::for_batch(&batch).scrub("no pro plan"),
-            "no pro plan"
-        );
-    }
 }

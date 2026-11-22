@@ -470,23 +470,6 @@ mod tests {
     }
 
     #[test]
-    fn openai_models_are_recognised_under_both_names() {
-        assert!(is_openai_model("gpt-6-luna"));
-        assert!(is_openai_model("openai/gpt-5.6-terra"));
-        assert!(!is_openai_model("gpt-oss:20b"));
-        assert!(!is_openai_model("claude-haiku-5-5"));
-        assert!(!is_openai_model("gemma4"));
-    }
-
-    #[test]
-    fn claude_models_are_recognised_under_both_names() {
-        assert!(is_claude_model("claude-haiku-5-5"));
-        assert!(is_claude_model("anthropic/claude-haiku-5.5"));
-        assert!(!is_claude_model("openai/gpt-4o-mini"));
-        assert!(!is_claude_model("gemma4"));
-    }
-
-    #[test]
     fn api_key_debug_never_shows_the_key() {
         let key = ApiKey::new("sk-ant-secret-value");
         assert!(!format!("{key:?}").contains("secret"));

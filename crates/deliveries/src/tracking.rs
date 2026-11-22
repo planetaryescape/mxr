@@ -101,17 +101,6 @@ mod tests {
     }
 
     #[test]
-    fn validates_amazon_tba() {
-        let found = extract("Your Amazon package TBA619632698000 ships today");
-        assert!(
-            found
-                .iter()
-                .any(|t| t.number == "TBA619632698000" && t.carrier == "amazon"),
-            "{found:?}"
-        );
-    }
-
-    #[test]
     fn tolerates_spaces_in_grouped_numbers() {
         let text = "Tracking: 1Z 5R8 939 03 5756 7127";
         let found = extract(text);

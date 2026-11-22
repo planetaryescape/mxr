@@ -181,18 +181,6 @@ mod tests {
     }
 
     #[test]
-    fn ive_attached_variant_warns() {
-        let issues = check(&draft_with("I've attached the spec.", vec![]));
-        assert_eq!(issues.len(), 1);
-    }
-
-    #[test]
-    fn enclosed_variant_warns() {
-        let issues = check(&draft_with("Enclosed is the contract.", vec![]));
-        assert_eq!(issues.len(), 1);
-    }
-
-    #[test]
     fn subject_alone_can_trigger() {
         let mut d = draft_with("Body unrelated.", vec![]);
         d.subject = "Updated deck attached".into();

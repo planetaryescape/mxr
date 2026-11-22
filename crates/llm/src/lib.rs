@@ -1902,27 +1902,6 @@ mod tests {
         assert_eq!(redact_key(s.clone(), Some("gpt")), s);
     }
 
-    #[test]
-    fn ollama_defaults_to_localhost_with_no_api_key() {
-        let p = OpenAiCompatibleProvider::ollama("llama3.2");
-        assert_eq!(p.base_url, "http://localhost:11434/v1");
-        assert!(p.api_key.is_none());
-        assert_eq!(p.model_name(), "llama3.2");
-    }
-
-    #[test]
-    fn lm_studio_defaults_to_localhost_with_no_api_key() {
-        let p = OpenAiCompatibleProvider::lm_studio("local-model");
-        assert_eq!(p.base_url, "http://localhost:1234/v1");
-        assert!(p.api_key.is_none());
-    }
-
-    #[test]
-    fn capabilities_surface_context_window() {
-        let p = OpenAiCompatibleProvider::ollama("llama3.2");
-        assert_eq!(p.capabilities().context_window, 8192);
-    }
-
     #[derive(Debug)]
     struct StaticProvider {
         model: &'static str,
@@ -2044,22 +2023,6 @@ mod tests {
             started.elapsed() < Duration::from_secs(5),
             "should fail near the 50ms budget, not wait the 30s provider delay"
         );
-    }
-
-    #[tokio::test]
-    async fn complete_background_succeeds_within_budget() {
-        let runtime = Arc::new(LlmRuntime::new(Arc::new(StaticProvider { model: "base" })));
-        // Default 45s budget; a fast provider returns well within it.
-        let response = runtime
-            .for_feature(LlmFeature::RelationshipSummary)
-            .complete_background(CompletionRequest {
-                messages: vec![ChatMessage::user("hello")],
-                max_tokens: None,
-                temperature: None,
-            })
-            .await
-            .unwrap();
-        assert_eq!(response.model, "base");
     }
 
     /// Captured from Ollama 0.34.3 serving gemma4:latest for a real

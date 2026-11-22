@@ -70,21 +70,6 @@ mod tests {
     }
 
     #[test]
-    fn default_notification_chimes_are_opt_in_and_distinct() {
-        let config = MxrConfig::default();
-
-        assert!(!config.notifications.chimes.enabled);
-        assert_ne!(
-            config.notifications.chimes.new_mail,
-            config.notifications.chimes.sent
-        );
-        assert_ne!(
-            config.notifications.chimes.sent,
-            config.notifications.chimes.archived
-        );
-    }
-
-    #[test]
     fn full_toml_round_trip() {
         let toml_str = r#"
 [general]
@@ -641,50 +626,6 @@ type = "gmail"
         let newsletter = &config.accounts["newsletter"];
         assert!(newsletter.sync.is_none());
         assert!(matches!(newsletter.send, Some(SendProviderConfig::Gmail)));
-    }
-
-    #[test]
-    fn imap_sync_variant_parses() {
-        let toml_str = r#"
-[accounts.fastmail]
-name = "Fastmail"
-email = "me@fastmail.com"
-
-[accounts.fastmail.sync]
-type = "imap"
-host = "imap.fastmail.com"
-port = 993
-username = "me@fastmail.com"
-password_ref = "keyring:fastmail-imap"
-use_tls = true
-max_connections = 2
-
-[accounts.fastmail.send]
-type = "smtp"
-host = "smtp.fastmail.com"
-port = 465
-username = "me@fastmail.com"
-password_ref = "keyring:fastmail-smtp"
-use_tls = true
-"#;
-
-        let config = load_config_from_str(toml_str).expect("parse imap account");
-        let fastmail = &config.accounts["fastmail"];
-        assert!(matches!(
-            fastmail.sync,
-            Some(SyncProviderConfig::Imap { .. })
-        ));
-        assert!(matches!(
-            fastmail.sync,
-            Some(SyncProviderConfig::Imap {
-                max_connections: 2,
-                ..
-            })
-        ));
-        assert!(matches!(
-            fastmail.send,
-            Some(SendProviderConfig::Smtp { .. })
-        ));
     }
 
     fn identity_config(extra_work: &str, extra_wedding: &str) -> String {

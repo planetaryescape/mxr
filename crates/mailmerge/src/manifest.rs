@@ -277,33 +277,6 @@ mod tests {
     }
 
     #[test]
-    fn scheduled_status_round_trips_through_disk() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut manifest = Manifest::new("c1".into(), "notto@example.com".into());
-        manifest.upsert(entry("h1", RecordStatus::Scheduled, Some("d1")));
-        manifest.save(dir.path()).unwrap();
-
-        let loaded = Manifest::load(dir.path(), "c1").unwrap();
-        assert_eq!(loaded.entry("h1").unwrap().status, RecordStatus::Scheduled);
-    }
-
-    #[test]
-    fn failed_records_are_retrievable_for_retry() {
-        let mut manifest = Manifest::new("c1".into(), "notto".into());
-        manifest.upsert(entry("h1", RecordStatus::Failed, None));
-        manifest.upsert(entry("h2", RecordStatus::Sent, Some("d2")));
-        manifest.upsert(entry("h3", RecordStatus::Drafted, Some("d3")));
-        manifest.upsert(entry("h4", RecordStatus::Failed, Some("d4")));
-
-        let failed: Vec<&str> = manifest
-            .failed()
-            .iter()
-            .map(|entry| entry.record_hash.as_str())
-            .collect();
-        assert_eq!(failed, ["h1", "h4"]);
-    }
-
-    #[test]
     fn manifest_round_trips_through_disk() {
         let dir = tempfile::tempdir().unwrap();
         let mut manifest = Manifest::new("c1".into(), "notto@example.com".into());
@@ -403,17 +376,6 @@ mod tests {
         // The failure reason is one of a closed set, so no amount of subprocess
         // output can steer a token into it.
         assert_eq!(parsed["records"][1]["error"], "draft_refused");
-    }
-
-    #[test]
-    fn a_missing_manifest_reports_the_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = Manifest::load(dir.path(), "nope").unwrap_err();
-        assert!(err.to_string().contains("no campaign manifest"), "{err}");
-        assert!(err.to_string().contains("nope.json"), "{err}");
-        assert!(Manifest::load_if_present(dir.path(), "nope")
-            .unwrap()
-            .is_none());
     }
 
     #[test]

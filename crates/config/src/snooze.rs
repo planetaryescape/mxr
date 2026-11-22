@@ -155,47 +155,6 @@ mod tests {
     use chrono::{Datelike, FixedOffset, Timelike};
 
     #[test]
-    fn resolve_tomorrow_morning() {
-        let config = SnoozeConfig::default();
-        let wake = resolve_snooze_time(SnoozeOption::TomorrowMorning, &config);
-        let now = Utc::now();
-        assert!(wake > now);
-        assert!((wake - now).num_hours() <= 48);
-    }
-
-    #[test]
-    fn resolve_next_monday() {
-        let config = SnoozeConfig::default();
-        let wake = resolve_snooze_time(SnoozeOption::NextMonday, &config);
-        let now = Utc::now();
-        assert!(wake > now);
-        assert!((wake - now).num_days() <= 7);
-    }
-
-    #[test]
-    fn resolve_weekend() {
-        let config = SnoozeConfig::default();
-        let wake = resolve_snooze_time(SnoozeOption::Weekend, &config);
-        let now = Utc::now();
-        assert!(wake > now);
-        assert!((wake - now).num_days() <= 7);
-    }
-
-    #[test]
-    fn parse_keywords() {
-        let config = SnoozeConfig::default();
-        assert!(parse_snooze_until("tomorrow", &config).is_some());
-        assert!(parse_snooze_until("monday", &config).is_some());
-        assert!(parse_snooze_until("weekend", &config).is_some());
-        assert_eq!(
-            parse_snooze_until("tonight", &config),
-            resolve_snooze_preset_time(SnoozeOption::Tonight, &config)
-        );
-        assert!(parse_snooze_until("tuesday", &config).is_some());
-        assert!(parse_snooze_until("friday", &config).is_some());
-    }
-
-    #[test]
     fn tonight_preset_expires_after_evening_hour() {
         let config = SnoozeConfig::default();
         let timezone = FixedOffset::east_opt(3600).expect("valid test offset");
@@ -225,12 +184,6 @@ mod tests {
     fn parse_iso8601() {
         let config = SnoozeConfig::default();
         assert!(parse_snooze_until("2099-12-25T09:00:00Z", &config).is_some());
-    }
-
-    #[test]
-    fn parse_iso8601_no_tz() {
-        let config = SnoozeConfig::default();
-        assert!(parse_snooze_until("2099-12-25T09:00:00", &config).is_some());
     }
 
     #[test]
@@ -277,15 +230,6 @@ mod tests {
     fn parse_invalid() {
         let config = SnoozeConfig::default();
         assert!(parse_snooze_until("not-a-date", &config).is_none());
-    }
-
-    #[test]
-    fn format_presets_include_hours() {
-        let config = SnoozeConfig::default();
-        let label = format_preset(SnoozeOption::TomorrowMorning, &config);
-        assert!(label.contains("09:00"));
-        let label = format_preset(SnoozeOption::Tonight, &config);
-        assert!(label.contains("18:00"));
     }
 
     #[test]

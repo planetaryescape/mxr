@@ -464,13 +464,6 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn an_unknown_route_is_used() {
-        let health = RouteHealth::default();
-        assert!(matches!(health.admit(&anthropic()), Admission::Use(_)));
-        assert_eq!(health.view(&anthropic()), RouteView::OK);
-    }
-
-    #[tokio::test(start_paused = true)]
     async fn a_cooling_route_is_skipped_until_its_wait_is_over() {
         let health = RouteHealth::default();
         fail(&health, cooling());

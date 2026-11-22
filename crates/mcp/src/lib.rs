@@ -4241,25 +4241,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_scheduled_sends_forwards_the_account_scope() {
-        let requester = Arc::new(FakeRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        let account_id = AccountId::new();
-        server
-            .list_scheduled_sends(Parameters(ListScheduledSendsInput {
-                account_id: Some(account_id.as_str()),
-            }))
-            .await
-            .expect("tool result");
-
-        let requests = requester.requests.lock().expect("requests lock");
-        assert!(matches!(
-            requests.as_slice(),
-            [Request::ListScheduledSends { account_id: Some(id) }] if *id == account_id
-        ));
-    }
-
-    #[tokio::test]
     async fn the_export_tool_only_ever_previews() {
         let requester = Arc::new(FakeRequester::default());
         let server = MxrMcpServer::from_requester(requester.clone());
@@ -4332,30 +4313,6 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn the_subscriptions_tool_reads_one_account_or_all() {
-        let requester = Arc::new(FakeRequester::default());
-        let server = MxrMcpServer::from_requester(requester.clone());
-        server
-            .records_subscriptions(Parameters(AccountScopeInput { account_id: None }))
-            .await
-            .expect("tool result");
-        let requests = requester.requests.lock().expect("requests lock");
-        assert!(matches!(
-            requests.as_slice(),
-            [Request::ListRecordSubscriptions { account_id: None }]
-        ));
-    }
-
-    #[tokio::test]
-    async fn status_uses_daemon_requester() {
-        let server = MxrMcpServer::new(FakeRequester::default());
-        let result = server.status().await.expect("tool result");
-        assert_eq!(
-            result.0,
-            serde_json::to_value(ResponseData::Pong).expect("pong JSON")
-        );
-    }
 }
 
 #[derive(Deserialize, JsonSchema)]

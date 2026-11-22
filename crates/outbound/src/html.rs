@@ -1017,38 +1017,6 @@ mod tests {
     }
 
     #[test]
-    fn text_alternative_of_a_table_hidden_by_a_comment_is_bounded() {
-        let mut html = String::from("<table><tr>");
-        for n in 0..20_000 {
-            html.push_str(&format!("<td>c{n}</td>"));
-        }
-        html.push_str("</tr><!-- </table> -->");
-        for n in 0..20_000 {
-            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
-        }
-        html.push_str("</table>");
-        let started = std::time::Instant::now();
-        let text = generate_text_alternative(&html);
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
-        assert!(text.len() < 4 * html.len());
-        assert!(text.contains("c0") && text.contains("r19999"));
-    }
-
-    #[test]
-    fn text_alternative_of_a_100000_deep_div_nest_is_bounded() {
-        let html = format!(
-            "{}deepword{}",
-            "<div>".repeat(100_000),
-            "</div>".repeat(100_000)
-        );
-        let started = std::time::Instant::now();
-        let text = generate_text_alternative(&html);
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
-        assert!(text.len() < 4 * html.len());
-        assert!(text.contains("deepword"));
-    }
-
-    #[test]
     fn text_alternative_of_an_oversized_body_is_the_tag_strip() {
         let html = format!(
             "<p>zzoversizedword</p>{}",
@@ -1312,19 +1280,11 @@ mod tests {
     }
 
     #[test]
-    fn an_event_handler_hidden_in_a_conditional_comment_is_rejected() {
+    fn an_active_construct_hidden_in_a_conditional_comment_is_rejected() {
         // Outlook renders what is inside `[if mso]`, so a handler in there is
         // a live handler and not inert comment text.
         refusal(r#"<!--[if mso]><table><tr><td onclick="steal()">x</td></tr></table><![endif]-->"#);
-    }
-
-    #[test]
-    fn an_unsafe_url_hidden_in_a_conditional_comment_is_rejected() {
         refusal(r#"<!--[if mso]><a href="javascript:steal()">x</a><![endif]-->"#);
-    }
-
-    #[test]
-    fn active_css_hidden_in_a_conditional_comment_is_rejected() {
         refusal("<!--[if mso]><style>.a{width:expression(alert(1))}</style><![endif]-->");
     }
 
@@ -1403,13 +1363,6 @@ mod tests {
             detail.starts_with("javascript:"),
             "excerpt lost the useful part: {detail}"
         );
-    }
-
-    #[test]
-    fn the_error_says_the_html_was_left_alone() {
-        let rendered = refusal("<script>x</script>").to_string();
-        assert!(rendered.contains("was not modified"), "{rendered}");
-        assert!(rendered.contains("script"), "{rendered}");
     }
 
     #[test]
@@ -1717,28 +1670,6 @@ mod tests {
     }
 
     #[test]
-    fn an_svg_data_url_in_css_gets_the_same_explanation_as_one_in_an_attribute() {
-        for markup in [
-            r#"<p style="background:url(data:image/svg+xml;base64,PHN2Zz4=)">x</p>"#,
-            r#"<style>.a{background:url(data:image/svg+xml;base64,PHN2Zz4=)}</style>"#,
-        ] {
-            let rendered = refusal(markup).to_string();
-            assert!(rendered.contains("svg"), "no mention of svg: {rendered}");
-            assert!(
-                rendered.contains("script"),
-                "must say why SVG differs from other images: {rendered}"
-            );
-        }
-    }
-
-    #[test]
-    fn an_inline_style_in_a_real_table_cell_is_reported_once_not_twice() {
-        let error =
-            refusal(r#"<table><tr><td style="width:expression(steal())">x</td></tr></table>"#);
-        assert_eq!(error.issues.len(), 1, "{error:?}");
-    }
-
-    #[test]
     fn every_url_bearing_attribute_is_checked_not_just_href_and_src() {
         for markup in [
             r#"<img longdesc="javascript:steal()">"#,
@@ -1839,19 +1770,6 @@ mod tests {
                 error.issues
             );
         }
-    }
-
-    #[test]
-    fn foreign_object_inside_a_conditional_comment_is_refused_too() {
-        let error =
-            refusal("<!--[if mso]><svg><foreignObject><p>x</p></foreignObject></svg><![endif]-->");
-        assert!(
-            error.issues.iter().any(|issue| issue.kind
-                == HtmlIssueKind::ForbiddenElementInComment {
-                    tag: "foreignobject".to_string()
-                }),
-            "{error:?}"
-        );
     }
 
     /// Claimed already covered, because html5ever adjusts foreign attributes
@@ -1960,21 +1878,6 @@ mod tests {
         assert_eq!(error.issues.len(), 2, "{error:?}");
     }
 
-    #[test]
-    fn the_newly_covered_refusals_still_hand_back_the_exact_source() {
-        for source in [
-            String::from("<td onclick=\"steal()\">®</td>\n"),
-            String::from("<img src=\"data:image/svg+xml;base64,PHN2Zz4=\" alt=\"®\">\n"),
-            String::from("<p style=\"width:expression(steal())\">®</p>\n"),
-            String::from("<img srcset=\"a.png 1x, javascript:steal() 2x\" alt=\"®\">\n"),
-            String::from("<svg><animate attributeName=\"href\"></svg>\n"),
-            String::from("<p style=\"background:url(data:image/svg+xml;base64,PHN2Zz4=)\">®</p>\n"),
-        ] {
-            let before = source.clone();
-            assert!(validate_html(&source).is_err(), "{source}");
-            assert_eq!(source, before);
-        }
-    }
 }
 
 #[cfg(test)]

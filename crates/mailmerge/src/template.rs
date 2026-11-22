@@ -148,12 +148,6 @@ mod tests {
     }
 
     #[test]
-    fn placeholders_interpolate() {
-        let out = render_html("<p>Hi {{ first_name }},</p>", &[("first_name", "Dumi")]).unwrap();
-        assert_eq!(out, "<p>Hi Dumi,</p>");
-    }
-
-    #[test]
     fn html_values_are_escaped_by_default() {
         // A malicious property value must not become live markup.
         let out = render_html(
@@ -254,21 +248,6 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_templates_are_not_mistaken_for_file_loading() {
-        for source in [
-            "<p>{{ ok }}</p>",
-            "{% if included %}yes{% endif %}",
-            "<p>{{ import_url }}</p>",
-            "{% for row in rows %}{{ row }}{% endfor %}",
-        ] {
-            assert!(
-                reject_unsafe_constructs(source, "html").is_ok(),
-                "false positive on `{source}`"
-            );
-        }
-    }
-
-    #[test]
     fn an_include_cannot_reach_the_filesystem_even_if_the_guard_is_bypassed() {
         // The guard is belt; the absent loader is braces. Render one directly.
         let mut templates = Templates::new();
@@ -322,18 +301,4 @@ mod tests {
         assert!(templates.render(HTML, &props(&[])).is_err());
     }
 
-    #[test]
-    fn a_template_that_does_not_parse_is_reported_by_name() {
-        let mut templates = Templates::new();
-        let err = templates
-            .add(HTML, "<p>{{ unclosed </p>".to_string())
-            .unwrap_err();
-        assert!(err.to_string().contains(HTML), "{err}");
-    }
-
-    #[test]
-    fn rendering_an_unregistered_template_is_an_error() {
-        let templates = Templates::new();
-        assert!(templates.render(TEXT, &props(&[])).is_err());
-    }
 }

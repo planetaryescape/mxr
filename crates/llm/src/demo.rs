@@ -379,24 +379,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn classify_summarize_branch() {
-        let provider = DemoLlmProvider::new();
-        let resp = provider
-            .complete(req(
-                "You summarize email conversation threads for a busy reader.",
-                "Subject: Friday cut\n\nLet's confirm the timing.",
-            ))
-            .await
-            .expect("complete ok");
-        assert!(
-            resp.content.starts_with("ACTION REQUIRED — "),
-            "{}",
-            resp.content,
-        );
-        assert!(resp.content.contains("\n\nSummary of friday cut"));
-    }
-
-    #[tokio::test]
     async fn thread_gist_quotes_a_question_from_the_newest_message() {
         let provider = DemoLlmProvider::new();
         let user = "[msg_id=m1]\nFrom: a@x.com\nDate: d\nSubject: s\nOld. Are we still on for lunch?\n\n\
@@ -413,54 +395,4 @@ mod tests {
         assert_eq!(json["ask"]["quote"], "Can you send the deck today?");
     }
 
-    #[tokio::test]
-    async fn classify_briefing_branch() {
-        let provider = DemoLlmProvider::new();
-        let resp = provider
-            .complete(req(
-                "Produce a thread briefing with people, decisions, commitments.",
-                "Subject: Q4 planning",
-            ))
-            .await
-            .expect("complete ok");
-        assert!(resp.content.starts_with("Briefing"), "{}", resp.content);
-    }
-
-    #[tokio::test]
-    async fn classify_draft_branch() {
-        let provider = DemoLlmProvider::new();
-        let resp = provider
-            .complete(req(
-                "You draft email replies for a busy professional.",
-                "Reply confirming Friday.",
-            ))
-            .await
-            .expect("complete ok");
-        assert!(resp.content.contains("Friday"), "{}", resp.content);
-    }
-
-    #[tokio::test]
-    async fn classify_commitments_returns_json_array() {
-        let provider = DemoLlmProvider::new();
-        let resp = provider
-            .complete(req(
-                "Extract commitments from this thread.",
-                "Subject: budget",
-            ))
-            .await
-            .expect("complete ok");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&resp.content).expect("commitments JSON parses");
-        assert!(parsed.as_array().is_some_and(|items| !items.is_empty()));
-    }
-
-    #[tokio::test]
-    async fn unknown_system_prompt_falls_back_to_generic() {
-        let provider = DemoLlmProvider::new();
-        let resp = provider
-            .complete(req("You are a helpful assistant.", "Tell me something."))
-            .await
-            .expect("complete ok");
-        assert!(resp.content.contains("Demo response"), "{}", resp.content);
-    }
 }

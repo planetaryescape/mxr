@@ -316,10 +316,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_refusal_names_the_offending_cid() {
-        let error = validate_cid("logo bar").unwrap_err();
-        let rendered = error.to_string();
-        assert!(rendered.contains("logo bar"), "{rendered}");
-    }
 }

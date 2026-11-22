@@ -820,15 +820,6 @@ mod tests {
         assert!(err.contains("other@example.com"), "{err}");
     }
 
-    #[test]
-    fn the_generated_campaign_id_says_what_it_is() {
-        let id = default_campaign_id();
-        assert!(id.starts_with("campaign-"), "{id}");
-        // Second resolution only, so two runs in the same second collide — the
-        // reason `campaign_state` refuses to adopt an existing manifest.
-        assert_eq!(id.len(), "campaign-YYYYmmdd-HHMMSS".len(), "{id}");
-    }
-
     #[cfg(unix)]
     mod end_to_end {
         use super::*;

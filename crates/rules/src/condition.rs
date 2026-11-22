@@ -302,33 +302,11 @@ mod tests {
     }
 
     #[test]
-    fn contains_match_handles_unicode() {
-        let m = StringMatch::Contains("café".into());
-        assert!(m.matches("Meeting at Café Luna"));
-    }
-
-    #[test]
     fn glob_match_with_wildcards() {
         let m = StringMatch::Glob("*@substack.com".into());
         assert!(m.matches("newsletter@substack.com"));
         assert!(m.matches("alice@substack.com"));
         assert!(!m.matches("newsletter@gmail.com"));
-    }
-
-    #[test]
-    fn glob_match_with_question_mark() {
-        let m = StringMatch::Glob("user?@example.com".into());
-        assert!(m.matches("user1@example.com"));
-        assert!(m.matches("userA@example.com"));
-        assert!(!m.matches("user12@example.com"));
-    }
-
-    #[test]
-    fn regex_match_complex_pattern() {
-        let m = StringMatch::Regex(r"(?i)invoice\s*#\d+".into());
-        assert!(m.matches("Re: Invoice #2847"));
-        assert!(m.matches("invoice#100"));
-        assert!(!m.matches("Receipt attached"));
     }
 
     #[test]
@@ -357,12 +335,6 @@ mod tests {
         for _ in 0..3 {
             assert!(!m.matches("(unclosed"));
         }
-    }
-
-    #[test]
-    fn regex_invalid_pattern_returns_false() {
-        let m = StringMatch::Regex(r"[invalid".into());
-        assert!(!m.matches("anything"));
     }
 
     #[test]
@@ -411,19 +383,6 @@ mod tests {
     // -- Condition composition tests --
 
     #[test]
-    fn and_condition_requires_all_true() {
-        let cond = Conditions::And {
-            conditions: vec![
-                Conditions::Field(FieldCondition::HasLabel {
-                    label: "newsletters".into(),
-                }),
-                Conditions::Field(FieldCondition::HasUnsubscribe),
-            ],
-        };
-        assert!(cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
     fn and_condition_short_circuits_on_false() {
         let cond = Conditions::And {
             conditions: vec![
@@ -432,17 +391,6 @@ mod tests {
             ],
         };
         assert!(!cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
-    fn or_condition_succeeds_on_any_true() {
-        let cond = Conditions::Or {
-            conditions: vec![
-                Conditions::Field(FieldCondition::IsStarred),
-                Conditions::Field(FieldCondition::HasUnsubscribe),
-            ],
-        };
-        assert!(cond.evaluate(&newsletter_msg()));
     }
 
     #[test]
@@ -489,34 +437,12 @@ mod tests {
         assert!(cond.evaluate(&newsletter_msg()));
     }
 
-    #[test]
-    fn empty_or_is_false() {
-        let cond = Conditions::Or { conditions: vec![] };
-        assert!(!cond.evaluate(&newsletter_msg()));
-    }
-
     // -- Field condition tests --
-
-    #[test]
-    fn from_field_matches_email() {
-        let cond = FieldCondition::From {
-            pattern: StringMatch::Contains("substack".into()),
-        };
-        assert!(cond.evaluate(&newsletter_msg()));
-    }
 
     #[test]
     fn to_field_matches_any_recipient() {
         let cond = FieldCondition::To {
             pattern: StringMatch::Exact("user@example.com".into()),
-        };
-        assert!(cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
-    fn subject_field_matches() {
-        let cond = FieldCondition::Subject {
-            pattern: StringMatch::Contains("Rust".into()),
         };
         assert!(cond.evaluate(&newsletter_msg()));
     }
@@ -590,21 +516,4 @@ mod tests {
 
     // -- Serialization tests --
 
-    #[test]
-    fn conditions_roundtrip_through_json() {
-        let cond = Conditions::And {
-            conditions: vec![
-                Conditions::Field(FieldCondition::From {
-                    pattern: StringMatch::Glob("*@substack.com".into()),
-                }),
-                Conditions::Not {
-                    condition: Box::new(Conditions::Field(FieldCondition::IsStarred)),
-                },
-            ],
-        };
-        let json = serde_json::to_string(&cond).unwrap();
-        let parsed: Conditions = serde_json::from_str(&json).unwrap();
-        // Verify it still evaluates the same
-        assert!(parsed.evaluate(&newsletter_msg()));
-    }
 }

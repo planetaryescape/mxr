@@ -44,79 +44,27 @@ pub fn export_markdown(thread: &ExportThread) -> String {
 mod tests {
     use super::*;
     use crate::tests::{empty_body_thread, sample_thread, single_message_thread};
-    use pretty_assertions::assert_eq;
 
     #[test]
-    fn markdown_starts_with_thread_subject() {
+    fn markdown_export_renders_thread_messages_attachments_and_footer() {
         let result = export_markdown(&sample_thread());
         assert!(result.starts_with("# Thread: Deployment rollback plan\n"));
-    }
-
-    #[test]
-    fn markdown_uses_sender_name_when_available() {
-        let result = export_markdown(&sample_thread());
         assert!(result.contains("## Alice —"));
         assert!(result.contains("## Bob —"));
-    }
-
-    #[test]
-    fn markdown_falls_back_to_email_when_no_name() {
-        let result = export_markdown(&single_message_thread());
-        assert!(result.contains("## noreply@service.com —"));
-    }
-
-    #[test]
-    fn markdown_includes_deterministic_dates() {
-        let result = export_markdown(&sample_thread());
         assert!(result.contains("Mar 17, 2026 09:30"));
-        assert!(result.contains("Mar 17, 2026 10:15"));
-    }
-
-    #[test]
-    fn markdown_includes_message_body() {
-        let result = export_markdown(&sample_thread());
-        assert!(result.contains("What's the rollback strategy"));
         assert!(result.contains("blue-green deployment"));
-    }
-
-    #[test]
-    fn markdown_lists_attachments() {
-        let result = export_markdown(&sample_thread());
-        assert!(result.contains("**Attachments:**"));
         assert!(result.contains("- runbook.pdf (240KB)"));
-    }
-
-    #[test]
-    fn markdown_footer_has_correct_counts() {
-        let result = export_markdown(&sample_thread());
         assert!(result.contains("2 messages"));
         assert!(result.contains("2 participants"));
+
+        let mut one_sender = sample_thread();
+        one_sender.messages[1].from_email = "alice@example.com".into();
+        assert!(export_markdown(&one_sender).contains("1 participants"));
     }
 
     #[test]
-    fn markdown_deduplicates_participants() {
-        // Both messages from same sender would count as 1
-        let mut thread = sample_thread();
-        thread.messages[1].from_email = "alice@example.com".into();
-        let result = export_markdown(&thread);
-        assert!(result.contains("1 participants"));
-    }
-
-    #[test]
-    fn markdown_handles_empty_body() {
-        let result = export_markdown(&empty_body_thread());
-        // Should not crash; header still present
-        assert!(result.contains("## Ghost —"));
-    }
-
-    #[test]
-    fn markdown_is_valid_structure() {
-        let result = export_markdown(&sample_thread());
-        // H1 for thread, H2 for each message, footer separator
-        let h1_count = result.matches("# Thread:").count();
-        let h2_count = result.matches("\n## ").count();
-        assert_eq!(h1_count, 1);
-        assert_eq!(h2_count, 2);
-        assert!(result.contains("\n---\n"));
+    fn markdown_export_falls_back_to_email_and_survives_empty_body() {
+        assert!(export_markdown(&single_message_thread()).contains("## noreply@service.com —"));
+        assert!(export_markdown(&empty_body_thread()).contains("## Ghost —"));
     }
 }

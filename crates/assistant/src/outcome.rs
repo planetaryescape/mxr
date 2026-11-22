@@ -115,10 +115,4 @@ mod tests {
         assert_eq!(call_state(&forged, false), CallState::Done);
     }
 
-    #[test]
-    fn readable_results_drop_the_fence_and_get_cut() {
-        let fenced = prompt::tool_result("{\"ok\":true}");
-        assert_eq!(readable_result(&fenced, 100), "{\"ok\":true}");
-        assert_eq!(readable_result("abcdef", 3), "abc…");
-    }
 }

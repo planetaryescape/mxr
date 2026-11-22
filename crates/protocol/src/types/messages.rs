@@ -38,7 +38,6 @@ pub mod messages_copy {
         let sentence = match (filter.unread, filter.past_pace) {
             (true, true) => "No unread messages from people past your usual pace.",
             (true, false) => "No unread messages from people.",
-            // Only past pace is on: the caller only asks when a toggle is on.
             (false, _) => "Nobody is past your usual pace.",
         };
         let sentence = match filter.turn {

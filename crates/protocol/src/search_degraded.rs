@@ -127,7 +127,6 @@ mod tests {
             .with_notice("the last index rebuild failed");
         assert_eq!(degraded.notice(), "the last index rebuild failed");
 
-        // A reply with no notice keeps the wire shape older clients decode.
         let plain =
             serde_json::to_value(SearchDegraded::new(SearchDegradedReason::IndexStopped)).unwrap();
         assert!(plain.get("notice_override").is_none());

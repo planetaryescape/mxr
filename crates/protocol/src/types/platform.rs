@@ -251,7 +251,7 @@ pub struct EntityCandidateData {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EntityExplanationData {
     pub canonical_name: String,
-    pub kind: String, // "person" | "term" | "ambiguous" | "unknown"
+    pub kind: String,
     pub summary: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub first_seen_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -280,7 +280,7 @@ pub struct SuggestedRecipientData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     pub reason: String,
-    pub confidence: String, // "low" | "medium" | "high"
+    pub confidence: String,
     pub evidence_msg_ids: Vec<String>,
 }
 

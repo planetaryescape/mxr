@@ -541,7 +541,6 @@ mod tests {
         let back: AssistantReadoutRowData = serde_json::from_value(json).unwrap();
         assert_eq!(back, row);
 
-        // Empty fields stay off the wire, so older clients see today's row.
         let plain = serde_json::to_value(AssistantReadoutRowData {
             account_id: None,
             title: "Invoice".into(),
@@ -550,7 +549,6 @@ mod tests {
         .unwrap();
         assert_eq!(plain, json!({"title": "Invoice"}));
 
-        // A row from an older daemon has none of them.
         let old: AssistantReadoutRowData =
             serde_json::from_value(json!({"title": "Invoice", "detail": "Dana"})).unwrap();
         assert_eq!(old.sender, None);
@@ -560,8 +558,6 @@ mod tests {
 
     #[test]
     fn an_older_daemon_fails_a_step_rows_request_it_does_not_know() {
-        // An old daemon has no such command, so the web must read the error
-        // and keep the step's plain text.
         let unknown = serde_json::from_value::<crate::Request>(json!({
             "cmd": "GetAssistantStepRowsV2", "conversation_id": "c1", "call_id": "call1", "seq": 7,
         }));

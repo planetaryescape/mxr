@@ -533,7 +533,6 @@ mod tests {
     fn a_hint_id_means_one_hint_wherever_it_appears() {
         for guide in MODE_GUIDES {
             for hint in guide.hints {
-                // The action id is each mode's own; the copy is shared.
                 let same =
                     super::hint(hint.id).map(|first| (first.anchor, first.text, first.key.1));
                 assert_eq!(

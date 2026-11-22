@@ -124,8 +124,6 @@ mod tests {
         })
         .unwrap();
 
-        // serde ignores keys a struct variant does not declare, so the older
-        // daemon reads the fallback `limit` as its page size, as it always did.
         let legacy: PreConfigLimitRequest = serde_json::from_value(on).unwrap();
         match legacy {
             PreConfigLimitRequest::Search {
@@ -228,9 +226,7 @@ mod tests {
         ];
         for request in requests {
             let wire = serde_json::to_value(&request).unwrap();
-            // Round-trips on this version.
             serde_json::from_value::<Request>(wire.clone()).unwrap();
-            // A protocol 27 daemon has no such variant and refuses it.
             assert!(
                 serde_json::from_value::<PreSelectionRequest>(wire).is_err(),
                 "{request:?}"
@@ -242,12 +238,9 @@ mod tests {
     fn job_fields_added_for_selection_jobs_are_optional_both_ways() {
         let job = selection_job();
         let wire = serde_json::to_value(&job).unwrap();
-        // A protocol 27 client ignores the added fields.
         let old: PreSelectionJob = serde_json::from_value(wire).unwrap();
         assert_eq!(old.progress.failed, 1);
 
-        // A job written before them decodes with the fields empty, and a plain
-        // job does not put them on the wire.
         let mut plain = selection_job();
         plain.selection = None;
         plain.failures.clear();
@@ -305,7 +298,6 @@ mod tests {
         };
         let off = serde_json::to_value(list(None)).unwrap();
         assert!(!off.to_string().contains("label_role"), "{off}");
-        // An old client's request decodes on the new type with no role.
         let decoded: Request = serde_json::from_value(off).unwrap();
         assert!(matches!(
             decoded,
@@ -321,7 +313,6 @@ mod tests {
             &decoded,
             Request::ListEnvelopes { label_role: Some(role), .. } if role == "inbox"
         ));
-        // A daemon that predates the field ignores it and lists `label_id`.
         let legacy: PreLabelRoleRequest = serde_json::from_value(on).unwrap();
         assert!(matches!(
             legacy,
@@ -388,8 +379,6 @@ mod tests {
             }
             other => panic!("wrong variant: {other:?}"),
         }
-        // The remote policy is an allow-list: a key can't be set from a
-        // paired remote client.
         assert!(!remote::remote_read_allowed(&request));
         assert!(!remote::remote_send_allowed(&request));
     }
@@ -410,8 +399,6 @@ mod tests {
 
     #[test]
     fn legacy_unsubscribe_decoder_rejects_preview_commit_instead_of_purging() {
-        // The legacy sender mutation uses a tagged command, with unknown fields
-        // accepted inside UnsubscribePurge. A new command must never decode as it.
         #[derive(serde::Deserialize)]
         #[serde(tag = "cmd")]
         enum LegacySenderRequest {
@@ -449,17 +436,13 @@ mod tests {
             mutation_id: None,
             undo_unavailable: false,
         };
-        // Default (false) is omitted from the wire, so existing
-        // consumers see no new field.
         let json = serde_json::to_value(&result).unwrap();
         assert!(json.get("undo_unavailable").is_none());
 
-        // Set to true, it appears so clients can warn the user.
         result.undo_unavailable = true;
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json.get("undo_unavailable"), Some(&serde_json::json!(true)));
 
-        // And it round-trips back through a missing field as false.
         let parsed: MutationResultData = serde_json::from_value(
             serde_json::json!({"requested":1,"succeeded":1,"skipped":0,"failed":0,"accounts":[]}),
         )
@@ -469,7 +452,6 @@ mod tests {
 
     #[test]
     fn get_desk_defaults_and_desk_response_shape() {
-        // An omitted lane limit and account decode to the documented defaults.
         let parsed: Request =
             serde_json::from_value(serde_json::json!({"cmd": "GetDesk"})).unwrap();
         match parsed {
@@ -1804,7 +1786,6 @@ mod tests {
             assert_eq!(decoded.id, i);
         }
 
-        // No more messages
         assert!(codec.decode(&mut buf).unwrap().is_none());
     }
 
@@ -1832,9 +1813,6 @@ mod tests {
 
     #[test]
     fn every_client_kind_name_parses_back_to_its_kind() {
-        // The bridge turns Activity filter text back into a `ClientKind`, so
-        // every tag the recorder writes must parse: a missing arm silently
-        // drops that client's rows from a filtered view.
         for kind in [
             ClientKind::Human,
             ClientKind::Tui,
@@ -2075,7 +2053,6 @@ mod tests {
             other => panic!("unexpected payload: {other:?}"),
         }
 
-        // Response shape with citations + override token round-trips losslessly.
         let report = DraftSafetyReport {
             allowed: false,
             verdict: DraftSafetyVerdict::Blocked,
@@ -2104,9 +2081,6 @@ mod tests {
             }),
         };
         let json = serde_json::to_string(&resp).unwrap();
-        // PII redacted preview was set; raw secret bytes never appeared
-        // in this test fixture, so guard against accidental future
-        // regression that surfaces them.
         assert!(!json.contains("BEGIN PRIVATE KEY"));
         let parsed: IpcMessage = serde_json::from_str(&json).unwrap();
         match parsed.payload {
@@ -2206,7 +2180,6 @@ mod tests {
 
     #[test]
     fn account_summary_without_identity_still_decodes() {
-        // A daemon from before blueprint 33 sends no identity key.
         let older = serde_json::json!({
             "account_id": AccountId::new(),
             "key": "work",
@@ -2245,8 +2218,6 @@ mod tests {
 
     #[test]
     fn an_account_with_a_colour_from_a_newer_daemon_still_parses() {
-        // A daemon that knows a slot this build does not must not fail the
-        // whole accounts list, only that account's colour.
         let newer = serde_json::json!({
             "account_id": AccountId::new(),
             "key": "work",
@@ -2416,7 +2387,6 @@ mod tests {
         };
         assert_eq!(revise.as_deref(), Some("proposal-1"));
 
-        // The request as the daemon before `revise` read it.
         #[derive(serde::Deserialize)]
         #[serde(tag = "cmd")]
         enum BeforeRevise {

@@ -160,9 +160,6 @@ fn inspect_tag(
     let mut colspan = 1u64;
     let mut rowspan = 1u64;
     let mut attributes = 0usize;
-    // Quote parity over the bytes walked so far. A span-looking token is only
-    // trusted outside quotes, so the scan never rewrites another attribute's
-    // value.
     let mut quoted = Quotes::default();
     let mut walked = start;
     let mut index = name_end;
@@ -268,8 +265,6 @@ fn span_attribute(
     if quoted.inside() {
         return if enforce { None } else { Some(None) };
     }
-    // The name is followed by optional whitespace, `=`, optional whitespace and
-    // an optional quote; the value is the digits after that.
     let mut value_start = start + 7;
     while value_start < bytes.len() && bytes[value_start].is_ascii_whitespace() {
         value_start += 1;
@@ -395,8 +390,6 @@ mod tests {
 
     #[test]
     fn a_list_with_optional_end_tags_is_within_budget() {
-        // Depth is not a budget: this list has 300 items and no unclosed depth
-        // cap trips.
         let items = "<li>Item<br>details".repeat(300);
         let html = format!("<ol>{items}</ol>");
         assert!(within_budget(&html));
@@ -420,7 +413,6 @@ mod tests {
 
     #[test]
     fn grid_slots_over_the_cap_are_over_budget() {
-        // 2,000 cells of rowspan 100 is 200,000 slots: exactly at the cap.
         let at_cap: String = (0..2_000)
             .map(|_| r#"<tr><td rowspan="100">x</td></tr>"#)
             .collect();

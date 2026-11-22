@@ -111,8 +111,6 @@ pub fn build_message_with_id_and_parts(
     inline_assets: &[LoadedInlineAsset],
     message_id: &str,
 ) -> Result<Message, EmailBuildError> {
-    // The daemon resolves managed bytes to paths, but a path's extension is
-    // not authoritative for the original MIME type (or a duplicate filename).
     let forwarded = if draft.intent == mxr_core::DraftIntent::Forward {
         draft.managed_attachments.as_deref().unwrap_or_default()
     } else {
@@ -179,8 +177,6 @@ pub fn build_message_with_id_and_parts(
 
     let rendered = render_body(&draft.content);
     let alternative = if let Some(inline_reply) = draft.inline_calendar_reply.as_ref() {
-        // Invite-reply-with-comment path: the alternative carries text/plain
-        // (the user's comment) + text/calendar; method=REPLY (the pre-built
         // ICS). RFC 6047 §2.4 — the `method` parameter MUST match the iCal
         // METHOD property. We deliberately omit the text/html half because
         // calendar-server-side processors (Exchange, Google, iCloud) match on
@@ -211,9 +207,6 @@ pub fn build_message_with_id_and_parts(
         );
 
         let html_part = if draft.content.is_html() {
-            // A designed template is the caller's artifact; it comes out the
-            // far end exactly as it went in. Two things are needed for that.
-            //
             // Base64, not the quoted-printable lettre would pick on its own,
             // because QP round-trips the content but canonicalises line
             // endings to CRLF.
@@ -222,10 +215,6 @@ pub fn build_message_with_id_and_parts(
             // lettre canonicalises line endings for a string body too
             // (`Body::encode_crlf`), whatever the transfer encoding. Its
             // binary path leaves them alone.
-            //
-            // The markdown path keeps the string and quoted-printable it
-            // always had — mxr generated that HTML, so there are no caller
-            // bytes to preserve.
             html_part
                 .header(header::ContentTransferEncoding::Base64)
                 .body(rendered.html.into_bytes())
@@ -246,8 +235,6 @@ pub fn build_message_with_id_and_parts(
     };
 
     // multipart/related wraps the alternative so `cid:` references resolve.
-    // Gmail's own composer uses exactly this shape; multipart/mixed is the
-    // common mistake and leaves inline images rendering as attachments.
     let related = if inline_assets.is_empty() {
         alternative
     } else {
@@ -485,9 +472,7 @@ mod tests {
         assert!(raw.contains("Content-Type: text/calendar; method=REPLY;"));
         assert!(raw.contains("METHOD:REPLY"));
         assert!(raw.contains("PARTSTAT=ACCEPTED"));
-        // The user's typed comment must round-trip into the text/plain half.
         assert!(raw.contains("Looking forward to it."));
-        // We deliberately *don't* emit a text/html alternative for invite replies.
         assert!(
             !raw.contains("Content-Type: text/html;"),
             "invite-reply MIME should omit text/html alternative"
@@ -544,11 +529,9 @@ mod tests {
         assert!(raw.contains("Cc:") && raw.contains("carol@example.com"));
         assert!(raw.contains("Subject: Weekly sync"));
         assert!(raw.contains("Message-ID: <m1@example.com>"));
-        // markdown renders to a text/plain + text/html alternative.
         assert!(raw.contains("Content-Type: multipart/alternative"));
         assert!(raw.contains("Content-Type: text/plain"));
         assert!(raw.contains("Content-Type: text/html"));
-        // The markdown emphasis survives into the HTML part.
         assert!(raw.contains("<strong>world</strong>"));
     }
 
@@ -596,8 +579,6 @@ mod tests {
 
     #[test]
     fn binary_attachment_is_base64_transfer_encoded() {
-        // Truly binary content (non-printable bytes) must be base64
-        // transfer-encoded so it survives an 8-bit-unclean transport.
         let draft = plain_draft("Binary attachment", "see attached");
         let attachment = crate::attachments::LoadedAttachment {
             filename: "logo.png".into(),
@@ -622,8 +603,6 @@ mod tests {
         let message =
             build_message_with_id(&draft, &sender(), false, &[], "<u@example.com>").unwrap();
         let raw = String::from_utf8(message.formatted()).unwrap();
-        // The raw 8-bit subject must not appear unencoded; it's an
-        // encoded-word per RFC 2047.
         assert!(!raw.contains("Subject: Déjà vu — café"));
         assert!(
             raw.to_lowercase().contains("=?utf-8?"),
@@ -644,15 +623,12 @@ mod tests {
         assert!(a.contains("@mail.example.org"));
         assert_ne!(a, b, "each generated Message-ID must be unique");
 
-        // A from-address with no domain falls back rather than producing a
-        // malformed `@`-less id.
         let no_domain = generate_message_id(&Address {
             name: None,
             email: "weird".into(),
         });
         assert!(no_domain.contains('@'));
     }
-    // ---- HTML bodies -----------------------------------------------------
 
     /// A realistic designed email: table layout, inline CSS, a `<style>` block
     /// with a media query, an Outlook conditional comment, a CID image, and a
@@ -806,8 +782,6 @@ mod tests {
 
     #[test]
     fn a_designed_template_reaches_the_wire_byte_for_byte() {
-        // The core promise. Everything in BRANDED_HTML is something a
-        // sanitiser, prettifier or re-encoder would damage.
         let raw = wire(&html_draft(BRANDED_HTML, Some("Hi Dumi")), &[], &[]);
 
         assert_eq!(
@@ -819,8 +793,6 @@ mod tests {
 
     #[test]
     fn a_designed_template_survives_alongside_its_inline_image() {
-        // Same promise, but through the multipart/related path, which is where
-        // the body gets re-wrapped.
         let raw = wire(
             &html_draft(BRANDED_HTML, Some("Hi Dumi")),
             &[pdf_attachment()],
@@ -835,9 +807,6 @@ mod tests {
 
     #[test]
     fn lf_only_html_keeps_its_lf_endings() {
-        // The specific regression base64 exists to prevent: quoted-printable
-        // canonicalises every line ending to CRLF, so an LF-only source file
-        // would not decode back to the bytes the caller supplied.
         let html = "<p>one</p>\n<p>two</p>\n<p>three</p>\n";
 
         let bytes = html_part_bytes(&wire(&html_draft(html, Some("t")), &[], &[]));
@@ -860,8 +829,6 @@ mod tests {
 
     #[test]
     fn a_line_far_longer_than_the_smtp_limit_comes_back_unbroken() {
-        // base64 wraps the *encoded* stream, which decodes back to one line.
-        // A transfer encoding that soft-wrapped the source would not.
         let html = format!("<p>{}</p>", "x".repeat(4000));
 
         let bytes = html_part_bytes(&wire(&html_draft(&html, Some("t")), &[], &[]));
@@ -891,8 +858,6 @@ mod tests {
 
     #[test]
     fn the_markdown_path_still_uses_quoted_printable() {
-        // This change must not reach ordinary markdown compose: mxr generated
-        // that HTML itself, so there are no caller bytes to preserve.
         let raw = wire(&plain_draft("s", "Hello **world**"), &[], &[]);
 
         let parsed = parse(&raw);
@@ -914,8 +879,6 @@ mod tests {
 
     #[test]
     fn inline_assets_put_related_outside_the_alternative() {
-        // multipart/related is the discriminator: mixed leaves the logo
-        // rendering as an attachment instead of resolving the cid.
         let raw = wire(&html_draft(BRANDED_HTML, Some("t")), &[], &[inline_logo()]);
 
         assert_eq!(
@@ -997,8 +960,6 @@ mod tests {
 
     #[test]
     fn a_caller_supplied_text_alternative_is_used_verbatim() {
-        // The HTML says "ignored"; if the builder generated the text part
-        // instead of taking the caller's, that word would show up.
         let raw = wire(
             &html_draft("<p>ignored</p>", Some("The hand-written version.")),
             &[],
@@ -1024,7 +985,6 @@ mod tests {
             !text.contains('<'),
             "generated text still carries markup: {text:?}"
         );
-        // Generation reads the HTML; it never rewrites it.
         assert_eq!(String::from_utf8(html_part_bytes(&raw)).unwrap(), html);
     }
 }

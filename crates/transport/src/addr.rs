@@ -153,8 +153,6 @@ mod tests {
 
     #[test]
     fn percent_escapes_are_literal_not_decoded() {
-        // A filesystem path, not a URL: `%20` stays three literal bytes, so
-        // `a%20b` is 5 bytes — never decoded to `a b`.
         let parsed = TransportAddr::parse("unix://a%20b").unwrap();
         assert_eq!(parsed, TransportAddr::Unix(PathBuf::from("a%20b")));
         let TransportAddr::Unix(path) = parsed else {
@@ -188,7 +186,6 @@ mod tests {
 
     #[test]
     fn parses_cmd_scheme_whitespace_split() {
-        // Whitespace-split argv, no shell quoting — runs of whitespace collapse.
         assert_eq!(
             TransportAddr::parse("cmd://ssh -T host  mxr daemon dial-stdio").unwrap(),
             TransportAddr::Cmd(vec![
@@ -216,21 +213,18 @@ mod tests {
         let previous = std::env::var(DAEMON_ADDR_ENV).ok();
         let default = PathBuf::from("/run/mxr/mxr.sock");
 
-        // Unset → default returned unchanged.
         std::env::remove_var(DAEMON_ADDR_ENV);
         assert_eq!(
             TransportAddr::resolve(default.clone()).unwrap(),
             TransportAddr::Unix(default.clone())
         );
 
-        // Set → MXR_DAEMON_ADDR wins over the default.
         std::env::set_var(DAEMON_ADDR_ENV, "unix:///tmp/override.sock");
         assert_eq!(
             TransportAddr::resolve(default.clone()).unwrap(),
             TransportAddr::Unix(PathBuf::from("/tmp/override.sock"))
         );
 
-        // Blank/whitespace → treated as unset.
         std::env::set_var(DAEMON_ADDR_ENV, "   ");
         assert_eq!(
             TransportAddr::resolve(default.clone()).unwrap(),

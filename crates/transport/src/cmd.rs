@@ -66,15 +66,10 @@ impl Connector for CmdConnector {
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            // stderr passes through to ours: ssh host-key prompts, connection
-            // errors, and the remote's own diagnostics stay visible to the user.
             .stderr(Stdio::inherit())
-            // Send a kill signal when the stream drops, so a finished or aborted
             // client tears the child down instead of leaking it. Reaping is
             // best-effort per tokio's docs (the runtime driver reaps the zombie
             // asynchronously once the signal lands); this is acceptable for a
-            // short-lived per-request dialer, and normal completion — stdin EOF
-            // → the child exits on its own — never relies on it.
             .kill_on_drop(true)
             .spawn()
             .map_err(|source| TransportError::Connect {
@@ -82,8 +77,6 @@ impl Connector for CmdConnector {
                 source,
             })?;
 
-        // Take the piped handles out of the child; the `Child` stays owned by
-        // the stream purely to keep the process alive (and reap it on drop).
         let stdout = child.stdout.take().ok_or_else(|| TransportError::Connect {
             endpoint: self.describe(),
             source: std::io::Error::other("cmd:// child produced no stdout pipe"),

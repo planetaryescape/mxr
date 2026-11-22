@@ -85,7 +85,6 @@ async fn partial_and_coalesced_binary_messages_preserve_bytes_and_drop_closes_so
                 .await
                 .unwrap();
         }
-        // Dropping the byte-stream must drop its owned bridge task and socket.
         assert!(
             tokio::time::timeout(std::time::Duration::from_secs(2), ws.next())
                 .await

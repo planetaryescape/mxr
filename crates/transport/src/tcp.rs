@@ -59,11 +59,8 @@ impl ServerTransport for TcpServerTransport {
 
     fn capabilities(&self) -> TransportCapabilities {
         TransportCapabilities {
-            // Loopback bind: the peer is on this machine. No autostart — a TCP
-            // client cannot re-exec the daemon binary the way a UDS client can.
             locality: LocalityCaps { same_machine: true },
             auth: AuthCaps {
-                // No OS-level peer identity; the token IS the identity.
                 implicit_peer_identity: false,
                 token: true,
             },
@@ -76,9 +73,6 @@ impl ServerTransport for TcpServerTransport {
     async fn bind(&self) -> Result<Box<dyn TransportListener>> {
         let endpoint = tcp_endpoint(self.addr);
         if !is_loopback_ip(self.addr.ip()) {
-            // Refuse outright: remote TCP without TLS is a canonical RCE vector
-            // (Docker's unauthenticated 2375). Off-machine access is the
-            // `dial-stdio`-over-SSH story, not an in-daemon bind.
             return Err(TransportError::Bind {
                 endpoint,
                 source: std::io::Error::new(
@@ -95,8 +89,6 @@ impl ServerTransport for TcpServerTransport {
                     endpoint: endpoint.clone(),
                     source,
                 })?;
-        // The kernel may have assigned an ephemeral port (`:0`); report the real
-        // one in the endpoint string.
         let bound = listener.local_addr().unwrap_or(self.addr);
         Ok(Box::new(TcpListenerAdapter {
             listener: Some(listener),
@@ -122,10 +114,7 @@ impl TransportListener for TcpListenerAdapter {
             ))
         })?;
         let (stream, _peer) = listener.accept().await.map_err(TransportError::Accept)?;
-        // Framed IPC is request/response with small control frames; Nagle only
-        // adds latency. Best-effort — a set failure never fails the accept.
         let _ = stream.set_nodelay(true);
-        // No OS peer identity on TCP: the dispatch gate must demand a token.
         let peer = PeerInfo {
             auth: PeerAuth::TokenRequired,
         };
@@ -133,12 +122,10 @@ impl TransportListener for TcpListenerAdapter {
     }
 
     async fn stop_accepting(&mut self) {
-        // Drop the listening socket so new connects are refused promptly.
         self.listener = None;
     }
 
     async fn cleanup(&mut self) -> Result<()> {
-        // Nothing on disk; dropping the socket is enough.
         Ok(())
     }
 
@@ -167,11 +154,6 @@ impl TcpConnector {
 #[async_trait]
 impl Connector for TcpConnector {
     async fn connect(&self) -> Result<BoxedIo> {
-        // Refuse non-loopback BEFORE opening the socket: TCP carries the token
-        // in plaintext, so `MXR_DAEMON_ADDR=tcp://<remote-ip>` would leak the
-        // credential to an off-machine host. The target is a numeric address
-        // (parsed as a `SocketAddr`), so this is a direct check — no DNS. The
-        // server also refuses non-loopback binds; this closes the client half.
         if !is_loopback_ip(self.addr.ip()) {
             return Err(TransportError::Connect {
                 endpoint: tcp_endpoint(self.addr),
@@ -199,10 +181,6 @@ impl Connector for TcpConnector {
     }
 
     fn auth_token(&self) -> Option<&str> {
-        // Defense in depth: never advertise the token for a non-loopback
-        // target. `connect` already refuses first, so the handshake is never
-        // reached — this guarantees the token isn't surfaced even to a caller
-        // that inspects the connector directly.
         if is_loopback_ip(self.addr.ip()) {
             self.token.as_deref()
         } else {
@@ -239,7 +217,6 @@ mod tests {
 
     #[tokio::test]
     async fn loopback_bind_accepts_and_surfaces_token_required() {
-        // Ephemeral loopback port; a connect+accept yields a TokenRequired peer.
         let transport = TcpServerTransport::new("127.0.0.1:0".parse().unwrap());
         let mut listener = transport.bind().await.unwrap();
         let endpoint = listener.endpoint();
@@ -262,8 +239,6 @@ mod tests {
 
     #[tokio::test]
     async fn connector_refuses_non_loopback_before_sending_token() {
-        // A non-loopback target must be refused at connect time, and the token
-        // must never be advertised for it — no plaintext credential leak.
         let connector = TcpConnector::new("93.184.216.34:9000".parse().unwrap(), Some("s".into()));
         assert_eq!(
             connector.auth_token(),

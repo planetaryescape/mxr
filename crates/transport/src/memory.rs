@@ -130,9 +130,6 @@ impl ServerTransport for MemoryTransport {
     }
 
     fn capabilities(&self) -> TransportCapabilities {
-        // In-process: same machine, and the peer is literally this process, so
-        // there is an implicit (trivial) identity. No autostart — you cannot
-        // spawn a daemon over an in-memory pipe.
         TransportCapabilities {
             locality: LocalityCaps { same_machine: true },
             auth: AuthCaps {
@@ -169,8 +166,6 @@ impl TransportListener for MemoryListener {
                         "listener has stopped accepting",
                     )));
                 }
-                // In-memory: the peer is this process — an explicit
-                // `LocalProcess`, never a fabricated `UnixPeer`.
                 Ok(Some(server_end)) => return Ok((Box::new(server_end), PeerInfo::local())),
                 Ok(None) => self.inner.ready.notified().await,
             }
@@ -182,7 +177,6 @@ impl TransportListener for MemoryListener {
     }
 
     async fn cleanup(&mut self) -> Result<()> {
-        // Nothing on disk to remove; dropping the rendezvous is enough.
         Ok(())
     }
 
@@ -200,10 +194,6 @@ pub struct MemoryConnector {
 #[async_trait]
 impl Connector for MemoryConnector {
     async fn connect(&self) -> Result<BoxedIo> {
-        // Once the listener has stopped accepting, a connect must fail (like a
-        // UDS connection-refused) rather than hand back a client whose server
-        // end will never be accepted. The closed-check and enqueue are atomic
-        // inside `enqueue`, so this can't race a concurrent `stop_accepting`.
         let (server_end, client_end) = tokio::io::duplex(MEMORY_BUFFER);
         if !self.inner.enqueue(server_end) {
             return Err(TransportError::Connect {
@@ -243,7 +233,6 @@ mod tests {
         let connector = transport.connector();
         let mut listener = transport.bind().await.unwrap();
 
-        // Reachable while accepting: connect then accept the pair.
         assert!(
             connector.connect().await.is_ok(),
             "reachable while accepting"
@@ -253,7 +242,6 @@ mod tests {
             .await
             .expect("accept the queued connection");
 
-        // Stop accepting: further connects are refused, and accept errors.
         listener.stop_accepting().await;
         match connector.connect().await {
             Err(TransportError::Connect { source, .. }) => {
@@ -279,11 +267,8 @@ mod tests {
         let connector = transport.connector();
         let mut listener = transport.bind().await.unwrap();
 
-        // Connect (server end enqueued) but do NOT accept it.
         let mut raced = connector.connect().await.expect("connect before stop");
 
-        // stop_accepting drains pending: the enqueued server end is dropped, so
-        // the raced client end observes a closed channel.
         listener.stop_accepting().await;
 
         let mut buf = [0u8; 1];
@@ -296,7 +281,6 @@ mod tests {
             "the raced connector's channel must be closed (EOF), never left hanging"
         );
 
-        // And accept now reports closed rather than blocking forever.
         assert!(listener.accept().await.is_err(), "accept fails after close");
     }
 }

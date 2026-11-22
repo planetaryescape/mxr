@@ -91,7 +91,6 @@ where
     T: ServerTransport + ?Sized,
     C: Connector + ?Sized,
 {
-    // --- static contract: name + capability coherence ----------------------
     assert!(
         !transport.name().trim().is_empty(),
         "a transport must report a stable, non-empty name"
@@ -105,7 +104,6 @@ where
         );
     }
 
-    // --- bind ---------------------------------------------------------------
     let mut listener = transport.bind().await.expect("bind should succeed");
     assert!(
         !listener.endpoint().trim().is_empty(),
@@ -116,9 +114,6 @@ where
         "a connector must describe a non-empty endpoint"
     );
 
-    // --- reachable while accepting: connect, accept, and prove the stream is
-    //     a real bidirectional pipe; the accepted peer must match the
-    //     advertised capabilities ---------------------------------------------
     let mut client = connector
         .connect()
         .await
@@ -128,24 +123,10 @@ where
         .expect("accept should succeed while accepting");
     assert_peer_matches_caps(&peer.auth, caps, connector.auth_token().is_some());
     round_trip(&mut client, &mut server).await;
-    // The transport must carry the protocol's full byte envelope — the max wire
-    // frame (16 MiB payload + 4-byte length prefix) round-trips intact each way,
-    // presented as ONE `write_all` buffer just as `Framed<IpcCodec>` does. Without
-    // this, a transport that only accepts small write buffers would pass a tiny
-    // round-trip yet fail the daemon's near-limit-frame scenario in production;
-    // proving it here is what lets the protocol corpus stay out-of-tree (D057).
     round_trip_large(&mut client, &mut server).await;
     drop(client);
     drop(server);
 
-    // --- cancel-safety: an `accept` future that registered interest (polled to
-    //     Pending) and is then dropped must NOT lose a connection that arrives in
-    //     that window — the daemon's accept loop `select_all`s several listeners
-    //     and drops the losing branch each round. Ordering is load-bearing: poll
-    //     to Pending FIRST (empty backlog), THEN connect, THEN drop the parked
-    //     future WITHOUT polling it again, THEN a fresh accept must recover the
-    //     connection. (A connection already peeled off by a completed poll is
-    //     allowed to be lost per the trait doc; this tests the parked case.) -----
     let mut client: BoxedIo;
     {
         let accept = listener.accept();
@@ -154,15 +135,11 @@ where
             futures::poll!(accept.as_mut()).is_pending(),
             "accept must park (Pending) when no client is waiting yet"
         );
-        // A client arrives while the accept is parked...
         client = connector
             .connect()
             .await
             .expect("connect should succeed while an accept is parked");
-        // ...and the parked accept is dropped here (end of scope) without being
-        // polled again — exactly how `select!` abandons the losing branch.
     }
-    // The connection must survive: a fresh accept still yields it (no loss).
     let (mut server, _peer) = within(listener.accept())
         .await
         .expect("a dropped parked accept must not lose the queued connection");
@@ -170,8 +147,6 @@ where
     drop(client);
     drop(server);
 
-    // --- stop_accepting: new connections are refused promptly (never hang),
-    //     and accept fails rather than blocking forever ----------------------
     within(listener.stop_accepting()).await;
 
     let accept_after_stop = within(listener.accept()).await;
@@ -181,10 +156,7 @@ where
     );
 
     match within(connector.connect()).await {
-        // Refused outright — the strong, common case (UDS / TCP / memory).
         Err(_) => {}
-        // A community transport may hand back a stream that immediately EOFs;
-        // that is acceptable, a live connection is not.
         Ok(mut stream) => {
             let mut buf = [0u8; 1];
             let read = within(stream.read(&mut buf)).await.unwrap_or(0);
@@ -195,7 +167,6 @@ where
         }
     }
 
-    // --- cleanup is idempotent ---------------------------------------------
     listener.cleanup().await.expect("cleanup should succeed");
     listener
         .cleanup()
@@ -414,10 +385,6 @@ mod tests {
 
     #[tokio::test]
     async fn token_transport_conforms() {
-        // Fresh instance per suite call: like `MemoryTransport`, this duplex
-        // fixture shares one queue across binds and `stop_accepting` closes it
-        // for good, so each conformance run (which does one bind lifecycle) gets
-        // its own transport. Re-bindable transports (TCP/UDS) can reuse one.
         let transport = token_fixture::TokenFixture::new();
         let connector = transport.connector();
         run_transport_conformance(&transport, &connector).await;
@@ -555,8 +522,6 @@ mod tests {
         #[async_trait]
         impl Connector for TokenConnector {
             async fn connect(&self) -> Result<BoxedIo> {
-                // A modest buffer: the large-frame check streams concurrently,
-                // so any size works; this keeps 16 MiB brisk.
                 let (server_end, client_end) = tokio::io::duplex(64 * 1024);
                 let mut guard = self.inner.pending.lock().expect("lock");
                 match guard.as_mut() {

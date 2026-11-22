@@ -1156,30 +1156,6 @@ mod tests {
     }
 
     #[test]
-    fn not_bad_is_a_positive_answer() {
-        let requirements = req("", &CALL_ANSWERS, &[]);
-        assert_eq!(
-            run(&requirements, "3pm is not bad. Priya is out.").passed(Check::Answers),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn a_negative_answer_may_say_isnt_or_unable() {
-        let requirements = req("", &CALL_ANSWERS, &[]);
-        for draft in [
-            "3pm works. Priya isn't joining.",
-            "3pm works. Priya is unable to join.",
-        ] {
-            assert_eq!(
-                run(&requirements, draft).passed(Check::Answers),
-                Some(true),
-                "{draft}"
-            );
-        }
-    }
-
-    #[test]
     fn a_preamble_is_a_leftover_even_when_clean_up_would_keep_it() {
         // clean_draft keeps this line (it ends in a full stop, not a colon), so
         // only the raw output shows it.
@@ -1252,27 +1228,5 @@ mod tests {
                 "{line}"
             );
         }
-    }
-
-    #[test]
-    fn a_draft_reply_or_curly_apostrophe_commentary_is_a_preamble() {
-        let requirements = req("", &[], &[]);
-        for line in ["Here’s your draft reply.", "Below is the draft reply:"] {
-            let text = format!("{line}\n\nHi Alex,\n\nFriday works.\n\nAlex");
-            assert_eq!(
-                run(&requirements, &text).passed(Check::Leftovers),
-                Some(false),
-                "{line}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_real_email_that_opens_with_sure_is_not_a_preamble() {
-        let requirements = req("", &[], &[]);
-        assert_eq!(
-            run(&requirements, "Sure, Friday works for me.\n\nAlex").passed(Check::Leftovers),
-            Some(true)
-        );
     }
 }

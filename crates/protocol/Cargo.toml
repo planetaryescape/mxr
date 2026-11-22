@@ -28,5 +28,4 @@ tokio-util = { workspace = true }
 utoipa = { workspace = true, optional = true }
 
 [dev-dependencies]
-proptest = "1"
 tokio = { workspace = true }

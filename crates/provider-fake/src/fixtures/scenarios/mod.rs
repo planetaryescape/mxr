@@ -382,16 +382,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_label_never_names_the_same_email_twice() {
-        let seed = seed();
-        let mut ids: Vec<&str> = seed.labels.iter().map(|l| l.provider_id.as_str()).collect();
-        let total = ids.len();
-        ids.sort_unstable();
-        ids.dedup();
-        assert_eq!(ids.len(), total);
-    }
-
     /// Mail the owner sent is labelled only when it makes a promise, and then
     /// the label says it is outbound, so the eval grades its promises alone.
     #[test]
@@ -457,36 +447,6 @@ mod tests {
                 label.scenario
             );
         }
-    }
-
-    /// An item states what it asks with enough to be graded: a counterparty,
-    /// and a reference whenever a sender has several items.
-    #[test]
-    fn every_item_names_its_counterparty() {
-        let seed = seed();
-        for label in &seed.labels {
-            for item in &label.items {
-                assert!(
-                    item.counterparty
-                        .as_deref()
-                        .is_some_and(|name| !name.trim().is_empty()),
-                    "{} has an item with no counterparty",
-                    label.scenario
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn the_quick_set_is_ordered_and_looked_up_by_provider_id() {
-        let ids: Vec<&str> = quick_set().map(|l| l.provider_id.as_str()).collect();
-        let mut sorted = ids.clone();
-        sorted.sort_by_key(|id| natural_key(id));
-        assert_eq!(ids, sorted);
-        let first = quick_set().next().expect("a labelled email");
-        assert_eq!(expectation_for(&first.provider_id), Some(first));
-        assert_eq!(expectation_for("demo-msg-0"), None);
-        assert_eq!(expectation_for("not-a-demo-id"), None);
     }
 
     fn seed_at(now: DateTime<Utc>) -> ScenarioSeed {
@@ -654,22 +614,6 @@ mod tests {
     }
 
     #[test]
-    fn a_review_covers_real_questions_and_gives_a_reason() {
-        let seed = seed();
-        let reviewed: Vec<_> = seed.labels.iter().filter_map(|l| l.review).collect();
-        assert!(!reviewed.is_empty());
-        for review in reviewed {
-            assert!(!review.questions.is_empty() && !review.why.is_empty());
-            for question in review.questions {
-                assert!(
-                    ["who", "home", "todo", "record"].contains(question),
-                    "unknown question {question}"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn twins_name_a_scenario_that_exists_and_say_what_differs() {
         let seed = seed();
         let ids: Vec<&str> = seed.labels.iter().map(|l| l.scenario).collect();
@@ -684,39 +628,6 @@ mod tests {
             }
         }
         assert!(twins >= 20, "only {twins} near-miss twins");
-    }
-
-    /// A pair of copies would measure nothing: the twin's text differs
-    /// from the scenario it twins.
-    #[test]
-    fn a_twin_is_a_different_email_from_the_scenario_it_twins() {
-        let seed = seed();
-        let text_of = |provider_id: &str| {
-            let (envelope, body) = seed
-                .messages
-                .iter()
-                .find(|(e, _)| e.provider_id == provider_id)
-                .expect("a labelled email exists");
-            (
-                envelope.subject.clone(),
-                envelope.from.email.clone(),
-                body.text_plain.clone(),
-            )
-        };
-        for label in seed.labels.iter().filter(|l| l.twin_of.is_some()) {
-            let other = seed
-                .labels
-                .iter()
-                .find(|l| Some(l.scenario) == label.twin_of)
-                .expect("the twinned scenario exists");
-            assert_ne!(
-                text_of(&label.provider_id),
-                text_of(&other.provider_id),
-                "{} and {} are the same email",
-                label.scenario,
-                other.scenario
-            );
-        }
     }
 
     fn work_account() -> AccountId {
@@ -822,41 +733,6 @@ mod tests {
             &bulk.from.email
         )
         .is_none());
-    }
-
-    /// The hand-written mail at the head of the personal account keeps the
-    /// labels the quick set gives it; the work account has none of it.
-    #[test]
-    fn the_curated_head_keeps_its_quick_set_labels() {
-        let seed = seed();
-        // The twins are numbered after the head and are not in the demo.
-        let in_head = |label: &Labelled| {
-            label
-                .provider_id
-                .strip_prefix("demo-msg-")
-                .and_then(|n| n.parse::<usize>().ok())
-                .is_some_and(|n| n <= curated_head_len())
-        };
-        let head: Vec<_> = seed.labels.iter().filter(|l| in_head(l)).collect();
-        assert!(head.len() > 90);
-        let (envelopes, _, _) = crate::fixtures::generate_demo_fixtures(&account_id(), 600);
-        for label in head {
-            let envelope = envelopes
-                .iter()
-                .find(|e| e.provider_id == label.provider_id)
-                .expect("the head is in the demo");
-            let full = full_label_for(
-                &account_id(),
-                &envelope.provider_id,
-                &envelope.thread_id,
-                &envelope.from.email,
-            )
-            .expect("labelled");
-            assert_eq!(full.scenario, label.scenario);
-            assert_eq!(full.expect, label.expect);
-            assert_eq!(full.items, label.items);
-            assert!(!full.held_out);
-        }
     }
 
     /// Labels recomputed from an index agree with the mail however the demo

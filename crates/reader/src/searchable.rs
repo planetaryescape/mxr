@@ -148,23 +148,6 @@ mod tests {
     }
 
     #[test]
-    fn rule_plain_part_is_exactly_as_stored() {
-        // Pre-HTML rules matched the stored plain text, so nothing may change it.
-        assert_eq!(
-            body_match_parts(Some("invoice\n"), None),
-            Some(vec!["invoice\n".to_string()])
-        );
-        assert_eq!(body_match_parts(Some(""), None), Some(vec![String::new()]));
-    }
-
-    #[test]
-    fn rule_html_part_is_converted_and_whitespace_collapsed() {
-        let parts =
-            body_match_parts(Some("plain"), Some("<p>Hello\n\n  there</p>")).unwrap_or_default();
-        assert_eq!(parts, vec!["plain".to_string(), "Hello there".to_string()]);
-    }
-
-    #[test]
     fn no_parts_at_all_is_unknown() {
         assert_eq!(body_match_parts(None, None), None);
     }

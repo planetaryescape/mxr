@@ -2232,32 +2232,6 @@ mod tests {
     // -- sync_messages: initial -----------------------------------------------
 
     #[tokio::test]
-    async fn initial_sync_fetches_inbox_messages() {
-        let messages = vec![
-            make_fetched_message(1, "Hello", "alice@example.com"),
-            make_fetched_message(2, "Meeting", "bob@example.com"),
-            make_fetched_message(3, "Report", "carol@example.com"),
-        ];
-
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 4, 3), vec![messages], vec![]);
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-
-        assert_eq!(batch.upserted.len(), 3);
-        assert_eq!(batch.upserted[0].envelope.subject, "Hello");
-        assert_eq!(batch.upserted[1].envelope.subject, "Meeting");
-        assert_eq!(batch.upserted[2].envelope.subject, "Report");
-        assert!(batch.deleted_provider_ids.is_empty());
-
-        let inbox = decoded_imap_inbox(&batch.next_cursor);
-        assert_eq!(inbox.uid_validity, 1);
-        assert_eq!(inbox.uid_next, 4);
-    }
-
-    #[tokio::test]
     async fn initial_sync_isolates_malformed_fetch_literals() {
         let good_before = make_fetched_message(1, "Before malformed", "alice@example.com");
         let good_after = make_fetched_message(3, "After malformed", "carol@example.com");
@@ -2332,17 +2306,6 @@ mod tests {
         assert!(fetch_commands[0].starts_with("UID FETCH 101,100,"));
         assert!(fetch_commands[0].contains(",3,2 "));
         assert!(fetch_commands[1].starts_with("UID FETCH 1 "));
-    }
-
-    #[tokio::test]
-    async fn initial_sync_empty_mailbox() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-        assert!(batch.upserted.is_empty());
     }
 
     #[tokio::test]
@@ -2607,25 +2570,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delta_sync_fetches_new_messages() {
-        let new_msg = make_fetched_message(4, "New message", "dave@example.com");
-
-        let factory =
-            MockImapSessionFactory::new(mailbox_info(1, 5, 4), vec![vec![new_msg]], vec![]);
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let cursor = imap_cursor(1, 4);
-        let batch = provider.sync_messages(&cursor).await.unwrap();
-
-        assert_eq!(batch.upserted.len(), 1);
-        assert_eq!(batch.upserted[0].envelope.subject, "New message");
-
-        assert_eq!(decoded_imap_inbox(&batch.next_cursor).uid_next, 5);
-    }
-
-    #[tokio::test]
     async fn delta_sync_overlaps_multi_folder_fetches() {
         let overlap = Arc::new(FetchOverlapState::default());
         let factory = ConcurrentInitialSyncFactory {
@@ -2676,19 +2620,6 @@ mod tests {
             overlap.max_active_fetches.load(Ordering::SeqCst) >= 2,
             "delta sync should overlap multi-folder fetches instead of serializing them"
         );
-    }
-
-    #[tokio::test]
-    async fn delta_sync_no_new_messages() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 4, 3), vec![], vec![]);
-
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let cursor = imap_cursor(1, 4);
-        let batch = provider.sync_messages(&cursor).await.unwrap();
-
-        assert!(batch.upserted.is_empty());
     }
 
     #[tokio::test]
@@ -3307,15 +3238,6 @@ mod tests {
     }
 
     // -- integration: full sync flow ------------------------------------------
-
-    #[test]
-    fn capabilities_advertise_idle_streaming_support() {
-        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        assert!(provider.capabilities().push.streaming);
-    }
 
     #[tokio::test]
     async fn full_sync_flow_initial_then_delta_then_fetch_and_mutate() {

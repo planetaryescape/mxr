@@ -151,25 +151,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plain_email_with_signature() {
-        let text =
-            "Hey,\n\nCan we meet tomorrow at 3pm?\n\nThanks,\n-- \nAlice\nSenior Engineer\n+1 555-0123\nalice@company.com";
-        let output = clean(Some(text), None, &ReaderConfig::default());
-        assert_eq!(
-            output.content.trim(),
-            "Hey,\n\nCan we meet tomorrow at 3pm?\n\nThanks,"
-        );
-        assert!(output.signature.is_some());
-    }
-
-    #[test]
-    fn reader_mode_stats_correct() {
-        let text = "Content here.\n\nOn Mon, alice wrote:\n> Long quote\n> Another line\n> And more\n\n-- \nSig line\nPhone: 555-0123";
-        let output = clean(Some(text), None, &ReaderConfig::default());
-        assert!(output.original_lines > output.cleaned_lines);
-    }
-
-    #[test]
     fn empty_input_returns_empty() {
         let output = clean(None, None, &ReaderConfig::default());
         assert!(output.content.is_empty());

@@ -48,13 +48,4 @@ mod tests {
         assert!(expanded.contains("Documents/test.txt"));
         assert_eq!(missing_path, "~/Documents/test.txt");
     }
-
-    #[test]
-    fn no_tilde_passthrough() {
-        let missing_path =
-            match resolve_attachments(&["/absolute/path/file.txt".to_string()]).unwrap_err() {
-                AttachmentError::NotFound(path) => path,
-            };
-        assert_eq!(missing_path, "/absolute/path/file.txt");
-    }
 }

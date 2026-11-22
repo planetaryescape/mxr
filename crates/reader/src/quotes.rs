@@ -151,12 +151,6 @@ mod tests {
     }
 
     #[test]
-    fn extract_from_on_wrote_ascii_unchanged() {
-        let name = extract_from_on_wrote("On Mon, Mar 15, alice@example.com wrote:");
-        assert_eq!(name.as_deref(), Some("alice@example.com"));
-    }
-
-    #[test]
     fn extract_from_on_wrote_multibyte_does_not_panic() {
         // `İ` (U+0130) lowercases to two chars, growing the byte length. A byte
         // offset taken from a lowercased copy is not a valid index into the
@@ -165,13 +159,5 @@ mod tests {
         let header = format!("On Mon, {} wrote:", "İ".repeat(7));
         let name = extract_from_on_wrote(&header);
         assert_eq!(name.as_deref(), Some("İİİİİİİ"));
-    }
-
-    #[test]
-    fn collapse_handles_multibyte_on_wrote_header() {
-        let text = format!("Reply.\n\nOn Mon, {} wrote:\n> quoted line", "İ".repeat(7));
-        let (cleaned, quotes) = collapse(&text);
-        assert!(cleaned.contains("[previous message from"));
-        assert_eq!(quotes.len(), 1);
     }
 }

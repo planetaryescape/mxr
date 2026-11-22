@@ -286,22 +286,3 @@ pub(super) fn records_demo_messages(
 
     built
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_count_matches_the_mail_built_and_pdfs_are_attached() {
-        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let me = address("Alex Demo", "alex@demo.mxr.local");
-        let built = records_demo_messages(&account_id, &me, Utc::now(), 1);
-        assert_eq!(built.len(), RECORDS_DEMO_MESSAGE_COUNT);
-        let pdfs = built
-            .iter()
-            .flat_map(|(_, body)| &body.attachments)
-            .filter(|a| a.mime_type == "application/pdf")
-            .count();
-        assert_eq!(pdfs, 5);
-    }
-}

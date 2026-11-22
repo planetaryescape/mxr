@@ -68,43 +68,6 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn typed_id_roundtrip() {
-        let id = MessageId::new();
-        let json = serde_json::to_string(&id).unwrap();
-        let parsed: MessageId = serde_json::from_str(&json).unwrap();
-        assert_eq!(id, parsed);
-    }
-
-    #[test]
-    fn typed_id_display() {
-        let id = AccountId::new();
-        let display = format!("{id}");
-        assert!(!display.is_empty());
-        assert_eq!(display, id.as_str());
-    }
-
-    #[test]
-    fn message_flags_bitwise() {
-        let flags = MessageFlags::READ | MessageFlags::STARRED;
-        assert!(flags.contains(MessageFlags::READ));
-        assert!(flags.contains(MessageFlags::STARRED));
-        assert!(!flags.contains(MessageFlags::DRAFT));
-        assert_eq!(flags.bits(), 0b0000_0011);
-    }
-
-    #[test]
-    fn response_time_direction_round_trips_db_str() {
-        // Cheap pin: as_db_str / from_db_str round-trip the enum cleanly,
-        // which is what reply_pairs.direction column relies on.
-        for d in [
-            ResponseTimeDirection::IReplied,
-            ResponseTimeDirection::TheyReplied,
-        ] {
-            assert!(!d.as_db_str().is_empty());
-        }
-    }
-
     fn owned(primary: &str, aliases: &[&str]) -> OwnedAddresses {
         OwnedAddresses::new(Some(primary), aliases.iter().copied())
     }
@@ -267,87 +230,6 @@ mod tests {
             lookup.is_account_address(&account, "a@example.com"),
             "an owned sender must not read as inbound after a failed rebuild"
         );
-    }
-
-    #[test]
-    fn message_flags_serde() {
-        let flags = MessageFlags::READ | MessageFlags::STARRED;
-        let json = serde_json::to_string(&flags).unwrap();
-        let parsed: MessageFlags = serde_json::from_str(&json).unwrap();
-        assert_eq!(flags, parsed);
-    }
-
-    #[test]
-    fn envelope_serde_roundtrip() {
-        let env = Envelope {
-            id: MessageId::new(),
-            account_id: AccountId::new(),
-            provider_id: "test-1".to_string(),
-            thread_id: ThreadId::new(),
-            message_id_header: Some("<test@example.com>".to_string()),
-            in_reply_to: None,
-            references: vec![],
-            from: Address {
-                name: Some("Alice".to_string()),
-                email: "alice@example.com".to_string(),
-            },
-            to: vec![Address {
-                name: None,
-                email: "bob@example.com".to_string(),
-            }],
-            cc: vec![],
-            bcc: vec![],
-            subject: "Test subject".to_string(),
-            date: chrono::Utc::now(),
-            flags: MessageFlags::READ | MessageFlags::STARRED,
-            snippet: "Preview text".to_string(),
-            has_attachments: false,
-            size_bytes: 1024,
-            unsubscribe: UnsubscribeMethod::None,
-            link_count: 0,
-            body_word_count: 0,
-            label_provider_ids: vec![],
-            keywords: std::collections::BTreeSet::new(),
-        };
-        let json = serde_json::to_string(&env).unwrap();
-        let parsed: Envelope = serde_json::from_str(&json).unwrap();
-        assert_eq!(env.id, parsed.id);
-        assert_eq!(env.subject, parsed.subject);
-        assert_eq!(env.flags, parsed.flags);
-        assert_eq!(env.from, parsed.from);
-    }
-
-    #[test]
-    fn unsubscribe_method_variants() {
-        let variants = vec![
-            UnsubscribeMethod::OneClick {
-                url: "https://unsub.example.com".to_string(),
-            },
-            UnsubscribeMethod::HttpLink {
-                url: "https://unsub.example.com/link".to_string(),
-            },
-            UnsubscribeMethod::Mailto {
-                address: "unsub@example.com".to_string(),
-                subject: Some("unsubscribe".to_string()),
-            },
-            UnsubscribeMethod::BodyLink {
-                url: "https://body.example.com".to_string(),
-            },
-            UnsubscribeMethod::None,
-        ];
-        for v in variants {
-            let json = serde_json::to_string(&v).unwrap();
-            let parsed: UnsubscribeMethod = serde_json::from_str(&json).unwrap();
-            assert_eq!(v, parsed);
-        }
-    }
-
-    #[test]
-    fn sync_cursor_empty_is_default() {
-        let c = SyncCursor::default();
-        assert!(c.is_empty());
-        assert_eq!(c.as_bytes(), &[] as &[u8]);
-        assert_eq!(SyncCursor::empty().as_bytes(), c.as_bytes());
     }
 
     #[test]

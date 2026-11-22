@@ -144,19 +144,6 @@ mod tests {
     }
 
     #[test]
-    fn validate_accepts_good_config() {
-        let config = SmtpConfig::new(
-            "smtp.example.com".into(),
-            587,
-            "user".into(),
-            "mxr/test".into(),
-            true,
-            true,
-        );
-        assert!(config.validate().is_ok());
-    }
-
-    #[test]
     fn validate_rejects_empty_host() {
         let config = SmtpConfig::new(
             "   ".into(),

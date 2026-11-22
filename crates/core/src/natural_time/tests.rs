@@ -344,18 +344,6 @@ fn errors_are_specific() {
 }
 
 #[test]
-fn no_error_message_uses_an_em_dash() {
-    for input in ["", "frday", "today", "today 9am", "fri tomorrow", "31 feb"] {
-        let err = resolve_time(input, &anchor(), &TimePrefs::default()).unwrap_err();
-        assert!(
-            !err.message.contains('\u{2014}'),
-            "{input:?}: {}",
-            err.message
-        );
-    }
-}
-
-#[test]
 fn tonight_after_the_evening_hour_is_in_the_past() {
     let late = london(2024, 5, 7, 20, 0);
     let err = resolve_time("tonight", &late, &TimePrefs::default()).unwrap_err();

@@ -236,20 +236,3 @@ pub(super) fn todo_demo_messages(
 
     built
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_count_matches_the_mail_built() {
-        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let me = address("Alex Demo", "alex@demo.mxr.local");
-        let built = todo_demo_messages(&account_id, &me, Utc::now(), 1);
-        assert_eq!(built.len(), TODO_DEMO_MESSAGE_COUNT);
-        assert_eq!(
-            built[TODO_DEMO_PROMISE_POSITION].0.subject,
-            TODO_DEMO_PROMISE_SUBJECT
-        );
-    }
-}

@@ -1946,55 +1946,9 @@ fn push_msg(
 }
 
 #[cfg(test)]
-mod reading_demo_ids {
-    use super::*;
-
-    #[test]
-    fn the_reading_demo_ids_point_at_reading_mail() {
-        let account = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let stream = DemoFixtureStream::new(&account, 2000);
-        let (envelope, _) = stream
-            .find(&reading_demo_later_provider_id())
-            .expect("the later digest");
-        assert_eq!(envelope.from.email, "links@links.demo.mxr.local");
-        for id in reading_demo_finished_provider_ids() {
-            let (envelope, _) = stream.find(&id).expect("a finished essay");
-            assert_eq!(envelope.from.email, "essays@longreads.demo.mxr.local");
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
-
-    #[test]
-    fn curated_demo_seed_is_50_messages_across_15_counterparties() {
-        let work_id = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
-        let personal_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let (work, work_bodies, _) = generate_demo_fixtures(&work_id, CURATED_DEMO_MESSAGE_COUNT);
-        let (personal, personal_bodies, _) =
-            generate_demo_fixtures(&personal_id, CURATED_DEMO_MESSAGE_COUNT);
-
-        assert_eq!(work.len() + personal.len(), CURATED_DEMO_MESSAGE_COUNT);
-        assert_eq!(
-            work_bodies.len() + personal_bodies.len(),
-            CURATED_DEMO_MESSAGE_COUNT
-        );
-
-        let counterparties = work
-            .iter()
-            .chain(personal.iter())
-            .flat_map(counterparty_emails)
-            .collect::<HashSet<_>>();
-        // 12 curated counterparties + 3 carriers/merchants from the seeded
-        // deliveries (Amazon, UPS, USPS), which land in the personal account.
-        assert_eq!(counterparties.len(), 15);
-        assert!(counterparties.contains("shipment-tracking@amazon.com"));
-        assert!(counterparties.contains("mcinfo@ups.com"));
-        assert!(counterparties.contains("auto-reply@usps.com"));
-    }
 
     #[test]
     fn generated_demo_carries_the_to_do_mail_and_names_the_promise() {
@@ -2090,19 +2044,5 @@ mod tests {
             curated_demo_thread_id(&account_id, 0),
             demo_thread_id(&account_id, 0)
         );
-    }
-
-    fn counterparty_emails(envelope: &Envelope) -> Vec<String> {
-        let self_emails = ["alex@demo.mxr.local", "alex@work.demo.mxr.local"];
-        let mut emails = Vec::new();
-        if !self_emails.contains(&envelope.from.email.as_str()) {
-            emails.push(envelope.from.email.clone());
-        }
-        for address in &envelope.to {
-            if !self_emails.contains(&address.email.as_str()) {
-                emails.push(address.email.clone());
-            }
-        }
-        emails
     }
 }

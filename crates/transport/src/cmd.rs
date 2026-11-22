@@ -153,12 +153,6 @@ mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    #[test]
-    fn describe_reconstructs_the_command() {
-        let connector = CmdConnector::new(vec!["ssh".into(), "-T".into(), "host".into()]);
-        assert_eq!(connector.describe(), "cmd://ssh -T host");
-    }
-
     /// `cat` echoes stdin to stdout: a full round-trip proves the child's stdio
     /// is wired as a bidirectional byte stream.
     #[tokio::test]

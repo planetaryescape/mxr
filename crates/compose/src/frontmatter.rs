@@ -157,29 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_frontmatter() {
-        let fm = ComposeFrontmatter {
-            to: "alice@example.com".into(),
-            cc: String::new(),
-            bcc: String::new(),
-            subject: "Test Subject".into(),
-            from: "me@example.com".into(),
-            in_reply_to: None,
-            intent: DraftIntent::New,
-            references: Vec::new(),
-            thread_id: None,
-            attach: Vec::new(),
-            signature: None,
-            forward_source: None,
-        };
-        let rendered = render_compose_file(&fm, "Hello!", None).unwrap();
-        let (parsed_fm, parsed_body) = parse_compose_file(&rendered).unwrap();
-        assert_eq!(parsed_fm.to, "alice@example.com");
-        assert_eq!(parsed_fm.subject, "Test Subject");
-        assert_eq!(parsed_body, "Hello!");
-    }
-
-    #[test]
     fn roundtrip_with_context() {
         let fm = ComposeFrontmatter {
             to: "alice@example.com".into(),

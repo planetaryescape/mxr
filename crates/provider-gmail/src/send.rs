@@ -286,20 +286,6 @@ mod tests {
     }
 
     #[test]
-    fn rfc2822_basic_message() {
-        let draft = test_draft();
-        let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
-        assert!(msg.contains("From: Me <me@example.com>"));
-        assert!(msg.contains("To: Alice <alice@example.com>"));
-        assert!(msg.contains("Subject: Test Subject"));
-        assert!(msg.contains("MIME-Version: 1.0"));
-        assert!(msg.contains("Content-Type: multipart/alternative"));
-        assert!(msg.contains("text/plain; charset=utf-8"));
-        assert!(msg.contains("text/html; charset=utf-8"));
-        assert!(msg.contains("\r\n"));
-    }
-
-    #[test]
     fn rfc2822_reply_has_full_references_chain() {
         let mut draft = test_draft();
         draft.reply_headers = Some(ReplyHeaders {

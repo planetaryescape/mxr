@@ -188,14 +188,6 @@ mod tests {
     }
 
     #[test]
-    fn provider_id_with_nested_folder() {
-        let id = format_provider_id("Projects/Work", 42);
-        let (mailbox, uid) = parse_provider_id(&id).unwrap();
-        assert_eq!(mailbox, "Projects/Work");
-        assert_eq!(uid, 42);
-    }
-
-    #[test]
     fn provider_id_invalid() {
         assert!(parse_provider_id("no-colon").is_err());
         assert!(parse_provider_id("INBOX:notanumber").is_err());

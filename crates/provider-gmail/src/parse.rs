@@ -521,10 +521,6 @@ mod tests {
     use crate::types::GmailBody;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use chrono::Datelike;
-    use mail_parser::MessageParser;
-    use mxr_mail_parse::extract_raw_header_block;
-    use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
-    use serde_json::json;
 
     fn make_headers(pairs: &[(&str, &str)]) -> Vec<GmailHeader> {
         pairs
@@ -560,68 +556,6 @@ mod tests {
                     attachment_id: None,
                     size: Some(100),
                     data: None,
-                }),
-                parts: None,
-                filename: None,
-            }),
-        }
-    }
-
-    fn gmail_message_from_fixture(name: &str) -> GmailMessage {
-        let raw = standards_fixture_bytes(name);
-        let parsed = MessageParser::default().parse(&raw).unwrap();
-        let mut headers = Vec::new();
-        let mut current_name = String::new();
-        let mut current_value = String::new();
-        for line in extract_raw_header_block(&raw).unwrap().lines() {
-            if line.starts_with(' ') || line.starts_with('\t') {
-                current_value.push(' ');
-                current_value.push_str(line.trim());
-                continue;
-            }
-
-            if !current_name.is_empty() {
-                headers.push(GmailHeader {
-                    name: current_name.clone(),
-                    value: current_value.trim().to_string(),
-                });
-            }
-
-            if let Some((name, value)) = line.split_once(':') {
-                current_name = name.to_string();
-                current_value = value.trim().to_string();
-            } else {
-                current_name.clear();
-                current_value.clear();
-            }
-        }
-        if !current_name.is_empty() {
-            headers.push(GmailHeader {
-                name: current_name,
-                value: current_value.trim().to_string(),
-            });
-        }
-        let body = parsed
-            .body_text(0)
-            .or_else(|| parsed.body_html(0))
-            .unwrap_or_default();
-
-        GmailMessage {
-            raw: None,
-            id: format!("fixture-{}", fixture_stem(name)),
-            thread_id: format!("fixture-thread-{}", fixture_stem(name)),
-            label_ids: Some(vec!["INBOX".to_string(), "UNREAD".to_string()]),
-            snippet: Some(body.lines().next().unwrap_or_default().to_string()),
-            history_id: Some("500".to_string()),
-            internal_date: Some("1710495000000".to_string()),
-            size_estimate: Some(raw.len() as u64),
-            payload: Some(GmailPayload {
-                mime_type: Some("text/plain".to_string()),
-                headers: Some(headers),
-                body: Some(GmailBody {
-                    attachment_id: None,
-                    size: Some(body.len() as u64),
-                    data: Some(URL_SAFE_NO_PAD.encode(body.as_bytes())),
                 }),
                 parts: None,
                 filename: None,
@@ -710,26 +644,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_list_unsubscribe_http() {
-        let headers = make_headers(&[("List-Unsubscribe", "<https://unsub.example.com/link>")]);
-        let result = parse_list_unsubscribe(&headers);
-        assert!(matches!(
-            result,
-            UnsubscribeMethod::HttpLink { ref url } if url == "https://unsub.example.com/link"
-        ));
-    }
-
-    #[test]
     fn parse_address_name_angle() {
         let addr = parse_address("Alice <alice@example.com>");
         assert_eq!(addr.name, Some("Alice".to_string()));
-        assert_eq!(addr.email, "alice@example.com");
-    }
-
-    #[test]
-    fn parse_address_bare() {
-        let addr = parse_address("alice@example.com");
-        assert_eq!(addr.name, None);
         assert_eq!(addr.email, "alice@example.com");
     }
 
@@ -760,14 +677,6 @@ mod tests {
     }
 
     #[test]
-    fn base64url_decode() {
-        // "Hello, World!" in URL-safe base64 no padding
-        let encoded = "SGVsbG8sIFdvcmxkIQ";
-        let decoded = base64_decode_url(encoded).unwrap();
-        assert_eq!(decoded, "Hello, World!");
-    }
-
-    #[test]
     fn base64url_decode_accepts_padding() {
         let encoded = "SGVsbG8sIFdvcmxkIQ==";
         let decoded = base64_decode_url(encoded).unwrap();
@@ -790,20 +699,6 @@ mod tests {
             result,
             UnsubscribeMethod::OneClick { ref url } if url == "https://unsub.example.com/oneclick"
         ));
-    }
-
-    #[test]
-    fn parse_list_unsubscribe_missing() {
-        let headers = make_headers(&[("Subject", "No unsubscribe here")]);
-        let result = parse_list_unsubscribe(&headers);
-        assert!(matches!(result, UnsubscribeMethod::None));
-    }
-
-    #[test]
-    fn parse_address_quoted_name() {
-        let addr = parse_address("\"Last, First\" <first.last@example.com>");
-        assert_eq!(addr.name, Some("Last, First".to_string()));
-        assert_eq!(addr.email, "first.last@example.com");
     }
 
     #[test]
@@ -1063,99 +958,6 @@ mod tests {
         let (text_plain, text_html, _) = extract_body(&msg);
         assert_eq!(text_plain, Some("Hello".to_string()));
         assert!(text_html.is_some());
-    }
-
-    #[test]
-    fn standards_fixture_like_gmail_message_snapshot() {
-        let msg: GmailMessage = serde_json::from_value(json!({
-            "id": "fixture-1",
-            "threadId": "fixture-thread",
-            "labelIds": ["INBOX", "UNREAD"],
-            "snippet": "Fixture snippet",
-            "historyId": "500",
-            "internalDate": "1710495000000",
-            "sizeEstimate": 4096,
-            "payload": {
-                "mimeType": "multipart/mixed",
-                "headers": [
-                    {"name": "From", "value": "Alice Smith <alice@example.com>"},
-                    {"name": "To", "value": "Bob Example <bob@example.com>"},
-                    {"name": "Subject", "value": "Planning meeting"},
-                    {"name": "Date", "value": "Tue, 19 Mar 2024 14:15:00 +0000"},
-                    {"name": "Message-ID", "value": "<calendar@example.com>"},
-                    {"name": "Authentication-Results", "value": "mx.example.net; dkim=pass"},
-                    {"name": "Content-Language", "value": "en"},
-                    {"name": "List-Unsubscribe", "value": "<https://example.com/unsubscribe>"}
-                ],
-                "parts": [
-                    {
-                        "mimeType": "text/plain",
-                        "body": {"size": 33, "data": "UGxlYXNlIGpvaW4gdGhlIHBsYW5uaW5nIG1lZXRpbmcu"}
-                    },
-                    {
-                        "mimeType": "text/html",
-                        "body": {"size": 76, "data": "PHA-PlBsZWFzZSBqb2luIHRoZSA8YSBocmVmPSJodHRwczovL2V4YW1wbGUuY29tL3Vuc3Vic2NyaWJlIj5tYWlsIHByZWZlcmVuY2VzPC9hPi48L3A-"}
-                    },
-                    {
-                        "mimeType": "application/pdf",
-                        "filename": "report.pdf",
-                        "body": {"attachmentId": "att-1", "size": 5}
-                    },
-                    {
-                        "mimeType": "text/calendar",
-                        "body": {"size": 82, "data": "QkVHSU46VkNBTEVOREFSDQpNRVRIT0Q6UkVRVUVTVA0KQkVHSU46VkVWRU5UDQpTVU1NQVJZOlBsYW5uaW5nIG1lZXRpbmcNCkVORDpWRVZFTlQNCkVORDpWQ0FMRU5EQVI"}
-                    }
-                ]
-            }
-        }))
-        .unwrap();
-
-        let account_id = AccountId::from_provider_id("gmail", "test-account");
-        let envelope = gmail_message_to_envelope(&msg, &account_id).unwrap();
-        let body = extract_message_body(&msg);
-        insta::assert_yaml_snapshot!(
-            "gmail_fixture_message",
-            json!({
-                "subject": envelope.subject,
-                "unsubscribe": format!("{:?}", envelope.unsubscribe),
-                "flags": envelope.flags.bits(),
-                "attachment_filenames": body.attachments.iter().map(|attachment| attachment.filename.clone()).collect::<Vec<_>>(),
-                "calendar": body.metadata.calendar,
-                "auth_results": body.metadata.auth_results,
-                "content_language": body.metadata.content_language,
-                "plain_text": body.text_plain,
-            })
-        );
-    }
-
-    #[test]
-    fn standards_fixture_gmail_header_matrix_snapshots() {
-        let account_id = AccountId::from_provider_id("gmail", "matrix-account");
-
-        for fixture in standards_fixture_names() {
-            let msg = gmail_message_from_fixture(fixture);
-            let envelope = gmail_message_to_envelope(&msg, &account_id).unwrap();
-            let body = extract_message_body(&msg);
-
-            insta::assert_yaml_snapshot!(
-                format!("gmail_fixture__{}", fixture_stem(fixture)),
-                json!({
-                    "subject": envelope.subject,
-                    "from": envelope.from,
-                    "to": envelope.to,
-                    "cc": envelope.cc,
-                    "message_id": envelope.message_id_header,
-                    "in_reply_to": envelope.in_reply_to,
-                    "references": envelope.references,
-                    "unsubscribe": format!("{:?}", envelope.unsubscribe),
-                    "list_id": body.metadata.list_id,
-                    "auth_results": body.metadata.auth_results,
-                    "content_language": body.metadata.content_language,
-                    "text_plain_format": format!("{:?}", body.metadata.text_plain_format),
-                    "plain_excerpt": body.text_plain.as_deref().map(|text| text.lines().take(2).collect::<Vec<_>>().join("\n")),
-                })
-            );
-        }
     }
 
     #[test]

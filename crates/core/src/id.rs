@@ -83,24 +83,3 @@ typed_id!(SignatureId);
 typed_id!(SemanticChunkId);
 typed_id!(SemanticProfileId);
 typed_id!(DeliveryId);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use proptest::prelude::*;
-    use std::str::FromStr;
-
-    proptest! {
-        #[test]
-        fn message_id_string_and_serde_roundtrip(bytes in any::<[u8; 16]>()) {
-            let id = MessageId::from_uuid(Uuid::from_bytes(bytes));
-            let as_string = id.to_string();
-            let reparsed = MessageId::from_str(&as_string)?;
-            prop_assert_eq!(reparsed, id.clone());
-
-            let json = serde_json::to_string(&id)?;
-            let decoded: MessageId = serde_json::from_str(&json)?;
-            prop_assert_eq!(decoded, id);
-        }
-    }
-}

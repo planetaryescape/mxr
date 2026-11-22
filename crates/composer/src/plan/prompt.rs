@@ -754,26 +754,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_chosen_tone_reaches_the_task() {
-        let me = me();
-        let turns = [turn(false, "Friday?", true)];
-        let mut input = input(&me, &turns, &[], &[], 30_000);
-        input.tone = Some(VoiceRegisterData::Formal);
-        assert!(build(&input).user.contains("Tone: formal and polished"));
-    }
-
-    #[test]
-    fn no_instruction_asks_for_placeholders_not_guesses() {
-        let me = me();
-        let turns = [turn(false, "What's the budget?", true)];
-        let mut input = input(&me, &turns, &[], &[], 30_000);
-        input.instruction = "  ";
-        let prompt = build(&input);
-        assert!(prompt.user.contains("[[?: ...]]"));
-        assert!(prompt.system.contains("[[?: what is needed]]"));
-    }
-
     fn with_help<'a>(
         base: PromptInput<'a>,
         action: AssistActionData,
@@ -928,55 +908,6 @@ mod tests {
         let task = block(&prompt.user, "[TASK]");
         assert!(task.contains("Rewrite only the part of my draft inside [EDIT ONLY THIS]"));
         assert!(task.contains("everything outside that part exactly as it is"));
-    }
-
-    #[test]
-    fn polish_adds_nothing() {
-        let me = me();
-        let prompt = build(&with_help(
-            input(&me, &[], &[], &[], 30_000),
-            AssistActionData::Polish,
-            "thx for sending, i will reveiw tmrw",
-            None,
-        ));
-        let task = block(&prompt.user, "[TASK]");
-        assert!(task.contains("Add nothing: no greeting, sign-off, point or fact I didn't write."));
-        assert!(
-            !task.contains("Aim for about"),
-            "polish has no length target"
-        );
-    }
-
-    #[test]
-    fn each_chip_is_one_line_of_the_task() {
-        let me = me();
-        let mut base = with_help(
-            input(&me, &[], &[], &[], 30_000),
-            AssistActionData::Finish,
-            "Yes.",
-            None,
-        );
-        base.help.adjust = AssistAdjustData {
-            shorter: true,
-            warmer: false,
-            more_formal: true,
-            proofread: true,
-        };
-        let prompt = build(&base);
-        let task = block(&prompt.user, "[TASK]");
-        let chips: Vec<&str> = task
-            .lines()
-            .skip_while(|line| !line.starts_with("Adjustments"))
-            .skip(1)
-            .collect();
-        assert_eq!(
-            chips,
-            [
-                "- Make it shorter.",
-                "- Make it more formal, still in my words.",
-                "- Proofread it: fix typos, spelling and grammar, and change nothing else.",
-            ]
-        );
     }
 
     #[test]

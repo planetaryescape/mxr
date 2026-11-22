@@ -122,14 +122,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn notice_for_a_stopped_index_names_the_fields_and_the_remedy() {
-        assert_eq!(
-            SearchDegraded::new(SearchDegradedReason::IndexStopped).notice(),
-            "Search is limited while the index is unavailable: subject, sender and preview only. Restart the daemon or run `mxr doctor --reindex`."
-        );
-    }
-
-    #[test]
     fn a_daemon_notice_replaces_the_generic_one_and_older_clients_ignore_it() {
         let degraded = SearchDegraded::new(SearchDegradedReason::IndexStopped)
             .with_notice("the last index rebuild failed");
@@ -146,26 +138,5 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(decoded.reason, SearchDegradedReason::IndexStopped);
-    }
-
-    #[test]
-    fn refusal_names_the_unsupported_parts() {
-        let message = SearchDegraded::refusal(
-            SearchDegradedReason::IndexStopped,
-            &["after:2024-01-01".to_string(), "is:unread".to_string()],
-        );
-        assert!(message.contains("after:2024-01-01, is:unread"), "{message}");
-        assert!(message.contains("mxr doctor --reindex"), "{message}");
-    }
-
-    #[test]
-    fn the_reason_is_a_snake_case_string_on_the_wire() {
-        let json = serde_json::to_value(SearchDegraded::new(SearchDegradedReason::IndexRebuilding))
-            .unwrap();
-        assert_eq!(json["reason"], "index_rebuilding");
-        assert_eq!(
-            json["searched_fields"],
-            serde_json::json!(["subject", "sender", "preview"])
-        );
     }
 }

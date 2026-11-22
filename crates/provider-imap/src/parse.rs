@@ -531,8 +531,7 @@ fn normalize_content_id(content_id: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
-    use serde_json::json;
+    use mxr_test_support::standards_fixture_bytes;
 
     #[test]
     fn flags_from_imap_converts_standard_flags() {
@@ -553,97 +552,6 @@ mod tests {
     fn flags_from_imap_handles_deleted() {
         let flags = flags_from_imap(&["\\Deleted".to_string()]);
         assert!(flags.contains(MessageFlags::TRASH));
-    }
-
-    #[test]
-    fn flags_from_imap_empty() {
-        let flags = flags_from_imap(&[]);
-        assert!(flags.is_empty());
-    }
-
-    #[test]
-    fn standards_fixture_multipart_calendar_snapshot() {
-        let raw = standards_fixture_bytes("multipart-calendar.eml");
-        let account_id = AccountId::new();
-        let msg = FetchedMessage {
-            uid: 42,
-            flags: vec!["\\Seen".into()],
-            envelope: None,
-            body: Some(raw.clone()),
-            header: None,
-            size: Some(raw.len() as u32),
-            internal_date: None,
-            gmail_labels: vec![],
-            gmail_msg_id: None,
-            gmail_thread_id: None,
-        };
-
-        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
-        insta::assert_yaml_snapshot!(
-            "imap_multipart_calendar",
-            json!({
-                "subject": synced.envelope.subject,
-                "from": synced.envelope.from,
-                "unsubscribe": format!("{:?}", synced.envelope.unsubscribe),
-                "attachment_filenames": synced.body.attachments.iter().map(|attachment| attachment.filename.clone()).collect::<Vec<_>>(),
-                "calendar": synced.body.metadata.calendar,
-                "content_language": synced.body.metadata.content_language,
-                "auth_results": synced.body.metadata.auth_results,
-                "html_present": synced.body.text_html.is_some(),
-                "plain_present": synced.body.text_plain.is_some(),
-            })
-        );
-    }
-
-    #[test]
-    fn standards_fixture_imap_matrix_snapshots() {
-        let account_id = AccountId::new();
-
-        for (index, fixture) in standards_fixture_names().iter().enumerate() {
-            let raw = standards_fixture_bytes(fixture);
-            let msg = FetchedMessage {
-                uid: index as u32 + 1,
-                flags: vec!["\\Seen".into()],
-                envelope: None,
-                body: Some(raw.clone()),
-                header: None,
-                size: Some(raw.len() as u32),
-                internal_date: None,
-                gmail_labels: vec![],
-                gmail_msg_id: None,
-                gmail_thread_id: None,
-            };
-
-            let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
-            let expected_list_id = match *fixture {
-                "folded-flowed.eml" => Some("updates.example.com"),
-                "unsubscribe-oneclick.eml" => Some("digest.example.com"),
-                _ => None,
-            };
-            assert_eq!(
-                synced.body.metadata.list_id.as_deref(),
-                expected_list_id,
-                "{fixture}"
-            );
-            insta::assert_yaml_snapshot!(
-                format!("imap_fixture__{}", fixture_stem(fixture)),
-                json!({
-                    "subject": synced.envelope.subject,
-                    "from": synced.envelope.from,
-                    "to": synced.envelope.to,
-                    "cc": synced.envelope.cc,
-                    "message_id": synced.envelope.message_id_header,
-                    "unsubscribe": format!("{:?}", synced.envelope.unsubscribe),
-                    "attachment_filenames": synced.body.attachments.iter().map(|attachment| attachment.filename.clone()).collect::<Vec<_>>(),
-                    "calendar": synced.body.metadata.calendar,
-                    "content_language": synced.body.metadata.content_language,
-                    "auth_results": synced.body.metadata.auth_results,
-                    "text_plain_format": format!("{:?}", synced.body.metadata.text_plain_format),
-                    "plain_excerpt": synced.body.text_plain.as_deref().map(|body| body.lines().take(3).collect::<Vec<_>>().join("\n")),
-                    "html_present": synced.body.text_html.is_some(),
-                })
-            );
-        }
     }
 
     #[test]

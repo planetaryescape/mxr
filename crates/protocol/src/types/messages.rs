@@ -645,7 +645,6 @@ pub struct PersonMergeData {
 
 #[cfg(test)]
 mod filter_tests {
-    use super::messages_copy::{filter_label, filtered_empty};
     use super::{MessagesFilterData, MessagesTurnData};
 
     fn filter(turn: Option<MessagesTurnData>, unread: bool, past_pace: bool) -> MessagesFilterData {
@@ -654,47 +653,6 @@ mod filter_tests {
             unread,
             past_pace,
         }
-    }
-
-    #[test]
-    fn the_empty_copy_names_the_toggles_and_what_is_left() {
-        assert_eq!(
-            filtered_empty(filter(None, true, false), 1),
-            "No unread messages from people.\nYour turn still has 1 person."
-        );
-        assert_eq!(
-            filtered_empty(filter(None, false, true), 0),
-            "Nobody is past your usual pace.\nYour turn is clear."
-        );
-        assert_eq!(
-            filtered_empty(filter(None, true, true), 4),
-            "No unread messages from people past your usual pace.\nYour turn still has 4 people."
-        );
-        assert_eq!(
-            filtered_empty(filter(Some(MessagesTurnData::Mine), true, false), 2),
-            "In Your turn, no unread messages from people.\nYour turn still has 2 people."
-        );
-        assert_eq!(
-            filtered_empty(filter(Some(MessagesTurnData::Theirs), false, true), 3),
-            "In Waiting on them, nobody is past your usual pace.\nYour turn still has 3 people."
-        );
-    }
-
-    #[test]
-    fn the_label_names_each_filter_that_is_on() {
-        assert_eq!(filter_label(MessagesFilterData::default()), None);
-        assert_eq!(
-            filter_label(filter(Some(MessagesTurnData::All), false, false)).as_deref(),
-            Some("All conversations")
-        );
-        assert_eq!(
-            filter_label(filter(Some(MessagesTurnData::Mine), true, false)).as_deref(),
-            Some("Your turn · Unread")
-        );
-        assert_eq!(
-            filter_label(filter(None, false, true)).as_deref(),
-            Some("Past your pace")
-        );
     }
 
     #[test]

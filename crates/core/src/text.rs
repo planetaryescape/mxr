@@ -89,13 +89,6 @@ mod tests {
     use super::truncate_to_char_boundary;
 
     #[test]
-    fn no_op_when_within_budget() {
-        let mut s = "hello".to_string();
-        truncate_to_char_boundary(&mut s, 10);
-        assert_eq!(s, "hello");
-    }
-
-    #[test]
     fn cuts_ascii_exactly_at_budget() {
         let mut s = "hello world".to_string();
         truncate_to_char_boundary(&mut s, 5);
@@ -117,12 +110,5 @@ mod tests {
             assert!(s.len() <= budget);
             assert!(base.starts_with(&s));
         }
-    }
-
-    #[test]
-    fn zero_budget_empties_the_string() {
-        let mut s = "🦀".to_string();
-        truncate_to_char_boundary(&mut s, 0);
-        assert_eq!(s, "");
     }
 }

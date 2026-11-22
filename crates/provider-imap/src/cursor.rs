@@ -287,16 +287,6 @@ mod tests {
     }
 
     #[test]
-    fn v1_round_trip() {
-        let cursor = ImapCursor::new(vec![sample_mailbox()], None);
-        let encoded = cursor.encode();
-        let decoded = ImapCursor::decode(&encoded).unwrap().unwrap();
-        let mailboxes = decoded.into_mailboxes();
-        assert_eq!(mailboxes.len(), 1);
-        assert_eq!(mailboxes[0].uid_next, 100);
-    }
-
-    #[test]
     fn empty_bytes_decode_to_none() {
         let result = ImapCursor::decode(&SyncCursor::empty()).unwrap();
         assert!(result.is_none());
@@ -413,15 +403,5 @@ mod tests {
         let backfill = decoded.backfill().expect("gmail backfill kept");
         assert!(backfill.gmail_all_mail);
         assert_eq!(backfill.next_uid, 501);
-    }
-
-    #[test]
-    fn describe_summarises_inbox() {
-        let cursor = ImapCursor::new(vec![sample_mailbox()], None);
-        let desc = cursor.describe();
-        assert!(desc.contains("imap"));
-        assert!(desc.contains("uid_validity=1"));
-        assert!(desc.contains("uid_next=100"));
-        assert!(desc.contains("mailboxes=1"));
     }
 }

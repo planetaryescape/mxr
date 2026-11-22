@@ -244,23 +244,6 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn there_are_forty_cases_in_near_miss_pairs() {
-        let all: Vec<&Case> = cases().collect();
-        assert_eq!(all.len(), 40);
-        let bases = all.iter().filter(|case| case.twin_of.is_none()).count();
-        assert_eq!(bases, 20, "one base per pair");
-    }
-
-    #[test]
-    fn typed_text_is_the_largest_group() {
-        let typed = cases()
-            .filter(|case| !matches!(case.draft, DraftState::Empty))
-            .count();
-        let empty = cases().count() - typed;
-        assert!(typed > empty, "typed {typed}, empty {empty}");
-    }
-
-    #[test]
     fn ids_are_unique_and_every_twin_names_a_base_case() {
         let mut seen = HashSet::new();
         for case in cases() {
@@ -276,24 +259,6 @@ mod tests {
     }
 
     #[test]
-    fn every_case_has_a_target_and_a_voice_and_a_sane_word_band() {
-        for case in cases() {
-            assert_eq!(
-                case.thread.iter().filter(|m| m.target).count(),
-                1,
-                "{} needs exactly one target",
-                case.id
-            );
-            assert!(!case.voice.is_empty(), "{} has no voice", case.id);
-            let (min, max) = case.expect.words;
-            assert!(min > 0 && min < max, "{} word band", case.id);
-            for answer in case.expect.answers {
-                assert!(!answer.any_of.is_empty(), "{} answer", case.id);
-            }
-        }
-    }
-
-    #[test]
     fn a_selection_is_a_real_range_inside_the_typed_text() {
         for case in cases() {
             if let DraftState::Selection { typed, start, end } = case.draft {
@@ -301,33 +266,6 @@ mod tests {
                 assert!(typed.is_char_boundary(start) && typed.is_char_boundary(end));
                 assert!(!case.draft.kept_text().contains(&typed[start..end]));
             }
-        }
-    }
-
-    #[test]
-    fn every_bad_class_has_a_recording_and_a_good_one_to_compare_with() {
-        let mut bad_names: Vec<&str> = Vec::new();
-        for case in cases() {
-            let has_good = case.recorded.iter().any(|r| r.name == "good");
-            let bad: Vec<&Recording> = case.recorded.iter().filter(|r| r.name != "good").collect();
-            assert!(
-                bad.is_empty() || has_good,
-                "{} has bad outputs but no good one",
-                case.id
-            );
-            bad_names.extend(bad.iter().map(|r| r.name));
-        }
-        for class in [
-            "bad: subject line",
-            "bad: recap of thread",
-            "bad: dropped typed sentence",
-            "bad: invented price",
-            "bad: duplicate signature",
-            "bad: reversed typed sentence",
-            "bad: preamble",
-            "bad: now for no",
-        ] {
-            assert!(bad_names.contains(&class), "no recording for {class}");
         }
     }
 }

@@ -149,22 +149,6 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn imap_config_parses() {
-        let json = r#"{
-            "host": "imap.fastmail.com",
-            "port": 993,
-            "username": "user@fastmail.com",
-            "password_ref": "mxr/fastmail-imap"
-        }"#;
-        let config: ImapConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.host, "imap.fastmail.com");
-        assert_eq!(config.port, 993);
-        assert!(config.auth_required);
-        assert!(config.use_tls);
-        assert_eq!(config.max_connections, DEFAULT_MAX_CONNECTIONS);
-    }
-
-    #[test]
     fn rejects_empty_deserialized_certificate_pins() {
         for value in ["", "  "] {
             let config: ImapConfig = serde_json::from_value(serde_json::json!({

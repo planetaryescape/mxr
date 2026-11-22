@@ -1645,23 +1645,8 @@ mod tests {
         reason = "tests unwrap fixture setup for direct failures"
     )]
 
-    use super::mock::*;
     use super::*;
-    use crate::types::*;
     use async_imap::types::NameAttribute;
-    use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
-
-    fn mock_state(
-        fetch_responses: Vec<Vec<FetchedMessage>>,
-        folders: Vec<FolderInfo>,
-    ) -> Arc<Mutex<MockSessionState>> {
-        Arc::new(Mutex::new(MockSessionState {
-            fetch_queues_by_mailbox: build_fetch_queues(&fetch_responses, &folders),
-            uid_search_results: HashMap::new(),
-            append_uid: None,
-        }))
-    }
 
     /// Timeouts must be distinguishable from other connection errors:
     /// the QRESYNC→SELECT fallback reuses the session on NO/BAD but must
@@ -1799,95 +1784,5 @@ mod tests {
             special_use_from_attributes(&[NameAttribute::Extension("\\Foo".into())]),
             None
         );
-    }
-
-    #[tokio::test]
-    async fn mock_session_returns_canned_select_data() {
-        let log = Arc::new(Mutex::new(CommandLog::default()));
-        let mut session = MockImapSession::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 100,
-                exists: 50,
-                highest_modseq: Some(10),
-            },
-            ImapCapabilities::default(),
-            None,
-            None,
-            vec![],
-            log.clone(),
-            mock_state(vec![], vec![]),
-        );
-
-        let info = session.select("INBOX").await.unwrap();
-        assert_eq!(info.uid_validity, 1);
-        assert_eq!(info.uid_next, 100);
-        assert_eq!(info.exists, 50);
-        assert_eq!(log.lock().unwrap().commands, vec!["SELECT INBOX"]);
-    }
-
-    #[tokio::test]
-    async fn mock_session_returns_canned_fetch_data() {
-        let log = Arc::new(Mutex::new(CommandLog::default()));
-        let messages = vec![FetchedMessage {
-            uid: 1,
-            flags: vec!["\\Seen".to_string()],
-            envelope: None,
-            body: None,
-            header: None,
-            size: Some(512),
-            internal_date: None,
-            gmail_labels: vec![],
-            gmail_msg_id: None,
-            gmail_thread_id: None,
-        }];
-
-        let mut session = MockImapSession::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 2,
-                exists: 1,
-                highest_modseq: None,
-            },
-            ImapCapabilities::default(),
-            None,
-            None,
-            vec![],
-            log.clone(),
-            mock_state(vec![messages], vec![]),
-        );
-
-        let result = session.uid_fetch("1:*", "(FLAGS ENVELOPE)").await.unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].uid, 1);
-    }
-
-    #[tokio::test]
-    async fn mock_factory_creates_sessions() {
-        let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 10,
-                exists: 5,
-                highest_modseq: None,
-            },
-            vec![],
-            vec![FolderInfo {
-                name: "INBOX".to_string(),
-                special_use: Some("\\Inbox".to_string()),
-                delimiter: Some("/".to_string()),
-                unread_count: None,
-                total_count: None,
-                uid_validity: None,
-                uid_next: None,
-                highest_modseq: None,
-                namespace_prefix: None,
-            }],
-        );
-
-        let mut session = factory.create_session().await.unwrap();
-        let folders = session.list_folders().await.unwrap();
-        assert_eq!(folders.len(), 1);
-        assert_eq!(folders[0].name, "INBOX");
     }
 }

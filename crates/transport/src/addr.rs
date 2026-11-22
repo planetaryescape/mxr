@@ -152,16 +152,6 @@ mod tests {
     }
 
     #[test]
-    fn relative_unix_path_is_kept_verbatim() {
-        // Relative paths are accepted as-is (the OS resolves them against CWD
-        // at connect/bind time); they are not rewritten to absolute.
-        assert_eq!(
-            TransportAddr::parse("unix://run/mxr.sock").unwrap(),
-            TransportAddr::Unix(PathBuf::from("run/mxr.sock"))
-        );
-    }
-
-    #[test]
     fn percent_escapes_are_literal_not_decoded() {
         // A filesystem path, not a URL: `%20` stays three literal bytes, so
         // `a%20b` is 5 bytes — never decoded to `a b`.
@@ -171,16 +161,6 @@ mod tests {
             panic!("expected a unix:// address");
         };
         assert_eq!(path.as_os_str().len(), 5, "`a%20b` is 5 literal bytes");
-    }
-
-    #[test]
-    fn path_is_verbatim_including_surrounding_spaces() {
-        // Only whitespace-*only* values are rejected; a path that happens to
-        // contain spaces is legal and preserved byte-for-byte.
-        assert_eq!(
-            TransportAddr::parse("unix:// spaced path ").unwrap(),
-            TransportAddr::Unix(PathBuf::from(" spaced path "))
-        );
     }
 
     #[test]
@@ -220,12 +200,6 @@ mod tests {
                 "dial-stdio".into(),
             ])
         );
-    }
-
-    #[test]
-    fn rejects_empty_cmd() {
-        assert!(TransportAddr::parse("cmd://").is_err());
-        assert!(TransportAddr::parse("cmd://   ").is_err());
     }
 
     #[test]

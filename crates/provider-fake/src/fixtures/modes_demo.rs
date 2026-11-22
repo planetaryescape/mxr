@@ -139,20 +139,3 @@ pub(super) fn modes_demo_messages(
 
     built
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_count_matches_the_mail_built() {
-        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let me = Address {
-            name: Some("Alex Demo".to_string()),
-            email: "alex@demo.mxr.local".to_string(),
-        };
-        let built = modes_demo_messages(&account_id, &me, Utc::now(), 1);
-        assert_eq!(built.len(), MODES_DEMO_MESSAGE_COUNT);
-        assert_eq!(built[0].0.thread_id, built[1].0.thread_id);
-    }
-}

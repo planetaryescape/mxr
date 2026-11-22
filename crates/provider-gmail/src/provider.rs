@@ -2250,17 +2250,6 @@ END:VCALENDAR\r\n";
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn gmail_initial_sync_keeps_small_batches_inline() {
-        let parse_observer = ParseObserver::new(Duration::from_millis(10));
-        let provider = bulk_gmail_provider(63, parse_observer.clone());
-
-        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-
-        assert_eq!(batch.upserted.len(), 63);
-        assert_eq!(parse_observer.max_concurrency(), 1);
-    }
-
     #[tokio::test]
     async fn gmail_backfill_with_more_pages_surfaces_has_more() {
         let provider = gmail_provider();

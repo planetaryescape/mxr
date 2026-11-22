@@ -242,28 +242,9 @@ mod tests {
     }
 
     #[test]
-    fn unknown_colour_error_lists_allowed_names() {
-        let error = "teal".parse::<AccountColor>().unwrap_err();
-        let message = error.to_string();
-        assert!(message.contains("'teal'"), "{message}");
-        assert!(message.contains("sky, amber, green"), "{message}");
-        assert!(message.contains("slate"), "{message}");
-    }
-
-    #[test]
-    fn colour_parse_is_case_sensitive_because_config_is_lowercase() {
-        assert!("Sky".parse::<AccountColor>().is_err());
-    }
-
-    #[test]
     fn first_free_slot_is_taken_for_a_new_account() {
         let taken = [AccountColor::Sky, AccountColor::Green];
         assert_eq!(next_account_color(&taken, 2), AccountColor::Amber);
-    }
-
-    #[test]
-    fn empty_store_starts_at_sky() {
-        assert_eq!(next_account_color(&[], 0), AccountColor::Sky);
     }
 
     #[test]

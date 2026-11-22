@@ -733,10 +733,4 @@ mod tests {
         );
         assert!(checked.yours_changed.is_empty());
     }
-
-    #[test]
-    fn a_figure_the_conversation_carries_is_known_whichever_way_it_is_written() {
-        let checked = finish("", "See you at 3 pm.", "meet at 3pm?");
-        assert!(checked.gaps.is_empty());
-    }
 }

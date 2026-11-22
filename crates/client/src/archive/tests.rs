@@ -127,7 +127,7 @@ async fn submission_response_loss_retains_exact_review_for_reconnected_query() {
                         assert_eq!(on_disk.identity, identity);
                         assert_eq!(on_disk.review_id, review_id);
                         assert_eq!(operation.identity, identity);
-                        break; // Acceptance happened but its response is lost.
+                        break;
                     }
                     _ => panic!("unexpected request"),
                 };

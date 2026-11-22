@@ -208,7 +208,6 @@ impl IpcConnection {
     where
         F: FnMut(mxr_protocol::DaemonEvent),
     {
-        // Reload the retained review; a lost caller buffer must never create a new identity.
         let retained = journal.load(&operation.identity.operation_id)?;
         let mutation = MutationCommand::Archive {
             message_ids: retained

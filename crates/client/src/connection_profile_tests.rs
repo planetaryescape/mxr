@@ -49,7 +49,6 @@ async fn every_surface_declares_before_an_event_only_consumer_returns() {
                 })
                 .await
                 .expect("event");
-            // No ordinary request is necessary to receive the first event.
             assert!(framed.next().await.is_none());
         });
         let mut connection = IpcConnection::connect_with(&connector, kind)

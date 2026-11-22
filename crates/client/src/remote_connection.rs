@@ -37,8 +37,6 @@ async fn update(
 fn http() -> Result<reqwest::Client, ClientError> {
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
-        // A saved origin may sit behind a proxy and a tailnet relay; five seconds
-        // was not enough for a loopback gateway reached through the public edge.
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|_| error("Cannot initialize HTTPS client"))
@@ -160,7 +158,6 @@ async fn retire_pairing(
     let retired = match first {
         Ok(_) => true,
         Err(_) => {
-            // Reestablish only an unapproved proof record when start was lost or expired.
             let cleanup_verifier = mxr_core::RemoteSecret::new(base16ct::lower::encode_string(
                 &sha2::Sha256::digest(old.cleanup_secret.expose().as_bytes()),
             ));

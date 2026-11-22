@@ -454,7 +454,6 @@ impl IpcConnection {
                 .get_or_insert_default()
                 .push(resource);
         }
-        // Attach resources with the reviewed owner's revision, before any send/provider effect.
         *draft = match self
             .upload_request(
                 Request::UpdateDraft {

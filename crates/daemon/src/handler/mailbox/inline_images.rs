@@ -1,4 +1,3 @@
-//! Portable reads of message-owned cached images, with no remote fetch or caller path.
 use super::*;
 use mxr_protocol::{InlineImageChunkData, MAX_INLINE_IMAGE_BYTES};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};

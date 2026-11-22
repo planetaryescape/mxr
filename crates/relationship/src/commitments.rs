@@ -121,14 +121,13 @@ pub async fn extract_commitments(
             return Err(error.into());
         }
     };
-    let parsed = parse_commitments_response(&response.content)
-        .with_context(|| {
-            format!(
-                "unparseable commitments reply ({} chars, finish_reason={:?})",
-                response.content.len(),
-                response.finish_reason
-            )
-        });
+    let parsed = parse_commitments_response(&response.content).with_context(|| {
+        format!(
+            "unparseable commitments reply ({} chars, finish_reason={:?})",
+            response.content.len(),
+            response.finish_reason
+        )
+    });
     feature_llm.record_background_attempt(&attempt_key, &fingerprint, parsed.is_ok());
     let parsed = parsed?;
     let mut inserted = 0;
@@ -477,7 +476,6 @@ mod tests {
             responses: Mutex::new(responses.iter().map(ToString::to_string).collect()),
         })))
     }
-
 
     #[tokio::test]
     async fn background_extraction_skips_unchanged_samples_after_success() {

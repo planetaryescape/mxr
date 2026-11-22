@@ -93,7 +93,6 @@ fn unreadable(detail: String) -> AttemptError {
     )
 }
 
-
 #[derive(Default)]
 pub(crate) struct OpenAiStream {
     model: String,
@@ -202,7 +201,6 @@ impl OpenAiStream {
         })
     }
 }
-
 
 #[derive(Default)]
 pub(crate) struct AnthropicStream {

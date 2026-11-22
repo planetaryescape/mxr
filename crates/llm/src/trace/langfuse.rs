@@ -215,7 +215,6 @@ impl Drop for Observation {
     }
 }
 
-
 /// The span around one feature's call, named by its config key so a trace
 /// lines up with `[llm.overrides.<key>]` and `mxr llm status`. Route
 /// fallbacks and retries show as generations under it.

@@ -100,7 +100,6 @@ impl ToolChatResponse {
     }
 }
 
-
 #[derive(Serialize)]
 pub(crate) struct OpenAiToolChatBody<'a> {
     pub model: &'a str,

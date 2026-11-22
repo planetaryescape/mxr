@@ -11,7 +11,9 @@ pub enum Gate {
     Run,
     /// A change. The call waits for the user. `preview` is a read-only call
     /// whose result shows the user what the change will do.
-    Approve { preview: Option<(String, Value)> },
+    Approve {
+        preview: Option<(String, Value)>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

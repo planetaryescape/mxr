@@ -240,10 +240,9 @@ impl FieldCondition {
             Self::IsUnread => msg.is_unread(),
             Self::IsStarred => msg.is_starred(),
             Self::HasUnsubscribe => msg.has_unsubscribe(),
-            Self::BodyContains { pattern } => {
-                msg.body_parts()
-                    .is_some_and(|parts| parts.iter().any(|part| pattern.matches(part)))
-            }
+            Self::BodyContains { pattern } => msg
+                .body_parts()
+                .is_some_and(|parts| parts.iter().any(|part| pattern.matches(part))),
             Self::LinkDensity { match_kind } => {
                 let (link_count, body_word_count) = msg.link_density_inputs();
                 let tier =
@@ -270,7 +269,6 @@ mod tests {
 
     use super::*;
     use crate::tests::*;
-
 
     #[test]
     fn exact_match_requires_full_equality() {
@@ -368,7 +366,6 @@ mod tests {
         assert!(!dotted.matches("see axb here"));
     }
 
-
     #[test]
     fn and_condition_short_circuits_on_false() {
         let cond = Conditions::And {
@@ -422,7 +419,6 @@ mod tests {
         let cond = Conditions::And { conditions: vec![] };
         assert!(cond.evaluate(&newsletter_msg()));
     }
-
 
     #[test]
     fn to_field_matches_any_recipient() {
@@ -498,5 +494,4 @@ mod tests {
         msg.has_attachment = true;
         assert!(FieldCondition::HasAttachment.evaluate(&msg));
     }
-
 }

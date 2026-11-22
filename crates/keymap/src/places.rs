@@ -1,4 +1,3 @@
-
 /// The title of a TUI context or screen, as help and the keybindings page
 /// head its keys. `None` for a place with no keys of its own.
 pub fn place_title(place: &str) -> Option<&'static str> {

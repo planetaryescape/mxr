@@ -3,7 +3,6 @@
     reason = "test fixtures unwrap temp-dir and file operations and fail loudly"
 )]
 
-
 use mxr_config::{lock_config_file_at, update_config_at_path, ConfigError, MxrConfig};
 
 const WRITERS: u64 = 8;

@@ -1,4 +1,3 @@
-
 use assert_cmd::Command;
 use serde_json::Value;
 use std::path::{Path, PathBuf};

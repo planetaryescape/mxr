@@ -274,7 +274,6 @@ impl RecoverySignal {
     }
 }
 
-
 /// The breaker and ledger as saved between daemon runs. Times are wall-clock
 /// seconds since the Unix epoch, because a monotonic instant means nothing
 /// to the next process. Holds feature names, input keys (contact or message

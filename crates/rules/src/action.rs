@@ -4,32 +4,18 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuleAction {
-    AddCategory {
-        category_id: mxr_core::CategoryId,
-    },
-    RemoveCategory {
-        category_id: mxr_core::CategoryId,
-    },
-    AddLabel {
-        label: String,
-    },
-    RemoveLabel {
-        label: String,
-    },
-    SetTreatment {
-        treatment: Treatment,
-    },
+    AddCategory { category_id: mxr_core::CategoryId },
+    RemoveCategory { category_id: mxr_core::CategoryId },
+    AddLabel { label: String },
+    RemoveLabel { label: String },
+    SetTreatment { treatment: Treatment },
     Archive,
     Trash,
     Star,
     MarkRead,
     MarkUnread,
-    Snooze {
-        duration: SnoozeDuration,
-    },
-    ShellHook {
-        command: String,
-    },
+    Snooze { duration: SnoozeDuration },
+    ShellHook { command: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -275,7 +275,6 @@ mod tests {
         assert_eq!(results.next_offset, None);
     }
 
-
     fn build_e2e_index() -> (SearchIndex, Vec<Envelope>) {
         let mut idx = SearchIndex::in_memory().unwrap();
         let envelopes = vec![

@@ -178,7 +178,6 @@ impl ChatMessage {
     }
 }
 
-
 /// Opening marker for a delimited block of untrusted mail content.
 /// [`UNTRUSTED_MAIL_GUARD`] refers to this marker by value.
 pub const UNTRUSTED_MAIL_BEGIN: &str =

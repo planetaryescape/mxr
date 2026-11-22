@@ -510,7 +510,6 @@ async fn a_recovered_route_signals_recovery() {
     assert!(recovered.has_changed().unwrap());
 }
 
-
 fn client_for(server: &wiremock::MockServer, api_key: Option<&str>) -> OpenAiCompatibleProvider {
     OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
         base_url: format!("{}/v1", server.uri()),

@@ -242,7 +242,7 @@ async fn worker_loop(
                                 },
                             );
                         }
-                        None => {}
+                        None => { /* write failed; warn already logged */ }
                     }
                 } else {
                     write_entry(&store, entry).await;

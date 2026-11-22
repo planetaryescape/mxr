@@ -255,6 +255,7 @@ impl Write for Record<'_> {
 impl Drop for Record<'_> {
     fn drop(&mut self) {
         if self.writer.commit(&self.bytes, self.oversized).is_err() && self.writer.mirror_allowed {
+            // No tracing, event contents, or protocol/TUI output on failure.
             if self.writer.config().is_ok_and(|c| c.stderr) {
                 let _ = std::io::stderr().write_all(b"mxr: local log write failed\n");
             }

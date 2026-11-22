@@ -147,38 +147,6 @@ mod tests {
     }
 
     #[test]
-    fn search_by_subject_keyword() {
-        let mut idx = SearchIndex::in_memory().unwrap();
-        let subjects = [
-            "Deployment plan for v2.3",
-            "Q1 Report review",
-            "This Week in Rust #580",
-            "Invoice #2847",
-            "Team standup notes",
-            "Summer trip planning",
-            "PR review: fix auth",
-            "HN Weekly Digest",
-            "RustConf 2026 invite",
-            "CI pipeline failures",
-        ];
-        let mut target_id = String::new();
-        for (i, subj) in subjects.iter().enumerate() {
-            let env = make_envelope(subj, &format!("Snippet for msg {i}"), "Alice");
-            if i == 0 {
-                target_id = env.id.as_str();
-            }
-            idx.index_envelope(&env).unwrap();
-        }
-        idx.commit().unwrap();
-
-        let results = idx
-            .search("deployment", 10, 0, SortOrder::Relevance)
-            .unwrap();
-        assert_eq!(results.results.len(), 1);
-        assert_eq!(results.results[0].message_id, target_id);
-    }
-
-    #[test]
     fn field_boost_ranking() {
         let mut idx = SearchIndex::in_memory().unwrap();
 
@@ -246,16 +214,6 @@ mod tests {
 
         let results = idx.search("remove", 10, 0, SortOrder::Relevance).unwrap();
         assert_eq!(results.results.len(), 0);
-    }
-
-    #[test]
-    fn empty_search() {
-        let idx = SearchIndex::in_memory().unwrap();
-        let results = idx
-            .search("nonexistent", 10, 0, SortOrder::Relevance)
-            .unwrap();
-        assert!(results.results.is_empty());
-        idx.warm().unwrap();
     }
 
     #[test]

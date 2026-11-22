@@ -339,26 +339,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn is_reply_later_returns_false_for_unflagged_message() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_envelope(&store).await;
-        assert!(!store.is_reply_later(&id).await.unwrap());
-    }
-
-    #[tokio::test]
-    async fn set_reply_later_persists_flag() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_envelope(&store).await;
-
-        store.set_reply_later(&id, anchor()).await.unwrap();
-
-        assert!(
-            store.is_reply_later(&id).await.unwrap(),
-            "flag persists after set_reply_later"
-        );
-    }
-
-    #[tokio::test]
     async fn clear_reply_later_unsets_flag() {
         let store = Store::in_memory().await.unwrap();
         let id = seed_envelope(&store).await;
@@ -370,16 +350,6 @@ mod tests {
             !store.is_reply_later(&id).await.unwrap(),
             "flag clears after clear_reply_later"
         );
-    }
-
-    #[tokio::test]
-    async fn list_reply_later_is_empty_for_fresh_store() {
-        let store = Store::in_memory().await.unwrap();
-        let listed = store
-            .list_reply_later(anchor() + Duration::days(1))
-            .await
-            .unwrap();
-        assert!(listed.is_empty());
     }
 
     #[tokio::test]

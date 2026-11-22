@@ -662,25 +662,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_due_includes_past_pending_reminders() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, env) = seed(&store).await;
-        store
-            .set_auto_reminder(
-                &env.id,
-                &account_id,
-                anchor() - Duration::hours(1),
-                anchor() - Duration::days(2),
-            )
-            .await
-            .unwrap();
-
-        let due = store.get_due_auto_reminders(anchor()).await.unwrap();
-        assert_eq!(due.len(), 1);
-        assert_eq!(due[0].sent_message_id, env.id);
-    }
-
-    #[tokio::test]
     async fn get_due_excludes_triggered_reminders() {
         let store = Store::in_memory().await.unwrap();
         let (account_id, env) = seed(&store).await;

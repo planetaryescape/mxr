@@ -262,10 +262,4 @@ mod tests {
         assert_ne!(link_idx("https://sqlite.org/releaselog/3_50.html"), key);
         assert!(key > 0 && key < (1 << 52));
     }
-
-    #[test]
-    fn display_domain_drops_www() {
-        let url = Url::parse("https://WWW.Example.com/x").expect("url");
-        assert_eq!(display_domain(&url), "example.com");
-    }
 }

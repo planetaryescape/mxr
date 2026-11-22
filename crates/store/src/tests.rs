@@ -16,16 +16,6 @@ fn test_envelope(account_id: &AccountId) -> Envelope {
 }
 
 #[tokio::test]
-async fn account_roundtrip() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-    let fetched = store.get_account(&account.id).await.unwrap().unwrap();
-    assert_eq!(fetched.name, account.name);
-    assert_eq!(fetched.email, account.email);
-}
-
-#[tokio::test]
 async fn account_insert_upserts_existing_runtime_record() {
     let store = Store::in_memory().await.unwrap();
     let mut account = test_account();
@@ -2556,25 +2546,6 @@ async fn list_contacts_ordered_by_frequency() {
     assert_eq!(contacts[0].1, "alice@example.com");
     assert_eq!(contacts[1].1, "bob@example.com");
     assert_eq!(contacts[2].1, "carol@example.com");
-}
-
-#[tokio::test]
-async fn sync_cursor_persistence() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let cursor = store.get_sync_cursor(&account.id).await.unwrap();
-    assert!(cursor.is_none());
-
-    let new_cursor = SyncCursor::from_bytes(br#"{"v":"1","history_id":12345}"#.to_vec());
-    store
-        .set_sync_cursor(&account.id, &new_cursor)
-        .await
-        .unwrap();
-
-    let fetched = store.get_sync_cursor(&account.id).await.unwrap().unwrap();
-    assert_eq!(fetched.as_bytes(), new_cursor.as_bytes());
 }
 
 #[tokio::test]

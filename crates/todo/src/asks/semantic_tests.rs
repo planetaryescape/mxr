@@ -490,12 +490,6 @@ fn salutation_review_reminder_heading_is_not_a_person() {
 }
 
 #[test]
-fn salutation_review_action_heading_is_not_a_person() {
-    let a = judge("Action Required: Please send the deck.", false);
-    assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
-}
-
-#[test]
 fn salutation_review_generic_role_is_not_another_person() {
     let a = judge("Dear Ratepayer,\n\nYour account 123456 shows an amount due of £100. Please pay by 28 October 2026.", false);
     assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");

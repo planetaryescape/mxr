@@ -29,7 +29,10 @@ fn export_message_to_raw(msg: &crate::ExportMessage) -> RawMessage {
     let body = msg
         .body_text
         .as_deref()
-        .map(|s| s.replace("\r\n", "\n").into_bytes())
+        .map(|s| {
+            // Normalise to LF; the writer canonicalises to CRLF.
+            s.replace("\r\n", "\n").into_bytes()
+        })
         .unwrap_or_default();
 
     let timestamp: SystemTime = msg.date.into();

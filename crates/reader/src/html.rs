@@ -191,8 +191,10 @@ static STYLE_OR_SCRIPT_BLOCK_RE: Lazy<Regex> = Lazy::new(|| {
         .expect("style/script block regex should compile")
 });
 
-static HTML_TAG_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"<[a-zA-Z/!][^>]*>").expect("html tag regex should compile"));
+static HTML_TAG_RE: Lazy<Regex> = Lazy::new(|| {
+    // Requiring a letter, `/` or `!` after `<` keeps "a < b" as text.
+    Regex::new(r"<[a-zA-Z/!][^>]*>").expect("html tag regex should compile")
+});
 
 /// Best-effort text from HTML with no renderer: drops `<style>`/`<script>`
 /// bodies and tags, decodes the common entities and collapses whitespace.

@@ -8,12 +8,12 @@ use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Gate {
+    /// Reads, previews and other calls that change nothing the user would
+    /// need to undo.
     Run,
     /// A change. The call waits for the user. `preview` is a read-only call
     /// whose result shows the user what the change will do.
-    Approve {
-        preview: Option<(String, Value)>,
-    },
+    Approve { preview: Option<(String, Value)> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

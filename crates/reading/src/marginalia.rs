@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use url::Url;
 
+/// Marginalia refuses larger requests.
 pub const MAX_REQUEST_BYTES: usize = 2_000_000;
 const TIMEOUT: Duration = Duration::from_secs(30);
 /// Never an article: a GET on it answers 404 with a good token and 401

@@ -225,6 +225,7 @@ fn validate_address(address: &str, position: usize) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Reject CR/LF in a rendered subject, which would forge headers.
 pub fn validate_subject(subject: &str) -> anyhow::Result<()> {
     if subject.contains(['\r', '\n']) {
         bail!("rendered subject contains a line break (header injection)");

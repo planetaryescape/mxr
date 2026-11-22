@@ -15,6 +15,7 @@ use std::time::Duration;
 
 pub(crate) const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+/// `max_tokens` is mandatory on this API; used when the caller sets none.
 const DEFAULT_MAX_TOKENS: u32 = 1024;
 /// Longest error message kept from an error reply.
 const ERROR_MESSAGE_LIMIT: usize = 200;

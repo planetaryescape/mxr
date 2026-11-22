@@ -240,9 +240,12 @@ impl FieldCondition {
             Self::IsUnread => msg.is_unread(),
             Self::IsStarred => msg.is_starred(),
             Self::HasUnsubscribe => msg.has_unsubscribe(),
-            Self::BodyContains { pattern } => msg
-                .body_parts()
-                .is_some_and(|parts| parts.iter().any(|part| pattern.matches(part))),
+            Self::BodyContains { pattern } => {
+                // Any part may satisfy the pattern: a rule anchored with `^...$` or an
+                // exact match is about one part's whole text.
+                msg.body_parts()
+                    .is_some_and(|parts| parts.iter().any(|part| pattern.matches(part)))
+            }
             Self::LinkDensity { match_kind } => {
                 let (link_count, body_word_count) = msg.link_density_inputs();
                 let tier =

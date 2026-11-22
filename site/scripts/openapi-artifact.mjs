@@ -17,15 +17,11 @@ if (mode === 'check') {
   if (!original.equals(current)) {
     throw new Error('OpenAPI artifact changed during --check; retry from a stable input.');
   }
-  // Compare all JSON data, including info.version. Only object-key order and
-  // whitespace are irrelevant; arrays and every route/schema value still count.
   if (!isDeepStrictEqual(JSON.parse(current.toString('utf8')), exported)) {
     throw new Error('OpenAPI artifact is stale. Run bash site/scripts/dump-openapi-spec.sh and commit site/public/openapi.json.');
   }
   console.log(`[dump-openapi-spec] current: ${artifact}`);
 } else {
-  // The shell creates generated in the destination directory, so a successful
-  // validated export replaces the previous artifact with one atomic rename.
   renameSync(generated, artifact);
   console.log(`[dump-openapi-spec] wrote ${artifact}`);
 }

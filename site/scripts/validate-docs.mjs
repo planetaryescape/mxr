@@ -36,9 +36,6 @@ function docsContentId(file) {
 
 let failed = false;
 
-// Unresolved merge markers inside a merged document are unambiguous: they
-// are never legitimate prose. The decision log carried one to main twice,
-// so check every markdown tree the repo publishes, not only the docs site.
 const conflictMarker = /^(?:<{7}|>{7}|\|{7})\s/;
 for (const root of [docsRoot, join(repoRoot, 'docs')]) {
   for (const file of walk(root)) {
@@ -92,8 +89,6 @@ if (/—/.test(homepageText)) {
   failed = true;
 }
 
-// Smart typography rewrites `--` to an em dash and `"` to curly quotes inside
-// the homepage's raw HTML nodes, silently breaking copy-paste. `{`...`}` opts out.
 const commandNodePatterns = [
   /<code(?:\s[^>]*)?>([^<]*)<\/code>/g,
   /<span class="(?:search-string|search-cmd|run-cmd|hero-install-cmd)"[^>]*>([^<]*)<\/span>/g,
@@ -118,24 +113,17 @@ if (pathCount === 0) {
   failed = true;
 }
 
-// The bridge token file moves with the profile, MXR_CONFIG_DIR,
-// `[bridge].token_path`, and MXR_BRIDGE_TOKEN_PATH.
 if (/~\/\.config\/mxr\/bridge-token/.test(JSON.stringify(openapi))) {
   console.error('[docs-validate] OpenAPI spec hardcodes ~/.config/mxr/bridge-token');
   failed = true;
 }
 
-// `/api/v1/health` is the one route the bridge serves without a token, so it
-// must not inherit the document-level bearer requirement or answer 401.
 const health = openapi.paths?.['/api/v1/health']?.get;
 if (health?.security?.length !== 0 || Object.keys(health.responses ?? {}).join() !== '200') {
   console.error('[docs-validate] GET /api/v1/health must be public: empty `security`, 200 only');
   failed = true;
 }
 
-// The hosted page renders a route inventory. It has no server to send to and
-// could not reach a local daemon anyway, so Scalar's request-execution and
-// client-generation controls stay off.
 const apiPage = join(repoRoot, 'site', 'src', 'pages', 'reference', 'api-explorer.astro');
 const apiPageText = readFileSync(apiPage, 'utf8');
 const readOnlyScalarFlags = [

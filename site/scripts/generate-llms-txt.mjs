@@ -1,19 +1,4 @@
 #!/usr/bin/env node
-/**
- * Post-build hook for the docs site.
- *
- * 1. Concatenates every Markdown source under `src/content/docs` into
- *    `dist/llms-full.txt` so an LLM can ingest the entire docs corpus
- *    in one shot.
- * 2. Emits a `.md` sibling next to every built `dist/.../index.html`
- *    so `curl https://mxr.sh/cookbook/triage.md` returns
- *    clean Markdown rather than minified HTML. This is the emerging
- *    convention popularised by Cloudflare/Vercel/Mintlify docs.
- *
- * The curated `llms.txt` is hand-written and lives at
- * `public/llms.txt`. It is copied verbatim into `dist/` by Astro;
- * we don't regenerate it here.
- */
 
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, dirname, resolve } from 'node:path';
@@ -92,8 +77,6 @@ function buildMarkdownSiblings() {
     const raw = readFileSync(file, 'utf8');
     const { body, title, description } = stripFrontmatter(raw);
     const rel = relative(DOCS_ROOT, file).replace(/\.(md|mdx)$/, '').replace(/\\/g, '/');
-    // Export the docs root at the site root; inspect its Markdown because
-    // Astro does not turn the homepage's HTML layout into a clean narrative.
     const target = rel === 'index'
       ? join(DIST_ROOT, 'index.md')
       : join(DIST_ROOT, rel + '.md');

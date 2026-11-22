@@ -3,7 +3,6 @@ import starlight from '@astrojs/starlight';
 
 export default defineConfig({
   site: 'https://mxr.sh',
-  // Pages a later page replaced; old links still land.
   redirects: {
     '/guides/desk/': '/guides/now/',
     '/guides/no-native-desktop-app/': '/guides/desktop-app/',
@@ -21,10 +20,8 @@ export default defineConfig({
       ],
       expressiveCode: {
         // Expressive Code gives overflowing blocks an unnamed region. Wrapping
-        // avoids that on phones while its copy button keeps the original text.
         defaultProps: {
           wrap: true,
-          // Deep visual indentation can still force wrapped lines to overflow.
           preserveIndent: false,
         },
       },
@@ -33,11 +30,6 @@ export default defineConfig({
       },
       head: [
         { tag: 'meta', attrs: { name: 'theme-color', content: '#071522' } },
-        // Social cards / SEO. Starlight derives canonical, og:title/type/url/locale/
-        // description/site_name, and twitter:card from `site` + page frontmatter; these
-        // add the image and the bits it does not emit. Absolute URLs are required for og.
-        // Do not add twitter:title or twitter:description here: one site-wide value
-        // overrides the per-page og:* fallback and labels every page the homepage.
         { tag: 'meta', attrs: { property: 'og:image', content: 'https://mxr.sh/og.png' } },
         { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
         { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },

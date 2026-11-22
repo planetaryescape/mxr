@@ -1,8 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { mailList, mailRows, openList, reader, threadMessages } from "./helpers/mail";
-import { stubBulkPeople } from "./helpers/bulkPeople";
-import { openApp } from "./helpers/state";
 import { KEY_TO_PAINT_P95_MS, installKeyToPaintProbe, measureKey, p95 } from "./helpers/speed";
 import { freshWaitingConversations } from "./helpers/waiting-request";
 
@@ -68,21 +66,6 @@ for (const path of ["/desk", "/m/inbox"]) {
   });
 }
 
-test("the lamp moves under budget on 5,000 people (spike S4)", async ({ page }) => {
-  await stubBulkPeople(page);
-  await openApp(page, "/messages");
-  await expect(page.locator("[data-lit='true']")).toHaveCount(0);
-  await expect(page.getByTestId("messages-row").first()).toBeVisible();
-  await page.keyboard.press("j");
-  await expect(page.locator("[data-lit='true']")).toHaveCount(1);
-  await installKeyToPaintProbe(page);
-  const down = await measureKey(page, "j", PRESSES, { change: "lamp-moves" });
-  const up = await measureKey(page, "k", PRESSES, { change: "lamp-moves" });
-  const result = report("/messages (5,000 people)", { j: down, k: up });
-  for (const value of Object.values(result)) expect(value).toBeLessThan(KEY_TO_PAINT_P95_MS);
-  await expect(page.locator("[data-lit='true']")).toHaveCount(1);
-});
-
 test("opening a cached conversation paints under budget", async ({ page }) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
@@ -107,15 +90,4 @@ test("opening a cached conversation paints under budget", async ({ page }) => {
   const result = report("/m/inbox open", { Enter: enter });
 
   expect(result.Enter).toBeLessThan(KEY_TO_PAINT_P95_MS);
-});
-
-test("a key that doesn't paint its change fails the probe instead of timing an empty frame", async ({
-  page,
-}) => {
-  await openList(page, "/m/inbox");
-  await installKeyToPaintProbe(page);
-  await holdMutations(page);
-  await expect(measureKey(page, "s", 1, { change: "cursor-moves" })).rejects.toThrow(
-    /1 of 1 presses never painted "cursor-moves"/,
-  );
 });

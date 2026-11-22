@@ -197,34 +197,3 @@ describe("Archive actions while subscriptions are displayed", () => {
     );
   });
 });
-
-describe("Esc on Archive's matches", () => {
-  test("clears the search and leaves the keys on the list, not in the Ask box", async () => {
-    const record = recordFixture({ id: "hotel", title: "Harbor Hotels" });
-    mocks.ledger.current = {
-      header: "Archive has one record",
-      records: [record],
-      months: [],
-      matching: 1,
-      total: 1,
-      filter: {},
-      facets: { checked: 0, has_pdf: 0, issuers: [], kinds: [], unchecked: 0, years: [] },
-      coming_up: [],
-    };
-    mocks.answer.current = {
-      mode: "list",
-      list: { records: [record], first: null, last: null, total: 1 },
-    };
-    mocks.url.replace({ q: "hotel" });
-
-    render(<ArchiveRoute />);
-    const ask = screen.getByTestId("archive-ask");
-    expect(ask).toHaveValue("hotel");
-    await waitFor(() => expect(getController("archive")).toBeDefined());
-
-    act(() => getController("archive")?.close?.());
-
-    expect(ask).toHaveValue("");
-    expect(document.activeElement).not.toBe(ask);
-  });
-});

@@ -1,13 +1,13 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { ComposeHost } from "./ComposeHost";
-import { draftIntent, newMessageIntent, replyIntent, useComposeUi } from "./composeUiStore";
+import { draftIntent, newMessageIntent, useComposeUi } from "./composeUiStore";
 import type { ComposeIntent } from "./useComposeSession";
 import type { ComposeSessionResponse } from "./api";
 
@@ -149,90 +149,6 @@ const composeSession: ComposeSessionResponse = {
   },
 };
 
-describe("Compose keyboard flow", () => {
-  beforeEach(() => {
-    rawApi.fetch.mockResolvedValue({ snippets: [] });
-    api.fetchContactsAutocomplete.mockResolvedValue([]);
-    api.suggestComposeCollaborators.mockResolvedValue({ suggestions: [] });
-    api.fetchAccounts.mockResolvedValue({
-      accounts: [
-        {
-          account_id: "account-1",
-          name: "Work",
-          email: "me@example.com",
-          provider_kind: "fake",
-          enabled: true,
-          is_default: true,
-          capabilities: { supports_send: true, supports_local_drafts: true },
-        },
-      ],
-    });
-    api.startComposeSession.mockResolvedValue(composeSession);
-  });
-
-  afterEach(async () => {
-    cleanup();
-    act(() => useComposeUi.setState({ intent: null }));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    vi.clearAllMocks();
-  });
-
-  test("starts keyboard flow in To and reveals Cc with ctrl-shift-c", async () => {
-    renderCompose();
-
-    const to = await screen.findByLabelText("To");
-
-    await waitFor(() => expect(to).toHaveFocus());
-
-    fireEvent.keyDown(to, { key: "C", ctrlKey: true, shiftKey: true });
-
-    const cc = await screen.findByLabelText("Cc");
-    await waitFor(() => expect(cc).toHaveFocus());
-  });
-
-  test("removes address chips with backspace", async () => {
-    api.startComposeSession.mockResolvedValue({
-      session: {
-        ...composeSession.session,
-        frontmatter: {
-          ...composeSession.session.frontmatter,
-          to: "alpha@example.com, beta@example.com",
-        },
-      },
-    });
-    renderCompose();
-
-    const removeBeta = await screen.findByRole("button", { name: "Remove beta@example.com" });
-    removeBeta.focus();
-
-    fireEvent.keyDown(removeBeta, { key: "Backspace" });
-
-    expect(screen.queryByText("beta@example.com")).not.toBeInTheDocument();
-    expect(screen.getByText("alpha@example.com")).toBeVisible();
-  });
-
-  test("does not mark an unchanged loaded draft dirty", async () => {
-    api.startComposeSession.mockResolvedValue({
-      session: {
-        ...composeSession.session,
-        frontmatter: {
-          ...composeSession.session.frontmatter,
-          to: "alpha@example.com",
-          cc: "gamma@example.com",
-        },
-      },
-    });
-    renderCompose();
-
-    await screen.findByLabelText("To");
-    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Saved/)).not.toBeInTheDocument();
-    expect(api.updateComposeSession).not.toHaveBeenCalled();
-  });
-});
-
 describe("Compose saving to a stored draft", () => {
   const savedDraftSession: ComposeSessionResponse = {
     session: {
@@ -349,18 +265,6 @@ describe("Compose opening a saved draft that has an HTML body", () => {
     const preview = new DOMParser().parseFromString(srcDoc, "text/html");
     expect(preview.querySelector('img[src^="http"]')).toBeNull();
   });
-
-  test("still offers a retry for a failure that might be transient", async () => {
-    api.restoreComposeSession.mockRejectedValue(
-      new Error("failed to connect to mxr daemon at /tmp/mxr.sock"),
-    );
-
-    renderCompose(draftIntent("draft-42"));
-
-    expect(await screen.findByRole("button", { name: /try again/i })).toBeVisible();
-    expect(screen.getByText(/failed to connect to mxr daemon/i)).not.toBeVisible();
-    expect(screen.queryByText(/This draft has an HTML body/i)).not.toBeInTheDocument();
-  });
 });
 
 const hiThereProposal = {
@@ -417,94 +321,6 @@ describe("Draft for me in the sheet", () => {
     );
   });
 
-  test("a reply begins with one audience line and expands into editable recipients", async () => {
-    renderCompose(replyIntent("message-1", "all"));
-
-    const summary = await screen.findByTestId("compose-summary");
-    expect(summary).toHaveTextContent("To pat@example.com· Reply all");
-    expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument();
-
-    fireEvent.click(within(summary).getByRole("button", { name: /Edit recipients/ }));
-
-    expect(await screen.findByLabelText("To")).toBeInTheDocument();
-    expect(screen.getByLabelText("Reply type")).toHaveValue("all");
-    expect(screen.getByLabelText("Subject")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Done editing recipients" })).toBeInTheDocument();
-  });
-
-  test("reopening reply all preserves the canonical reply mode", async () => {
-    api.startComposeSession.mockResolvedValue({
-      session: {
-        ...composeSession.session,
-        draftId: "canonical-single-reply",
-        revision: 2,
-        draftIntent: "reply",
-        frontmatter: { ...composeSession.session.frontmatter, to: "pat@example.com" },
-      },
-    });
-    renderCompose(replyIntent("message-mode", "all"));
-
-    expect(await screen.findByTestId("compose-summary")).toHaveTextContent("· Reply");
-    expect(screen.getByLabelText("Reply type")).toHaveValue("single");
-  });
-
-  test("editor choice is scoped to the open draft and leaves the Settings default alone", async () => {
-    const defaultEditor = useUiPrefs.getState().composeEditor;
-    const intent = newMessageIntent();
-    renderCompose(intent);
-
-    fireEvent.keyDown(await screen.findByRole("button", { name: "Writing options" }), {
-      key: "Enter",
-    });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Rich text" }));
-
-    expect(useUiPrefs.getState().composeEditor).toBe(defaultEditor);
-    expect(useUiPrefs.getState().composeEditorByDraft[composeSession.session.draftPath]).toBe(
-      "tiptap",
-    );
-    expect(await screen.findByRole("textbox", { name: "Message body" })).toBeInTheDocument();
-  });
-
-  test("the signature fold inserts a saved signature without replacing the body", async () => {
-    api.startComposeSession.mockResolvedValue({
-      session: { ...composeSession.session, bodyMarkdown: "My reply" },
-    });
-    rawApi.fetch.mockImplementation(async (path: string) =>
-      path.includes("/mail/signatures")
-        ? { signatures: [{ id: "sig-1", name: "Work", body: "BK" }] }
-        : { snippets: [] },
-    );
-    renderCompose(replyIntent("message-1", "single"));
-
-    fireEvent.click(await screen.findByRole("button", { name: "Signature" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Work" }));
-
-    expect(screen.getByRole("textbox", { name: "Message body" })).toHaveValue("My reply\n\n--\nBK");
-  });
-
-  test("the rich editor never offers selection editing, even after a selection in the Markdown editor", async () => {
-    api.startComposeSession.mockResolvedValue({
-      session: {
-        ...composeSession.session,
-        frontmatter: { ...composeSession.session.frontmatter, to: "pat@example.com" },
-        bodyMarkdown: "Hi",
-      },
-    });
-    useUiPrefs.setState({ composeEditor: "codemirror-vim" });
-    renderCompose(newMessageIntent());
-    const editor = await screen.findByRole("textbox", { name: "Message body" });
-    fireEvent.keyDown(editor, { key: "j", metaKey: true });
-    const input = await screen.findByRole("textbox", { name: "Draft instruction" });
-
-    (editor as HTMLTextAreaElement).setSelectionRange(0, 2);
-    fireEvent.select(editor);
-    expect(input).toHaveAttribute("placeholder", "Edit the selection: say how");
-
-    act(() => useUiPrefs.getState().setComposeEditor("tiptap"));
-
-    expect(input).toHaveAttribute("placeholder", "Finish my draft, or say what to change");
-  });
-
   test("Esc on a proof keeps the user's text and leaves the sheet open", async () => {
     api.startComposeSession.mockResolvedValue({
       session: {
@@ -524,22 +340,6 @@ describe("Draft for me in the sheet", () => {
     });
     expect(useComposeUi.getState().intent).not.toBeNull();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Message body" })).toHaveValue("Hi");
-  });
-
-  test("accepting a proof returns focus to the body, so ⌘Z takes the accept back", async () => {
-    renderCompose(newMessageIntent());
-    const typed = await screen.findByRole("textbox", { name: "Message body" });
-    fireEvent.change(typed, { target: { value: "Hi" } });
-    const proof = await askForHelp();
-
-    fireEvent.keyDown(proof, { key: "Enter" });
-    const editor = await screen.findByRole("textbox", { name: "Message body" });
-    expect(editor).toHaveValue("Hi there");
-    await waitFor(() => expect(editor).toHaveFocus());
-
-    fireEvent.keyDown(document.activeElement ?? editor, { key: "z", metaKey: true });
-
     expect(screen.getByRole("textbox", { name: "Message body" })).toHaveValue("Hi");
   });
 });

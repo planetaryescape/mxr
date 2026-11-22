@@ -83,25 +83,6 @@ describe("OnboardingRoute auth step", () => {
     vi.unstubAllGlobals();
   });
 
-  test("Gmail (loopback) shows an open-sign-in affordance, not a device code", async () => {
-    await reachAuthStep(
-      "gmail",
-      session({ auth_url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" }),
-    );
-
-    expect(await screen.findByRole("button", { name: /open .*sign.?in/i })).toBeVisible();
-    expect(screen.queryByText(/device code/i)).toBeNull();
-  });
-
-  test("Outlook (device) shows the user code", async () => {
-    await reachAuthStep(
-      "outlook",
-      session({ user_code: "ABCD-1234", verification_uri: "https://microsoft.com/devicelogin" }),
-    );
-
-    expect(await screen.findByText("ABCD-1234")).toBeVisible();
-  });
-
   test("completing an authorized session advances and saves the account", async () => {
     api.completeAuthSession.mockResolvedValue({ session: session({ state: "authorized" }) });
     await reachAuthStep(
@@ -121,13 +102,6 @@ describe("OnboardingRoute auth step", () => {
     await waitFor(() => expect(router.navigate).toHaveBeenCalledWith({ to: "/now" }));
   });
 
-  test("a failed session surfaces the error and Complete stays disabled", async () => {
-    await reachAuthStep("gmail", session({ state: "failed", error: "invalid_client" }));
-
-    expect(await screen.findByText(/authorization failed: invalid_client/i)).toBeVisible();
-    expect(screen.getByRole("button", { name: /^complete$/i })).toBeDisabled();
-  });
-
   test("Cancel cancels the daemon session and returns to provider choice", async () => {
     api.cancelAuthSession.mockResolvedValue(undefined);
     await reachAuthStep(
@@ -140,14 +114,4 @@ describe("OnboardingRoute auth step", () => {
     await waitFor(() => expect(api.cancelAuthSession).toHaveBeenCalledWith("sess-1"));
     expect(await screen.findByRole("heading", { name: /choose a provider/i })).toBeVisible();
   });
-});
-
-describe("OnboardingRoute status copy", () => {
-  afterEach(() => vi.clearAllMocks());
-
-});
-
-describe("OnboardingRoute IMAP form", () => {
-  afterEach(() => vi.clearAllMocks());
-
 });

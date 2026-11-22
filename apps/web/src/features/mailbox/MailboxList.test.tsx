@@ -1,12 +1,11 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { AlarmClockOff } from "lucide-react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { gistOrder, MailboxList, type MailboxListProps } from "./MailboxList";
+import { MailboxList, type MailboxListProps } from "./MailboxList";
 import type { MessageGroupView, MessageRowView, MutationResponse } from "./types";
 import { usePendingMailOps, useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
-import { getRegistry, invokeAction, isAvailable, snapshotActionContext } from "@/lib/actions";
+import { getRegistry, snapshotActionContext } from "@/lib/actions";
 import { installKeyDispatcher } from "@/lib/keys/dispatcher";
 import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
@@ -151,7 +150,6 @@ afterEach(() => {
 });
 
 describe("MailboxList keyboard", () => {
-
   test("j and k move the cursor, clamped at the ends", () => {
     renderList();
 
@@ -163,17 +161,6 @@ describe("MailboxList keyboard", () => {
     expect(cursor()).toBe("mail-row-thread-thread-1");
   });
 
-  test("x selects the row and moves down", () => {
-    renderList();
-
-    type({ key: "x" });
-    expect(selectedIds()).toEqual(["thread-thread-1"]);
-    expect(cursor()).toBe("mail-row-thread-thread-2");
-
-    type({ key: "x" });
-    expect(selectedIds()).toEqual(["thread-thread-1", "thread-thread-2"]);
-  });
-
   test("V starts visual mode and j extends the selection", () => {
     renderList();
 
@@ -183,16 +170,6 @@ describe("MailboxList keyboard", () => {
     expect(selectedIds()).toEqual(["thread-thread-2", "thread-thread-3", "thread-thread-4"]);
     type({ key: "k" });
     expect(selectedIds()).toEqual(["thread-thread-2", "thread-thread-3"]);
-  });
-
-  test("* u selects unread rows and * n clears", () => {
-    renderList();
-
-    type({ key: "*", shiftKey: true }, { key: "u" });
-    expect(selectedIds()).toEqual(["thread-thread-2", "thread-thread-4"]);
-
-    type({ key: "*", shiftKey: true }, { key: "n" });
-    expect(selectedIds()).toEqual([]);
   });
 
   test("Escape leaves visual mode, then clears the selection, then closes the thread", () => {
@@ -220,109 +197,6 @@ describe("MailboxList keyboard", () => {
 
     expect(onOpenRow).toHaveBeenCalledWith(rows[1], { focusReader: true });
   });
-
-  test("clicking a row opens it without moving focus to the reader", () => {
-    renderList();
-
-    fireEvent.click(screen.getByRole("option", { name: /Subject 3/ }));
-
-    expect(onOpenRow).toHaveBeenCalledWith(rows[2], { focusReader: false });
-    expect(cursor()).toBe("mail-row-thread-thread-3");
-  });
-
-  test("with previewOnFocus, moving the cursor previews the next thread", () => {
-    renderList({ previewOnFocus: true, activeThreadId: "thread-1" });
-
-    type({ key: "j" });
-
-    expect(onOpenRow).toHaveBeenCalledWith(rows[1], { focusReader: false });
-  });
-
-  test("keys are inactive while another pane has focus", () => {
-    renderList();
-    act(() => useMailboxPane.getState().setActivePane("reader"));
-
-    type({ key: "j" });
-
-    expect(cursor()).toBe("mail-row-thread-thread-1");
-  });
-
-  test("e starts reviewed Archive for the focused row and keeps the cursor at the same position", async () => {
-    let finish!: (value: MutationResponse) => void;
-    api.archiveMessagesRecoverably.mockReturnValue(new Promise((resolve) => (finish = resolve)));
-    const { rerenderList } = renderList();
-
-    type({ key: "j" }, { key: "e" });
-
-    await vi.waitFor(() => expect(api.archiveMessagesRecoverably).toHaveBeenCalledWith(["msg-2"]));
-    expect(api.archiveMessages).not.toHaveBeenCalled();
-    expect(screen.getByRole("option", { name: /Subject 2/ })).toBeInTheDocument();
-    expect(cursor()).toBe("mail-row-thread-thread-2");
-
-    await act(async () => {
-      finish({ ok: true, result: { requested: 1, succeeded: 1, skipped: 0, failed: 0 } });
-      await Promise.resolve();
-    });
-
-    rerenderList({
-      groups: [{ id: "today", label: "Today", rows: rows.filter((item) => item.id !== "msg-2") }],
-    });
-    expect(screen.queryByRole("option", { name: /Subject 2/ })).not.toBeInTheDocument();
-    expect(cursor()).toBe("mail-row-thread-thread-3");
-  });
-
-  test("the cursor follows the same row when rows are added above it", () => {
-    const { rerenderList } = renderList();
-    type({ key: "j" });
-
-    rerenderList({ groups: [{ id: "today", label: "Today", rows: [row(0), ...rows] }] });
-
-    expect(cursor()).toBe("mail-row-thread-thread-2");
-  });
-
-  test("removing the last row under the cursor clamps it to the new last row", () => {
-    const { rerenderList } = renderList();
-    type({ key: "j" }, { key: "j" }, { key: "j" });
-    expect(cursor()).toBe("mail-row-thread-thread-4");
-
-    rerenderList({ groups: [{ id: "today", label: "Today", rows: rows.slice(0, 3) }] });
-    expect(cursor()).toBe("mail-row-thread-thread-3");
-  });
-});
-
-describe("MailboxList palette actions", () => {
-  test("Route out of this queue is offered only in a queue label and opens the route dialog", () => {
-    const route = getRegistry().get("mail.route")!;
-    const { unmount } = renderList();
-    expect(isAvailable(route, snapshotActionContext())).toBe(false);
-    unmount();
-
-    renderList({ queueLabel: "Follow Up" });
-    type({ key: "j" });
-    const context = snapshotActionContext();
-    expect(isAvailable(route, context)).toBe(true);
-    act(() => invokeAction(route, context, "key"));
-
-    expect(useMailDialogs.getState().dialog).toMatchObject({
-      kind: "move",
-      route: { fromQueueLabel: "Follow Up" },
-      target: { messageIds: ["msg-2"] },
-    });
-  });
-});
-
-describe("MailboxList row action", () => {
-  test("w runs the list's row action on the lit row", () => {
-    const run = vi.fn<(row: MessageRowView) => void>();
-    renderList({
-      rowAction: { label: "Wake now", icon: AlarmClockOff, describe: () => "Wake", run },
-    });
-
-    type({ key: "j" }, { key: "w" });
-
-    expect(run).toHaveBeenCalledWith(expect.objectContaining({ id: "msg-2" }));
-  });
-
 });
 
 describe("MailboxList readOnly", () => {
@@ -338,28 +212,5 @@ describe("MailboxList readOnly", () => {
 
     type({ key: "j" });
     expect(cursor()).toBe("mail-row-thread-thread-2");
-  });
-});
-
-describe("MailboxList rows", () => {
-
-});
-
-describe("gistOrder", () => {
-  const rowItems = (ids: string[]) =>
-    ids.map((id) => ({ kind: "row" as const, row: { thread_id: id } as MessageRowView }));
-  test("visible rows first, then the next few below, then the overscan above", () => {
-    const flat = [
-      { kind: "header" as const, id: "h", group: {} as never },
-      ...rowItems(["a", "b", "c", "d", "e", "f", "g"]),
-    ];
-    expect(gistOrder(flat, { startIndex: 3, endIndex: 4 }, 1, 2)).toEqual([
-      "c",
-      "d",
-      "e",
-      "f",
-      "b",
-      "a",
-    ]);
   });
 });

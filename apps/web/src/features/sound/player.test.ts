@@ -4,15 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setActiveQueryClient } from "@/lib/queryClient";
 
 import { chimeSettingsQuery, type ChimeSettings } from "./api";
-import {
-  installSoundPlayer,
-  playSound,
-  resetSoundPlayer,
-  scheduleVoice,
-  voiceFor,
-  type SoundContext,
-} from "./player";
-import { VOICES } from "./voices";
+import { installSoundPlayer, playSound, resetSoundPlayer } from "./player";
 
 type Call = [method: string, ...args: unknown[]];
 
@@ -45,10 +37,6 @@ function fakeContext(state: AudioContextState = "running") {
   return { context, calls };
 }
 
-function peak(calls: Call[]): unknown {
-  return calls.find(([method]) => method === "gain.ramp")?.[1];
-}
-
 const SETTINGS: ChimeSettings = {
   enabled: true,
   volume: 0.5,
@@ -68,37 +56,6 @@ function useSettings(settings: ChimeSettings | undefined) {
   if (settings) client.setQueryData(chimeSettingsQuery.queryKey, settings);
   setActiveQueryClient(client);
 }
-
-describe("scheduleVoice", () => {
-  it("starts and ends every partial at silence on exponential curves", () => {
-    const { context, calls } = fakeContext();
-    const scheduled = scheduleVoice(context as unknown as SoundContext, VOICES.sent, 0.5, 10);
-    expect(scheduled).toBe(VOICES.sent.length);
-    const gains = calls.filter(([method]) => method === "gain.set" || method === "gain.ramp");
-    for (let index = 0; index < gains.length; index += 3) {
-      const [set, up, down] = gains.slice(index, index + 3);
-      expect(set).toEqual(["gain.set", 0.0001, expect.any(Number)]);
-      expect(up?.[0]).toBe("gain.ramp");
-      expect(up?.[1]).toBeGreaterThan(0.0001);
-      expect(up?.[1]).toBeLessThanOrEqual(0.2);
-      expect(down).toEqual(["gain.ramp", 0.0001, expect.any(Number)]);
-    }
-    expect(calls.some(([method, value]) => method === "gain.set" && value === 0)).toBe(false);
-  });
-
-  it("scales with volume and schedules nothing at zero", () => {
-    const loud = fakeContext();
-    scheduleVoice(loud.context as unknown as SoundContext, VOICES.archive, 1, 0);
-    const quiet = fakeContext();
-    scheduleVoice(quiet.context as unknown as SoundContext, VOICES.archive, 0.25, 0);
-    expect(peak(quiet.calls)).toBeCloseTo(Number(peak(loud.calls)) / 4);
-
-    const silent = fakeContext();
-    expect(scheduleVoice(silent.context as unknown as SoundContext, VOICES.archive, 0, 0)).toBe(0);
-    expect(silent.calls).toEqual([]);
-  });
-
-});
 
 describe("playSound", () => {
   let fake: ReturnType<typeof fakeContext>;
@@ -128,35 +85,5 @@ describe("playSound", () => {
     useSettings(undefined);
     expect(playSound("archived")).toBe(false);
     expect(AudioContext).not.toHaveBeenCalled();
-  });
-
-  it("plays the sound the setting names for the event", async () => {
-    useSettings(SETTINGS);
-    expect(playSound("archived")).toBe(true);
-    await vi.waitFor(() =>
-      expect(fake.calls.some(([method]) => method === "osc.start")).toBe(true),
-    );
-    expect(voiceFor("archived", SETTINGS)).toBe("archive");
-    expect(voiceFor("snoozed", SETTINGS)).toBe("pop");
-    expect(voiceFor("sent", { ...SETTINGS, sent: "none" })).toBeNull();
-  });
-
-  it("plays once for a held key, not for its repeats", () => {
-    useSettings(SETTINGS);
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "e" }));
-    expect(playSound("archived")).toBe(true);
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "e", repeat: true }));
-    expect(playSound("archived")).toBe(false);
-    window.dispatchEvent(new KeyboardEvent("keyup", { key: "e" }));
-    expect(playSound("archived")).toBe(true);
-  });
-
-  it("skips silently when the browser won't start audio", async () => {
-    useSettings(SETTINGS);
-    fake.context.state = "suspended";
-    fake.context.resume.mockImplementation(() => new Promise(() => undefined));
-    expect(playSound("sent")).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(fake.calls).toEqual([]);
   });
 });

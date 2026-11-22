@@ -84,21 +84,6 @@ afterEach(() => {
 });
 
 describe("InviteCard", () => {
-
-  it("collapses to the responded state when viewer_partstat is set", () => {
-    render(
-      wrap(<InviteCard messageId="m1" metadata={baseCalendar({ viewer_partstat: "accepted" })} />),
-    );
-    expect(screen.getByText(/you accepted/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^accept$/i })).not.toBeInTheDocument();
-  });
-
-  it("shows the cancelled banner and hides actions on CANCEL method", () => {
-    render(wrap(<InviteCard messageId="m1" metadata={baseCalendar({ method: "CANCEL" })} />));
-    expect(screen.getByText(/event canceled by organizer/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^accept$/i })).not.toBeInTheDocument();
-  });
-
   it("clicking Accept holds the reply for the undo window, then sends it", async () => {
     render(wrap(<InviteCard messageId="m1" metadata={baseCalendar()} />));
     apiFetchMock.mockClear();

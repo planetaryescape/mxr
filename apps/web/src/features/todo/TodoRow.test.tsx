@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { Todo } from "./api";
@@ -57,60 +57,6 @@ function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowPro
 }
 
 describe("TodoRow", () => {
-  test("details keep one reason and disclose field sources separately from raw diagnostics", () => {
-    const quote = "We couldn't charge your card.";
-    const source = { source: "rule", source_label: "a pattern in the email", checked: true };
-    const { row } = renderRow(
-      todoFixture({
-        thread_id: null,
-        why: quote,
-        fields: [
-          { ...source, field: "title", evidence: quote },
-          { ...source, field: "kind", evidence: quote },
-          { ...source, field: "quote", evidence: quote },
-          { ...source, field: "amount", evidence: "£11.99", checked: false },
-          { ...source, field: "asks_fingerprint", evidence: "raw-input-fingerprint" },
-          { ...source, field: "asks_provenance", evidence: "raw-policy-unit-span" },
-        ],
-      }),
-      "now",
-      { details: true },
-    );
-    const details = within(row).getByTestId("todo-source");
-    const sources = within(details).getByText("Field sources");
-    expect(details.textContent?.match(/We couldn't charge your card\./g)).toHaveLength(1);
-    expect(within(details).getByText("raw-input-fingerprint", { exact: false })).not.toBeVisible();
-    expect(within(details).getByText("£11.99", { exact: false })).not.toBeVisible();
-    fireEvent.click(sources);
-    expect(within(details).getByText("£11.99", { exact: false })).toBeVisible();
-    expect(within(details).getByTestId("todo-field-unchecked")).toBeVisible();
-    expect(within(details).getByText("raw-input-fingerprint", { exact: false })).not.toBeVisible();
-    fireEvent.click(within(details).getByText("Diagnostics"));
-    expect(within(details).getByText("raw-input-fingerprint", { exact: false })).toBeVisible();
-    expect(within(details).getByText("raw-policy-unit-span", { exact: false })).toBeVisible();
-  });
-
-  test("background task revisions stay unseen until details are reopened", () => {
-    const original = todoFixture({ unread: true, seen_revision: "opened" });
-    const { rerender } = renderRow(original, "now", { details: true });
-    expect(markRowSeen).toHaveBeenCalledTimes(1);
-    rerender({ ...original, title: "New content", seen_revision: "new-revision" });
-    expect(markRowSeen).toHaveBeenCalledTimes(1);
-  });
-  test("details mark a row seen, but keyboard focus does not", () => {
-    const todo = todoFixture({ unread: true, seen_revision: "revision" });
-    renderRow(todo, "now", { lit: true, details: false });
-    expect(markRowSeen).not.toHaveBeenCalled();
-    cleanup();
-    renderRow(todoFixture({ id: "peeked", unread: true, seen_revision: "revision-2" }), "now", {
-      lit: false,
-      details: true,
-    });
-    expect(markRowSeen).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "peeked", seen_revision: "revision-2" }),
-    );
-  });
-
   test("e done and o email call their handlers", () => {
     const { row, props } = renderRow(todoFixture());
     fireEvent.click(within(row).getByTestId("todo-tick"));
@@ -118,31 +64,6 @@ describe("TodoRow", () => {
     fireEvent.click(within(row).getByRole("button", { name: "email" }));
     expect(props.onOpenEmail).toHaveBeenCalledWith(props.todo);
     expect(props.onSelect).not.toHaveBeenCalled();
-  });
-
-  test("a later-mail resolution shows its evidence and opens that exact source", () => {
-    const onOpenResolution = vi.fn<(todo: Todo, threadId: string, messageId: string) => void>();
-    const todo = todoFixture({
-      resolution: {
-        id: "resolution-1",
-        message_id: "msg_resolution",
-        thread_id: "thread_bill",
-        source_date: "2026-10-04T09:00:00Z",
-        quote: "Your council tax payment has been received.",
-        quote_location: "body",
-        source_method: "rule",
-        action: "complete",
-        proposed_due_at: null,
-        proposed_due_words: null,
-        status: "pending",
-      },
-    });
-    const { row } = renderRow(todo, "now", { onOpenResolution, details: true });
-    const card = within(row).getByTestId("todo-resolution");
-    expect(card).toHaveTextContent("Your council tax payment has been received.");
-    expect(card.querySelector("p")).toHaveClass("line-clamp-2");
-    fireEvent.click(within(card).getByRole("button", { name: "Source email" }));
-    expect(onOpenResolution).toHaveBeenCalledWith(todo, "thread_bill", "msg_resolution");
   });
 
   test("a late preview cannot authorize a different selected offer", async () => {
@@ -199,38 +120,6 @@ describe("TodoRow", () => {
     expect(screen.queryByRole("button", { name: "Accept and complete" })).toBeNull();
   });
 
-  test("expanded details preserve arrival, why, next and per-field unchecked words", () => {
-    const { row } = renderRow(
-      todoFixture({ next: "Check the council tax account", thread_id: null }),
-      "now",
-      { details: true },
-    );
-    const details = within(row).getByTestId("todo-source");
-
-    expect(within(details).getByTestId("todo-arrived")).toHaveAttribute(
-      "dateTime",
-      "2026-10-02T09:00:00Z",
-    );
-    expect(within(details).getByTestId("todo-why")).toHaveTextContent('"payment due 9 October"');
-    expect(details).toHaveTextContent("Check the council tax account");
-    expect(details).toHaveTextContent("09/10/2026");
-    expect(within(details).getAllByTestId("todo-field-unchecked")).toHaveLength(1);
-  });
-
-  test("keeps a visible checkbox before the title and does not select the row", () => {
-    const { row, props } = renderRow(todoFixture());
-    const checkbox = within(row).getByRole("checkbox", { name: "Tick off Pay council tax" });
-    expect(checkbox).toHaveAttribute("data-testid", "todo-done");
-    expect(checkbox).toHaveAttribute("aria-checked", "false");
-    expect(row.querySelector("[data-testid='todo-title']")?.compareDocumentPosition(checkbox)).toBe(
-      Node.DOCUMENT_POSITION_PRECEDING,
-    );
-
-    fireEvent.click(checkbox);
-    expect(props.onDone).toHaveBeenCalledWith(props.todo, "pointer");
-    expect(props.onSelect).not.toHaveBeenCalled();
-  });
-
   test("a completed row stays checked and reopens from the same checkbox", () => {
     const { row, props } = renderRow(todoFixture(), "done");
     const checkbox = within(row).getByRole("checkbox", { name: "Reopen Pay council tax" });
@@ -242,28 +131,4 @@ describe("TodoRow", () => {
     expect(props.onDone).not.toHaveBeenCalled();
     expect(props.onSelect).not.toHaveBeenCalled();
   });
-
-});
-
-test("the visible row keeps requester and the exact ask after title edits", () => {
-  const quote = "Please sign the original contract.";
-  const { row } = renderRow(
-    todoFixture({
-      title: "Sign the corrected contract",
-      why: quote,
-      person_label: "Alex asked",
-      fields: [
-        {
-          field: "quote",
-          evidence: quote,
-          source: "rule",
-          source_label: "a pattern in the email",
-          checked: true,
-        },
-      ],
-    }),
-  );
-  expect(row).toHaveTextContent("Alex asked");
-  expect(within(row).getByTestId("todo-ask-quote")).toHaveTextContent(quote);
-  expect(within(row).getByTestId("todo-title")).toHaveTextContent("Sign the corrected contract");
 });

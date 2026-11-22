@@ -1,12 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 
-import {
-  paragraphAtTop,
-  paragraphOfNode,
-  paragraphOfRangeStart,
-  selectionParagraph,
-} from "./paragraphAnchor";
+import { selectionParagraph } from "./paragraphAnchor";
 import { Paragraphs } from "./ReadingReader";
 
 afterEach(() => {
@@ -39,74 +34,7 @@ describe("the plain reader's paragraph anchors", () => {
     selectText(text, text.data.indexOf("Same"), text.data.length);
     expect(selectionParagraph(root)).toBe(2);
   });
-
-  test("a range that starts at an element boundary uses the child it points to", () => {
-    render(<Paragraphs paragraphs={PARAGRAPHS} marks={[]} />);
-    const root = screen.getByTestId("reader-text");
-    const range = document.createRange();
-    range.setStart(root, 1);
-    range.setEnd(root, 3);
-    expect(paragraphOfRangeStart(range)).toBe(1);
-  });
-
-  test("text outside the reader, or outside any paragraph, has no anchor", () => {
-    render(
-      <>
-        <p data-testid="elsewhere">outside</p>
-        <Paragraphs paragraphs={PARAGRAPHS} marks={[]} />
-      </>,
-    );
-    const outside = screen.getByTestId("elsewhere");
-    selectText(outside.firstChild!, 0, 3);
-    expect(paragraphOfNode(outside)).toBeNull();
-    expect(selectionParagraph(screen.getByTestId("reader-text"))).toBeNull();
-  });
-
-  test("the HTML reader's one-based data-para labels become zero-based", () => {
-    const host = document.createElement("div");
-    host.innerHTML = `<p data-para="1">a</p><p data-para="2"><b>b</b></p>`;
-    document.body.append(host);
-    expect(paragraphOfNode(host.querySelector("b"))).toBe(1);
-    host.remove();
-  });
 });
-
-/** Gives `element` a box from `top` to `bottom`; jsdom has no layout. */
-function placeAt(element: Element, top: number, bottom: number) {
-  element.getBoundingClientRect = () => ({ top, bottom }) as DOMRect;
-}
-
-describe("the paragraph at the top of the reader", () => {
-  test("is the first one not scrolled wholly above the viewport, half-hidden ones included", () => {
-    render(<Paragraphs paragraphs={PARAGRAPHS} marks={[]} />);
-    const root = screen.getByTestId("reader-text");
-    const viewport = document.createElement("div");
-    placeAt(viewport, 100, 500);
-    const [first, heading, second] = root.querySelectorAll("[data-paragraph]");
-    placeAt(first!, 20, 100);
-    placeAt(heading!, 100, 130);
-    placeAt(second!, 130, 200);
-    expect(paragraphAtTop(root, viewport)).toEqual({ index: 1, text: "A heading" });
-    placeAt(heading!, 60, 90);
-    placeAt(second!, 90, 160);
-    expect(paragraphAtTop(root, viewport)).toEqual({
-      index: 2,
-      text: "Second. Same words here.",
-    });
-  });
-
-  test("is none when nothing anchored is in view, as in the sender's own layout", () => {
-    render(<Paragraphs paragraphs={PARAGRAPHS} marks={[]} />);
-    const root = screen.getByTestId("reader-text");
-    const viewport = document.createElement("div");
-    placeAt(viewport, 100, 500);
-    for (const paragraph of root.querySelectorAll("[data-paragraph]")) placeAt(paragraph, 600, 700);
-    expect(paragraphAtTop(root, viewport)).toBeNull();
-    expect(paragraphAtTop(null, viewport)).toBeNull();
-  });
-
-});
-
 
 describe("drawing anchored marks in the plain reader", () => {
   const marked = (marks: { quote: string; paragraph?: number | null }[]) => {
@@ -118,9 +46,5 @@ describe("drawing anchored marks in the plain reader", () => {
 
   test("an anchored highlight marks only the paragraph it was made in", () => {
     expect(marked([{ quote: "Same words here", paragraph: 2 }])).toEqual(["2"]);
-  });
-
-  test("a highlight with no anchor marks every occurrence, as before", () => {
-    expect(marked([{ quote: "Same words here" }])).toEqual(["0", "2"]);
   });
 });

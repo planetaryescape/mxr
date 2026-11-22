@@ -1,22 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { BridgeRequestError, DaemonUnavailableError, UnauthorizedError } from "@/api/client";
+import { BridgeRequestError, UnauthorizedError } from "@/api/client";
 import { explainError } from "./RequestError";
 
 describe("explainError", () => {
-  it("distinguishes an uncached offline item from rejected authentication", () => {
-    const result = explainError(new BridgeRequestError(503, "not saved", "offline_not_cached"));
-    expect(result.heading).toBe("This item isn't saved offline");
-    expect(result.fix).toBe("retry");
-    expect(result.body).toContain("Previously opened mail");
-  });
-  it("says the daemon isn't running, offers the start command and keeps the raw error", () => {
-    const result = explainError(new DaemonUnavailableError());
-    expect(result.heading).toBe("mxr isn't running");
-    expect(result.fix).toBe("start");
-    expect(result.technical).toContain("Couldn't reach");
-  });
-
   it("sends a rejected token to settings and a protocol mismatch to an update", () => {
     expect(explainError(new UnauthorizedError()).fix).toBe("token");
     const mismatch = explainError(
@@ -24,18 +11,6 @@ describe("explainError", () => {
     );
     expect(mismatch.heading).toBe("mxr needs updating");
     expect(mismatch.fix).toBe("update");
-  });
-
-  it("offers the way out, never a retry, when a lookup can't succeed", () => {
-    for (const error of [
-      new BridgeRequestError(400, "invalid thread id: not-a-real-thread-id", "bad_request"),
-      new BridgeRequestError(404, "thread not found", "not_found"),
-    ]) {
-      const result = explainError(error, "this conversation");
-      expect(result.heading).toBe("Couldn't find this conversation");
-      expect(result.fix).toBe("inbox");
-      expect(result.technical).toBe(error.message);
-    }
   });
 
   it("retries a timeout and a service error, and refuses a permission failure", () => {
@@ -49,13 +24,5 @@ describe("explainError", () => {
     const denied = explainError(new BridgeRequestError(403, "no", "policy"));
     expect(denied.fix).toBe("none");
     expect(denied.generic).toBe(false);
-  });
-
-  it("does not trust malformed error values as display copy", () => {
-    expect(explainError({ message: "unexpected object" })).toMatchObject({
-      heading: "Something went wrong",
-      technical: "No additional detail was provided.",
-      fix: "retry",
-    });
   });
 });

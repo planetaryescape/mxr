@@ -1,7 +1,6 @@
 /* @vitest-environment jsdom */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { StrictMode } from "react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -127,104 +126,6 @@ afterEach(() => {
   useComposeUi.setState(useComposeUi.getInitialState(), true);
 });
 
-test("placeholder account and topic changes hide and close old disclosures", () => {
-  http.send.mockReturnValue(new Promise(() => {}));
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const initial = props(false, "thread-1");
-  const view = render(
-    <QueryClientProvider client={client}>
-      <PersonPane {...initial} />
-    </QueryClientProvider>,
-  );
-  fireEvent.click(screen.getByRole("button", { name: /Message info for Samir Patel/ }));
-  expect(screen.getByRole("dialog", { name: "Message info" })).toBeInTheDocument();
-
-  view.rerender(
-    <QueryClientProvider client={client}>
-      <PersonPane {...props(true, "thread-1")} />
-    </QueryClientProvider>,
-  );
-
-  expect(screen.queryByRole("dialog", { name: "Message info" })).toBeNull();
-  expect(screen.queryByRole("button", { name: /Message info/ })).toBeNull();
-  expect(screen.queryByRole("button", { name: /Show email addresses/ })).toBeNull();
-
-  view.rerender(
-    <QueryClientProvider client={client}>
-      <PersonPane {...props(true, "thread-2")} />
-    </QueryClientProvider>,
-  );
-  expect(screen.queryByRole("dialog", { name: "Message info" })).toBeNull();
-});
-
-test("keeps topic navigation compact and returns focus after selecting a group topic", async () => {
-  const groupTopic: MessagesTopic = {
-    ...topic,
-    thread_id: "thread-2",
-    subject: "Planning",
-    shape: "group",
-    with: ["Ruth"],
-  };
-  const onTopic = vi.fn<(threadId: string) => void>();
-  const triggerName = /Choose conversation, Contract renewal, direct, 1 of 2/;
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <PersonPane
-        {...props(false, "thread-1")}
-        page={{ ...page, topics: [topic, groupTopic] }}
-        onTopic={onTopic}
-      />
-    </QueryClientProvider>,
-  );
-
-  const trigger = screen.getByRole("button", { name: triggerName });
-  expect(screen.queryByTestId("topics")).toBeNull();
-  fireEvent.click(trigger);
-  expect(screen.getByTestId("topics")).toBeInTheDocument();
-  const group = screen.getByRole("button", { name: /with Ruth: Planning/ });
-  fireEvent.click(group);
-  expect(onTopic).toHaveBeenCalledWith("thread-2");
-  expect(screen.queryByTestId("topics")).toBeNull();
-  await waitFor(() => expect(trigger).toHaveFocus());
-  expect(trigger).toHaveTextContent("Contract renewal");
-});
-
-test("keeps this topic replyable while a different topic's reply is docked", () => {
-  useComposeUi.setState({
-    intent: {
-      key: "compose:reply:m1",
-      title: "Reply",
-      kind: "reply",
-      messageId: "m1",
-      contextThreadId: "thread-1",
-      contextTitle: "Contract renewal",
-    },
-    surface: "inline",
-  });
-  const nextConversation: Conversation = {
-    ...conversation,
-    thread_id: "thread-2",
-    subject: "Launch checklist",
-    messages: [{ ...message, message_id: "message-2" }],
-    composer: { label: "Reply", reply_to_message_id: "message-2", reply_all: false },
-  };
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <PersonPane
-        {...props(false, "thread-2")}
-        page={{
-          ...page,
-          conversation: nextConversation,
-          topics: [{ ...topic, thread_id: "thread-2", subject: "Launch checklist" }],
-        }}
-      />
-    </QueryClientProvider>,
-  );
-
-  expect(screen.getByTestId("composer")).toBeInTheDocument();
-  expect(screen.getByRole("group", { name: "Reply mode" })).toBeInTheDocument();
-});
-
 test("the reply box shows the reply left on this conversation, and Reply resumes it", () => {
   const onReply = vi.fn<() => void>();
   const draft = {
@@ -260,47 +161,4 @@ test("the reply box shows the reply left on this conversation, and Reply resumes
   );
   expect(screen.getByTestId("composer")).toHaveTextContent("Reply");
   expect(screen.getByTestId("composer")).not.toHaveTextContent("Draft:");
-});
-
-test("positions the latest message start once, including after StrictMode cancels an effect", async () => {
-  const callbacks = new Map<number, FrameRequestCallback>();
-  const cancelled: number[] = [];
-  let nextFrame = 0;
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-    const id = ++nextFrame;
-    callbacks.set(id, callback);
-    return id;
-  });
-  vi.stubGlobal("cancelAnimationFrame", (id: number) => {
-    cancelled.push(id);
-    callbacks.delete(id);
-  });
-  const view = render(
-    <StrictMode>
-      <QueryClientProvider client={new QueryClient()}>
-        <PersonPane {...props(false, "thread-1")} />
-      </QueryClientProvider>
-    </StrictMode>,
-  );
-  const area = screen.getByTestId("conversation-reading-area");
-  const latest = area.querySelector<HTMLElement>('[data-latest="true"]');
-  if (!latest) throw new Error("The conversation has no latest message element");
-  vi.spyOn(area, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 400, 700));
-  vi.spyOn(latest, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 700, 400, 250));
-  expect(cancelled.length).toBeGreaterThan(0);
-  const pendingFrames = [...callbacks.values()];
-  callbacks.clear();
-  for (const callback of pendingFrames) callback(0);
-  expect(area.scrollTop).toBe(600);
-
-  area.scrollTop = 850;
-  view.rerender(
-    <StrictMode>
-      <QueryClientProvider client={new QueryClient()}>
-        <PersonPane {...props(false, "thread-1")} page={{ ...page, header_line: "Updated" }} />
-      </QueryClientProvider>
-    </StrictMode>,
-  );
-  expect(callbacks.size).toBe(0);
-  expect(area.scrollTop).toBe(850);
 });

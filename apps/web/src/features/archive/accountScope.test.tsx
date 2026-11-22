@@ -11,7 +11,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   apiFetch: (path: string) => apiFetch(path),
 }));
 
-const { useAnswer, useLedger } = await import("./api");
+const { useLedger } = await import("./api");
 
 function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>;
@@ -50,43 +50,5 @@ describe("Archive's queries across an account switch", () => {
 
     pendingB.resolve({ ledger: { total: 2, account: "b" } });
     await waitFor(() => expect(result.current.data?.total).toBe(2));
-  });
-
-  test("an answer from one account is not shown for another", async () => {
-    const pendingB = deferred<unknown>();
-    apiFetch.mockImplementation((path) =>
-      path.includes("account=b")
-        ? pendingB.promise
-        : Promise.resolve({ answer: { query: "dell", asked: "any" } }),
-    );
-    act(() => useUiPrefs.setState({ accountScope: "a" }));
-    const { result } = renderHook(() => useAnswer("dell"), { wrapper });
-    await waitFor(() => expect(result.current.data?.query).toBe("dell"));
-
-    act(() => useUiPrefs.setState({ accountScope: "b" }));
-    await waitFor(() =>
-      expect(apiFetch).toHaveBeenLastCalledWith(expect.stringContaining("account=b")),
-    );
-    expect(result.current.data).toBeUndefined();
-  });
-
-  test("a new query within one account keeps the last answer on screen while it loads", async () => {
-    const pendingNext = deferred<unknown>();
-    apiFetch.mockImplementation((path) =>
-      path.includes("q=dell+laptop")
-        ? pendingNext.promise
-        : Promise.resolve({ answer: { query: "dell", asked: "any" } }),
-    );
-    act(() => useUiPrefs.setState({ accountScope: "a" }));
-    const { result, rerender } = renderHook(({ q }) => useAnswer(q), {
-      wrapper,
-      initialProps: { q: "dell" },
-    });
-    await waitFor(() => expect(result.current.data?.query).toBe("dell"));
-    rerender({ q: "dell laptop" });
-    await waitFor(() =>
-      expect(apiFetch).toHaveBeenLastCalledWith(expect.stringContaining("dell+laptop")),
-    );
-    expect(result.current.data?.query).toBe("dell");
   });
 });

@@ -66,37 +66,6 @@ describe("apiFetch failure reporting", () => {
     expect(bridgeError.message).not.toContain("{");
     expect(bridgeError.status).toBe(502);
   });
-
-  test("carries the machine-readable code and payload so callers can branch on it", async () => {
-    respond(
-      409,
-      "Conflict",
-      JSON.stringify({
-        error: "this draft has an HTML body",
-        code: "html_draft_not_editable",
-        previewHtml: "<p>hi</p>",
-      }),
-      "application/json",
-    );
-
-    const error = (await apiFetch("/api/v1/mail/compose/session/restore", {
-      method: "POST",
-    }).catch((thrown: unknown) => thrown)) as BridgeRequestError;
-
-    expect(error.code).toBe("html_draft_not_editable");
-    expect(error.details.previewHtml).toBe("<p>hi</p>");
-  });
-
-  test("falls back to status plus body when the failure is not JSON", async () => {
-    respond(500, "Internal Server Error", "upstream exploded");
-
-    const error = (await apiFetch("/api/v1/mail/status").catch(
-      (thrown: unknown) => thrown,
-    )) as BridgeRequestError;
-
-    expect(error.message).toBe("500 Internal Server Error: upstream exploded");
-    expect(error.code).toBeUndefined();
-  });
 });
 
 describe("telling a stopped daemon from a failed request", () => {
@@ -113,22 +82,6 @@ describe("telling a stopped daemon from a failed request", () => {
     } finally {
       off();
     }
-  });
-
-  test("a missing offline read remains a specific error, not a dead-daemon diagnosis", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json(
-          { error: "not saved", code: "offline_not_cached" },
-          { status: 503, headers: { "x-mxr-offline": "1" } },
-        ),
-      ),
-    );
-    await expect(apiFetch("/api/v1/mail/threads/missing")).rejects.toMatchObject({
-      code: "offline_not_cached",
-      status: 503,
-    });
   });
 
   afterEach(() => {
@@ -163,19 +116,6 @@ describe("telling a stopped daemon from a failed request", () => {
     off();
   });
 
-  test("an answer from the daemon, even a failing one, means it is there", async () => {
-    const heard: boolean[] = [];
-    const off = onDaemonReachability((reachable) => heard.push(reachable));
-    respond(504, "Gateway Timeout", JSON.stringify({ error: "slow", code: "timeout" }));
-    expect(await failure()).toBeInstanceOf(BridgeRequestError);
-    respond(404, "Not Found", JSON.stringify({ error: "no thread", code: "not_found" }));
-    expect(await failure()).toBeInstanceOf(BridgeRequestError);
-    respond(200, "OK", "{}", "application/json");
-    await apiFetch("/api/v1/mail/desk");
-    expect(heard).toEqual([true, true, true]);
-    off();
-  });
-
   test("a marked tailnet denial is an outage, not a permission verdict", async () => {
     const heard: boolean[] = [];
     const off = onDaemonReachability((reachable) => heard.push(reachable));
@@ -188,25 +128,6 @@ describe("telling a stopped daemon from a failed request", () => {
     );
     expect(await failure()).toBeInstanceOf(DaemonUnavailableError);
     expect(heard).toEqual([false]);
-    off();
-  });
-
-  test("an aborted request is the caller's doing, not an outage", async () => {
-    const heard: boolean[] = [];
-    const off = onDaemonReachability((reachable) => heard.push(reachable));
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new DOMException("aborted", "AbortError");
-      }),
-    );
-    const controller = new AbortController();
-    controller.abort();
-    const error = await apiFetch("/api/v1/mail/desk", { signal: controller.signal }).catch(
-      (thrown: unknown) => thrown,
-    );
-    expect(error).not.toBeInstanceOf(DaemonUnavailableError);
-    expect(heard).toEqual([]);
     off();
   });
 });

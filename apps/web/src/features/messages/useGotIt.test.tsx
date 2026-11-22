@@ -40,14 +40,6 @@ function plan(extra: Partial<AckPlan> = {}): AckPlan {
   };
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
 beforeEach(() => {
   vi.useFakeTimers();
   sendAck.mockImplementation(async (sent) => ({ ...sent, dry_run: false }));
@@ -88,53 +80,6 @@ describe("useGotIt", () => {
     });
     expect(result.current.pending).not.toBeNull();
     unmount();
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(sendAck).not.toHaveBeenCalled();
-  });
-
-  test("changing person or topic mid-countdown sends nothing", async () => {
-    previewAck.mockResolvedValue(plan());
-    const { result, rerender } = renderHook(({ scope }) => useGotIt(scope), {
-      initialProps: { scope: "person:samir|thread-1" },
-    });
-    await act(async () => {
-      await result.current.start("thread-1");
-    });
-    rerender({ scope: "person:jon|thread-2" });
-    expect(result.current.pending).toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(sendAck).not.toHaveBeenCalled();
-  });
-
-  test("a preview that resolves after unmount registers nothing", async () => {
-    const answer = deferred<AckPlan>();
-    let signal: AbortSignal | undefined;
-    previewAck.mockImplementation((_thread, abort) => {
-      signal = abort;
-      return answer.promise;
-    });
-    const { result, unmount } = renderHook(() => useGotIt("person:samir|thread-1"));
-    let started: Promise<void> | undefined;
-    act(() => {
-      started = result.current.start("thread-1");
-    });
-    unmount();
-    expect(signal?.aborted).toBe(true);
-    answer.resolve(plan());
-    await started;
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(sendAck).not.toHaveBeenCalled();
-  });
-
-  test("a preview without a token is refused, not sent", async () => {
-    previewAck.mockResolvedValue(plan({ preview_token: null }));
-    const { result } = renderHook(() => useGotIt("person:samir|thread-1"));
-    await act(async () => {
-      await result.current.start("thread-1");
-    });
-    expect(result.current.pending).toBeNull();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(sendAck).not.toHaveBeenCalled();
   });

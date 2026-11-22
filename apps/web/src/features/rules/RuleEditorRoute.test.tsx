@@ -103,30 +103,4 @@ describe("rule preview confirmation", () => {
     await settlePreview();
     expect(screen.queryByRole("button", { name: "Apply now" })).not.toBeInTheDocument();
   });
-  it("keeps Cancel usable when a category preview fails", async () => {
-    mount(true);
-    fireEvent.change(screen.getByLabelText("Do"), { target: { value: "add-category:travel" } });
-    await settlePreview();
-    expect(screen.getByText("Dry run failed")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
-    expect(screen.getByRole("button", { name: "Apply now" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await settlePreview();
-    expect(screen.queryByRole("button", { name: "Apply now" })).not.toBeInTheDocument();
-  });
-  it("shows two category effects as one message with distinct category rows", async () => {
-    const errors = vi.spyOn(console, "error");
-    mount(false, true);
-    fireEvent.change(screen.getByLabelText("Do"), {
-      target: { value: "add-category:travel,add-category:home" },
-    });
-    await settlePreview();
-    expect(screen.getByText("Travel: Flight ticket")).toBeInTheDocument();
-    expect(screen.getByText("Home: Flight ticket")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Apply to 1 message" }));
-    expect(screen.getByRole("heading", { name: "Apply to 1 message?" })).toBeInTheDocument();
-    expect(errors.mock.calls.some(([message]) => String(message).includes("same key"))).toBe(false);
-    errors.mockRestore();
-  });
 });

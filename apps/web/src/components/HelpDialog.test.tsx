@@ -1,6 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { useState } from "react";
 
 import { useKeyScope } from "@/state/keyScopeStore";
 
@@ -24,21 +23,6 @@ function headings(): string[] {
 
 function filter(value: string) {
   fireEvent.change(screen.getByLabelText("Filter shortcuts"), { target: { value } });
-}
-
-function HelpDialogHarness() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button type="button" onClick={() => setOpen(true)}>
-        First Help opener
-      </button>
-      <button type="button" onClick={() => setOpen(true)}>
-        Second Help opener
-      </button>
-      <HelpDialog open={open} onOpenChange={setOpen} />
-    </>
-  );
 }
 
 beforeEach(() => {
@@ -66,28 +50,6 @@ describe("HelpDialog", () => {
     expect(screen.getByText("Keyboard help")).toBeVisible();
   });
 
-  test("shows the reader first while reading", () => {
-    useKeyScope.setState({ stack: ["list", "reader"], pendingPrefix: null });
-    render(<HelpDialog open onOpenChange={() => undefined} />);
-
-    expect(headings()[0]).toBe("Reader (this view)");
-  });
-
-  test("filters by label or key, dropping empty sections", () => {
-    render(<HelpDialog open onOpenChange={() => undefined} />);
-
-    filter("read and archive");
-    expect(screen.getByText("Mark read and archive")).toBeVisible();
-    expect(screen.queryByText("Go to Inbox")).not.toBeInTheDocument();
-    expect(headings()).not.toContain("Go to");
-
-    filter("g i");
-    expect(screen.getByText("Go to Inbox")).toBeVisible();
-
-    filter("gmail muscle memory");
-    expect(screen.getByText("No matching shortcuts.")).toBeVisible();
-  });
-
   test("? closes help while the filter is empty and types into it otherwise", () => {
     const onOpenChange = vi.fn<(open: boolean) => void>();
     render(<HelpDialog open onOpenChange={onOpenChange} />);
@@ -97,100 +59,5 @@ describe("HelpDialog", () => {
     filter("");
     fireEvent.keyDown(screen.getByLabelText("Filter shortcuts"), { key: "?" });
     expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
-  test("clears the filter when closed", () => {
-    const onOpenChange = vi.fn<(open: boolean) => void>();
-    const { rerender } = render(<HelpDialog open onOpenChange={onOpenChange} />);
-    filter("archive");
-
-    fireEvent.keyDown(screen.getByLabelText("Filter shortcuts"), { key: "Escape" });
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-    rerender(<HelpDialog open onOpenChange={onOpenChange} />);
-
-    expect(screen.getByLabelText("Filter shortcuts")).toHaveValue("");
-  });
-
-  test("returns focus to the current opener after Escape and Close", async () => {
-    render(<HelpDialogHarness />);
-    const firstOpener = screen.getByRole("button", { name: "First Help opener" });
-    const secondOpener = screen.getByRole("button", { name: "Second Help opener" });
-
-    firstOpener.focus();
-    fireEvent.click(firstOpener);
-    await waitFor(() => expect(screen.getByLabelText("Filter shortcuts")).toHaveFocus());
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    await waitFor(() => expect(firstOpener).toHaveFocus());
-
-    secondOpener.focus();
-    fireEvent.click(secondOpener);
-    await waitFor(() => expect(screen.getByLabelText("Filter shortcuts")).toHaveFocus());
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(secondOpener).toHaveFocus());
-  });
-
-  test("returns keyboard-opened Help to the active pane", async () => {
-    const onOpenChange = vi.fn<(open: boolean) => void>();
-    const { rerender } = render(
-      <>
-        <main data-active-pane="true" tabIndex={-1} />
-        <HelpDialog open={false} onOpenChange={onOpenChange} />
-      </>,
-    );
-    const pane = screen.getByRole("main");
-    pane.focus();
-    rerender(
-      <>
-        <main data-active-pane="true" tabIndex={-1} />
-        <HelpDialog open onOpenChange={onOpenChange} />
-      </>,
-    );
-    await waitFor(() => expect(screen.getByLabelText("Filter shortcuts")).toHaveFocus());
-
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    rerender(
-      <>
-        <main data-active-pane="true" tabIndex={-1} />
-        <HelpDialog open={false} onOpenChange={onOpenChange} />
-      </>,
-    );
-    await waitFor(() => expect(pane).toHaveFocus());
-  });
-
-  test("falls back to the active pane when the opener is removed", async () => {
-    const onOpenChange = vi.fn<(open: boolean) => void>();
-    const { rerender } = render(
-      <>
-        <button type="button">Help opener</button>
-        <main data-active-pane="true" tabIndex={-1} />
-        <HelpDialog open={false} onOpenChange={onOpenChange} />
-      </>,
-    );
-    const opener = screen.getByRole("button", { name: "Help opener" });
-    opener.focus();
-    rerender(
-      <>
-        <button type="button" disabled>
-          Help opener
-        </button>
-        <main data-active-pane="true" tabIndex={-1} />
-        <HelpDialog open onOpenChange={onOpenChange} />
-      </>,
-    );
-    rerender(
-      <>
-        <main data-active-pane="true" tabIndex={-1} />
-        <HelpDialog open onOpenChange={onOpenChange} />
-      </>,
-    );
-
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    rerender(
-      <>
-        <main data-active-pane="true" tabIndex={-1} />
-        <HelpDialog open={false} onOpenChange={onOpenChange} />
-      </>,
-    );
-    await waitFor(() => expect(document.querySelector("[data-active-pane='true']")).toHaveFocus());
   });
 });

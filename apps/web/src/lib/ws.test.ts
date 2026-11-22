@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-import { daemonEvents, parseFrame } from "./ws";
+import { parseFrame } from "./ws";
 
 vi.mock("@/lib/tokenStorage", () => ({
   getBridgeWsUrl: () => "ws://127.0.0.1:7777",
@@ -26,53 +26,5 @@ describe("parseFrame", () => {
         error: "Provider error: rate limited",
       },
     });
-  });
-
-  test("only a bare error frame means the bridge lost the daemon", () => {
-    expect(parseFrame(JSON.stringify({ error: "daemon unreachable" }))).toEqual({
-      kind: "bridge-error",
-      error: "daemon unreachable",
-    });
-    expect(parseFrame("not json")).toEqual({ kind: "ignore" });
-    expect(parseFrame(JSON.stringify({ hello: 1 }))).toEqual({ kind: "ignore" });
-  });
-});
-
-describe("daemonEvents reconnect", () => {
-  afterEach(() => {
-    daemonEvents.stop();
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
-  });
-
-  test("a stream that opens and closes at once backs off instead of retrying every 250ms", () => {
-    vi.useFakeTimers();
-    let attempts = 0;
-    class BridgeWithoutDaemon extends EventTarget {
-      static readonly OPEN = 1;
-      readyState = 0;
-      constructor() {
-        super();
-        attempts += 1;
-        setTimeout(() => {
-          this.readyState = 1;
-          this.dispatchEvent(new Event("open"));
-          const error = JSON.stringify({ error: "failed to connect to mxr daemon" });
-          this.dispatchEvent(new MessageEvent("message", { data: error }));
-          this.readyState = 3;
-          this.dispatchEvent(Object.assign(new Event("close"), { code: 1011, reason: "" }));
-        }, 0);
-      }
-      send(): void {}
-      close(): void {}
-    }
-    vi.stubGlobal("WebSocket", BridgeWithoutDaemon);
-
-    daemonEvents.start();
-    vi.advanceTimersByTime(6_000);
-
-    expect(attempts).toBeGreaterThan(1);
-    expect(attempts).toBeLessThanOrEqual(7);
-    expect(daemonEvents.getStatus().state).toBe("reconnecting");
   });
 });

@@ -1,4 +1,4 @@
-import type { Todo, TodoRunway } from "./api";
+import type { Todo } from "./api";
 
 export function todoFixture(overrides: Partial<Todo> = {}): Todo {
   return {
@@ -55,23 +55,6 @@ export function todoFixture(overrides: Partial<Todo> = {}): Todo {
     source_date: "2026-10-02T09:00:00Z",
     created_at: "2026-10-02T09:00:00Z",
     updated_at: "2026-10-02T09:00:00Z",
-    ...overrides,
-  };
-}
-
-export function runwayFixture(overrides: Partial<TodoRunway> = {}): TodoRunway {
-  return {
-    generated_at: "2026-10-05T09:00:00Z",
-    header: "Things email asked you to do, ordered by when to act.",
-    headline: "1 thing needs you. Pay council tax, act by Wed.",
-    now: [todoFixture()],
-    coming_up: [],
-    later: [],
-    whenever: [],
-    done_this_week: [],
-    catchup_count: 0,
-    expired_since_last_looked: 0,
-    first_run: { complete: true, scanned: 10 },
     ...overrides,
   };
 }

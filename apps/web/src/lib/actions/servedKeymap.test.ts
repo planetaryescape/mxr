@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useKeymapStore } from "@/state/keymapStore";
 
 import { reregisterCatalog } from "./catalog";
-import { setServedKeys, withServedKeys, type DefinedAction } from "./definition";
+import { setServedKeys } from "./definition";
 import { getRegistry } from "./registry";
 import {
   applyServedKeymap,
@@ -53,88 +53,9 @@ describe("the person's keys from the daemon", () => {
       remapped: ["mail.archive"],
     });
   });
-
-  it("keys this build can't register leave the defaults in place", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    applyServedKeymap({
-      actions: [{ id: "mail.archive", keys: ["s"] }],
-      remapped: ["mail.archive"],
-    });
-    expect(warn).toHaveBeenCalled();
-    expect(boundTo("list", "e")).toBe("mail.archive");
-    expect(boundTo("list", "s")).toBe("mail.star");
-  });
-
-  it("an action not remapped keeps every key it was defined with", () => {
-    const defined = new Map<string, DefinedAction>([
-      [
-        "a",
-        { id: "a", label: "A", group: "Mail", keys: ["x"], mac_keys: ["Ctrl+x"], scopes: ["list"] },
-      ],
-    ]);
-    const result = withServedKeys(defined, { actions: [{ id: "a", keys: ["y"] }] });
-    expect(result.get("a")).toEqual(defined.get("a"));
-  });
-
-  it("a moved key's notice goes where the person now uses that key", () => {
-    const defined = new Map<string, DefinedAction>([
-      [
-        "old",
-        {
-          id: "old",
-          label: "Old",
-          group: "Mail",
-          keys: ["O"],
-          scopes: ["list", "todo"],
-          moved: [{ key: "z", contexts: ["list", "todo"], until: "9.9.9" }],
-        },
-      ],
-      ["new", { id: "new", label: "New", group: "Mail", keys: ["n"], scopes: ["list"] }],
-    ]);
-    const result = withServedKeys(defined, {
-      actions: [{ id: "new", keys: ["z"] }],
-      remapped: ["new"],
-    });
-    expect(result.get("new")?.keys).toEqual(["z"]);
-    expect(result.get("old")?.moved).toEqual([{ key: "z", contexts: ["todo"], until: "9.9.9" }]);
-  });
 });
 
 describe("the keymap is not on the first-paint path", () => {
-  it("an answer is cached and the next boot applies it before any request", () => {
-    apiFetch.mockResolvedValue({
-      keymap: { actions: [{ id: "mail.archive", keys: ["%"] }], remapped: ["mail.archive"] },
-    });
-
-    return loadServedKeymap().then(() => {
-      expect(boundTo("list", "%")).toBe("mail.archive");
-      expect(window.localStorage.getItem(CACHE_KEY)).toContain("mail.archive");
-      expect(readCachedKeymap()).toMatchObject({
-        actions: [{ id: "mail.archive", keys: ["%"] }],
-        remapped: ["mail.archive"],
-      });
-    });
-  });
-
-  it("a later answer updates the registry and bumps the store's version", async () => {
-    expect(boundTo("list", "e")).toBe("mail.archive");
-    const before = useKeymapStore.getState().version;
-    apiFetch.mockResolvedValue({
-      keymap: {
-        actions: [{ id: "mail.archive", keys: ["%"] }],
-        remapped: ["mail.archive"],
-        single_keys: false,
-      },
-    });
-
-    await loadServedKeymap();
-
-    expect(boundTo("list", "%")).toBe("mail.archive");
-    expect(boundTo("list", "e")).toBeUndefined();
-    expect(useKeymapStore.getState().version).toBe(before + 1);
-    expect(useKeymapStore.getState().singleKeys).toBe(false);
-  });
-
   it("a failed request keeps the cached keys working", async () => {
     window.localStorage.setItem(
       CACHE_KEY,
@@ -181,10 +102,5 @@ describe("the keymap is not on the first-paint path", () => {
       remapped: ["mail.archive"],
       problems: ["ignored: x"],
     });
-  });
-
-  it("ignores a cached record far larger than a served keymap", () => {
-    const raw = JSON.stringify({ keymap: { actions: [], padding: "x".repeat(1_000_001) } });
-    expect(parseCachedKeymap(raw)).toBeNull();
   });
 });

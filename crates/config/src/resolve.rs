@@ -5,7 +5,6 @@ use crate::types::MxrConfig;
 pub const PROD_INSTANCE_NAME: &str = "mxr";
 pub const DEV_INSTANCE_NAME: &str = "mxr-dev";
 
-/// Errors that can occur during config loading.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("failed to read config file at {path}")]
@@ -30,7 +29,6 @@ pub enum ConfigError {
     },
 }
 
-/// Returns the mxr config directory (e.g. `~/.config/mxr` on Linux/macOS).
 pub fn config_dir() -> PathBuf {
     if let Some(path) = env_path("MXR_CONFIG_DIR") {
         return path;
@@ -40,9 +38,6 @@ pub fn config_dir() -> PathBuf {
         .join(app_instance_name())
 }
 
-/// Instance name reserved for the isolated demo profile started by `mxr demo`.
-/// Exported so clients (TUI, web bridge) can detect demo mode without
-/// depending on the daemon crate.
 pub const DEMO_INSTANCE_NAME: &str = "mxr-demo";
 
 /// Returns the runtime instance name used for data/socket namespacing.
@@ -66,18 +61,14 @@ pub fn app_instance_name() -> String {
     }
 }
 
-/// True when the current process is bound to the demo profile. Cheap to call;
-/// reads only an env var.
 pub fn is_demo_instance() -> bool {
     app_instance_name() == DEMO_INSTANCE_NAME
 }
 
-/// Returns the path to the main config file.
 pub fn config_file_path() -> PathBuf {
     config_dir().join("config.toml")
 }
 
-/// Returns the mxr data directory (e.g. `~/.local/share/mxr` on Linux).
 pub fn data_dir() -> PathBuf {
     if let Some(path) = env_path("MXR_DATA_DIR") {
         return path;
@@ -87,7 +78,6 @@ pub fn data_dir() -> PathBuf {
         .join(app_instance_name())
 }
 
-/// Returns the account/OAuth token directory for the current runtime identity.
 pub fn token_dir() -> PathBuf {
     if let Some(path) = env_path("MXR_TOKEN_DIR") {
         return path;
@@ -95,11 +85,6 @@ pub fn token_dir() -> PathBuf {
     data_dir().join("tokens")
 }
 
-/// Returns the path to the disk-first credential store (`secrets.toml`).
-///
-/// This is the authoritative location for password-backed IMAP/SMTP secrets.
-/// See [`crate::SecretStore`] for the storage format and the plaintext-at-0600
-/// tradeoff. Override with `MXR_SECRETS_PATH` (used by tests for isolation).
 pub fn secrets_file_path() -> PathBuf {
     if let Some(path) = env_path("MXR_SECRETS_PATH") {
         return path;
@@ -125,7 +110,6 @@ pub fn scoped_credential_service(service: &str) -> String {
     )
 }
 
-/// Gmail OAuth stores a scoped token cache in the OS keychain.
 pub fn gmail_oauth_keychain_service() -> String {
     if app_instance_name() == PROD_INSTANCE_NAME {
         "mxr-gmail-oauth".to_string()
@@ -145,8 +129,6 @@ pub fn default_download_dir() -> PathBuf {
     })
 }
 
-/// Returns the on-disk path where the local daemon's HTTP bridge bearer
-/// token is persisted. Created lazily by `read_or_create_bridge_token`.
 pub fn bridge_token_path() -> PathBuf {
     if let Some(path) = env_path("MXR_BRIDGE_TOKEN_PATH") {
         return path;
@@ -231,8 +213,6 @@ fn read_or_create_secret_0600(path: &Path) -> std::io::Result<String> {
     let token = uuid::Uuid::now_v7().to_string();
     match create_new_secret_0600(path, &token) {
         Ok(()) => Ok(token),
-        // Raced by another process between the read and the exclusive create:
-        // use whatever it wrote rather than clobbering it.
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             read_secret_enforcing_0600(path)?.ok_or_else(|| {
                 std::io::Error::other("daemon token file appeared then vanished during creation")
@@ -248,7 +228,7 @@ fn create_new_secret_0600(path: &Path, token: &str) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
     let mut file = std::fs::OpenOptions::new()
         .write(true)
-        .create_new(true) // O_EXCL: fail if it already exists
+        .create_new(true)
         .mode(0o600)
         .open(path)?;
     file.write_all(token.as_bytes())?;
@@ -283,12 +263,6 @@ fn enforce_mode_0600(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Returns the on-disk path where the bridge writes the port it actually
-/// bound to. Useful for clients (Vite dev proxy, `mxr web`, scripts) that
-/// need to discover the port after the bridge applied EADDRINUSE retries.
-///
-/// File contents are the bare port number on a single line, no trailing
-/// newline required.
 pub fn bridge_port_path() -> PathBuf {
     if let Some(path) = env_path("MXR_BRIDGE_PORT_PATH") {
         return path;
@@ -310,10 +284,6 @@ pub fn write_bridge_port(port: u16) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Remove the bridge-port file. Called when the bridge fails to start or
-/// shuts down, so a subsequent `mxr web` invocation doesn't probe a port
-/// that's no longer ours and then time out waiting for a detached child
-/// it would have spawned faster if it knew the cached port was stale.
 pub fn clear_bridge_port() {
     let _ = std::fs::remove_file(bridge_port_path());
 }
@@ -328,9 +298,6 @@ pub fn read_bridge_port() -> Option<u16> {
         .ok()
 }
 
-/// Returns the on-disk path for a token that authenticates against a remote
-/// daemon at `host`. The web-launcher writes one of these per remote host so
-/// `mxr web --remote-host foo.example.com` opens the browser pre-authenticated.
 pub fn remote_bridge_token_path(host: &str) -> PathBuf {
     let safe: String = host
         .chars()
@@ -347,8 +314,6 @@ pub fn remote_bridge_token_path(host: &str) -> PathBuf {
         .join(format!("{safe}.token"))
 }
 
-/// Reads the persisted bridge token from disk, or generates and writes a new
-/// UUID v4 token if none exists. The file is created with mode 0600 on Unix.
 pub fn read_or_create_bridge_token() -> std::io::Result<String> {
     let path = bridge_token_path();
     if let Ok(contents) = std::fs::read_to_string(&path) {
@@ -384,7 +349,6 @@ fn write_secret(path: &Path, contents: &str) -> std::io::Result<()> {
     std::fs::write(path, contents)
 }
 
-/// Returns the IPC socket path for the current instance.
 pub fn socket_path() -> PathBuf {
     if let Some(path) = env_path("MXR_SOCKET_PATH") {
         return path;
@@ -410,7 +374,6 @@ fn env_path(key: &str) -> Option<PathBuf> {
         .filter(|path| !path.as_os_str().is_empty())
 }
 
-/// Load config from the default config file path, falling back to defaults.
 pub fn load_config() -> Result<MxrConfig, ConfigError> {
     load_config_from_path(&config_file_path())
 }
@@ -422,7 +385,6 @@ pub fn load_config_as_written() -> Result<MxrConfig, ConfigError> {
     load_config_file_as_written(&config_file_path())
 }
 
-/// Save config to the default config file path.
 pub fn save_config(config: &MxrConfig) -> Result<(), ConfigError> {
     save_config_to_path(config, &config_file_path())
 }
@@ -464,7 +426,6 @@ pub fn lock_config_file_at(path: &Path) -> Result<ConfigFileLock, ConfigError> {
     Ok(ConfigFileLock { _file: file })
 }
 
-/// [`lock_config_file_at`] for the default config file.
 pub fn lock_config_file() -> Result<ConfigFileLock, ConfigError> {
     lock_config_file_at(&config_file_path())
 }
@@ -482,7 +443,6 @@ pub fn update_config_at_path<T, E: From<ConfigError>>(
     Ok(out)
 }
 
-/// [`update_config_at_path`] for the default config file.
 pub fn update_config<T, E: From<ConfigError>>(
     mutate: impl FnOnce(&mut MxrConfig) -> Result<T, E>,
 ) -> Result<T, E> {
@@ -498,13 +458,10 @@ pub const RETIRED_CONFIG_KEYS: &[&str] = &[
     "appearance.date_format_full",
     "appearance.subject_max_width",
     "humanizer.apply_to_summaries",
-    // Voice match and expert lookup are local; no model call ever read these.
     "llm.overrides.voice_match",
     "llm.overrides.expert",
 ];
 
-/// The retired keys that appear in a parsed config document, in
-/// [`RETIRED_CONFIG_KEYS`] order.
 pub fn retired_config_keys_in(table: &toml::Table) -> Vec<&'static str> {
     RETIRED_CONFIG_KEYS
         .iter()
@@ -523,8 +480,6 @@ pub fn retired_config_keys_in(table: &toml::Table) -> Vec<&'static str> {
         .collect()
 }
 
-/// The feature tables `[llm.overrides]` takes. Matches the fields of
-/// [`crate::LlmOverrides`]; a test holds them together.
 pub const LLM_OVERRIDE_FEATURES: &[&str] = &[
     "summarize",
     "relationship_summary",
@@ -541,8 +496,6 @@ pub const LLM_OVERRIDE_FEATURES: &[&str] = &[
     "assistant",
 ];
 
-/// The settings one `[llm.overrides.<feature>]` table takes. Matches the
-/// fields of [`crate::LlmOverrideConfig`]; a test holds them together.
 pub const LLM_OVERRIDE_SETTINGS: &[&str] = &[
     "enabled",
     "base_url",
@@ -588,7 +541,6 @@ pub fn unknown_llm_override_keys_in(table: &toml::Table) -> Vec<String> {
     unknown
 }
 
-/// Names each unknown override key once per process. Key names only.
 fn warn_unknown_llm_override_keys_once(table: &toml::Table) {
     static WARNED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
     let mut warned = WARNED
@@ -609,12 +561,8 @@ fn warn_unknown_llm_override_keys_once(table: &toml::Table) {
     );
 }
 
-/// Warns once per key per process, so a key added by a later edit is still
-/// named. Logs key names only, never values.
 fn warn_retired_config_keys_once(contents: &str) {
     static WARNED: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
-    // The daemon loads config to pick its log level before the subscriber
-    // exists; warning then would drop the line and use up the once.
     if !tracing::dispatcher::has_been_set() {
         return;
     }
@@ -767,9 +715,6 @@ fn render_config(
     );
     let sparse = sparse.to_string();
 
-    // A key left out of a section that is present takes that field's serde
-    // default, which a type may define apart from its `Default`. Keep the
-    // sparse file only when it loads exactly as the complete one does.
     if loads_alike(&sparse, &complete) {
         Ok(sparse)
     } else {
@@ -795,8 +740,6 @@ fn serialize_document(
         })
 }
 
-/// Whether two config texts load to the same settings. Compared as TOML data,
-/// so map order does not count.
 fn loads_alike(left: &str, right: &str) -> bool {
     let as_data = |text: &str| {
         load_config_from_str(text)
@@ -850,8 +793,6 @@ fn merge_table(
     }
 }
 
-/// `item` without the parts equal to `default`, or `None` when nothing is
-/// left. A section keeps its header only while it holds a key of its own.
 fn without_defaults(
     item: &toml_edit::Item,
     default: Option<&toml_edit::Item>,
@@ -913,9 +854,6 @@ fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<(), ConfigError
     write_file_atomically_with(path, contents, || Ok(()))
 }
 
-/// [`write_file_atomically`] with a hook that runs after the temporary file is
-/// durable and before the rename. The hook is the seam tests use to fail an
-/// interrupted save.
 fn write_file_atomically_with(
     path: &Path,
     contents: &[u8],
@@ -961,7 +899,6 @@ fn write_file_atomically_with(
     Ok(())
 }
 
-/// Load config from a TOML string.
 pub fn load_config_from_str(toml_str: &str) -> Result<MxrConfig, ConfigError> {
     let config: MxrConfig = toml::from_str(toml_str).map_err(|e| ConfigError::ParseToml {
         path: PathBuf::from("<string>"),

@@ -50,7 +50,6 @@ pub struct ConnectionState {
 }
 
 impl ConnectionState {
-    /// Reserve the retry before network work so separate short-lived clients share backoff.
     pub fn claim_cleanup_retry(&mut self, now: i64) -> bool {
         if self.cleanup.is_empty() && self.retired_pairings.is_empty() {
             self.reset_cleanup_retry();

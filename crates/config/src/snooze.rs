@@ -3,7 +3,6 @@ use chrono::{DateTime, Duration, Local, TimeZone, Utc, Weekday};
 use mxr_core::natural_time::{resolve_time, resolve_time_local, TimePrefs};
 use serde::{Deserialize, Serialize};
 
-/// Named snooze options for preset-based snoozing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SnoozeOption {
     TomorrowMorning,
@@ -13,14 +12,12 @@ pub enum SnoozeOption {
     Custom,
 }
 
-/// A displayable snooze preset with label and description.
 #[derive(Debug, Clone)]
 pub struct SnoozePreset {
     pub option: SnoozeOption,
     pub label: &'static str,
 }
 
-/// The four standard snooze presets, in display order.
 pub const SNOOZE_PRESETS: [SnoozePreset; 4] = [
     SnoozePreset {
         option: SnoozeOption::TomorrowMorning,
@@ -40,7 +37,6 @@ pub const SNOOZE_PRESETS: [SnoozePreset; 4] = [
     },
 ];
 
-/// Resolve a snooze option to a concrete wake time using the user's config.
 pub fn resolve_snooze_time(option: SnoozeOption, config: &SnoozeConfig) -> DateTime<Utc> {
     let now = Local::now();
     resolve_snooze_time_from(option, config, &now)
@@ -60,17 +56,14 @@ where
         SnoozeOption::Tonight => "tonight",
         SnoozeOption::Weekend => "weekend",
         SnoozeOption::NextMonday => "monday",
-        SnoozeOption::Custom => return now.with_timezone(&Utc), // caller should use Custom datetime directly
+        SnoozeOption::Custom => return now.with_timezone(&Utc),
     };
     let prefs = config.time_prefs();
     resolve_time(phrase, now, &prefs)
-        // Only "tonight" can fail, once the evening hour has passed; the
-        // preset then means tomorrow evening, as it always has.
         .or_else(|_| resolve_time("tomorrow evening", now, &prefs))
         .map_or_else(|_| now.with_timezone(&Utc) + Duration::days(1), |r| r.at)
 }
 
-/// Resolve a snooze preset only when its display label is still truthful.
 pub fn resolve_snooze_preset_time(
     option: SnoozeOption,
     config: &SnoozeConfig,
@@ -108,7 +101,6 @@ pub fn parse_snooze_until(until: &str, config: &SnoozeConfig) -> Option<DateTime
 }
 
 impl SnoozeConfig {
-    /// The preferred hours the natural-time parser uses for this config.
     pub fn time_prefs(&self) -> TimePrefs {
         TimePrefs {
             morning_hour: self.morning_hour,
@@ -122,7 +114,6 @@ impl SnoozeConfig {
     }
 }
 
-/// Format a snooze preset for display, including the configured hour.
 pub fn format_preset(option: SnoozeOption, config: &SnoozeConfig) -> String {
     match option {
         SnoozeOption::TomorrowMorning => {
@@ -211,7 +202,6 @@ mod tests {
             ..SnoozeConfig::default()
         };
         let tz = FixedOffset::east_opt(2 * 3600).expect("valid test offset");
-        // Monday 11 May 2026, 08:00 at +02:00.
         let now = tz
             .with_ymd_and_hms(2026, 5, 11, 8, 0, 0)
             .single()
@@ -234,9 +224,6 @@ mod tests {
 
     #[test]
     fn out_of_range_config_hour_clamps_instead_of_panicking() {
-        // A hand-edited config with an impossible hour must not crash the
-        // daemon. Per the rubric "no panics" rule it clamps to the last valid
-        // wall-clock hour (23:00) rather than feeding 99 to `from_hms_opt`.
         let config = SnoozeConfig {
             morning_hour: 99,
             ..SnoozeConfig::default()

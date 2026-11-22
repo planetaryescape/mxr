@@ -3,7 +3,6 @@
     reason = "test fixtures unwrap temp-dir and file operations and fail loudly"
 )]
 
-//! Read-modify-write on the config file from several writers at once.
 
 use mxr_config::{lock_config_file_at, update_config_at_path, ConfigError, MxrConfig};
 
@@ -36,7 +35,6 @@ fn concurrent_updates_never_lose_one() {
                 for _ in 0..EACH {
                     update_config_at_path(&path, |config| {
                         let before = config.general.sync_interval;
-                        // Widen the window between the read and the write.
                         std::thread::yield_now();
                         config.general.sync_interval = before + 1;
                         Ok::<_, ConfigError>(())
@@ -67,7 +65,6 @@ fn a_failed_update_saves_nothing_and_releases_the_lock() {
     });
     assert_eq!(failed, Err(Failure::Refused));
     assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
-    // The lock is free again.
     drop(lock_config_file_at(&path).unwrap());
 }
 

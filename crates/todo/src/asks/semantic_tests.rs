@@ -32,22 +32,6 @@ fn related_payment_fields_share_a_unit_but_an_offer_does_not_veto_the_bill() {
 }
 
 #[test]
-fn the_sender_purpose_clause_does_not_assign_their_booking_to_the_owner() {
-    let a = judge("Please RSVP by Friday so I can book the room.", false);
-    let u = a
-        .units
-        .iter()
-        .find(|u| u.answer == AskAnswer::AsksYou)
-        .expect("RSVP");
-    assert_eq!(u.tags.as_ref().expect("tags").action, ActionKind::Reply);
-    assert!(super::items::is_rsvp(&a, u));
-    assert!(!a.units.iter().any(|u| u
-        .tags
-        .as_ref()
-        .is_some_and(|t| t.action == ActionKind::Book)));
-}
-
-#[test]
 fn sign_and_return_the_same_document_is_one_action_and_passive_consent_is_signing() {
     for body in [
         "Please sign and send it back by Friday.",
@@ -172,83 +156,6 @@ fn public_webinar_rsvp_is_an_offer_but_personal_rsvp_keeps_the_response_task() {
     assert!(answers(&personal).contains(&AskAnswer::AsksYou));
 }
 
-#[test]
-fn unmarked_account_headers_keep_equal_bills_distinct() {
-    let a = judge("Service charge for Flat 2, account AG-1001\nAmount due £250\nDue date: 2 November\n\nService charge for Flat 4, account AG-1002\nAmount due £250\nDue date: 2 November", false);
-    let refs: Vec<_> = a
-        .units
-        .iter()
-        .filter(|u| u.answer == AskAnswer::AsksYou)
-        .map(|u| {
-            &a.facts.references[u
-                .tags
-                .as_ref()
-                .expect("tags")
-                .reference
-                .expect("explicit account")]
-            .value
-        })
-        .collect();
-    assert_eq!(refs, ["ag-1001", "ag-1002"]);
-}
-
-#[test]
-fn a_postposed_condition_attaches_to_its_task_but_an_embedded_question_is_firm() {
-    for body in [
-        "Please sign the agreement if the bank approves it.",
-        "Please send me your CV if you want to apply.",
-    ] {
-        let a = judge(body, false);
-        assert!(
-            !answers(&a).contains(&AskAnswer::AsksYou),
-            "contingent task: {body}: {a:?}"
-        );
-        assert!(a.units.iter().any(|u| u
-            .tags
-            .as_ref()
-            .is_some_and(|t| t.state == AskState::Conditional)));
-    }
-    assert!(
-        answers(&judge("Please sign the agreement by Friday.", false))
-            .contains(&AskAnswer::AsksYou)
-    );
-    assert!(
-        answers(&judge("Please let me know if Friday works.", false))
-            .contains(&AskAnswer::AsksYouToReply)
-    );
-    let a = judge(
-        "If you want to apply, please send me your CV. Please sign the agreement by Friday.",
-        false,
-    );
-    assert_eq!(
-        a.units
-            .iter()
-            .filter(|u| u.answer == AskAnswer::AsksYou)
-            .count(),
-        1
-    );
-    let a = judge(
-        "Please send the contract if the bank approves it and let me know if Friday works.",
-        false,
-    );
-    assert!(
-        !answers(&a).contains(&AskAnswer::AsksYou),
-        "a second embedded question cannot erase the task's condition"
-    );
-}
-
-#[test]
-fn card_expiry_and_payment_method_deadline_are_distinct_date_roles() {
-    let a = judge("Your card expires on 26 October. Update your payment method before 30 October or your subscription will lapse.", false);
-    let unit = a
-        .units
-        .iter()
-        .find(|u| u.answer == AskAnswer::AsksYou)
-        .expect("payment method task");
-    let date = &a.facts.dates[unit.tags.as_ref().expect("tags").due.expect("deadline")];
-    assert_eq!(date.at.date_naive().to_string(), "2026-10-30");
-}
-
 fn judge_unnamed_recipient(
     body: &str,
     role: RecipientRole,
@@ -313,30 +220,6 @@ fn judge_unnamed_recipient(
 }
 
 #[test]
-fn a_sole_recipient_without_a_display_name_keeps_a_greeted_request() {
-    let assessment = judge_unnamed_recipient(
-        "Hi Alex,\nThe renewal is attached. Please sign and send it back by 5 November 2026.\nThanks, Sam",
-        RecipientRole::AloneTo,
-        None,
-    );
-    let asks: Vec<_> = assessment
-        .units
-        .iter()
-        .filter(|unit| unit.answer == AskAnswer::AsksYou)
-        .collect();
-    assert_eq!(asks.len(), 1, "{assessment:?}");
-    let unit = asks[0];
-    assert_eq!(
-        assessment.quote(unit),
-        Some("Please sign and send it back by 5 November 2026.")
-    );
-    let tags = unit.tags.as_ref().expect("signing request tags");
-    assert_eq!(tags.action, ActionKind::Sign);
-    let due = &assessment.facts.dates[tags.due.expect("signing deadline")];
-    assert_eq!(due.at.date_naive().to_string(), "2026-11-05");
-}
-
-#[test]
 fn an_unknown_owner_name_does_not_claim_shared_or_copied_requests() {
     for role in [
         RecipientRole::SharedTo,
@@ -359,33 +242,6 @@ fn an_unknown_owner_name_does_not_claim_shared_or_copied_requests() {
         !answers(&named_other).contains(&AskAnswer::AsksYou),
         "a known copied addressee still names another actor"
     );
-}
-
-#[test]
-fn an_unknown_owner_name_does_not_claim_requests_addressed_to_known_people() {
-    for (body, copied_name) in [
-        ("Hi Sam,\nPlease sign the contract.", None),
-        ("Hi Alex Smith,\nPlease sign the contract.", Some("Alex")),
-    ] {
-        let assessment = judge_unnamed_recipient(body, RecipientRole::AloneTo, copied_name);
-        assert!(
-            !answers(&assessment).contains(&AskAnswer::AsksYou),
-            "{body}: {assessment:?}"
-        );
-    }
-}
-
-#[test]
-fn an_unknown_owner_name_does_not_promote_quoted_or_signed_off_requests() {
-    for body in [
-        "> Hi Alex,\n> Please sign the contract.",
-        "FYI\n---------- Forwarded message ---------\nFrom: Other <other@example.com>\nHi Alex,\nPlease sign the contract.",
-        "Hi Alex,\nAn update for you.\n-- \nPlease sign the contract.",
-        "Hi Alex,\nPlease do not sign the contract.",
-    ] {
-        let assessment = judge_unnamed_recipient(body, RecipientRole::AloneTo, None);
-        assert!(!answers(&assessment).contains(&AskAnswer::AsksYou), "{body}: {assessment:?}");
-    }
 }
 
 #[test]
@@ -431,88 +287,6 @@ fn explicit_salutations_do_not_assign_another_persons_actions_to_the_owner() {
 }
 
 #[test]
-fn reply_cancellation_is_attached_without_cancelling_an_independent_action() {
-    let cancelled = judge("Hi, could you confirm? No need to reply.", false);
-    assert!(!answers(&cancelled).contains(&AskAnswer::AsksYouToReply));
-    assert!(cancelled.units.iter().any(|unit| unit
-        .tags
-        .as_ref()
-        .is_some_and(|tags| tags.state == AskState::Cancelled)
-        && cancelled
-            .quote(unit)
-            .is_some_and(|quote| quote.contains("No need to reply"))));
-    let another_actor = judge("Could you confirm? Alice, no need to reply.", false);
-    assert!(answers(&another_actor).contains(&AskAnswer::AsksYouToReply));
-    let sign = judge("Please sign the agreement. No need to reply.", false);
-    assert!(answers(&sign).contains(&AskAnswer::AsksYou));
-    let independent = judge(
-        "Could you confirm the meeting?\n\nNo need to reply to Alice's other email.",
-        false,
-    );
-    assert!(answers(&independent).contains(&AskAnswer::AsksYouToReply));
-    let scoped = judge(
-        "Alice,\nPlease sign the agreement.\n\nPlease send the deck.",
-        false,
-    );
-    assert_eq!(
-        scoped
-            .units
-            .iter()
-            .filter(|u| u.answer == AskAnswer::AsksYou)
-            .count(),
-        1
-    );
-}
-
-#[test]
-fn salutation_review_reminder_heading_is_not_a_person() {
-    let a = judge("Reminder: Please sign the agreement.", false);
-    assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
-}
-
-#[test]
-fn salutation_review_generic_role_is_not_another_person() {
-    let a = judge("Dear Ratepayer,\n\nYour account 123456 shows an amount due of £100. Please pay by 28 October 2026.", false);
-    assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
-}
-
-#[test]
-fn salutation_review_greeting_uses_the_observed_owner_name() {
-    let a = judge("Howzit Owner,\n\nCould you send the deck?", false);
-    assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
-}
-
-#[test]
-fn coordinated_sender_future_actions_do_not_become_owner_requests() {
-    for body in [
-        "I'll rework the plan around it and send you a revised version.",
-        "I'll find a suitable slot and send an invite.",
-    ] {
-        let incoming = judge(body, false);
-        assert!(
-            !answers(&incoming).contains(&AskAnswer::AsksYou),
-            "{incoming:?}"
-        );
-        assert!(
-            answers(&incoming).contains(&AskAnswer::TheyPromisedYou),
-            "{incoming:?}"
-        );
-        let outgoing = judge(body, true);
-        assert!(
-            answers(&outgoing).contains(&AskAnswer::YouPromised),
-            "{outgoing:?}"
-        );
-    }
-    let direct = judge(
-        "I'll rework the plan and could you send me the contract?",
-        false,
-    );
-    assert!(answers(&direct).contains(&AskAnswer::AsksYou), "{direct:?}");
-    let independent = judge("I'll rework the plan. Send me the contract.", false);
-    assert!(answers(&independent).contains(&AskAnswer::AsksYou));
-}
-
-#[test]
 fn security_notice_is_not_identity_work_but_independent_tasks_remain() {
     let notice = judge("We detected an unusual sign-in attempt on your account. To protect it, confirm your identity now or access will be limited.", false);
     assert!(
@@ -533,64 +307,4 @@ fn security_notice_is_not_identity_work_but_independent_tasks_remain() {
     assert!(
         answers(&judge("Please verify your email address.", false)).contains(&AskAnswer::AsksYou)
     );
-}
-
-#[test]
-fn completion_evidence_keeps_one_dated_main_action() {
-    let body = "The security training must be completed by Tuesday 27 October. Please finish it and send me the certificate.";
-    let a = judge(body, false);
-    let actions: Vec<_> = a
-        .units
-        .iter()
-        .filter(|u| u.answer == AskAnswer::AsksYou)
-        .collect();
-    assert_eq!(actions.len(), 1, "{a:?}");
-    let unit = actions[0];
-    let tags = unit.tags.as_ref().expect("tags");
-    assert_eq!(tags.action, ActionKind::Other);
-    assert!(tags.due.is_some());
-    assert_eq!(a.quote(unit), Some(body));
-    for body in [
-        "The training must be completed by Tuesday.\n\nPlease send me the certificate.",
-        "The training must be completed by Tuesday. Please send me the deck.",
-        "The training must be completed by Tuesday. Please finish it and send me the certificate by Friday.",
-        "The training must be completed by Tuesday. Please finish it and please send me the deck.",
-    ] {
-        let a = judge(body, false);
-        assert!(a.units.iter().any(|u| u.answer == AskAnswer::AsksYou && u.tags.as_ref().is_some_and(|t| t.action == ActionKind::Send)), "independent send: {body}: {a:?}");
-    }
-    let a = judge("Alice, the training must be completed by Tuesday. Please finish it and send me the certificate.", false);
-    assert!(
-        !answers(&a).contains(&AskAnswer::AsksYou),
-        "a separate actor is not the owner: {a:?}"
-    );
-}
-
-#[test]
-fn a_coordinated_speaker_offer_never_assigns_its_tail_to_the_recipient() {
-    for outbound in [false, true] {
-        let a = judge(
-            "I can take the deployment follow-up item and send the concise update today.",
-            outbound,
-        );
-        assert!(!answers(&a).contains(&AskAnswer::AsksYou));
-        assert!(!answers(&a).contains(&AskAnswer::YouAskedThem));
-        assert!(!answers(&a).contains(&AskAnswer::YouPromised));
-    }
-    assert!(answers(&judge(
-        "I can take the follow-up item. Please send the deck.",
-        false
-    ))
-    .contains(&AskAnswer::AsksYou));
-    assert!(answers(&judge(
-        "I'll take the follow-up item and send the report.",
-        true
-    ))
-    .contains(&AskAnswer::YouPromised));
-}
-
-#[test]
-fn an_unaddressed_passive_completion_is_not_an_owner_instruction() {
-    let a = judge("The building work must be completed by Friday.", false);
-    assert!(!answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
 }

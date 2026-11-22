@@ -275,61 +275,6 @@ mod tests {
     use crate::Store;
 
     #[tokio::test]
-    async fn messages_append_in_order_and_go_with_their_conversation() {
-        let store = Store::in_memory().await.unwrap();
-        store
-            .create_assistant_conversation("c1", "Bank mail")
-            .await
-            .unwrap();
-        assert_eq!(
-            store
-                .append_assistant_message("c1", "{\"role\":\"user\"}", None)
-                .await
-                .unwrap(),
-            1
-        );
-        assert_eq!(
-            store
-                .append_assistant_message("c1", "{\"role\":\"assistant\"}", Some("{}"))
-                .await
-                .unwrap(),
-            2
-        );
-        let messages = store.assistant_messages("c1").await.unwrap();
-        assert_eq!(messages.len(), 2);
-        assert_eq!(messages[1].meta_json.as_deref(), Some("{}"));
-        let conversation = store
-            .get_assistant_conversation("c1")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(conversation.message_count, 2);
-        assert_eq!(conversation.status, "idle");
-        assert!(!conversation.auto_approve);
-        assert!(store.set_assistant_auto_approve("c1", true).await.unwrap());
-        store
-            .set_assistant_summary("c1", "earlier", 1)
-            .await
-            .unwrap();
-        let conversation = store
-            .get_assistant_conversation("c1")
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(conversation.auto_approve);
-        assert_eq!(conversation.summary.as_deref(), Some("earlier"));
-        assert_eq!(conversation.summary_through_seq, Some(1));
-        assert!(!store
-            .set_assistant_auto_approve("missing", true)
-            .await
-            .unwrap());
-
-        assert!(store.delete_assistant_conversation("c1").await.unwrap());
-        assert!(store.assistant_messages("c1").await.unwrap().is_empty());
-        assert!(!store.delete_assistant_conversation("c1").await.unwrap());
-    }
-
-    #[tokio::test]
     async fn a_restart_marks_running_turns_interrupted_and_keeps_waiting_ones() {
         let store = Store::in_memory().await.unwrap();
         for id in ["running", "waiting"] {

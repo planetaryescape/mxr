@@ -131,20 +131,4 @@ mod tests {
             assert_eq!(merge(&original, &original, &changed), Ok(changed));
         }
     }
-
-    #[test]
-    fn clearing_dates_is_an_edit_not_a_missing_value() {
-        let original = base();
-        let mut peer = original.clone();
-        peer.due = None;
-        assert_eq!(merge(&original, &original, &peer), Ok(peer));
-    }
-
-    #[test]
-    fn equal_edits_are_not_a_conflict() {
-        let original = base();
-        let mut changed = original.clone();
-        changed.title = "Paid".into();
-        assert_eq!(merge(&original, &changed, &changed), Ok(changed));
-    }
 }

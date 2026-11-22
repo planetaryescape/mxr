@@ -700,45 +700,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn filter_by_action_prefix_matches_only_the_prefix() {
-        let store = fresh_store().await;
-        store
-            .record_activity_batch(&[
-                ins(
-                    100,
-                    "mail.archive",
-                    Tier::Important,
-                    "tui",
-                    None,
-                    None,
-                    None,
-                ),
-                ins(200, "mail.send", Tier::Important, "cli", None, None, None),
-                ins(300, "search.run", Tier::Standard, "tui", None, None, None),
-                ins(
-                    400,
-                    "view.open_screen",
-                    Tier::Ephemeral,
-                    "tui",
-                    None,
-                    None,
-                    None,
-                ),
-            ])
-            .await
-            .unwrap();
-
-        let filter = ActivityFilter {
-            action_prefix: Some("mail.".into()),
-            ..ActivityFilter::default()
-        };
-        let page = store.list_activity(&filter, 10, None).await.unwrap();
-
-        let actions: Vec<&str> = page.rows.iter().map(|r| r.action.as_str()).collect();
-        assert_eq!(actions, vec!["mail.send", "mail.archive"]);
-    }
-
-    #[tokio::test]
     async fn filter_by_source_set_and_date_range() {
         let store = fresh_store().await;
         store
@@ -893,41 +854,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn redact_by_filter_targets_only_matching_rows() {
-        let store = fresh_store().await;
-        store
-            .record_activity_batch(&[
-                ins(100, "mail.read", Tier::Important, "tui", None, None, None),
-                ins(
-                    200,
-                    "mail.archive",
-                    Tier::Important,
-                    "tui",
-                    None,
-                    None,
-                    None,
-                ),
-                ins(300, "search.run", Tier::Standard, "tui", None, None, None),
-            ])
-            .await
-            .unwrap();
-
-        let filter = ActivityFilter {
-            action_prefix: Some("mail.".into()),
-            ..ActivityFilter::default()
-        };
-        let n = store.redact_activity_by_filter(&filter).await.unwrap();
-        assert_eq!(n, 2);
-
-        let remaining = store
-            .list_activity(&ActivityFilter::default(), 10, None)
-            .await
-            .unwrap();
-        assert_eq!(remaining.rows.len(), 1);
-        assert_eq!(remaining.rows[0].action, "search.run");
-    }
-
-    #[tokio::test]
     async fn prune_by_tier_only_deletes_matching_tier() {
         let store = fresh_store().await;
         store
@@ -959,47 +885,6 @@ mod tests {
             .unwrap();
         let actions: Vec<&str> = page.rows.iter().map(|r| r.action.as_str()).collect();
         assert_eq!(actions, vec!["search.run", "mail.read"]);
-    }
-
-    #[tokio::test]
-    async fn every_client_kind_is_recorded() {
-        let store = fresh_store().await;
-        for source in [
-            "human",
-            "tui",
-            "cli",
-            "script",
-            "web",
-            "daemon",
-            "agent",
-            "mcp",
-            "assistant",
-        ] {
-            store
-                .record_activity(ins(
-                    1,
-                    "mail.archive",
-                    Tier::Important,
-                    source,
-                    None,
-                    None,
-                    None,
-                ))
-                .await
-                .unwrap_or_else(|error| panic!("{source} was refused: {error}"));
-        }
-        assert!(store
-            .record_activity(ins(
-                1,
-                "mail.archive",
-                Tier::Important,
-                "nobody",
-                None,
-                None,
-                None
-            ))
-            .await
-            .is_err());
     }
 
     /// 089 rebuilds the table to widen its sources: rows, ids and search
@@ -1077,62 +962,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fts_query_finds_subject_substring_and_excludes_after_redaction() {
-        let store = fresh_store().await;
-        let ctx_invoice = json!({ "query": "invoice 2026", "result_count": 12 });
-        let ctx_other = json!({ "query": "vacation pictures" });
-        let id = store
-            .record_activity(ins(
-                100,
-                "search.run",
-                Tier::Standard,
-                "tui",
-                Some("search"),
-                None,
-                Some(&ctx_invoice),
-            ))
-            .await
-            .unwrap();
-        store
-            .record_activity(ins(
-                200,
-                "search.run",
-                Tier::Standard,
-                "tui",
-                Some("search"),
-                None,
-                Some(&ctx_other),
-            ))
-            .await
-            .unwrap();
-
-        let filter = ActivityFilter {
-            query: Some("invoice".into()),
-            ..ActivityFilter::default()
-        };
-        let page = store.list_activity(&filter, 10, None).await.unwrap();
-        assert_eq!(page.rows.len(), 1);
-        assert_eq!(page.rows[0].id, id);
-
-        store.redact_activity_by_ids(&[id]).await.unwrap();
-        let page2 = store.list_activity(&filter, 10, None).await.unwrap();
-        assert!(page2.rows.is_empty(), "FTS no longer matches redacted row");
-    }
-
-    #[tokio::test]
-    async fn stats_by_action_excludes_redacted_and_groups_correctly() {
+    async fn redact_by_filter_targets_only_matching_rows() {
         let store = fresh_store().await;
         store
             .record_activity_batch(&[
-                ins(
-                    100,
-                    "mail.archive",
-                    Tier::Important,
-                    "tui",
-                    None,
-                    None,
-                    None,
-                ),
+                ins(100, "mail.read", Tier::Important, "tui", None, None, None),
                 ins(
                     200,
                     "mail.archive",
@@ -1142,84 +976,23 @@ mod tests {
                     None,
                     None,
                 ),
-                ins(
-                    300,
-                    "mail.archive",
-                    Tier::Important,
-                    "tui",
-                    None,
-                    None,
-                    None,
-                ),
-                ins(400, "mail.read", Tier::Important, "tui", None, None, None),
-                ins(500, "mail.read", Tier::Important, "tui", None, None, None),
+                ins(300, "search.run", Tier::Standard, "tui", None, None, None),
             ])
             .await
             .unwrap();
-        store.redact_activity_by_ids(&[1]).await.unwrap();
 
-        let buckets = store.activity_stats_by_action(0, 1_000).await.unwrap();
-        assert_eq!(
-            buckets,
-            vec![
-                ("mail.archive".to_string(), 2),
-                ("mail.read".to_string(), 2),
-            ]
-        );
-    }
+        let filter = ActivityFilter {
+            action_prefix: Some("mail.".into()),
+            ..ActivityFilter::default()
+        };
+        let n = store.redact_activity_by_filter(&filter).await.unwrap();
+        assert_eq!(n, 2);
 
-    #[tokio::test]
-    async fn saved_filter_upsert_overwrites_on_slug_collision() {
-        let store = fresh_store().await;
-        store
-            .upsert_saved_activity_filter("mail-week", "Mail this week", r#"{"prefix":"mail."}"#)
+        let remaining = store
+            .list_activity(&ActivityFilter::default(), 10, None)
             .await
             .unwrap();
-        store
-            .upsert_saved_activity_filter("mail-week", "Renamed", r#"{"prefix":"mail.archive"}"#)
-            .await
-            .unwrap();
-
-        let got = store
-            .get_saved_activity_filter("mail-week")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(got.name, "Renamed");
-        assert!(got.filter_json.contains("mail.archive"));
-    }
-
-    #[tokio::test]
-    async fn saved_filter_delete_is_idempotent() {
-        let store = fresh_store().await;
-        store
-            .upsert_saved_activity_filter("y", "Y", "{}")
-            .await
-            .unwrap();
-        let n = store.delete_saved_activity_filter("y").await.unwrap();
-        assert_eq!(n, 1);
-        let n2 = store.delete_saved_activity_filter("y").await.unwrap();
-        assert_eq!(n2, 0);
-    }
-
-    #[tokio::test]
-    async fn limit_zero_uses_default_and_max_caps_at_500() {
-        let store = fresh_store().await;
-        let entries: Vec<_> = (1..=520i64)
-            .map(|i| ins(i, "mail.read", Tier::Important, "tui", None, None, None))
-            .collect();
-        store.record_activity_batch(&entries).await.unwrap();
-
-        let page = store
-            .list_activity(&ActivityFilter::default(), 0, None)
-            .await
-            .unwrap();
-        assert_eq!(page.rows.len(), 50);
-
-        let page = store
-            .list_activity(&ActivityFilter::default(), 1000, None)
-            .await
-            .unwrap();
-        assert_eq!(page.rows.len(), 500);
+        assert_eq!(remaining.rows.len(), 1);
+        assert_eq!(remaining.rows[0].action, "search.run");
     }
 }

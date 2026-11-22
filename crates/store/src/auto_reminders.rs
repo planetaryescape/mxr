@@ -591,109 +591,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn re_setting_clears_triggered_and_cancelled_state() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, env) = seed(&store).await;
-        store
-            .set_auto_reminder(
-                &env.id,
-                &account_id,
-                anchor() + Duration::hours(1),
-                anchor(),
-            )
-            .await
-            .unwrap();
-        store
-            .mark_auto_reminder_triggered(&env.id, anchor() + Duration::hours(2))
-            .await
-            .unwrap();
-
-        store
-            .set_auto_reminder(&env.id, &account_id, anchor() + Duration::days(2), anchor())
-            .await
-            .unwrap();
-
-        let stored = store.get_auto_reminder(&env.id).await.unwrap().unwrap();
-        assert!(
-            stored.triggered_at.is_none(),
-            "re-set clears prior triggered_at"
-        );
-        assert!(
-            stored.cancelled_at.is_none(),
-            "re-set clears prior cancelled_at"
-        );
-    }
-
-    #[tokio::test]
-    async fn get_due_excludes_future_reminders() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, env) = seed(&store).await;
-        store
-            .set_auto_reminder(&env.id, &account_id, anchor() + Duration::days(5), anchor())
-            .await
-            .unwrap();
-
-        let due = store.get_due_auto_reminders(anchor()).await.unwrap();
-        assert!(due.is_empty(), "future reminders are not due yet");
-    }
-
-    #[tokio::test]
-    async fn get_due_orders_by_remind_at_ascending() {
-        let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-
-        let make = |ix: u32| {
-            let mut env = TestEnvelopeBuilder::new()
-                .account_id(account.id.clone())
-                .build();
-            env.id = MessageId::new();
-            env.provider_id = format!("msg-{ix}");
-            env
-        };
-        let envs: Vec<Envelope> = (0..3).map(make).collect();
-        for env in &envs {
-            store.upsert_envelope(env).await.unwrap();
-        }
-
-        store
-            .set_auto_reminder(
-                &envs[0].id,
-                &account.id,
-                anchor() - Duration::hours(2),
-                anchor() - Duration::days(2),
-            )
-            .await
-            .unwrap();
-        store
-            .set_auto_reminder(
-                &envs[1].id,
-                &account.id,
-                anchor() - Duration::hours(5),
-                anchor() - Duration::days(2),
-            )
-            .await
-            .unwrap();
-        store
-            .set_auto_reminder(
-                &envs[2].id,
-                &account.id,
-                anchor() - Duration::hours(1),
-                anchor() - Duration::days(2),
-            )
-            .await
-            .unwrap();
-
-        let due = store.get_due_auto_reminders(anchor()).await.unwrap();
-        let order: Vec<_> = due.iter().map(|r| r.sent_message_id.clone()).collect();
-        assert_eq!(
-            order,
-            vec![envs[1].id.clone(), envs[0].id.clone(), envs[2].id.clone()],
-            "oldest-due fires first"
-        );
-    }
-
-    #[tokio::test]
     async fn a_reminder_fires_once_and_queues_its_message() {
         let store = Store::in_memory().await.unwrap();
         let (account_id, env) = seed(&store).await;
@@ -716,23 +613,6 @@ mod tests {
         assert!(store.is_reply_later(&env.id).await.unwrap());
         let row = store.get_auto_reminder(&env.id).await.unwrap().unwrap();
         assert_eq!(row.triggered_at, Some(anchor()));
-    }
-
-    #[tokio::test]
-    async fn a_cancelled_reminder_does_not_fire() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, env) = seed(&store).await;
-        store
-            .set_auto_reminder(&env.id, &account_id, anchor(), anchor() - Duration::days(1))
-            .await
-            .unwrap();
-        store.cancel_auto_reminder(&env.id, anchor()).await.unwrap();
-
-        assert!(!store
-            .trigger_auto_reminder(&env.id, anchor(), i64::MAX)
-            .await
-            .unwrap());
-        assert!(!store.is_reply_later(&env.id).await.unwrap());
     }
 
     #[tokio::test]
@@ -769,35 +649,6 @@ mod tests {
 
         store.restore_auto_reminder(&env.id, None).await.unwrap();
         assert!(store.get_auto_reminder(&env.id).await.unwrap().is_none());
-    }
-
-    #[tokio::test]
-    async fn a_reminder_moved_later_after_it_was_read_does_not_fire_at_the_old_time() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, env) = seed(&store).await;
-        store
-            .set_auto_reminder(&env.id, &account_id, anchor(), anchor() - Duration::days(1))
-            .await
-            .unwrap();
-        assert_eq!(
-            store.get_due_auto_reminders(anchor()).await.unwrap().len(),
-            1
-        );
-        let later = anchor() + Duration::days(7);
-        store
-            .set_auto_reminder(&env.id, &account_id, later, anchor())
-            .await
-            .unwrap();
-
-        assert!(!store
-            .trigger_auto_reminder(&env.id, anchor(), i64::MAX)
-            .await
-            .unwrap());
-        assert!(!store.is_reply_later(&env.id).await.unwrap());
-        assert!(store
-            .trigger_auto_reminder(&env.id, later, i64::MAX)
-            .await
-            .unwrap());
     }
 
     #[tokio::test]

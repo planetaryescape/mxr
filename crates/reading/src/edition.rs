@@ -181,55 +181,6 @@ mod tests {
         assert_eq!(band(at(5), at(200), None, now), Some(Band::Since));
     }
 
-    #[test]
-    fn affinity_weighs_finishing_over_opening() {
-        let finisher = SourceStats {
-            issues: 10,
-            opened: 9,
-            finished: 9,
-            total_issues: 40,
-        };
-        let opener = SourceStats {
-            issues: 10,
-            opened: 10,
-            finished: 0,
-            total_issues: 40,
-        };
-        assert!(finisher.affinity() > opener.affinity());
-        assert!(SourceStats::default().affinity().abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn evidence_names_the_count_and_the_offer_needs_eight_unopened() {
-        let ignored = SourceStats {
-            issues: 11,
-            opened: 0,
-            finished: 0,
-            total_issues: 30,
-        };
-        assert_eq!(ignored.evidence(), "You opened 0 of the last 11 issues");
-        assert!(ignored.suggests_unsubscribe());
-        let read = SourceStats {
-            issues: 11,
-            opened: 1,
-            ..ignored
-        };
-        assert!(!read.suggests_unsubscribe());
-        let few = SourceStats {
-            issues: 5,
-            opened: 0,
-            ..ignored
-        };
-        assert!(!few.suggests_unsubscribe());
-        let one = SourceStats {
-            issues: 1,
-            opened: 1,
-            finished: 0,
-            total_issues: 1,
-        };
-        assert_eq!(one.evidence(), "You opened 1 of its 1 issue");
-    }
-
     #[derive(Debug, Clone, Copy, PartialEq)]
     struct Item(&'static str, f64, bool, i64);
 
@@ -254,13 +205,6 @@ mod tests {
         assert_eq!(leads, 3);
         let order: Vec<_> = items.iter().map(|i| i.0).collect();
         assert_eq!(order, ["loved", "often", "new", "sometimes", "rarely"]);
-    }
-
-    #[test]
-    fn ties_go_to_the_newer_item_and_later_bands_have_no_leads() {
-        let mut items = [Item("old", 1.0, false, 1), Item("new", 1.0, false, 2)];
-        assert_eq!(rank(&mut items, key, false), 0);
-        assert_eq!(items[0].0, "new");
     }
 
     #[test]

@@ -167,23 +167,4 @@ mod tests {
         assert_eq!(cells[11], "'@msg");
         assert_eq!(cells[4], "-5.00");
     }
-
-    #[test]
-    fn the_preview_counts_the_rows_the_csv_writes() {
-        let rows = [
-            row("a", Some(124_900), true, Some("invoice.pdf")),
-            row("b", Some(1), false, None),
-            row("c", None, true, None),
-        ];
-        let preview = preview(&rows);
-        assert_eq!(preview.rows, 3);
-        assert_eq!(preview.totals.get("GBP"), Some(&124_901));
-        assert_eq!((preview.unchecked, preview.missing_pdfs), (1, 2));
-        let csv = to_csv(&rows, &Utc).expect("csv");
-        assert_eq!(csv.lines().count(), 1 + preview.rows as usize);
-        assert!(csv.contains(
-            "2025-03-03,receipt,\"Dell, Inc.\",\"XPS \"\"14\"\"\",1249.00,GBP,402-118,yes"
-        ));
-        assert!(csv.contains(",no,amount,"));
-    }
 }

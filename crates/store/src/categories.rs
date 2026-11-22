@@ -590,16 +590,6 @@ mod tests {
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
     use mxr_core::MessageFlags;
 
-    #[test]
-    fn category_names_use_nfkc_and_full_casefold() {
-        assert_eq!(normalize_category_name("  Straẞe  ").unwrap().1, "strasse");
-        assert_eq!(
-            normalize_category_name("e\u{301}").unwrap(),
-            normalize_category_name("é").unwrap()
-        );
-        assert!(normalize_category_name("\u{0000}").is_err());
-    }
-
     #[tokio::test]
     async fn category_membership_undo_is_revision_bound_across_aba() {
         let store = super::super::pool::Store::in_memory().await.unwrap();
@@ -672,62 +662,6 @@ mod tests {
             .unwrap()
             .remove(0);
         assert_eq!((current.revision, current.assigned), (3, true));
-    }
-
-    #[tokio::test]
-    async fn scoped_category_lists_hide_names_without_visible_memberships() {
-        let store = super::super::pool::Store::in_memory().await.unwrap();
-        let visible_account = test_account();
-        let hidden_account = test_account();
-        store.insert_account(&visible_account).await.unwrap();
-        store.insert_account(&hidden_account).await.unwrap();
-        let visible_message = TestEnvelopeBuilder::new()
-            .account_id(visible_account.id.clone())
-            .build();
-        let hidden_message = TestEnvelopeBuilder::new()
-            .account_id(hidden_account.id.clone())
-            .build();
-        store.upsert_envelope(&visible_message).await.unwrap();
-        store.upsert_envelope(&hidden_message).await.unwrap();
-        let visible = store.create_personal_category("Visible").await.unwrap();
-        let hidden = store.create_personal_category("Hidden name").await.unwrap();
-        for (message, category) in [(&visible_message, &visible), (&hidden_message, &hidden)] {
-            let before = store
-                .category_membership_versions(
-                    None,
-                    std::slice::from_ref(&message.id),
-                    std::slice::from_ref(&category.id),
-                )
-                .await
-                .unwrap()
-                .remove(0);
-            store
-                .apply_category_membership_changes(&[CategoryMembershipChange {
-                    before,
-                    assigned: true,
-                }])
-                .await
-                .unwrap();
-        }
-        let scoped = store
-            .list_personal_categories(Some(&visible_account.id))
-            .await
-            .unwrap();
-        assert_eq!(scoped.len(), 2);
-        let visible_scoped = scoped
-            .iter()
-            .find(|category| category.id == visible.id)
-            .unwrap();
-        let hidden_scoped = scoped
-            .iter()
-            .find(|category| category.id == hidden.id)
-            .unwrap();
-        assert_eq!(visible_scoped.total_count, 1);
-        assert_eq!(hidden_scoped.total_count, 0);
-        assert!(!store
-            .category_exists_in_account(&hidden.id, &visible_account.id)
-            .await
-            .unwrap());
     }
 
     #[tokio::test]

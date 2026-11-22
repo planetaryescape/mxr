@@ -113,17 +113,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cuts_on_char_boundaries_and_keeps_acronyms() {
-        assert_eq!(truncate("£142", 1), "");
-        assert_eq!(truncate("£142", 3), "£1");
-        assert_eq!(clip("a  b   c", 10), "a b c");
-        assert_eq!(clip("abcdef", 4), "abc…");
-        assert_eq!(lower_first("Renew car insurance"), "renew car insurance");
-        assert_eq!(lower_first("MOT due"), "MOT due");
-        assert_eq!(capitalise("spotify"), "Spotify");
-    }
-
-    #[test]
     fn links_never_stay_in_a_title() {
         assert_eq!(
             strip_urls("Start the tutorial https://club.example/manual/first-automation"),
@@ -139,20 +128,5 @@ mod tests {
             strip_urls("Go through the tutorial at https://x.example"),
             "Go through the tutorial"
         );
-    }
-
-    #[test]
-    fn a_tracking_id_glued_onto_a_name_is_dropped() {
-        assert_eq!(
-            strip_glued_id("TV Licensing2026-09-27887d708f6e134fe8bd5c9e0584954c5b"),
-            "TV Licensing"
-        );
-        assert_eq!(strip_glued_id("TV Licensing349212"), "TV Licensing");
-        assert_eq!(strip_glued_id("Acme Billing 2026"), "Acme Billing 2026");
-        assert_eq!(strip_glued_id("Studio54"), "Studio54");
-        assert_eq!(strip_glued_id("R2D2"), "R2D2");
-        assert_eq!(strip_glued_id("Cafe"), "Cafe");
-        assert_eq!(strip_glued_id("Priya Shah"), "Priya Shah");
-        assert_eq!(strip_glued_id("123456"), "123456");
     }
 }

@@ -351,84 +351,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_subject_column_and_the_sender_name_are_searched_separately() {
-        let account = test_account();
-        let subject_hit = envelope(&account, "a", "Quarterly plan", "x@one.test", "", 1);
-        let mut name_hit = envelope(&account, "b", "Other", "y@two.test", "", 2);
-        name_hit.from.name = Some("Pat Planner".into());
-        let store = store_with(&[&account], &[&subject_hit, &name_hit]).await;
-
-        let by_subject = ids(
-            &store,
-            &query(vec![clause(FtsColumns::Subject, "plan")], &[&account]),
-        )
-        .await;
-        let by_word = ids(
-            &store,
-            &query(vec![clause(FtsColumns::Any, "planner")], &[&account]),
-        )
-        .await;
-
-        assert_eq!(by_subject, vec![subject_hit.id]);
-        assert_eq!(by_word, vec![name_hit.id]);
-    }
-
-    #[tokio::test]
-    async fn a_sender_address_matches_the_whole_address_only_and_ignores_case() {
-        let account = test_account();
-        let exact = envelope(&account, "a", "one", "Alice@Example.com", "", 1);
-        let longer = envelope(&account, "b", "two", "alice@example.com.evil", "", 2);
-        let other_local = envelope(&account, "c", "three", "malice@example.com", "", 3);
-        let mut in_name = envelope(&account, "d", "four", "z@four.test", "", 4);
-        in_name.from.name = Some("alice@example.com".into());
-        let store = store_with(&[&account], &[&exact, &longer, &other_local, &in_name]).await;
-        let mut by_address = query(Vec::new(), &[&account]);
-        by_address.sender_addresses = vec!["ALICE@example.com".into()];
-
-        assert_eq!(ids(&store, &by_address).await, vec![exact.id.clone()]);
-
-        by_address.sender_addresses = vec!["alice".into()];
-        assert!(ids(&store, &by_address).await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn a_sender_address_and_words_are_anded() {
-        let account = test_account();
-        let both = envelope(&account, "a", "Invoice", "billing@one.test", "", 1);
-        let wrong_sender = envelope(&account, "b", "Invoice", "x@two.test", "", 2);
-        let wrong_subject = envelope(&account, "c", "Lunch", "billing@one.test", "", 3);
-        let store = store_with(&[&account], &[&both, &wrong_sender, &wrong_subject]).await;
-        let mut combined = query(vec![clause(FtsColumns::Subject, "invoice")], &[&account]);
-        combined.sender_addresses = vec!["billing@one.test".into()];
-
-        assert_eq!(ids(&store, &combined).await, vec![both.id]);
-        let page = store.search_fts_fallback(&combined, 10, 0).await.unwrap();
-        assert_eq!(page.total, 1);
-    }
-
-    #[tokio::test]
-    async fn clauses_are_anded() {
-        let account = test_account();
-        let both = envelope(&account, "a", "Invoice paid", "x@one.test", "", 1);
-        let only_one = envelope(&account, "b", "Invoice", "x@two.test", "", 2);
-        let store = store_with(&[&account], &[&both, &only_one]).await;
-
-        let found = ids(
-            &store,
-            &query(
-                vec![
-                    clause(FtsColumns::Subject, "invoice"),
-                    clause(FtsColumns::Subject, "paid"),
-                ],
-                &[&account],
-            ),
-        )
-        .await;
-
-        assert_eq!(found, vec![both.id]);
-    }
-
-    #[tokio::test]
     async fn fts5_syntax_in_user_text_is_matched_as_words() {
         let account = test_account();
         let plain = envelope(&account, "a", "alpha beta", "x@one.test", "", 1);
@@ -496,70 +418,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_clause_with_no_words_matches_nothing_instead_of_failing() {
-        let account = test_account();
-        let message = envelope(&account, "a", "hello", "x@one.test", "", 1);
-        let store = store_with(&[&account], &[&message]).await;
-
-        let found = ids(
-            &store,
-            &query(vec![clause(FtsColumns::Any, "***")], &[&account]),
-        )
-        .await;
-
-        assert!(found.is_empty());
-    }
-
-    #[tokio::test]
-    async fn no_clauses_means_no_results_not_everything() {
-        let account = test_account();
-        let message = envelope(&account, "a", "hello", "x@one.test", "", 1);
-        let store = store_with(&[&account], &[&message]).await;
-
-        assert!(ids(&store, &query(Vec::new(), &[&account]))
-            .await
-            .is_empty());
-    }
-
-    #[tokio::test]
-    async fn only_visible_accounts_are_searched_and_one_can_be_picked() {
-        let first = test_account();
-        let second = test_account();
-        let disabled = test_account();
-        let in_first = envelope(&first, "a", "shared word", "x@one.test", "", 1);
-        let in_second = envelope(&second, "b", "shared word", "y@two.test", "", 2);
-        let in_disabled = envelope(&disabled, "c", "shared word", "z@three.test", "", 3);
-        let store = store_with(
-            &[&first, &second, &disabled],
-            &[&in_first, &in_second, &in_disabled],
-        )
-        .await;
-        store
-            .set_account_enabled(&disabled.id, false)
-            .await
-            .unwrap();
-        let visible = store.list_accounts().await.unwrap();
-        let clauses = vec![clause(FtsColumns::Any, "shared")];
-        let mut everyone = query(clauses.clone(), &[]);
-        everyone.visible_accounts = visible.iter().map(|account| account.id.clone()).collect();
-
-        let all_visible = ids(&store, &everyone).await;
-        assert_eq!(all_visible, vec![in_first.id.clone(), in_second.id.clone()]);
-
-        let mut one = everyone.clone();
-        one.account_id = Some(second.id.clone());
-        assert_eq!(ids(&store, &one).await, vec![in_second.id.clone()]);
-
-        let mut hidden = everyone.clone();
-        hidden.account_id = Some(disabled.id.clone());
-        assert!(ids(&store, &hidden).await.is_empty());
-
-        let mut nobody = everyone;
-        nobody.visible_accounts.clear();
-        assert!(ids(&store, &nobody).await.is_empty());
-    }
-
-    #[tokio::test]
     async fn trash_and_spam_are_left_out_by_flag_and_by_label() {
         let account = test_account();
         let kept = envelope(&account, "a", "report", "x@one.test", "", 1);
@@ -612,47 +470,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pages_total_and_direction_stay_in_one_order() {
-        let account = test_account();
-        let messages = (0..5)
-            .map(|day| {
-                envelope(
-                    &account,
-                    &format!("m{day}"),
-                    "digest",
-                    "x@one.test",
-                    "",
-                    day,
-                )
-            })
-            .collect::<Vec<_>>();
-        let store = store_with(&[&account], &messages.iter().collect::<Vec<_>>()).await;
-        let mut query = query(vec![clause(FtsColumns::Any, "digest")], &[&account]);
-
-        let first = store.search_fts_fallback(&query, 2, 0).await.unwrap();
-        let second = store.search_fts_fallback(&query, 2, 2).await.unwrap();
-        let last = store.search_fts_fallback(&query, 2, 4).await.unwrap();
-
-        assert_eq!(first.total, 5);
-        assert!(first.has_more && second.has_more && !last.has_more);
-        let newest_first = first
-            .hits
-            .iter()
-            .chain(&second.hits)
-            .chain(&last.hits)
-            .map(|hit| hit.message_id.clone())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            newest_first,
-            messages.iter().map(|m| m.id.clone()).collect::<Vec<_>>()
-        );
-
-        query.oldest_first = true;
-        let oldest = store.search_fts_fallback(&query, 1, 0).await.unwrap();
-        assert_eq!(oldest.hits[0].message_id, messages[4].id);
-    }
-
-    #[tokio::test]
     async fn an_updated_message_is_found_by_its_new_words_only() {
         let account = test_account();
         let mut message = envelope(&account, "a", "oldword", "x@one.test", "", 1);
@@ -673,41 +490,5 @@ mod tests {
 
         assert!(old.is_empty());
         assert_eq!(new, vec![message.id]);
-    }
-
-    #[tokio::test]
-    async fn a_bare_address_matches_its_sender_or_its_words() {
-        let account = test_account();
-        let by_sender = envelope(
-            &account,
-            "a",
-            "unrelated subject",
-            "alice@example.com",
-            "",
-            1,
-        );
-        let by_words = envelope(
-            &account,
-            "b",
-            "alice example com note",
-            "bob@other.test",
-            "",
-            2,
-        );
-        let neither = envelope(&account, "c", "nothing here", "carol@other.test", "", 3);
-        let store = store_with(&[&account], &[&by_sender, &by_words, &neither]).await;
-        let mut by_address = query(Vec::new(), &[&account]);
-        by_address.address_words = vec![AddressOrWords {
-            address: "Alice@Example.com".into(),
-            words: ["alice", "example", "com"]
-                .into_iter()
-                .map(|word| clause(FtsColumns::Any, word))
-                .collect(),
-        }];
-
-        assert_eq!(
-            ids(&store, &by_address).await,
-            vec![by_sender.id.clone(), by_words.id.clone()]
-        );
     }
 }

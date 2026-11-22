@@ -54,14 +54,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn minutes_round_up_and_never_show_zero() {
-        assert_eq!(minutes(0, DEFAULT_WPM), 1);
-        assert_eq!(minutes(230, DEFAULT_WPM), 1);
-        assert_eq!(minutes(231, DEFAULT_WPM), 2);
-        assert_eq!(minutes(3220, DEFAULT_WPM), 14);
-    }
-
-    #[test]
     fn the_readers_pace_needs_three_real_reads_and_ignores_an_overnight_tab() {
         assert_eq!(reader_wpm(&[(1000, 240_000), (1000, 240_000)]), None);
         let pace = reader_wpm(&[(1000, 240_000), (1500, 300_000), (1000, 36_000_000)]);

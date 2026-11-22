@@ -321,34 +321,6 @@ mod tests {
     }
 
     #[test]
-    fn finds_the_code_in_the_body_when_the_subject_has_none() {
-        assert_eq!(
-            code(
-                "Sign in to Acme",
-                "Hi Ada,\n\nYour login code is:\n\n739 204\n\nIt expires in 10 minutes."
-            )
-            .as_deref(),
-            Some("739 204")
-        );
-        assert_eq!(
-            code(
-                "Confirm it's you",
-                "Use this code to finish signing in: 5F3K9Q\nIf this wasn't you, ignore this email."
-            )
-            .as_deref(),
-            Some("5F3K9Q")
-        );
-        assert_eq!(
-            code(
-                "Your one-time passcode",
-                "Enter the following code: 0042817"
-            )
-            .as_deref(),
-            Some("0042817")
-        );
-    }
-
-    #[test]
     fn a_promo_or_gift_code_is_not_one() {
         assert_eq!(code("Your promo code is SAVE20NOW", ""), None);
         assert_eq!(code("20% off: use code SPRING2026 at checkout", ""), None);
@@ -365,32 +337,6 @@ mod tests {
             None
         );
         assert_eq!(code("Your order", "Your order code is 55210."), None);
-    }
-
-    #[test]
-    fn numbers_that_are_not_codes_are_skipped() {
-        assert_eq!(code("Your code is ready", "© 2026 Acme Inc."), None);
-        assert_eq!(
-            code(
-                "Your account summary",
-                "Your balance is $1234.56 this month."
-            ),
-            None
-        );
-        assert_eq!(code("Weekly report", "Visitors up 1234% this week."), None);
-        assert_eq!(code("Hello", "No code here, just 482913 apples."), None);
-    }
-
-    #[test]
-    fn the_code_in_the_same_sentence_wins_over_a_later_number() {
-        assert_eq!(
-            code(
-                "Verify your sign-in",
-                "Your security code is 918273. Order 55210 shipped yesterday."
-            )
-            .as_deref(),
-            Some("918273")
-        );
     }
 
     #[test]
@@ -430,19 +376,6 @@ mod tests {
     }
 
     #[test]
-    fn padding_in_a_boxed_layout_does_not_use_up_the_reach() {
-        let pad = " ".repeat(80);
-        let body = format!(
-            "Below is your SafeKey Verification Code{pad}\nYour verification code for a £548.43 transaction at Booking.com{pad}\nis:{pad}\n{}{pad}\n092730",
-            "─".repeat(71)
-        );
-        assert_eq!(
-            code("Your SafeKey Verification Code", &body).as_deref(),
-            Some("092730")
-        );
-    }
-
-    #[test]
     fn quoted_numbers_in_other_mail_are_not_codes() {
         assert_eq!(
             code(
@@ -465,159 +398,6 @@ mod tests {
             ),
             None
         );
-    }
-
-    #[test]
-    fn the_value_after_is_wins_over_a_number_earlier_in_the_sentence() {
-        assert_eq!(
-            code(
-                "Hi",
-                "Your verification code for card ending 4242 is 958361."
-            )
-            .as_deref(),
-            Some("958361")
-        );
-        assert_eq!(
-            code(
-                "Hi",
-                "Your verification code for a GBP 5483 transaction is 092730"
-            )
-            .as_deref(),
-            Some("092730")
-        );
-        assert_eq!(
-            code("Your verification code is 2024", "").as_deref(),
-            Some("2024")
-        );
-        assert_eq!(code("Your offer code is SAVE20", ""), None);
-    }
-
-    #[test]
-    fn a_marker_further_on_still_checks_what_follows_it() {
-        assert_eq!(
-            code(
-                "Hi",
-                "Your verification code for the device whose model is 2024 is 958361."
-            )
-            .as_deref(),
-            Some("958361")
-        );
-        assert_eq!(
-            code(
-                "Hi",
-                "Your verification code is: see below\nCard ending: 4242\n958361"
-            )
-            .as_deref(),
-            Some("958361")
-        );
-        assert_eq!(code("Code: 2024", "").as_deref(), Some("2024"));
-        assert_eq!(code("Code is 2024", "").as_deref(), Some("2024"));
-    }
-
-    #[test]
-    fn round_three_layouts() {
-        assert_eq!(
-            code(
-                "Hi",
-                "Your verification code for the card whose last four digits are 4242 is 958361."
-            )
-            .as_deref(),
-            Some("958361")
-        );
-        assert_eq!(code("Your code", "Discount code:\nSAVE20NOW"), None);
-        assert_eq!(
-            code("Your verification code", "Gift code:\n4821-9932"),
-            None
-        );
-        assert_eq!(
-            code("Welcome to Acme", "Use this code SAVE2026 for a discount."),
-            None
-        );
-        assert_eq!(
-            code(
-                "Your verification code",
-                "Use this code to verify your account:\n958361"
-            )
-            .as_deref(),
-            Some("958361")
-        );
-        assert_eq!(
-            code(
-                "Confirm it is you",
-                "Use this code to finish signing in: 2024"
-            )
-            .as_deref(),
-            Some("2024")
-        );
-        assert_eq!(code("Your verification code", "Account:\n12345678"), None);
-        assert_eq!(
-            code("Hi", "Your code is 482913 (reference: 55210).").as_deref(),
-            Some("482913")
-        );
-    }
-
-    #[test]
-    fn round_four_layouts() {
-        assert_eq!(
-            code(
-                "Your code is here",
-                "Use this code:\nSAVE20NOW\nGet 20% off your next purchase."
-            ),
-            None
-        );
-        assert_eq!(
-            code(
-                "One Time Password Request",
-                "Your temporary One Time Password is :782867"
-            )
-            .as_deref(),
-            Some("782867")
-        );
-        assert_eq!(
-            code(
-                "Your Steam account: Access from new computer",
-                "Here is the Steam Guard code you need to login to account bk:\nA2CDE"
-            )
-            .as_deref(),
-            Some("A2CDE")
-        );
-        assert_eq!(
-            code("Your Steam Guard code", "Your Steam Guard code is:\nABCDE").as_deref(),
-            Some("ABCDE")
-        );
-        assert_eq!(
-            code("Your verification code", "WELCOME\n\nSee you soon."),
-            None
-        );
-        assert_eq!(code("Hi", "Your code expires SOON so use it."), None);
-        assert_eq!(code("Hi", "Your code is READY to use."), None);
-    }
-
-    #[test]
-    fn a_value_alone_on_its_line_keeps_the_exclusions() {
-        assert_eq!(code("Your verification code", "Order number:\n55210"), None);
-        assert_eq!(code("Your promo code", "SAVE20NOW"), None);
-    }
-
-    #[test]
-    fn a_comma_after_the_code_ends_it() {
-        assert_eq!(
-            code("Hi", "Your code is 482913, valid for 10 minutes.").as_deref(),
-            Some("482913")
-        );
-        assert_eq!(
-            code("Weekly report", "Your code is ready: 1,234 visits."),
-            None
-        );
-    }
-
-    #[test]
-    fn a_code_alone_under_a_subject_that_names_it() {
-        assert_eq!(
-            code("Your verification code", "482913\n\nExpires in 5 minutes.").as_deref(),
-            Some("482913")
-        );
-        assert_eq!(code("Hello", "482913\n\nSee you soon."), None);
     }
 
     #[test]

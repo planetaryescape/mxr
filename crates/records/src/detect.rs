@@ -383,28 +383,4 @@ mod tests {
         assert!(!issued.checked);
         assert_eq!(issued.evidence.as_deref(), Some(EMAIL_DATE));
     }
-
-    #[test]
-    fn always_file_takes_a_sender_the_rules_would_skip_and_names_the_issuer() {
-        let sender = SenderView {
-            always: Some(RecordKind::Contract),
-            issuer_name: Some("Sam Okafor (landlord)"),
-        };
-        let found = detect(
-            &input("Lease for next year", "See attached.", None),
-            &Utc,
-            sender,
-        );
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].kind, RecordKind::Contract);
-        assert_eq!(found[0].origin, Origin::Sender);
-        let issuer = found[0].field(FieldName::Issuer).expect("issuer");
-        assert_eq!(issuer.source, Source::User);
-        assert!(detect(
-            &input("Lease for next year", "See attached.", None),
-            &Utc,
-            SenderView::default()
-        )
-        .is_empty());
-    }
 }

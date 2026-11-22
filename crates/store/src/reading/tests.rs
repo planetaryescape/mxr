@@ -67,6 +67,59 @@ impl Fx {
 }
 
 #[tokio::test]
+async fn a_read_back_never_resurrects_or_loses_what_you_removed() {
+    let fx = Fx::new().await;
+    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
+    fx.store
+        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
+        .await
+        .expect("items");
+    let own = highlight(&fx, &issue, "own", "mxr");
+    fx.store.insert_reading_highlight(&own).await.expect("own");
+    let sent = ReadingMarginaliaRow {
+        message_id: issue.clone(),
+        idx: 0,
+        account_id: fx.account.clone(),
+        article_id: "k57".into(),
+        read_url: "https://reader.example.com/read/k57".into(),
+        view: "issue".into(),
+        sent_at: at(2),
+        highlights_synced_at: None,
+    };
+    fx.store.upsert_reading_marginalia(&sent).await.unwrap();
+    let remote = MarginaliaHighlightIn {
+        origin_id: "a".into(),
+        quote: "one".into(),
+        paragraph: None,
+        created_at: at(3),
+    };
+    fx.store
+        .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(4))
+        .await
+        .unwrap();
+
+    fx.store.remove_reading_highlight("own").await.unwrap();
+    fx.store
+        .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(5))
+        .await
+        .unwrap();
+    let rows = fx
+        .store
+        .reading_highlights_for_message(&issue)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].origin, "marginalia");
+    assert_eq!(
+        fx.store
+            .remove_reading_highlight(&rows[0].id)
+            .await
+            .unwrap(),
+        HighlightEdit::ReadOnly("marginalia".into())
+    );
+}
+
+#[tokio::test]
 async fn items_are_replaced_per_message_and_go_with_it() {
     let fx = Fx::new().await;
     let issue = fx.issue("p1", "news@platform.example", at(0)).await;
@@ -105,45 +158,6 @@ async fn items_are_replaced_per_message_and_go_with_it() {
         .reading_later(std::slice::from_ref(&fx.account))
         .await
         .expect("later")
-        .is_empty());
-}
-
-#[tokio::test]
-async fn later_is_set_once_kept_on_a_second_press_and_cleared() {
-    let fx = Fx::new().await;
-    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
-    assert!(fx
-        .store
-        .set_reading_later(&fx.account, &issue, 1, true, at(1))
-        .await
-        .expect("on"));
-    fx.store
-        .set_reading_later(&fx.account, &issue, 1, true, at(5))
-        .await
-        .expect("keep");
-    let later = fx
-        .store
-        .reading_later(std::slice::from_ref(&fx.account))
-        .await
-        .expect("list");
-    assert_eq!(later.len(), 1);
-    assert_eq!(later[0].later_at, Some(at(1)), "the first save stays");
-    assert_eq!(later[0].kept_at, Some(at(5)));
-    assert!(fx
-        .store
-        .set_reading_later(&fx.account, &issue, 1, false, at(6))
-        .await
-        .expect("off"));
-    assert!(!fx
-        .store
-        .set_reading_later(&fx.account, &issue, 1, false, at(6))
-        .await
-        .expect("noop"));
-    assert!(fx
-        .store
-        .reading_later(std::slice::from_ref(&fx.account))
-        .await
-        .expect("list")
         .is_empty());
 }
 
@@ -191,311 +205,6 @@ async fn engagement_adds_time_keeps_the_furthest_point_and_finishes_at_ninety_pe
             .await
             .expect("samples"),
         vec![(400, 35_000)]
-    );
-}
-
-#[tokio::test]
-async fn source_issues_are_each_senders_latest_with_what_you_opened() {
-    let fx = Fx::new().await;
-    let mut ids = Vec::new();
-    for day in 0..5 {
-        ids.push(
-            fx.issue(&format!("w{day}"), "news@platform.example", at(day * 24))
-                .await,
-        );
-    }
-    fx.issue("other", "digest@growth.example", at(3)).await;
-    fx.store
-        .record_reading_engagement(
-            &fx.account,
-            &ids[4],
-            0,
-            ReadingEngagementReport {
-                opened: true,
-                ..ReadingEngagementReport::default()
-            },
-            at(100),
-        )
-        .await
-        .expect("open");
-    let senders = vec![
-        "news@platform.example".to_string(),
-        "digest@growth.example".to_string(),
-    ];
-    let issues = fx
-        .store
-        .reading_source_issues(&fx.account, &senders, 3)
-        .await
-        .expect("issues");
-    let platform: Vec<_> = issues
-        .iter()
-        .filter(|i| i.from_email == "news@platform.example")
-        .collect();
-    assert_eq!(platform.len(), 3);
-    assert_eq!(platform[0].date, at(96));
-    assert!(platform[0].opened);
-    assert!(!platform[1].opened);
-    let totals = fx
-        .store
-        .reading_source_totals(&fx.account, &senders)
-        .await
-        .expect("totals");
-    assert_eq!(totals.get("news@platform.example"), Some(&5));
-    assert_eq!(totals.get("digest@growth.example"), Some(&1));
-}
-
-#[tokio::test]
-async fn articles_highlights_prefs_and_the_visit_round_trip() {
-    let fx = Fx::new().await;
-    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
-    let article = ReadingArticleRow {
-        message_id: issue.clone(),
-        idx: 2,
-        url: "https://example.com/2".into(),
-        final_url: Some("https://example.com/2/final".into()),
-        status: "ok".into(),
-        title: Some("Title".into()),
-        byline: None,
-        site_name: Some("Example".into()),
-        html: Some("<p>Body</p>".into()),
-        paragraphs: Some("[]".into()),
-        words: 1200,
-        contacted: r#"["example.com"]"#.into(),
-        error: None,
-        fetched_at: at(2),
-    };
-    fx.store.save_reading_article(&article).await.expect("save");
-    assert_eq!(
-        fx.store.reading_article(&issue, 2).await.expect("read"),
-        Some(article)
-    );
-    assert_eq!(
-        fx.store
-            .reading_articles_saved(std::slice::from_ref(&issue))
-            .await
-            .expect("saved"),
-        vec![(issue.clone(), 2)]
-    );
-
-    let highlight = ReadingHighlightRow {
-        id: "h1".into(),
-        account_id: fx.account.clone(),
-        message_id: issue.clone(),
-        idx: 0,
-        view: "issue".into(),
-        quote: "Start with the tablet.".into(),
-        note: Some("good".into()),
-        created_at: at(3),
-        origin: "mxr".into(),
-        origin_id: None,
-        paragraph: None,
-    };
-    fx.store
-        .insert_reading_highlight(&highlight)
-        .await
-        .expect("insert");
-    assert_eq!(
-        fx.store.reading_highlights(None).await.expect("all"),
-        vec![highlight.clone()]
-    );
-    assert_eq!(
-        fx.store
-            .reading_highlights_for_message(&issue)
-            .await
-            .expect("one"),
-        vec![highlight]
-    );
-
-    fx.store
-        .set_reading_source_prefs(
-            &fx.account,
-            "news@platform.example",
-            Some(true),
-            false,
-            at(4),
-        )
-        .await
-        .expect("prefs");
-    fx.store
-        .set_reading_source_prefs(&fx.account, "news@platform.example", None, true, at(5))
-        .await
-        .expect("dismiss");
-    let prefs = fx
-        .store
-        .reading_source_prefs(&fx.account)
-        .await
-        .expect("prefs");
-    assert_eq!(
-        prefs.get("news@platform.example"),
-        Some(&ReadingSourcePrefs {
-            original_layout: true,
-            unsubscribe_offer_dismissed: true
-        })
-    );
-
-    assert_eq!(
-        fx.store.reading_visit(&fx.account).await.expect("none"),
-        ReadingVisitRow::default()
-    );
-    let visit = ReadingVisitRow {
-        first_seen: Some(at(1)),
-        boundary: None,
-        last_seen: Some(at(1)),
-    };
-    fx.store
-        .set_reading_visit(&fx.account, &visit)
-        .await
-        .expect("visit");
-    fx.store
-        .set_reading_visit(
-            &fx.account,
-            &ReadingVisitRow {
-                first_seen: Some(at(9)),
-                boundary: Some(at(1)),
-                last_seen: Some(at(9)),
-            },
-        )
-        .await
-        .expect("next");
-    let got = fx.store.reading_visit(&fx.account).await.expect("read");
-    assert_eq!(got.first_seen, Some(at(1)), "the first visit is kept");
-    assert_eq!(got.boundary, Some(at(1)));
-}
-
-#[tokio::test]
-async fn marginalia_highlights_mirror_without_touching_your_own() {
-    let fx = Fx::new().await;
-    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
-    fx.store
-        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
-        .await
-        .expect("items");
-    let own = ReadingHighlightRow {
-        id: "own".into(),
-        account_id: fx.account.clone(),
-        message_id: issue.clone(),
-        idx: 0,
-        view: "issue".into(),
-        quote: "made in mxr".into(),
-        note: None,
-        created_at: at(1),
-        origin: "mxr".into(),
-        origin_id: None,
-        paragraph: None,
-    };
-    fx.store.insert_reading_highlight(&own).await.expect("own");
-    let sent = ReadingMarginaliaRow {
-        message_id: issue.clone(),
-        idx: 0,
-        account_id: fx.account.clone(),
-        article_id: "k57".into(),
-        read_url: "https://reader.example.com/read/k57".into(),
-        view: "issue".into(),
-        sent_at: at(2),
-        highlights_synced_at: None,
-    };
-    fx.store
-        .upsert_reading_marginalia(&sent)
-        .await
-        .expect("sent");
-    assert_eq!(
-        fx.store.reading_marginalia(&issue, 0).await.expect("read"),
-        Some(sent.clone())
-    );
-    assert_eq!(
-        fx.store
-            .reading_marginalia_due(None, at(3), at(0), 10)
-            .await
-            .expect("due")
-            .len(),
-        1
-    );
-
-    let marked = |id: &str, quote: &str| MarginaliaHighlightIn {
-        origin_id: id.into(),
-        quote: quote.into(),
-        paragraph: (id == "b").then_some(4),
-        created_at: at(3),
-    };
-    let first = fx
-        .store
-        .mirror_marginalia_highlights(&sent, &[marked("a", "one"), marked("b", "two")], at(4))
-        .await
-        .expect("mirror");
-    assert_eq!(
-        first,
-        MarginaliaMirror {
-            added: 2,
-            removed: 0
-        }
-    );
-    let second = fx
-        .store
-        .mirror_marginalia_highlights(&sent, &[marked("b", "two, edited")], at(5))
-        .await
-        .expect("mirror again");
-    assert_eq!(
-        second,
-        MarginaliaMirror {
-            added: 0,
-            removed: 1
-        }
-    );
-
-    let rows = fx
-        .store
-        .reading_highlights_for_message(&issue)
-        .await
-        .expect("highlights");
-    let quotes: Vec<(&str, &str)> = rows
-        .iter()
-        .map(|row| (row.origin.as_str(), row.quote.as_str()))
-        .collect();
-    assert_eq!(
-        quotes,
-        vec![("mxr", "made in mxr"), ("marginalia", "two, edited")]
-    );
-    assert_eq!(
-        rows.iter().map(|row| row.paragraph).collect::<Vec<_>>(),
-        vec![None, Some(4)],
-        "the mirrored row keeps Marginalia's paragraph"
-    );
-    let moved = MarginaliaHighlightIn {
-        paragraph: Some(7),
-        ..marked("b", "two, edited")
-    };
-    fx.store
-        .mirror_marginalia_highlights(&sent, &[moved], at(5))
-        .await
-        .expect("mirror a moved paragraph");
-    let rows = fx
-        .store
-        .reading_highlights_for_message(&issue)
-        .await
-        .expect("highlights");
-    assert_eq!(rows[1].paragraph, Some(7), "a changed paragraph is updated");
-    assert_eq!(
-        fx.store
-            .reading_marginalia(&issue, 0)
-            .await
-            .expect("read")
-            .and_then(|row| row.highlights_synced_at),
-        Some(at(5))
-    );
-    assert!(fx
-        .store
-        .reading_marginalia_due(None, at(5), at(0), 10)
-        .await
-        .expect("due")
-        .is_empty());
-
-    fx.store
-        .delete_messages_and_derived(&fx.account, &["p1".to_string()])
-        .await
-        .expect("delete");
-    assert_eq!(
-        fx.store.reading_marginalia(&issue, 0).await.expect("gone"),
-        None
     );
 }
 
@@ -590,59 +299,6 @@ async fn only_your_own_highlights_can_be_edited_or_removed() {
 }
 
 #[tokio::test]
-async fn a_read_back_never_resurrects_or_loses_what_you_removed() {
-    let fx = Fx::new().await;
-    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
-    fx.store
-        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
-        .await
-        .expect("items");
-    let own = highlight(&fx, &issue, "own", "mxr");
-    fx.store.insert_reading_highlight(&own).await.expect("own");
-    let sent = ReadingMarginaliaRow {
-        message_id: issue.clone(),
-        idx: 0,
-        account_id: fx.account.clone(),
-        article_id: "k57".into(),
-        read_url: "https://reader.example.com/read/k57".into(),
-        view: "issue".into(),
-        sent_at: at(2),
-        highlights_synced_at: None,
-    };
-    fx.store.upsert_reading_marginalia(&sent).await.unwrap();
-    let remote = MarginaliaHighlightIn {
-        origin_id: "a".into(),
-        quote: "one".into(),
-        paragraph: None,
-        created_at: at(3),
-    };
-    fx.store
-        .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(4))
-        .await
-        .unwrap();
-
-    fx.store.remove_reading_highlight("own").await.unwrap();
-    fx.store
-        .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(5))
-        .await
-        .unwrap();
-    let rows = fx
-        .store
-        .reading_highlights_for_message(&issue)
-        .await
-        .unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].origin, "marginalia");
-    assert_eq!(
-        fx.store
-            .remove_reading_highlight(&rows[0].id)
-            .await
-            .unwrap(),
-        HighlightEdit::ReadOnly("marginalia".into())
-    );
-}
-
-#[tokio::test]
 async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
     let fx = Fx::new().await;
     let issue = fx.issue("p1", "news@platform.example", at(0)).await;
@@ -725,34 +381,4 @@ async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
             .unwrap(),
         0
     );
-}
-
-#[tokio::test]
-async fn a_highlight_keeps_the_paragraph_it_was_made_in() {
-    let fx = Fx::new().await;
-    let issue = fx.issue("p-anchor", "news@platform.example", at(0)).await;
-    fx.store
-        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
-        .await
-        .expect("items");
-    let mut anchored = highlight(&fx, &issue, "anchored", "mxr");
-    anchored.paragraph = Some(3);
-    let loose = highlight(&fx, &issue, "loose", "mxr");
-    fx.store
-        .insert_reading_highlight(&anchored)
-        .await
-        .expect("anchored");
-    fx.store
-        .insert_reading_highlight(&loose)
-        .await
-        .expect("loose");
-
-    let rows = fx
-        .store
-        .reading_highlights_for_message(&issue)
-        .await
-        .expect("highlights");
-    let paragraphs: Vec<(&str, Option<u32>)> =
-        rows.iter().map(|r| (r.id.as_str(), r.paragraph)).collect();
-    assert_eq!(paragraphs, vec![("anchored", Some(3)), ("loose", None)]);
 }

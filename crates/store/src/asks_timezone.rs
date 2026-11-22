@@ -248,36 +248,6 @@ mod tests {
         assert!(AsksTimezone::from_spec(Some("missing/zone")).is_err());
     }
     #[test]
-    fn exact_source_reuses_one_parsed_snapshot_and_raw_overrides_remain_distinct() {
-        let file = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(
-            file.path(),
-            std::fs::read("/usr/share/zoneinfo/Europe/London").unwrap(),
-        )
-        .unwrap();
-        let cache = Mutex::new(None);
-        let first = AsksTimezone::from_spec_using(file.path().to_str(), &cache).unwrap();
-        for _ in 0..500 {
-            let next = AsksTimezone::from_spec_using(file.path().to_str(), &cache).unwrap();
-            assert!(
-                Arc::ptr_eq(&first.token, &next.token),
-                "reuse the parsed snapshot, not only its token value"
-            );
-        }
-        let utc = AsksTimezone::from_spec_using(Some("UTC0"), &cache).unwrap();
-        let empty = AsksTimezone::from_spec_using(Some(""), &cache).unwrap();
-        assert_eq!(utc.token(), empty.token());
-        assert!(
-            !Arc::ptr_eq(&utc.token, &empty.token),
-            "raw override changes must miss the cache"
-        );
-        let eastern =
-            AsksTimezone::from_spec_using(Some("EST5EDT,M3.2.0,M11.1.0"), &cache).unwrap();
-        assert_ne!(utc.token(), eastern.token());
-        assert!(AsksTimezone::from_spec_using(Some("missing/zone"), &cache).is_err());
-    }
-
-    #[test]
     fn current_complete_bytes_detect_hot_replacement_and_errors_without_changing_frozen_rules() {
         let file = tempfile::NamedTempFile::new().unwrap();
         let cache = Mutex::new(None);

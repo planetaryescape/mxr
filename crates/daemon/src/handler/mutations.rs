@@ -2377,6 +2377,7 @@ async fn apply_mutation_under_guard(
                 &envelope.account_id,
             )
             .await?;
+            // Trash is provider-specific: Gmail relabels, IMAP moves and expunges.
             reconcile_label_mutation_deferred(
                 state,
                 provider,
@@ -4743,6 +4744,8 @@ async fn ingest_sent_message(
     receipt: &SendReceipt,
     file_on_server: bool,
 ) -> Result<mxr_core::MessageId, String> {
+    // Gmail's send files Sent itself. The SMTP transport does not, so IMAP/SMTP
+    // accounts append a copy to the server Sent folder.
     let (provider_namespace, provider_id_value, sent_label_provider_ids): (
         &str,
         String,
@@ -5462,6 +5465,7 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
     }
 }
 
+/// The Gmail API requires provider ids (e.g. "Label_123"), not display names.
 fn resolve_to_provider_ids(labels: &[mxr_core::types::Label], refs: &[String]) -> Vec<String> {
     refs.iter()
         .map(|label_ref| {

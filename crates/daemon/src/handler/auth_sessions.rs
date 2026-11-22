@@ -94,6 +94,10 @@ async fn start_gmail_auth_session(request: GmailAuthSessionRequest<'_>) -> Handl
     } = request;
     let (client_id, client_secret) =
         resolve_gmail_credentials(credential_source, client_id, client_secret)?;
+    // The daemon has no controlling terminal, so `AuthFlow::auto_detect()` here
+    // would always pick the device-code flow, and Google then rejects our Desktop
+    // OAuth client with "invalid_client: Invalid client type". Clients resolve
+    // `Auto` themselves; any residual `Auto` falls back to the loopback flow.
     let flow = match requested_flow {
         AuthFlowData::Auto | AuthFlowData::Installed => {
             mxr_provider_gmail::auth::AuthFlow::Installed

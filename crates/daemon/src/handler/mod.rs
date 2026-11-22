@@ -4826,6 +4826,8 @@ fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::Attac
         sanitized
     };
 
+    // APFS limits individual path components to 255 bytes, and decoded MIME
+    // attachment filenames can exceed that.
     let path = std::path::Path::new(&sanitized);
     let extension = path
         .extension()

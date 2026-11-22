@@ -1059,6 +1059,8 @@ fn best_effort_summary_looks_suspicious(body: &MessageBody, envelope: Option<&En
         || raw_headers.contains("content-type: text/html")
 }
 
+/// The plain IMAP fetch carries no Gmail labels, so it can miss a SENT the
+/// store has.
 fn keep_stored_sent_flag(
     fetched: &mut mxr_core::types::Envelope,
     stored: &mxr_core::types::Envelope,

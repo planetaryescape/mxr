@@ -126,6 +126,29 @@ async fn boot_bridge(socket_path: std::path::PathBuf) -> SocketAddr {
 }
 
 #[tokio::test]
+async fn openapi_spec_is_3_1_and_lists_v1_paths() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let _server = spawn_fake(&socket, |_| None, vec![]);
+    let addr = boot_bridge(socket).await;
+
+    let response = reqwest::Client::new()
+        .get(format!("http://{addr}/api/v1/openapi.json"))
+        .header("x-mxr-bridge-token", TEST_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["openapi"], "3.1.0");
+
+    assert_eq!(
+        json["components"]["securitySchemes"]["bearer"]["scheme"],
+        "bearer"
+    );
+}
+
+#[tokio::test]
 async fn openapi_documented_paths_are_reachable_by_documented_method() {
     let temp = TempDir::new().unwrap();
     let socket = temp.path().join("mxr.sock");

@@ -3,7 +3,8 @@
 //! The ranking used to run in Rust over every candidate row: on a
 //! 110k-message mailbox that read 88k rows per call and took about a
 //! second. It now runs in SQL over `idx_messages_owed`. These tests prove
-//! the SQL returns exactly what the Rust ranking did.
+//! the SQL returns exactly what the Rust ranking did, and keep the query
+//! plan on that index.
 
 use super::*;
 use crate::test_fixtures::test_account;
@@ -328,4 +329,66 @@ async fn sql_ranking_returns_exactly_what_the_rust_ranking_did() {
     }
     // The fixture must exercise the ranking, not compare empty lists.
     assert!(compared > 5_000, "only {compared} rows compared");
+}
+
+/// The per-thread work stays inside `idx_messages_owed`, and each sender's
+/// contact and screener rows are found by key: wrapping the table's column
+/// in LOWER() once scanned every contact per thread and took the query past
+/// two minutes. Asserted on a populated store because the planner's choice
+/// can depend on the data.
+#[tokio::test]
+async fn owed_query_plan_uses_the_owed_index_without_scans() {
+    let store = Store::in_memory().await.unwrap();
+    let account_id = seed_mailbox(&store, 3_000, Utc::now().timestamp()).await;
+    let plan: Vec<String> = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "EXPLAIN QUERY PLAN {OWED_REPLIES_SQL}"
+    )))
+    .bind(account_id.as_str())
+    .fetch_all(store.reader())
+    .await
+    .unwrap()
+    .into_iter()
+    .map(|row| row.get::<String, _>("detail"))
+    .collect();
+
+    assert!(
+        ["idx_messages_owed", "idx_messages_conversation_inputs"]
+            .iter()
+            .any(|index| plan.iter().any(|detail| detail
+                == &format!(
+                    "SEARCH messages USING COVERING INDEX {index} (account_id=? AND direction=?)"
+                ))),
+        "the initial grouping must use a covering account/direction index: {plan:#?}"
+    );
+    for step in [
+        "SEARCH m USING COVERING INDEX idx_messages_owed (account_id=? AND direction=? AND thread_id=? AND date=?)",
+        "SEARCH outbound USING COVERING INDEX idx_messages_owed (account_id=? AND direction=? AND thread_id=? AND date>?)",
+        "SEARCH contacts USING INDEX sqlite_autoindex_contacts_1 (account_id=? AND email=?) LEFT-JOIN",
+        "SEARCH screener_decisions USING INDEX sqlite_autoindex_screener_decisions_1 (account_id=? AND sender_email=?) LEFT-JOIN",
+    ] {
+        assert!(
+            plan.iter().any(|detail| detail == step),
+            "expected `{step}`: {plan:#?}"
+        );
+    }
+    for bad in [
+        "SCAN messages",
+        "SCAN m",
+        "SCAN outbound",
+        "SCAN contacts",
+        "SCAN screener_decisions",
+    ] {
+        assert!(
+            !plan
+                .iter()
+                .any(|detail| detail == bad || detail.starts_with(&format!("{bad} "))),
+            "{bad} must not appear: {plan:#?}"
+        );
+    }
+    assert!(
+        !plan
+            .iter()
+            .any(|detail| detail.contains("AUTOMATIC") || detail.contains("FOR GROUP BY")),
+        "no automatic index or GROUP BY sort: {plan:#?}"
+    );
 }

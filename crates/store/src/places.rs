@@ -423,6 +423,98 @@ pub(crate) mod tests {
     use mxr_core::id::LabelId;
     use mxr_core::types::{EventSource, Label, LabelKind, MessageDirection};
 
+    async fn plan(store: &Store, sql: &str) -> Vec<String> {
+        sqlx::query(sqlx::AssertSqlSafe(format!("EXPLAIN QUERY PLAN {sql}")))
+            .fetch_all(store.reader())
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| row.get::<String, _>("detail"))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn mode_candidates_do_not_sort_the_inbox() {
+        let store = Store::in_memory().await.unwrap();
+        let steps = plan(&store, &mode_candidates_sql()).await;
+        assert!(
+            !steps.iter().any(|step| step.contains("TEMP B-TREE")),
+            "inbox and externally filed selections are disjoint: {steps:#?}"
+        );
+    }
+
+    /// The candidate read must walk the inbox label, not the mailbox: on a
+    /// 110k-message store a scan of `messages` is the difference between a
+    /// few milliseconds and a second.
+    #[tokio::test]
+    async fn place_reads_start_from_the_inbox_label() {
+        let store = Store::in_memory().await.unwrap();
+        let steps = plan(&store, &place_candidates_sql()).await;
+        assert!(
+            steps[0].starts_with("SEARCH l USING INDEX"),
+            "labels first: {steps:#?}"
+        );
+        assert!(
+            steps
+                .iter()
+                .any(|s| s.starts_with("SEARCH ml USING INDEX idx_message_labels_label")),
+            "{steps:#?}"
+        );
+        assert!(
+            steps
+                .iter()
+                .any(|s| s.starts_with("SEARCH m USING INDEX sqlite_autoindex_messages_1")),
+            "{steps:#?}"
+        );
+        assert!(
+            !steps.iter().any(|s| s.starts_with("SCAN")),
+            "no table scans: {steps:#?}"
+        );
+
+        let one = plan(&store, &place_message_sql()).await;
+        assert!(!one.iter().any(|s| s.starts_with("SCAN")), "{one:#?}");
+
+        assert!(
+            !place_candidates_sql().contains("FROM bodies"),
+            "list candidates must not read body evidence"
+        );
+        assert_thread_lookups_use_the_thread(&one);
+    }
+
+    #[tokio::test]
+    async fn sender_history_looks_up_each_sender_before_loading_the_page() {
+        let store = Store::in_memory().await.unwrap();
+        let steps = plan(&store, &recent_from_senders_sql()).await;
+        assert!(
+            steps
+                .iter()
+                .any(|s| s.contains("idx_messages_sender_history")
+                    && s.contains("account_id=? AND <expr>=? AND date>?")),
+            "sender/account/date lookup: {steps:#?}"
+        );
+        assert!(
+            !steps.iter().any(|s| s.starts_with("SCAN m")),
+            "no mailbox scan: {steps:#?}"
+        );
+    }
+
+    /// The evidence columns look up each row's thread several times. Searching
+    /// by account alone walks the whole mailbox per row: on a 110k-message
+    /// store that was ~0.3s a message and starved the reader pool.
+    pub(crate) fn assert_thread_lookups_use_the_thread(steps: &[String]) {
+        let lookups: Vec<_> = steps
+            .iter()
+            .filter(|s| s.starts_with("SEARCH sent ") || s.starts_with("SEARCH previous "))
+            .collect();
+        assert!(!lookups.is_empty(), "{steps:#?}");
+        assert!(
+            lookups
+                .iter()
+                .all(|s| s.contains("(account_id=? AND thread_id=?)")),
+            "thread lookups must use account and thread: {steps:#?}"
+        );
+    }
+
     #[tokio::test]
     async fn candidates_are_inbox_mail_with_pins() {
         let store = Store::in_memory().await.unwrap();

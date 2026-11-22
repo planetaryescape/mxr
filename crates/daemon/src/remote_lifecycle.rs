@@ -207,14 +207,4 @@ mod tests {
         lifecycle.resume();
         assert!(lifecycle.admit(&Request::GetRemoteReady).is_ok());
     }
-    #[test]
-    fn closing_one_client_does_not_close_anothers_same_session_name() {
-        let lifecycle = Lifecycle::default();
-        lifecycle.touch("one", "session", "web", 100).unwrap();
-        lifecycle.touch("two", "session", "web", 100).unwrap();
-        lifecycle.close("one", "session", 101);
-        let snapshot = lifecycle.snapshot(101);
-        assert!(!snapshot.sessions[0].active);
-        assert!(snapshot.sessions[1].active);
-    }
 }

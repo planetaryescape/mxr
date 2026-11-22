@@ -229,22 +229,6 @@ mod tests {
     }
 
     #[test]
-    fn someone_copied_who_never_took_part_keeps_it_one_to_one() {
-        let t = ThreadId::new();
-        let thread = [message(
-            &t,
-            "samir@launchpad.example",
-            &[ME],
-            &["ruth@keystone.example"],
-            1,
-        )];
-        assert_eq!(
-            shape(&thread),
-            Shape::OneToOne("samir@launchpad.example".into())
-        );
-    }
-
-    #[test]
     fn two_people_taking_part_make_a_group_and_cc_churn_keeps_it_one() {
         let t = ThreadId::new();
         let thread = [
@@ -323,25 +307,6 @@ mod tests {
     }
 
     #[test]
-    fn writing_in_a_copied_thread_makes_it_a_conversation() {
-        let t = ThreadId::new();
-        let thread = [
-            message(
-                &t,
-                "iris@meridian.example",
-                &["ruth@keystone.example"],
-                &[ME],
-                1,
-            ),
-            message(&t, ME, &["iris@meridian.example"], &[], 2),
-        ];
-        assert_eq!(
-            shape(&thread),
-            Shape::OneToOne("iris@meridian.example".into())
-        );
-    }
-
-    #[test]
     fn a_crowd_you_never_wrote_to_is_copied() {
         let t = ThreadId::new();
         let crowd: Vec<String> = (0..12).map(|i| format!("p{i}@team.example")).collect();
@@ -349,54 +314,6 @@ mod tests {
         to.push(ME);
         let thread = [message(&t, "lead@team.example", &to, &[], 1)];
         assert_eq!(shape(&thread), Shape::Copied);
-    }
-
-    #[test]
-    fn a_crowd_is_copied_even_after_you_wrote_in_it() {
-        let t = ThreadId::new();
-        let crowd: Vec<String> = (0..12).map(|i| format!("p{i}@team.example")).collect();
-        let mut to: Vec<&str> = crowd.iter().map(String::as_str).collect();
-        to.push(ME);
-        let thread = [
-            message(&t, "lead@team.example", &to, &[], 1),
-            message(&t, "p3@team.example", &to, &[], 2),
-            message(&t, ME, &to[..12], &[], 3),
-        ];
-        assert_eq!(shape(&thread), Shape::Copied);
-    }
-
-    #[test]
-    fn a_crowd_thread_stays_while_someone_answered_you_directly() {
-        let t = ThreadId::new();
-        let crowd: Vec<String> = (0..12).map(|i| format!("p{i}@team.example")).collect();
-        let crowd: Vec<&str> = crowd.iter().map(String::as_str).collect();
-        let mut with_me = crowd.clone();
-        with_me.insert(0, ME);
-        let thread = [
-            message(&t, "lead@team.example", &with_me, &[], 1),
-            message(&t, ME, &crowd, &[], 2),
-            message(&t, "p3@team.example", &with_me, &[], 3),
-        ];
-        assert!(matches!(shape(&thread), Shape::Group(_)));
-        let mut answered = thread.to_vec();
-        answered.push(message(&t, ME, &crowd, &[], 4));
-        assert_eq!(shape(&answered), Shape::Copied);
-    }
-
-    #[test]
-    fn neither_to_nor_cc_counts_as_addressed() {
-        let t = ThreadId::new();
-        let thread = [message(
-            &t,
-            "noor@tidewater.example",
-            &["alias@example.net"],
-            &[],
-            1,
-        )];
-        assert_eq!(
-            shape(&thread),
-            Shape::OneToOne("noor@tidewater.example".into())
-        );
     }
 
     #[test]

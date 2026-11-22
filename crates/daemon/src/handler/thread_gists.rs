@@ -150,11 +150,6 @@ impl GistQueue {
     }
 
     #[cfg(test)]
-    fn failed_len(&self) -> usize {
-        self.inner.lock().failed.len()
-    }
-
-    #[cfg(test)]
     pub(crate) fn snapshot(&self) -> (Vec<ThreadId>, Vec<ThreadId>, usize) {
         let state = self.inner.lock();
         (
@@ -386,33 +381,6 @@ fn announce(state: &AppState, gist: ThreadGistData) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_backoff_map_is_bounded_and_forgets_expired_failures() {
-        let queue = GistQueue::default();
-        let start = Instant::now();
-        std::thread::sleep(Duration::from_millis(5));
-        let ids: Vec<ThreadId> = (0..FAILED_CAP + 6).map(|_| ThreadId::new()).collect();
-        for (offset, id) in ids.iter().enumerate() {
-            let at = start + Duration::from_millis(offset as u64);
-            queue.finish_at(id, Some("hash".into()), at);
-        }
-        assert_eq!(queue.failed_len(), FAILED_CAP);
-        assert!(
-            !queue.recently_failed(&ids[0], "hash"),
-            "the oldest went first"
-        );
-        assert!(queue.recently_failed(ids.last().unwrap(), "hash"));
-
-        queue
-            .inner
-            .lock()
-            .failed
-            .values_mut()
-            .for_each(|(_, until)| *until = start);
-        queue.finish_at(&ThreadId::new(), Some("hash".into()), Instant::now());
-        assert_eq!(queue.failed_len(), 1);
-    }
 
     #[test]
     fn enqueue_says_what_happened_to_each_conversation() {

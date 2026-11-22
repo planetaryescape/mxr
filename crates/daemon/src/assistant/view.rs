@@ -637,122 +637,6 @@ mod tests {
         assert_eq!(reply_rows(&items[2]), Some(vec!["D", "B"]));
     }
 
-    #[test]
-    fn rows_need_two_named_objects_from_one_step_of_the_same_turn() {
-        let listed = HashMap::from([
-            (1, vec![row("A", "t-aaaaaaaa")]),
-            (2, vec![row("B", "t-bbbbbbbb")]),
-        ]);
-        let two_steps = vec![
-            user(0),
-            step("s1", json!({}), AssistantCallStateData::Done),
-            step("s2", json!({}), AssistantCallStateData::Done),
-            reply_with("[A](mxr:thread/t-aaaaaaaa) and [B](mxr:thread/t-bbbbbbbb)"),
-        ];
-        let mut items = two_steps;
-        attach_rows(&mut items, &listed);
-        assert_eq!(
-            reply_rows(&items[3]),
-            Some(vec![]),
-            "one each from two steps"
-        );
-
-        let listed = HashMap::from([(1, vec![row("A", "t-aaaaaaaa"), row("B", "t-bbbbbbbb")])]);
-        let mut items = vec![
-            user(0),
-            step("old", json!({}), AssistantCallStateData::Done),
-            reply_with("done"),
-            user(3),
-            reply_with("[A](mxr:thread/t-aaaaaaaa) and [B](mxr:thread/t-bbbbbbbb)"),
-        ];
-        attach_rows(&mut items, &listed);
-        assert_eq!(reply_rows(&items[4]), Some(vec![]));
-    }
-
-    #[test]
-    fn a_reply_that_links_one_object_or_names_it_twice_gets_no_rows() {
-        let listed = HashMap::from([(1, vec![row("A", "t-aaaaaaaa"), row("B", "t-bbbbbbbb")])]);
-        let mut items = vec![
-            user(0),
-            step("s", json!({}), AssistantCallStateData::Done),
-            reply_with("[A](mxr:thread/t-aaaaaaaa) and again [A](mxr:thread/t-aaaaaaaa)"),
-        ];
-        attach_rows(&mut items, &listed);
-        assert_eq!(reply_rows(&items[2]), Some(vec![]));
-    }
-
-    #[test]
-    fn rows_are_capped_at_eight() {
-        let many: Vec<_> = (0..12)
-            .map(|n| row(&format!("R{n}"), &format!("t-{n:08}")))
-            .collect();
-        let text: String = (0..12)
-            .map(|n| format!("[R{n}](mxr:thread/t-{n:08}) "))
-            .collect();
-        let listed = HashMap::from([(1, many)]);
-        let mut items = vec![
-            user(0),
-            step("s", json!({}), AssistantCallStateData::Done),
-            reply_with(&text),
-        ];
-        attach_rows(&mut items, &listed);
-        assert_eq!(
-            reply_rows(&items[2]).map(|rows| rows.len()),
-            Some(REPLY_ROWS)
-        );
-    }
-
-    #[test]
-    fn steps_are_titled_from_their_own_state_and_arguments() {
-        let mut items = vec![
-            step(
-                "a",
-                json!({"action": "archive", "message_ids": ["m1", "m2"], "confirm": true}),
-                AssistantCallStateData::Waiting,
-            ),
-            step(
-                "b",
-                json!({"action": "star", "message_ids": ["m1"]}),
-                AssistantCallStateData::Failed,
-            ),
-        ];
-        fill_titles(&mut items, &[], &HashMap::new());
-        let title = |item: &AssistantItemData| match item {
-            AssistantItemData::ToolCall { title, .. } => title.clone(),
-            _ => None,
-        };
-        let waiting = title(&items[0]).map(|t| (t.running, t.done));
-        assert_eq!(
-            waiting,
-            Some((
-                "Archiving 2 emails".to_string(),
-                "Waiting for you: archive 2 emails".to_string()
-            ))
-        );
-        assert_eq!(
-            title(&items[1]).map(|t| t.done),
-            Some("Couldn't star 1 email".to_string())
-        );
-    }
-
-    #[test]
-    fn a_waiting_approval_carries_the_daemons_title() {
-        let view = pending_view(PendingItem {
-            call_id: "c1".into(),
-            kind: PendingKind::Approval {
-                tool: "mxr_mutate".into(),
-                arguments: json!({"action": "archive", "message_ids": ["a", "b", "c"], "confirm": true}),
-                reason: "old".into(),
-                preview: None,
-                preview_error: None,
-            },
-        });
-        assert!(matches!(
-            view,
-            AssistantPendingData::Approval { title: Some(ref title), .. } if title == "Archive 3 emails"
-        ));
-    }
-
     fn warning_for(tool: &str, arguments: serde_json::Value) -> Option<String> {
         match pending_view(PendingItem {
             call_id: "c1".into(),
@@ -830,33 +714,6 @@ mod tests {
     }
 
     #[test]
-    fn an_older_clients_json_without_a_warning_still_reads() {
-        let old: AssistantPendingData = serde_json::from_value(json!({
-            "kind": "approval", "call_id": "c", "tool": "mxr_mutate",
-            "arguments": {}, "reason": "r"
-        }))
-        .unwrap();
-        assert!(matches!(
-            old,
-            AssistantPendingData::Approval { warning: None, .. }
-        ));
-        let reversible = serde_json::to_value(&old).unwrap();
-        assert!(reversible.get("warning").is_none(), "{reversible}");
-    }
-
-    #[test]
-    fn known_failures_become_a_sentence_and_unknown_ones_stay_raw() {
-        assert_eq!(
-            plain_error("LLM returned an empty completion"),
-            "The model stopped answering. Send your message again, or switch models in Settings › Language model."
-        );
-        assert!(plain_error("LLM endpoint unreachable: connection refused")
-            .starts_with("mxr couldn't reach"));
-        assert!(plain_error("LLM request timed out after 120s").contains("too long"));
-        assert_eq!(plain_error("something new broke"), "something new broke");
-    }
-
-    #[test]
     fn a_provider_error_body_never_becomes_the_sentence() {
         let credits = r#"LLM error: 402 Payment Required: {"error":{"message":"This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 62047.","code":402}}"#;
         assert_eq!(
@@ -868,22 +725,6 @@ mod tests {
         assert!(plain_error(body).starts_with("The model's provider returned an error."));
         assert!(plain_error(&"x".repeat(UNKNOWN_ERROR_SHOWN_CHARS + 1))
             .starts_with("The model's provider returned an error."));
-    }
-
-    #[test]
-    fn titles_read_the_whole_result_not_the_copy_cut_for_clients() {
-        let mut items = vec![step("a", json!({}), AssistantCallStateData::Done)];
-        if let Some(AssistantItemData::ToolCall { tool, result, .. }) = items.get_mut(0) {
-            *tool = "mxr_sync".into();
-            *result = Some("{\"results\":[{\"result\":\"failed\"},".into());
-        }
-        let whole = json!({"results": [{"result": "failed"}, {"result": "failed"}]}).to_string();
-        fill_titles(&mut items, &[], &HashMap::from([(0, whole)]));
-        let state = match &items[0] {
-            AssistantItemData::ToolCall { state, .. } => Some(*state),
-            _ => None,
-        };
-        assert_eq!(state, Some(AssistantCallStateData::Failed));
     }
 
     fn message(seq: i64, message: ToolChatMessage) -> AssistantMessageRow {

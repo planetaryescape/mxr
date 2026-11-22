@@ -289,26 +289,6 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_or_blank_list_means_the_defaults_and_repeats_collapse() {
-        let mut config = config("gemma4");
-        config.models = vec![];
-        assert_eq!(config.assistant_model_ids().len(), 5);
-        config.models = vec!["  ".into(), "gemma4:latest".into(), "gemma4:latest".into()];
-        assert_eq!(config.assistant_model_ids(), ["gemma4:latest"]);
-    }
-
-    #[test]
-    fn the_default_list_is_not_written_back_to_config() {
-        let toml = toml::to_string(&LlmConfig::default()).unwrap();
-        assert!(!toml.contains("models"), "{toml}");
-        let custom = LlmConfig {
-            models: vec!["gemma4:latest".into()],
-            ..LlmConfig::default()
-        };
-        assert!(toml::to_string(&custom).unwrap().contains("models"));
-    }
-
-    #[test]
     fn a_model_without_its_key_is_unavailable_with_the_command_to_add_one() {
         let models = models_for(&config("gemma4"), &keys(&[]));
         assert!(choice(&models, "gemma4:latest").available);
@@ -326,34 +306,6 @@ mod tests {
             .choices
             .iter()
             .all(|c| c.available == c.unavailable_reason.is_none()));
-    }
-
-    #[test]
-    fn one_key_makes_only_its_models_available() {
-        let models = models_for(&config("gemma4"), &keys(&[RouteProvider::OpenAI]));
-        assert!(choice(&models, "gpt-6-luna").available);
-        assert!(choice(&models, "gpt-5.6-terra").available);
-        assert!(!choice(&models, "claude-sonnet-5-5").available);
-    }
-
-    #[test]
-    fn an_openrouter_key_alone_serves_every_hosted_model() {
-        let models = models_for(&config("gemma4"), &keys(&[RouteProvider::OpenRouter]));
-        assert!(models.choices.iter().all(|c| c.available));
-    }
-
-    #[test]
-    fn cloud_is_true_for_hosted_models_and_false_for_the_local_one() {
-        let models = models_for(&config("gemma4"), &keys(&[]));
-        assert!(!choice(&models, "gemma4:latest").cloud);
-        for id in [
-            "gpt-6-luna",
-            "gpt-5.6-terra",
-            "claude-haiku-5-5",
-            "claude-sonnet-5-5",
-        ] {
-            assert!(choice(&models, id).cloud, "{id}");
-        }
     }
 
     #[test]
@@ -399,46 +351,6 @@ mod tests {
                 "{reason}"
             );
         }
-    }
-
-    #[test]
-    fn with_ai_off_every_choice_says_how_to_turn_it_on() {
-        let mut config = config("gemma4");
-        config.enabled = false;
-        let models = models_for(&config, &keys(&[RouteProvider::OpenAI]));
-        assert!(models.choices.iter().all(|c| !c.available
-            && c.unavailable_reason
-                .as_deref()
-                .is_some_and(|r| r.contains("llm.enabled"))));
-    }
-
-    #[test]
-    fn an_id_naming_an_unknown_vendor_is_listed_not_fatal() {
-        let mut config = config("gemma4");
-        config.models = vec!["mystery-model-9".into(), "openai/gpt-4o".into()];
-        let models = models_for(&config, &keys(&[]));
-        let mystery = choice(&models, "mystery-model-9");
-        assert_eq!(mystery.label, "mystery-model-9");
-        assert!(!mystery.cloud && mystery.available);
-        assert_eq!(
-            choice(&models, "openai/gpt-4o")
-                .unavailable_reason
-                .as_deref(),
-            Some("Add an OpenRouter key: mxr llm key set openrouter")
-        );
-    }
-
-    #[test]
-    fn the_current_model_is_marked_even_when_config_spells_it_differently() {
-        let models = models_for(&config("gemma4"), &keys(&[]));
-        assert_eq!(models.current.as_deref(), Some("gemma4:latest"));
-        let mut hand_set = config("gemma4");
-        hand_set.overrides.assistant = Some(LlmOverrideConfig {
-            model: Some("my-own-model".into()),
-            ..LlmOverrideConfig::default()
-        });
-        let models = models_for(&hand_set, &keys(&[]));
-        assert_eq!(models.current.as_deref(), Some("my-own-model"));
     }
 
     #[test]

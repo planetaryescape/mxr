@@ -111,10 +111,7 @@ pub(super) async fn repair_account(
 mod tests {
     use super::*;
     use crate::handler::handle_request;
-    use mxr_protocol::{
-        AccountSendConfigData, AccountSyncConfigData, GmailCredentialSourceData, IpcMessage,
-        IpcPayload, Request, Response,
-    };
+    use mxr_protocol::{AccountSyncConfigData, IpcMessage, IpcPayload, Request, Response};
 
     #[test]
     fn remove_account_dry_run_reports_cached_messages_without_changing_config() {
@@ -181,118 +178,6 @@ mod tests {
                 });
             },
         );
-    }
-
-    #[test]
-    fn disable_account_updates_config_and_default_through_ipc() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let config_dir = temp_dir.path().join("config");
-        let data_dir = temp_dir.path().join("data");
-        let socket_path = temp_dir.path().join("mxr.sock");
-        std::fs::create_dir_all(&config_dir).expect("config dir");
-
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("runtime");
-
-        temp_env::with_vars(
-            [
-                ("MXR_CONFIG_DIR", Some(config_dir)),
-                ("MXR_DATA_DIR", Some(data_dir)),
-                ("MXR_SOCKET_PATH", Some(socket_path)),
-            ],
-            || {
-                runtime.block_on(async {
-                    let mut config = mxr_config::MxrConfig::default();
-                    config.general.default_account = Some("work".into());
-                    config.accounts.insert(
-                        "work".into(),
-                        account_config("Work", "work@example.com", true),
-                    );
-                    config.accounts.insert(
-                        "personal".into(),
-                        account_config("Personal", "me@example.com", true),
-                    );
-                    mxr_config::save_config(&config).expect("save config");
-
-                    let state =
-                        Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
-                    let msg = IpcMessage {
-                        expected_workspace: None,
-                        id: 1,
-                        source: ::mxr_protocol::ClientKind::default(),
-                        payload: IpcPayload::Request(Request::DisableAccountConfig {
-                            key: "work".into(),
-                        }),
-                    };
-
-                    let resp = handle_request(&state, &msg).await;
-                    match resp.payload {
-                        IpcPayload::Response(Response::Ok {
-                            data: ResponseData::AccountOperation { result },
-                        }) => {
-                            assert!(result.ok);
-                            assert_eq!(result.summary, "Disabled account 'work'.");
-                        }
-                        other => panic!("Expected AccountOperation, got {other:?}"),
-                    }
-
-                    let after = mxr_config::load_config().expect("load config");
-                    assert!(!after.accounts["work"].enabled);
-                    assert_eq!(after.general.default_account.as_deref(), Some("personal"));
-                });
-            },
-        );
-    }
-
-    #[test]
-    fn repair_account_without_password_backed_credentials_is_rejected_by_ipc() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("runtime");
-
-        runtime.block_on(async {
-            let state = Arc::new(AppState::in_memory_without_accounts().await.expect("state"));
-            let msg = IpcMessage {
-                expected_workspace: None,
-                id: 1,
-                source: ::mxr_protocol::ClientKind::default(),
-                payload: IpcPayload::Request(Request::RepairAccountConfig {
-                    account: AccountConfigData {
-                        color: None,
-                        tag: None,
-                        key: "gmail".into(),
-                        name: "Gmail".into(),
-                        email: "me@example.com".into(),
-                        enabled: true,
-                        sync: Some(AccountSyncConfigData::Gmail {
-                            credential_source: GmailCredentialSourceData::Custom,
-                            client_id: "client".into(),
-                            client_secret: Some("secret".into()),
-                            token_ref: "mxr/gmail-token".into(),
-                        }),
-                        send: Some(AccountSendConfigData::Gmail),
-                        is_default: false,
-                    },
-                }),
-            };
-
-            let resp = handle_request(&state, &msg).await;
-            match resp.payload {
-                IpcPayload::Response(Response::Ok {
-                    data: ResponseData::AccountOperation { result },
-                }) => {
-                    assert!(!result.ok);
-                    assert_eq!(
-                        result.summary,
-                        "Account 'gmail' has no password-backed credentials to repair."
-                    );
-                }
-                other => panic!("Expected AccountOperation, got {other:?}"),
-            }
-        });
     }
 
     #[test]

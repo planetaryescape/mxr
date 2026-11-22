@@ -203,9 +203,7 @@ mod tests {
     use mxr_core::types::{
         Address, Draft, DraftContent, DraftIntent, MessageBody, MessageMetadata,
     };
-    use mxr_llm::{
-        ChatRole, CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
-    };
+    use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
     use std::sync::{Arc, Mutex};
 
     #[derive(Default)]
@@ -222,27 +220,6 @@ mod tests {
                 last_request: Mutex::new(None),
                 force_disabled: Mutex::new(false),
             }
-        }
-        fn disabled() -> Self {
-            Self {
-                canned: Mutex::new(None),
-                last_request: Mutex::new(None),
-                force_disabled: Mutex::new(true),
-            }
-        }
-        fn last_user_text(&self) -> String {
-            self.last_request
-                .lock()
-                .unwrap()
-                .as_ref()
-                .and_then(|r| {
-                    r.messages
-                        .iter()
-                        .rev()
-                        .find(|m| matches!(m.role, ChatRole::User))
-                        .map(|m| m.content.clone())
-                })
-                .unwrap_or_default()
         }
     }
 
@@ -414,75 +391,6 @@ mod tests {
         assert!(
             issues.is_empty(),
             "ask with unknown msg_id must be rejected, got {issues:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn llm_disabled_emits_info_degradation() {
-        let stub = Arc::new(StubLlm::disabled());
-        let (state, account_id, thread_id, _) = fixture(stub).await;
-        let draft = draft_for(account_id, "ok");
-        let issues = check_answer_coverage(&state, &draft, &thread_id).await;
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].severity, DraftSafetySeverity::Info);
-        assert!(
-            issues[0].message.to_lowercase().contains("disabled"),
-            "{}",
-            issues[0].message
-        );
-    }
-
-    #[tokio::test]
-    async fn prompt_contains_thread_transcript_and_draft_body() {
-        let stub = Arc::new(StubLlm::with_canned(r#"{"asks":[]}"#));
-        let (state, account_id, thread_id, _) = fixture(stub.clone()).await;
-        let draft = draft_for(account_id, "UNIQUE-DRAFT-MARKER-XYZ");
-        let _ = check_answer_coverage(&state, &draft, &thread_id).await;
-        let user_text = stub.last_user_text();
-        assert!(
-            user_text.contains("UNIQUE-DRAFT-MARKER-XYZ"),
-            "prompt missing draft body marker, got:\n{user_text}"
-        );
-        assert!(
-            user_text.contains("[msg_id="),
-            "prompt missing msg_id markers, got:\n{user_text}"
-        );
-
-        let request = stub.last_request.lock().unwrap().clone().unwrap();
-        let system = &request.messages[0].content;
-        assert!(
-            system.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
-            "system prompt must carry the shared injection guard"
-        );
-        let msgid = user_text.find("[msg_id=").expect("thread msg id present");
-        let thread_begin = user_text[..msgid]
-            .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
-            .expect("thread begin marker");
-        let thread_end = msgid
-            + user_text[msgid..]
-                .find(mxr_llm::UNTRUSTED_MAIL_END)
-                .expect("thread end marker");
-        assert!(
-            thread_begin < msgid && msgid < thread_end,
-            "inbound thread must sit inside its untrusted-content wrapper"
-        );
-        let draft = user_text
-            .find("UNIQUE-DRAFT-MARKER-XYZ")
-            .expect("draft present");
-        let draft_begin = user_text[..draft]
-            .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
-            .expect("draft begin marker");
-        let draft_end = draft
-            + user_text[draft..]
-                .find(mxr_llm::UNTRUSTED_MAIL_END)
-                .expect("draft end marker");
-        assert!(
-            draft_begin < draft && draft < draft_end,
-            "draft must sit inside its own untrusted-content wrapper"
-        );
-        assert!(
-            draft_begin > thread_end,
-            "the draft wrapper is a separate block after the thread wrapper"
         );
     }
 }

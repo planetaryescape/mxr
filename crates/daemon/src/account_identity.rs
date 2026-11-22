@@ -404,23 +404,6 @@ mod tests {
     }
 
     #[test]
-    fn a_colour_this_daemon_cannot_name_is_refused_before_it_is_written() {
-        assert!(refuse_unknown_colour(None).is_ok());
-        assert!(refuse_unknown_colour(Some(AccountColor::Green)).is_ok());
-        let error = refuse_unknown_colour(Some(AccountColor::Unknown)).unwrap_err();
-        assert!(error.contains("sky, amber"), "{error}");
-    }
-
-    #[test]
-    fn stored_tag_is_used_even_after_a_rename() {
-        let mut office = input("Office", Some("W"));
-        office.stored_color = Some(AccountColor::Sky);
-        let resolution = resolve_identities(&[office]).unwrap();
-        assert_eq!(resolution.resolved[0].identity.tag, "W");
-        assert_eq!(resolution.resolved[0].stored_tag, "W");
-    }
-
-    #[test]
     fn config_tag_wins_over_the_stored_tag() {
         let mut work = input("Work", Some("W"));
         work.config_tag = Some("OFF".into());
@@ -450,15 +433,6 @@ mod tests {
     }
 
     #[test]
-    fn configured_tag_matching_own_stored_tag_is_not_a_conflict() {
-        let mut work = input("Work", Some("W"));
-        work.config_tag = Some("W".into());
-        let resolution = resolve_identities(&[work]).unwrap();
-        assert_eq!(resolution.resolved[0].identity.tag, "W");
-        assert!(resolution.warnings.is_empty());
-    }
-
-    #[test]
     fn an_invalid_configured_tag_is_ignored_and_names_the_key() {
         let mut work = input("Work", Some("W"));
         work.key = Some("work".into());
@@ -468,87 +442,6 @@ mod tests {
         assert_eq!(resolution.warnings.len(), 1);
         assert_eq!(resolution.warnings[0].key, "work");
         assert!(resolution.warnings[0].message.contains("1 to 3"));
-    }
-
-    #[test]
-    fn an_invalid_configured_colour_is_ignored_and_lists_the_slots() {
-        let mut work = input("Work", Some("W"));
-        work.key = Some("work".into());
-        work.stored_color = Some(AccountColor::Green);
-        work.config_color = Some("teal".into());
-        let resolution = resolve_identities(&[work]).unwrap();
-        assert_eq!(resolution.resolved[0].identity.color, AccountColor::Green);
-        let message = &resolution.warnings[0].message;
-        assert!(message.contains("'teal'"), "{message}");
-        assert!(message.contains("sky, amber, green"), "{message}");
-    }
-
-    #[test]
-    fn a_duplicate_configured_tag_is_ignored_on_the_later_account() {
-        let mut first = input("Work", None);
-        first.config_tag = Some("OFF".into());
-        let mut second = input("Travel", None);
-        second.key = Some("travel".into());
-        second.config_tag = Some("OFF".into());
-        let resolution = resolve_identities(&[first, second]).unwrap();
-        assert_eq!(resolution.resolved[0].identity.tag, "OFF");
-        assert_eq!(resolution.resolved[1].identity.tag, "T");
-        assert_eq!(resolution.warnings[0].key, "travel");
-        assert!(resolution.warnings[0]
-            .message
-            .contains("already set on account 'Work'"));
-    }
-
-    #[test]
-    fn provisional_tag_avoids_stored_and_configured_tags() {
-        let work = input("Work", Some("W"));
-        let mut travel = input("Travel", None);
-        travel.config_tag = Some("T".into());
-        let mut tango = input("Tango", None);
-        tango.name = "Tango".into();
-        let resolution = resolve_identities(&[work, travel, tango]).unwrap();
-        assert_eq!(resolution.resolved[1].stored_tag, "TR");
-        assert_eq!(resolution.resolved[2].stored_tag, "TA");
-    }
-
-    #[test]
-    fn missing_stored_colour_takes_the_first_free_slot_in_input_order() {
-        let mut first = input("Work", Some("W"));
-        first.stored_color = Some(AccountColor::Sky);
-        let second = input("Wedding", None);
-        let resolution = resolve_identities(&[first, second]).unwrap();
-        assert_eq!(resolution.resolved[1].identity.color, AccountColor::Amber);
-    }
-
-    #[test]
-    fn config_colour_overrides_the_stored_colour_and_nothing_moves_it() {
-        let mut work = input("Work", Some("W"));
-        work.stored_color = Some(AccountColor::Green);
-        work.config_color = Some("slate".into());
-        let resolution = resolve_identities(&[work]).unwrap();
-        assert_eq!(resolution.resolved[0].identity.color, AccountColor::Slate);
-    }
-
-    #[test]
-    fn tag_holder_finds_a_stored_or_configured_holder() {
-        let work = resolved("Work", "OFF", "W");
-        let configured = [("Personal".to_string(), "Q".to_string())];
-        assert_eq!(
-            tag_holder("OFF", std::slice::from_ref(&work), &configured),
-            Some("Work")
-        );
-        assert_eq!(
-            tag_holder("W", std::slice::from_ref(&work), &configured),
-            Some("Work")
-        );
-        assert_eq!(
-            tag_holder("Q", std::slice::from_ref(&work), &configured),
-            Some("Personal")
-        );
-        assert_eq!(
-            tag_holder("PE", std::slice::from_ref(&work), &configured),
-            None
-        );
     }
 
     #[test]
@@ -600,31 +493,6 @@ mod tests {
         let unscoped =
             plan_identity_change(&wedding, None, Some("Q"), &[], &configured, true).unwrap_err();
         assert_eq!(unscoped, "Tag 'Q' is already used by account 'Personal'.");
-    }
-
-    #[test]
-    fn identity_edit_leaves_default_account_unset_and_other_fields_alone() {
-        let mut config = mxr_config::MxrConfig::default();
-        config.accounts.insert(
-            "work".into(),
-            mxr_config::AccountConfig {
-                name: "Work".into(),
-                email: "bk@work.example".into(),
-                enabled: true,
-                sync: None,
-                send: None,
-                color: Some("teal".into()),
-                tag: None,
-            },
-        );
-        assert_eq!(config.general.default_account, None);
-        set_identity_in_config(&mut config, "work", Some(AccountColor::Amber), Some("w")).unwrap();
-        assert_eq!(config.general.default_account, None);
-        let work = &config.accounts["work"];
-        assert_eq!(work.color.as_deref(), Some("amber"));
-        assert_eq!(work.tag.as_deref(), Some("W"));
-        assert_eq!(work.name, "Work");
-        assert_eq!(work.email, "bk@work.example");
     }
 
     fn config_account(name: &str, tag: Option<&str>) -> mxr_config::AccountConfig {

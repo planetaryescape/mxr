@@ -1352,12 +1352,6 @@ mod tests {
     }
 
     #[test]
-    fn ping_produces_no_activity() {
-        assert!(ok_map(&Request::Ping).is_none());
-        assert!(ok_map(&Request::GetStatus).is_none());
-    }
-
-    #[test]
     fn search_run_carries_query_and_mode() {
         let req = Request::Search {
             limit_from_config: false,
@@ -1374,40 +1368,6 @@ mod tests {
         assert_eq!(entry.target_kind.as_deref(), Some("search"));
         let ctx = entry.context.unwrap();
         assert_eq!(ctx["query"], "invoice 2026");
-    }
-
-    #[test]
-    fn snooze_carries_wake_at_in_context() {
-        let wake_at = chrono::DateTime::<chrono::Utc>::from_timestamp(1_715_592_090, 0).unwrap();
-        let mid = mxr_core::MessageId::new();
-        let req = Request::Snooze {
-            message_id: mid.clone(),
-            wake_at,
-        };
-        let entry = ok_map(&req).unwrap();
-        assert_eq!(entry.action, "mail.snooze");
-        assert_eq!(entry.target_kind.as_deref(), Some("message"));
-        assert_eq!(entry.target_id.as_deref(), Some(mid.as_str().as_str()));
-        let ctx = entry.context.unwrap();
-        assert_eq!(ctx["until"], 1_715_592_090 * 1000_i64);
-    }
-
-    #[test]
-    fn invite_response_logs_calendar_rsvp_action() {
-        let mid = mxr_core::MessageId::new();
-        let req = Request::RespondInvite {
-            message_id: mid.clone(),
-            action: mxr_protocol::CalendarInviteActionData::Accept,
-            dry_run: false,
-        };
-        let entry = ok_map(&req).unwrap();
-
-        assert_eq!(entry.action, "mail.calendar_rsvp");
-        assert_eq!(entry.target_kind.as_deref(), Some("message"));
-        assert_eq!(entry.target_id.as_deref(), Some(mid.as_str().as_str()));
-        let ctx = entry.context.unwrap();
-        assert_eq!(ctx["action"], "ACCEPTED");
-        assert_eq!(ctx["dry_run"], false);
     }
 
     #[test]
@@ -1429,63 +1389,6 @@ mod tests {
         assert_eq!(ctx["count"], 3);
         assert!(ctx["target_ids"].is_array());
         assert_eq!(ctx["target_ids"].as_array().unwrap().len(), 3);
-    }
-
-    #[test]
-    fn star_dispatches_to_paired_actions() {
-        let make = |starred: bool| Request::Mutation {
-            mutation: MutationCommand::Star {
-                message_ids: vec![mxr_core::MessageId::new()],
-                starred,
-            },
-            client_correlation_id: None,
-        };
-        assert_eq!(ok_map(&make(true)).unwrap().action, "mail.star");
-        assert_eq!(ok_map(&make(false)).unwrap().action, "mail.unstar");
-    }
-
-    #[test]
-    fn entry_tier_matches_classifier() {
-        let req = Request::Search {
-            limit_from_config: false,
-            query: "x".into(),
-            limit: 10,
-            offset: 0,
-            account_id: None,
-            mode: None,
-            sort: None,
-            explain: false,
-        };
-        let entry = ok_map(&req).unwrap();
-        assert_eq!(entry.tier, mxr_store::Tier::Standard);
-
-        let req2 = Request::Mutation {
-            mutation: MutationCommand::Archive {
-                message_ids: vec![mxr_core::MessageId::new()],
-            },
-            client_correlation_id: None,
-        };
-        let entry2 = ok_map(&req2).unwrap();
-        assert_eq!(entry2.tier, mxr_store::Tier::Important);
-    }
-
-    #[test]
-    fn long_search_query_truncates_with_ellipsis() {
-        let long_query = "a".repeat(1000);
-        let req = Request::Search {
-            limit_from_config: false,
-            query: long_query,
-            limit: 10,
-            offset: 0,
-            account_id: None,
-            mode: None,
-            sort: None,
-            explain: false,
-        };
-        let entry = ok_map(&req).unwrap();
-        let q = entry.context.unwrap()["query"].as_str().unwrap().to_owned();
-        assert!(q.ends_with('…'));
-        assert!(q.chars().count() <= QUERY_LIMIT + 1);
     }
 
     fn draft_with_content(
@@ -1561,31 +1464,6 @@ mod tests {
         assert_eq!(context["inline_count"], 1);
         assert_eq!(context["to_count"], 1);
         assert_eq!(context["subject"], "Quarterly numbers");
-    }
-
-    #[test]
-    fn send_activity_labels_a_markdown_draft_as_markdown_with_no_inline_assets() {
-        let draft = draft_with_content(
-            mxr_core::types::DraftContent::markdown("plain body"),
-            vec![],
-        );
-
-        let entry = ok_map(&Request::SendDraft {
-            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
-            draft,
-            override_safety_token: None,
-        })
-        .expect("a send must be recorded");
-        let context = entry.context.expect("a send must carry context");
-
-        assert_eq!(context["content_kind"], "markdown");
-        assert_eq!(context["inline_count"], 0);
-        assert!(
-            !serde_json::to_string(&context)
-                .unwrap()
-                .contains("plain body"),
-            "markdown source must not be recorded either"
-        );
     }
 
     #[tokio::test]

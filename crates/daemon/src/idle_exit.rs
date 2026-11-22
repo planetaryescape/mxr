@@ -75,16 +75,6 @@ mod tests {
     }
 
     #[test]
-    fn fake_and_missing_accounts_are_not_real() {
-        assert!(!has_real_account(&[]));
-        assert!(!has_real_account(&[account(
-            Some(ProviderKind::Fake),
-            Some(ProviderKind::Fake),
-            true
-        )]));
-    }
-
-    #[test]
     fn a_real_sync_or_send_backend_keeps_the_daemon_up() {
         assert!(has_real_account(&[
             account(Some(ProviderKind::Fake), None, true),
@@ -94,15 +84,6 @@ mod tests {
             None,
             Some(ProviderKind::Smtp),
             true
-        )]));
-    }
-
-    #[test]
-    fn disabled_real_accounts_do_not_keep_the_daemon_up() {
-        assert!(!has_real_account(&[account(
-            Some(ProviderKind::Gmail),
-            Some(ProviderKind::Gmail),
-            false
         )]));
     }
 

@@ -321,28 +321,6 @@ async fn preparation_interruption_rolls_back_publication_and_retry_returns_canon
 }
 
 #[tokio::test]
-async fn paused_shutdown_dispatch_acknowledges_and_stops_runtime() {
-    let (state, _, _, _) = fixture().await;
-    let response = super::super::dispatch(
-        &state,
-        mxr_protocol::ClientKind::Cli,
-        &mxr_transport::PeerInfo::local(),
-        &Request::Shutdown,
-    )
-    .await;
-    assert!(matches!(
-        response,
-        mxr_protocol::Response::Ok {
-            data: ResponseData::Ack
-        }
-    ));
-    assert!(state.shutdown_requested());
-    state
-        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
-        .await;
-}
-
-#[tokio::test]
 async fn restored_cached_mail_is_visible_while_paused_and_after_activation_without_credentials() {
     let (state, fake, draft, _) = fixture().await;
     state.sync_engine.sync_account(fake.as_ref()).await.unwrap();

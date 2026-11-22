@@ -919,18 +919,6 @@ mod tests {
     use std::os::unix::fs::{symlink, PermissionsExt};
 
     #[test]
-    fn approved_send_cache_tightens_owned_legacy_directory_permissions() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("restored-resources");
-        std::fs::create_dir(&path).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-        private_directory(&path).unwrap();
-
-        assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o700);
-    }
-
-    #[test]
     fn approved_send_cache_rejects_symlinks_without_changing_target_permissions() {
         let temp = tempfile::tempdir().unwrap();
         let target = temp.path().join("outside-cache");

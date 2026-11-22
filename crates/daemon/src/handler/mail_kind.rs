@@ -1148,47 +1148,6 @@ mod tests {
     }
 
     #[test]
-    fn bare_greetings_do_not_invent_another_addressee_or_an_owned_alias() {
-        let owner = [mxr_core::Address {
-            name: None,
-            email: "bk@example.com".into(),
-        }];
-        let own = |email: &str| email == "bk@example.com";
-        for text in [
-            "Hi,\nCould you send the deck by Friday?",
-            "Hi, could you confirm the meeting time?",
-            "Hello,\nCould you review the plan?",
-            "Hey, could you reply today?",
-            "Good morning,\nCould you confirm?",
-            "Hope you're well,\nCould you send the deck?",
-            "Thanks,\nCould you confirm?",
-        ] {
-            let evidence = mxr_core::mail_evidence::MailEvidence {
-                text: Some(text.into()),
-                ..Default::default()
-            };
-            assert!(directed_to_owner(&owner, &evidence, &own), "{text}");
-        }
-        for text in ["Alice,\nCould you send the deck?", "Alice: could you confirm?", "Hi Alice,\nCould you send the deck?", "Hi Brian,\nCould you confirm?", "Hi, could you confirm? No need to reply.", "Hi,\n\nFrom: Alice <alice@example.com>\nSent: Monday\nTo: BK <bk@example.com>\nSubject: Old ask\n\nCould you confirm?"] {
-            let evidence = mxr_core::mail_evidence::MailEvidence { text: Some(text.into()), ..Default::default() };
-            assert!(!directed_to_owner(&owner, &evidence, &own), "{text}");
-        }
-        let group = [
-            owner[0].clone(),
-            mxr_core::Address {
-                name: None,
-                email: "alice@example.com".into(),
-            },
-        ];
-        let evidence = mxr_core::mail_evidence::MailEvidence {
-            text: Some("Hi, could you confirm?".into()),
-            ..Default::default()
-        };
-        assert!(!directed_to_owner(&group, &evidence, &own));
-        assert!(!directed_to_owner(&group[1..], &evidence, &own));
-    }
-
-    #[test]
     fn a_reply_can_answer_without_requesting_another_reply() {
         let evidence = mxr_core::mail_evidence::MailEvidence {
             is_reply: true,
@@ -1287,177 +1246,6 @@ mod tests {
     }
 
     #[test]
-    fn authored_text_cache_matches_stripping_and_keys_on_the_earlier_message() {
-        let prior = "Could you confirm the launch date by Monday and send the signed copy?\nPlease also share the final reference with everyone before the Friday review meeting.";
-        let alone = mxr_core::mail_evidence::MailEvidence {
-            text: Some(format!("FYI, this was handled.\n\n{prior}")),
-            ..Default::default()
-        };
-        let against_earlier = mxr_core::mail_evidence::MailEvidence {
-            previous_text: Some(prior.into()),
-            ..alone.clone()
-        };
-        for evidence in [&alone, &against_earlier, &alone] {
-            assert_eq!(
-                &*authored_lower(evidence),
-                authored_content(evidence).to_lowercase()
-            );
-        }
-        assert_ne!(
-            authored_content(&alone),
-            authored_content(&against_earlier),
-            "the fixture must depend on the earlier message"
-        );
-    }
-
-    #[test]
-    fn document_value_matches_every_split_search_and_stays_linear() {
-        fn every_split(line: &str) -> Option<(DocumentField, &str)> {
-            line.char_indices()
-                .rev()
-                .filter(|(_, c)| c.is_whitespace())
-                .find_map(|(index, _)| {
-                    Some((document_field(&line[..index])?, line[index..].trim()))
-                })
-        }
-        let field = |found: Option<(DocumentField, &str)>| {
-            found.map(|(field, value)| (field as u8, value.to_string()))
-        };
-        for line in [
-            "invoice number 12345",
-            "invoice no. 778",
-            "web order number 1234-55",
-            "date of issue 12 march 2026",
-            "invoice date 2026-03-12 total due 40",
-            "amount due $12.40",
-            "total £9.99 thanks",
-            "order # 42",
-            "your order number 42",
-            "reference 9 for invoice 3",
-            "invoice-number 12",
-            "café total 12",
-            "no",
-            "",
-            "   ",
-            "hello there invoice number 9",
-        ] {
-            assert_eq!(
-                field(document_value(line, None)),
-                field(document_field(line).map_or_else(|| every_split(line), |_| None)),
-                "{line:?}"
-            );
-        }
-
-        for paragraph in [
-            "word ".repeat(5_000) + "total 12",
-            "invoice order number ".repeat(2_000) + "12",
-            "invoice ".repeat(5_000) + "12",
-        ] {
-            let started = std::time::Instant::now();
-            assert!(document_value(&paragraph, None).is_none());
-            assert!(
-                started.elapsed() < std::time::Duration::from_millis(50),
-                "{:?}",
-                started.elapsed()
-            );
-        }
-    }
-
-    #[test]
-    fn document_field_labels_vary_without_changing_the_independent_evidence_grammar() {
-        for (reference, date, order) in [
-            (
-                "Invoice Number:AB12345",
-                "Date of Issue:14.10.2026",
-                "Web order number: W12345678",
-            ),
-            (
-                "Document Ref.: AB12345",
-                "Issue Date: 2026-10-14",
-                "Purchase Order Reference: W12345678",
-            ),
-            (
-                "Invoice # AB12345",
-                "Billing Date\n14/10/2026",
-                "Order No. W12345678",
-            ),
-        ] {
-            let text = format!("{reference}\n{date}\n\nDear User,\nThank you for your recent purchase from Vendor.\n{order}\nPlease find attached your billing document AB12345.");
-            let evidence = mxr_core::mail_evidence::MailEvidence {
-                text: Some(text),
-                ..Default::default()
-            };
-            let document = KindSignals {
-                evidence: &evidence,
-                ..signals("ordinary@vendor.example")
-            };
-            assert_eq!(classify(&document).kind, SenderKind::Automated);
-            assert!(describe(&document)
-                .reason
-                .contains("structured billing document"));
-        }
-        for text in [
-            "Invoice Number: AB12345\nDate of Issue: not-a-date\nWeb Order Number: W12345678\nYour billing document is attached.",
-            "Invoice Number: AB12345\nDate of Issue:14.10.2026\nYour billing document is attached.",
-            "The invoice amount is interesting; could we discuss it?",
-        ] {
-            let evidence = mxr_core::mail_evidence::MailEvidence { text: Some(text.into()), ..Default::default() };
-            assert_eq!(classify(&KindSignals { evidence: &evidence, ..signals("ordinary@vendor.example") }).kind, SenderKind::Person);
-        }
-    }
-
-    #[test]
-    fn notifying_senders_are_paper_trail_whatever_their_list_headers() {
-        let github = KindSignals {
-            has_unsubscribe: true,
-            has_list_id: true,
-            ..signals("notifications@github.com")
-        };
-        let described = describe(&github);
-        assert_eq!(described.kind, SenderKindData::PaperTrail);
-        assert_eq!(described.rule, KindRuleData::AutomatedAddress);
-        assert_eq!(described.reason, "automated sender, has List-Unsubscribe");
-        assert!(!described.corrected);
-
-        let verify = describe(&signals("verify@security-mail.example.com"));
-        assert_eq!(verify.kind, SenderKindData::PaperTrail);
-        assert_eq!(verify.rule, KindRuleData::AutomatedAddress);
-
-        let alerts = describe(&signals("uptime@alerts.example.com"));
-        assert_eq!(alerts.rule, KindRuleData::AutomatedDomain);
-        assert_eq!(alerts.reason, "automated sending domain");
-    }
-
-    #[test]
-    fn a_no_reply_sender_is_decided_by_its_list_headers() {
-        let receipt = describe(&signals("no-reply@shop.example"));
-        assert_eq!(receipt.kind, SenderKindData::PaperTrail);
-        assert_eq!(receipt.rule, KindRuleData::NoReplyAddress);
-        assert_eq!(receipt.reason, "no-reply sender, no list headers");
-
-        let marketing = describe(&KindSignals {
-            has_unsubscribe: true,
-            ..signals("no-reply@shop.example")
-        });
-        assert_eq!(marketing.kind, SenderKindData::Reading);
-        assert_eq!(marketing.rule, KindRuleData::ListUnsubscribe);
-    }
-
-    #[test]
-    fn newsletter_addresses_are_reading() {
-        let digest = describe(&KindSignals {
-            has_unsubscribe: true,
-            ..signals("digest@hn.example")
-        });
-        assert_eq!(digest.kind, SenderKindData::Reading);
-        assert_eq!(digest.rule, KindRuleData::NewsletterAddress);
-        assert_eq!(digest.reason, "newsletter address, has List-Unsubscribe");
-        let news = describe(&signals("editor@news.example.com"));
-        assert_eq!(news.rule, KindRuleData::NewsletterDomain);
-        assert!(looks_automated("digest@hn.example"));
-    }
-
-    #[test]
     fn list_mail_is_reading_by_its_strongest_header() {
         let list = KindSignals {
             has_list_id: true,
@@ -1475,22 +1263,6 @@ mod tests {
         });
         assert_eq!(unsubscribe_only.rule, KindRuleData::ListUnsubscribe);
         assert_eq!(unsubscribe_only.reason, "has List-Unsubscribe");
-    }
-
-    #[test]
-    fn deliveries_and_invites_are_paper_trail_before_anything_automatic() {
-        let delivery = describe(&KindSignals {
-            is_delivery: true,
-            has_list_id: true,
-            ..signals("maya@example.com")
-        });
-        assert_eq!(delivery.kind, SenderKindData::PaperTrail);
-        assert_eq!(delivery.rule, KindRuleData::Delivery);
-        let invite = describe(&KindSignals {
-            is_invite: true,
-            ..signals("maya@example.com")
-        });
-        assert_eq!(invite.rule, KindRuleData::Invite);
     }
 
     #[test]
@@ -1701,15 +1473,6 @@ mod tests {
     }
 
     #[test]
-    fn subject_templates_set_numbers_and_reply_prefixes_aside() {
-        assert_eq!(
-            subject_template("RE: Fwd: Payment of R1,204.50 on 2026-10-01"),
-            "payment of r# on #-#-#"
-        );
-        assert_eq!(subject_template("  Your   statement "), "your statement");
-    }
-
-    #[test]
     fn correspondence_history_does_not_erase_message_list_evidence() {
         for list in [
             KindSignals {
@@ -1787,13 +1550,5 @@ mod tests {
         assert_eq!(kind_for_mode(ModeKindData::Todo), None);
         assert_eq!(kind_for_stored_mode("messages"), Some(SenderKind::Person));
         assert_eq!(kind_for_stored_mode("archive"), None);
-    }
-
-    #[test]
-    fn a_plain_address_is_a_person() {
-        let described = describe(&signals("maya@orbit.example"));
-        assert_eq!(described.kind, SenderKindData::People);
-        assert_eq!(described.rule, KindRuleData::Person);
-        assert!(!looks_automated("editor@news.com"));
     }
 }

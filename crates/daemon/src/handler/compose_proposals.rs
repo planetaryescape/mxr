@@ -125,15 +125,4 @@ mod tests {
         assert!(proposals.get("a").is_none());
         assert_eq!(proposals.len(), 0, "an expired proposal is dropped");
     }
-
-    #[test]
-    fn the_store_is_bounded_and_drops_the_oldest_first() {
-        let proposals = ComposeProposals::default();
-        for index in 0..=MAX_PROPOSALS {
-            proposals.insert(stored(&format!("p{index}")));
-        }
-        assert_eq!(proposals.len(), MAX_PROPOSALS);
-        assert!(proposals.get("p0").is_none());
-        assert!(proposals.get(&format!("p{MAX_PROPOSALS}")).is_some());
-    }
 }

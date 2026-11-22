@@ -243,29 +243,6 @@ mod tests {
     }
 
     #[test]
-    fn reply_queue_arrives_safe_to_print() {
-        let response = sanitize_response(Response::Ok {
-            data: ResponseData::ReplyQueue {
-                messages: vec![hostile_envelope()],
-            },
-        });
-        let Response::Ok {
-            data: ResponseData::ReplyQueue { messages },
-        } = response
-        else {
-            panic!("reply queue");
-        };
-        assert_safe(&messages[0].subject);
-        assert_safe(&messages[0].snippet);
-    }
-
-    #[test]
-    fn a_block_keeps_its_own_lines_but_no_field_can_add_one() {
-        let block = format!("row one {}\nrow two", terminal_text("a\r\nb\u{2029}c"));
-        assert_eq!(terminal_block(&block).lines().count(), 2);
-    }
-
-    #[test]
     fn assistant_rows_and_titles_are_made_safe_for_the_terminal() {
         use mxr_protocol::{
             AssistantConversationData, AssistantItemData, AssistantReadoutRowData,

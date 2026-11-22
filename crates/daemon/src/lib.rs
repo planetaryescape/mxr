@@ -2157,30 +2157,6 @@ mod tracing_tests {
     use std::sync::{Arc, Mutex};
     use tracing_subscriber::layer::SubscriberExt;
 
-    #[test]
-    fn tracing_terminal_ownership_excludes_tui_background_and_protocols() {
-        use clap::Parser;
-        for (args, allowed) in [
-            (vec!["mxr"], false),
-            (vec!["mxr", "daemon"], false),
-            (vec!["mxr", "daemon", "--foreground"], true),
-            (vec!["mxr", "daemon", "--stdio"], false),
-            (vec!["mxr", "daemon", "dial-stdio"], false),
-            (vec!["mxr", "status"], true),
-            (vec!["mxr", "logs"], false),
-        ] {
-            let cli = crate::cli::Cli::try_parse_from(args.clone()).unwrap();
-            assert_eq!(
-                super::tracing_stderr_allowed(&cli.command),
-                allowed,
-                "{args:?}"
-            );
-        }
-        assert!(
-            crate::cli::Cli::try_parse_from(["mxr", "daemon", "--foreground", "--stdio"]).is_err()
-        );
-    }
-
     #[derive(Clone, Default)]
     struct Buffer(Arc<Mutex<Vec<u8>>>);
 

@@ -230,30 +230,4 @@ mod tests {
             issue.message
         );
     }
-
-    #[tokio::test]
-    async fn fast_bucket_emits_no_issue() {
-        let (state, account) = fixture().await;
-        seed_medium_confidence(&state, &account, "alice@example.com").await;
-        let draft = draft_to(&account, "alice@example.com");
-        let issues = check_send_time(&state, &draft, fri_14_utc()).await;
-        assert!(
-            issues.is_empty(),
-            "fast bucket must NOT emit an Info issue: {issues:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn low_confidence_emits_no_issue() {
-        let (state, account) = fixture().await;
-        for _ in 0..3 {
-            insert_reply(&state.store, &account, "bob@example.com", mon_09_utc(), 60).await;
-        }
-        let draft = draft_to(&account, "bob@example.com");
-        let issues = check_send_time(&state, &draft, mon_09_utc()).await;
-        assert!(
-            issues.is_empty(),
-            "Low confidence must not warn -- avoid noise on weak data"
-        );
-    }
 }

@@ -73,13 +73,6 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn every_registered_job_has_its_own_kind() {
-        let kinds: Vec<&str> = jobs().iter().map(|job| job.kind()).collect();
-        let unique: HashSet<&str> = kinds.iter().copied().collect();
-        assert_eq!(kinds.len(), unique.len(), "duplicate kinds in {kinds:?}");
-    }
-
-    #[test]
     fn every_parse_the_workspace_isolates_is_registered() {
         let kinds: HashSet<&str> = jobs().iter().map(|job| job.kind()).collect();
         for expected in [

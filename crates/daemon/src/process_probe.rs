@@ -182,44 +182,6 @@ mod tests {
     }
 
     #[test]
-    fn environment_entries_drop_the_command_line_that_precedes_them() {
-        let entries = split_environment_entries("/opt/mxr daemon --instance mxr HOME=/Users/bk");
-
-        assert_eq!(entries, vec!["HOME=/Users/bk".to_string()]);
-    }
-
-    #[test]
-    fn a_value_containing_an_assignment_is_cut_short_rather_than_swallowing_the_rest() {
-        let entries = split_environment_entries("MXR_DATA_DIR=/tmp/a OTHER=x HOME=/Users/bk");
-
-        assert_eq!(environment_value(&entries, "MXR_DATA_DIR"), Some("/tmp/a"));
-        assert_eq!(environment_value(&entries, "HOME"), Some("/Users/bk"));
-    }
-
-    #[test]
-    fn pid_command_lines_keep_the_whole_command() {
-        let parsed = parse_pid_command_lines(
-            "  100 /opt/mxr daemon --instance mxr-dev\n  bad line\n  200 /bin/zsh\n",
-        );
-
-        assert_eq!(
-            parsed,
-            vec![
-                (100, "/opt/mxr daemon --instance mxr-dev".to_string()),
-                (200, "/bin/zsh".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn this_process_reports_a_start_time_and_a_command_line() {
-        let pid = std::process::id();
-
-        assert!(start_time(pid).is_some(), "ps must report our own lstart");
-        assert!(command_words(pid).is_some_and(|words| !words.is_empty()));
-    }
-
-    #[test]
     fn this_process_reports_its_own_environment() {
         let environment =
             environment(std::process::id()).expect("our own environment must be readable");

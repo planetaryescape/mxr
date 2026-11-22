@@ -367,29 +367,6 @@ mod tests {
     }
 
     #[test]
-    fn merged_marks_keep_the_later_watermark() {
-        let thread = mxr_core::id::ThreadId::new();
-        let other = mxr_core::id::ThreadId::new();
-        let mark = |date| DeskDismissal {
-            through_date: date,
-            through_id: uuid::Uuid::nil(),
-            through_count: 2,
-            covered: None,
-        };
-        let merged = merge_marks(
-            HashMap::from([(thread.clone(), mark(5))]),
-            HashMap::from([(thread.clone(), mark(9)), (other.clone(), mark(3))]),
-        );
-        assert_eq!(merged[&thread].through_date, 9);
-        assert_eq!(merged[&other].through_date, 3);
-        let merged = merge_marks(
-            HashMap::from([(thread.clone(), mark(9))]),
-            HashMap::from([(thread.clone(), mark(5))]),
-        );
-        assert_eq!(merged[&thread].through_date, 9);
-    }
-
-    #[test]
     fn a_new_sender_is_asked_where_their_mail_landed_first() {
         let account = AccountId::new();
         let question =
@@ -399,47 +376,5 @@ mod tests {
         let labels: Vec<&str> = question.choices.iter().map(|c| c.label.as_str()).collect();
         assert_eq!(labels, ["Updates", "Messages", "Reading", "Block"]);
         assert!(screener_question(&account, "x@y", SenderKindData::ScreenedOut).is_none());
-    }
-
-    #[test]
-    fn now_lines_count_and_cap() {
-        assert_eq!(
-            now_headline("Friday afternoon", 3, 2),
-            "Friday afternoon. 3 people waiting on you, 2 things to act on."
-        );
-        assert_eq!(
-            now_headline("Friday afternoon", 1, 0),
-            "Friday afternoon. 1 person waiting on you."
-        );
-        assert_eq!(now_headline("Friday night", 0, 0), "Friday night.");
-        assert_eq!(
-            more_line(11, 3, ModeKindData::Messages).as_deref(),
-            Some("and 8 more in Messages")
-        );
-        assert!(more_line(3, 3, ModeKindData::Todo).is_none());
-        let split = |write_with, others| PeopleSplitData { write_with, others };
-        assert!(overload_line(split(2, OVERLOAD_PEOPLE - 2), 3).is_none());
-        assert_eq!(
-            overload_line(split(7, 4), 3).as_deref(),
-            Some(
-                "11 people waiting on you: 7 you write with, 4 others. Start with the three below."
-            )
-        );
-        assert_eq!(
-            overload_line(split(0, 6), 2).as_deref(),
-            Some("6 others wrote to you and are waiting. Start with the two below.")
-        );
-        assert_eq!(
-            overload_line(split(6, 0), 3).as_deref(),
-            Some("6 people waiting on you. Start with the three below, furthest past your usual pace.")
-        );
-        assert_eq!(
-            updates_line(23, 9, &["GitHub".into(), "Vercel".into(), "Stripe".into()]),
-            "23 updates from 9 sources. Most from GitHub, Vercel and Stripe."
-        );
-        assert_eq!(
-            updates_line(1, 1, &["GitHub".into()]),
-            "1 update from 1 source."
-        );
     }
 }

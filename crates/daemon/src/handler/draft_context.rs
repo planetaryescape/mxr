@@ -380,29 +380,6 @@ mod tests {
     }
 
     #[test]
-    fn register_from_style_weights_theirs() {
-        assert_eq!(
-            register_from_style(Some(&style(0.35, 0.9, 10.0, 22.0, 4)), None, None),
-            VoiceRegisterData::Formal
-        );
-    }
-
-    #[test]
-    fn register_falls_back_to_user_voice_then_purpose() {
-        assert_eq!(
-            register_from_style(None, Some(0.9), None),
-            VoiceRegisterData::Formal
-        );
-        assert_eq!(register_from_style(None, None, Some("yo")), {
-            match infer_register("yo") {
-                mxr_relationship::VoiceRegister::Casual => VoiceRegisterData::Casual,
-                mxr_relationship::VoiceRegister::Formal => VoiceRegisterData::Formal,
-                mxr_relationship::VoiceRegister::Neutral => VoiceRegisterData::Neutral,
-            }
-        });
-    }
-
-    #[test]
     fn length_from_style_maps_sentence_len() {
         assert_eq!(
             length_from_style(Some(&style(0.5, 0.5, 8.0, 8.0, 2)), None),

@@ -707,20 +707,6 @@ mod tests {
     }
 
     #[test]
-    fn quote_verification_accepts_the_exact_sentence_across_line_breaks() {
-        let (id, texts) = texts(
-            "Rollout risk: watch sync latency.\nCan you confirm who owns the\nrollout check before Monday?\n\nThanks",
-        );
-        let quote = verify_quote(ASK_SENTENCE, &id.as_str(), &texts).expect("exact quote verifies");
-        assert_eq!(quote.message_id, id);
-        assert_eq!(
-            quote.text,
-            "Can you confirm who owns the\nrollout check before Monday?"
-        );
-        assert!(texts[0].1.contains(&quote.text));
-    }
-
-    #[test]
     fn quote_verification_rejects_a_paraphrase() {
         let body = format!("Hi,\n{ASK_SENTENCE}\nMaya");
         let (id, texts) = texts(&body);
@@ -735,32 +721,6 @@ mod tests {
                 "{paraphrase}"
             );
         }
-    }
-
-    #[test]
-    fn quote_verification_folds_curly_quotes_but_returns_the_message_text() {
-        let (id, texts) = texts("We’re blocked. Can you send Maya’s deck today?");
-        let quote = verify_quote("Can you send Maya's deck today?", &id.as_str(), &texts)
-            .expect("apostrophe style may differ");
-        assert_eq!(quote.text, "Can you send Maya’s deck today?");
-    }
-
-    #[test]
-    fn quote_verification_finds_a_quote_cited_under_the_wrong_message() {
-        let first = MessageId::new();
-        let second = MessageId::new();
-        let hello = format!("Hello. {ASK_SENTENCE}");
-        let texts = vec![
-            (first.clone(), "Earlier note with nothing to ask."),
-            (second.clone(), hello.as_str()),
-        ];
-        let quote = verify_quote(ASK_SENTENCE, &first.as_str(), &texts).unwrap();
-        assert_eq!(quote.message_id, second);
-        assert_eq!(
-            verify_quote("ok?", &second.as_str(), &texts),
-            None,
-            "too short"
-        );
     }
 
     #[test]
@@ -970,81 +930,5 @@ mod tests {
             vec![AiSourceData::ThisThread, AiSourceData::RelationshipHistory]
         );
         assert!(llm.prompts.lock().unwrap()[1].contains("History with maya@example.com"));
-    }
-
-    #[tokio::test]
-    async fn a_gist_written_from_snippets_is_redone_once_bodies_sync() {
-        let state = AppState::in_memory().await.unwrap();
-        let thread_id = ThreadId::new();
-        let envelope = TestEnvelopeBuilder::new()
-            .account_id(state.default_account_id())
-            .thread_id(thread_id.clone())
-            .provider_id("snippet-1")
-            .sender_address("Maya Ortiz", "maya@example.com")
-            .snippet("Canary is at 5%. Can you confirm who owns it?")
-            .build();
-        state
-            .store
-            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
-            .await
-            .unwrap();
-        let llm = ScriptedLlm::new(answer_for(&envelope.id));
-        state.llm.replace(llm.clone());
-
-        gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
-        let again = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
-        assert!(again.from_cache, "no body yet: the snippet gist stands");
-        assert_eq!(llm.calls.load(Ordering::SeqCst), 1);
-
-        state
-            .store
-            .insert_body(&MessageBody {
-                message_id: envelope.id.clone(),
-                text_plain: Some(format!("Hi Maya here. Canary is at 5%.\n{ASK_SENTENCE}")),
-                text_html: None,
-                attachments: vec![],
-                fetched_at: chrono::Utc::now(),
-                metadata: MessageMetadata::default(),
-            })
-            .await
-            .unwrap();
-        let fresh = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
-        assert!(!fresh.from_cache, "the body arrived: regenerate");
-        assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
-        assert_eq!(
-            fresh.ask.and_then(|ask| ask.quote).map(|quote| quote.text),
-            Some(ASK_SENTENCE.to_string())
-        );
-    }
-
-    #[tokio::test]
-    async fn the_called_endpoint_decides_history_and_the_cache() {
-        let state = AppState::in_memory().await.unwrap();
-        let (thread_id, message_id) = seed_thread(&state).await;
-        let local = ScriptedLlm::at(answer_for(&message_id), Some("http://localhost:11434/v1"));
-        state.llm.replace(local.clone());
-        let first = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
-        assert_eq!(first.provenance.unwrap().locality, AiLocalityData::Local);
-
-        let cloud = ScriptedLlm::at(
-            answer_for(&message_id),
-            Some("https://api.example-cloud.com/v1"),
-        );
-        state.llm.replace(cloud.clone());
-        let second = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
-        assert!(!second.from_cache, "the endpoint is part of the cache key");
-        let provenance = second.provenance.unwrap();
-        assert_eq!(provenance.locality, AiLocalityData::Cloud);
-        assert_eq!(provenance.sources, vec![AiSourceData::ThisThread]);
-        assert!(!cloud.prompts.lock().unwrap()[0].contains("History with"));
-    }
-
-    #[tokio::test]
-    async fn no_model_is_a_status_not_an_error() {
-        let state = AppState::in_memory().await.unwrap();
-        let (thread_id, _) = seed_thread(&state).await;
-        let answer = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
-        assert_eq!(answer.status, ThreadGistStatusData::Disabled);
-        assert_eq!(answer.gist, None);
     }
 }

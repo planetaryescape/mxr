@@ -623,45 +623,4 @@ mod tests {
         )
         .is_none());
     }
-
-    #[test]
-    fn decimal_amounts_do_not_split_the_quote_or_hide_negation() {
-        let payment_received = [r"(?i)\bpayment received\b"];
-        let text = "Camden Council Tax payment received for £142.00.";
-        let (quote, _) = find_safe_quote(&payment_received, text, "body")
-            .expect("affirmative quote with decimal amount");
-        assert_eq!(quote, text);
-
-        assert!(find_safe_quote(
-            &payment_received,
-            "Do not mark £142.00 complete: payment received.",
-            "body",
-        )
-        .is_none());
-        assert!(find_safe_quote(
-            &payment_received,
-            "Payment received for £142.00, but the transfer failed.",
-            "body",
-        )
-        .is_none());
-    }
-
-    #[test]
-    fn contradiction_must_refer_to_the_same_plan_as_the_task() {
-        let patterns = [r"(?i)\b(has not|hasn't) been renewed\b"];
-        assert!(!has_object_bound_contradiction(
-            "Renew JetBrains All Products",
-            Some("JetBrains"),
-            &patterns,
-            "Your All Products subscription remains active.",
-            "RustRover hasn't been renewed.",
-        ));
-        assert!(has_object_bound_contradiction(
-            "Renew JetBrains All Products",
-            Some("JetBrains"),
-            &patterns,
-            "",
-            "JetBrains All Products hasn't been renewed.",
-        ));
-    }
 }

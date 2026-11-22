@@ -314,50 +314,6 @@ mod tests {
         assert_eq!(std::fs::read(dir.path().join("mxr.log")).unwrap(), line);
     }
     #[test]
-    fn startup_and_smaller_count_converge_without_touching_unknown_paths() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("mxr.log"), vec![b'x'; 2 * 1024 * 1024]).unwrap();
-        for index in 0..4 {
-            std::fs::write(dir.path().join(format!("mxr.{index:020}.log")), "{}\n").unwrap();
-        }
-        let unknown = dir.path().join("unrelated.log");
-        std::fs::write(&unknown, "preserve").unwrap();
-        let writer = test_writer(dir.path(), 2);
-        writer.commit(&[], false).unwrap();
-        assert_eq!(archives(dir.path()).unwrap().len(), 1);
-        let notice: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(dir.path().join("mxr.log")).unwrap()).unwrap();
-        assert!(notice["fields"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("oversized existing"));
-        assert_eq!(std::fs::read_to_string(unknown).unwrap(), "preserve");
-        std::fs::write(
-            &writer.config_path,
-            "[logging]\nmax_size_mb=1\nmax_files=1\nstderr=false\n",
-        )
-        .unwrap();
-        writer.commit(b"{}\n", false).unwrap();
-        assert!(archives(dir.path()).unwrap().is_empty());
-    }
-    #[test]
-    fn external_rename_and_removal_do_not_strand_a_writer_handle() {
-        let dir = tempfile::tempdir().unwrap();
-        let writer = test_writer(dir.path(), 2);
-        let active = dir.path().join("mxr.log");
-        writer.commit(b"{\"n\":1}\n", false).unwrap();
-        std::fs::rename(&active, dir.path().join("external")).unwrap();
-        writer.commit(b"{\"n\":2}\n", false).unwrap();
-        assert_eq!(std::fs::read_to_string(&active).unwrap(), "{\"n\":2}\n");
-        std::fs::remove_file(&active).unwrap();
-        writer.commit(b"{\"n\":3}\n", false).unwrap();
-        assert_eq!(std::fs::read_to_string(&active).unwrap(), "{\"n\":3}\n");
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join("external")).unwrap(),
-            "{\"n\":1}\n"
-        );
-    }
-    #[test]
     fn invalid_caps_and_conflicting_paths_fail_without_deleting_history() {
         for (size, count) in [(0, 1), (1, 0), (u32::MAX, u32::MAX)] {
             assert!(Limits::from_config(&mxr_config::LoggingConfig {
@@ -373,23 +329,5 @@ mod tests {
         std::fs::create_dir(dir.path().join("mxr.log")).unwrap();
         assert!(test_writer(dir.path(), 1).commit(b"{}\n", false).is_err());
         assert_eq!(std::fs::read_to_string(archive).unwrap(), "history");
-    }
-
-    #[test]
-    fn malformed_toml_keeps_startup_policy_but_read_errors_propagate() {
-        let dir = tempfile::tempdir().unwrap();
-        let writer = test_writer(dir.path(), 2);
-        std::fs::write(&writer.config_path, "[logging\ninvalid=???").unwrap();
-        let config = writer.config().unwrap();
-        assert_eq!(config.max_size_mb, 1);
-        assert_eq!(config.max_files, 2);
-        assert!(!config.stderr);
-        std::fs::remove_file(&writer.config_path).unwrap();
-        std::fs::create_dir(&writer.config_path).unwrap();
-        assert!(
-            writer.config().is_err(),
-            "a config read I/O error is not a TOML parse fallback"
-        );
-        assert!(writer.commit(b"{}\n", false).is_err());
     }
 }

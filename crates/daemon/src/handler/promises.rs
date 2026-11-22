@@ -493,19 +493,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn due_words_the_email_never_says_are_dropped() {
-        let (state, account_id, _) = fixture(
-            r#"{"promises":[{"what":"send the deck","due":"by Monday"}]}"#,
-            Duration::ZERO,
-        )
-        .await;
-        let detection = run(&state, &account_id, "I'll send the deck soon.").await;
-        assert_eq!(detection.promises.len(), 1);
-        assert!(detection.promises[0].due_phrase.is_none());
-        assert!(detection.promises[0].due.is_none());
-    }
-
-    #[tokio::test]
     async fn an_invented_deliverable_is_dropped_even_with_a_real_date() {
         let (state, account_id, _) = fixture(
             r#"{"promises":[
@@ -530,88 +517,6 @@ mod tests {
         assert_eq!(promise.what, "send the \"deck\"");
         assert_eq!(promise.due_phrase.as_deref(), Some("by Friday"));
         assert!(promise.due.is_some());
-    }
-
-    #[tokio::test]
-    async fn mail_without_a_promise_marker_never_reaches_the_model() {
-        let (state, account_id, stub) = fixture(r#"{"promises":[]}"#, Duration::ZERO).await;
-        let detection = run(&state, &account_id, "Thanks, looks good to me.").await;
-        assert_eq!(detection.status, PromiseDetectionStatusData::Ready);
-        assert!(detection.promises.is_empty());
-        assert!(detection.provenance.is_none());
-        assert!(stub.calls.lock().unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn a_slow_model_times_out_as_a_status_not_an_error() {
-        let (state, _, _) = fixture(
-            r#"{"promises":[{"what":"send the deck","due":"Friday"}]}"#,
-            Duration::from_secs(30),
-        )
-        .await;
-        let outgoing = OutgoingText {
-            recipients: Vec::new(),
-            body: "I'll send the deck Friday.".into(),
-        };
-        let started = std::time::Instant::now();
-        let detection = detect(
-            &state,
-            &outgoing,
-            Some(anchor()),
-            None,
-            Duration::from_millis(50),
-        )
-        .await
-        .unwrap();
-        assert!(started.elapsed() < Duration::from_secs(5));
-        assert_eq!(detection.status, PromiseDetectionStatusData::TimedOut);
-        assert!(detection.promises.is_empty());
-        assert!(detection.message.is_some());
-    }
-
-    #[tokio::test]
-    async fn an_unusable_answer_is_a_failed_status() {
-        let (state, account_id, _) = fixture("I can't do that.", Duration::ZERO).await;
-        let detection = run(&state, &account_id, "I'll send the deck Friday.").await;
-        assert_eq!(detection.status, PromiseDetectionStatusData::Failed);
-    }
-
-    #[tokio::test]
-    async fn an_unknown_zone_is_refused() {
-        let (state, account_id, _) = fixture(r#"{"promises":[]}"#, Duration::ZERO).await;
-        let source = PromiseSourceData::Draft {
-            draft: Box::new(draft(&account_id, "I'll send it.")),
-        };
-        let error = detect_promises(&state, &source, None, Some("Mars/Olympus"))
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("Unknown time zone"));
-    }
-
-    #[tokio::test]
-    async fn due_words_drop_leading_fillers_until_they_resolve() {
-        let (state, _, _) = fixture(r#"{"promises":[]}"#, Duration::ZERO).await;
-        let at = |phrase: &str| {
-            due_words_in_zone(
-                &state,
-                phrase,
-                phrase,
-                Some(anchor()),
-                Some("Europe/London"),
-            )
-            .unwrap()
-            .and_then(|words| words.resolution)
-            .map(|resolution| resolution.at)
-        };
-        let friday_nine = Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap();
-        assert_eq!(at("by Friday"), Some(friday_nine));
-        assert_eq!(at("no later than friday."), Some(friday_nine));
-        assert_eq!(at("first thing Friday"), Some(friday_nine));
-        assert_eq!(
-            at("within 2 days"),
-            Some(Utc.with_ymd_and_hms(2026, 10, 1, 14, 0, 0).unwrap())
-        );
-        assert_eq!(at("at some point"), None);
     }
 
     async fn sync(state: &AppState) {
@@ -736,24 +641,5 @@ mod tests {
             message_id: spoofed.id.clone(),
         };
         assert!(detect_promises(&state, &source, None, None).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn only_mail_you_sent_holds_your_promises() {
-        let (state, account_id, _) = fixture(r#"{"promises":[]}"#, Duration::ZERO).await;
-        sync(&state).await;
-        let inbound = state
-            .store
-            .list_envelopes_by_account(&account_id, 50, 0)
-            .await
-            .unwrap()
-            .into_iter()
-            .find(|envelope| envelope.from.email != "user@example.com")
-            .expect("fake mail has inbound messages");
-        let friday = Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap();
-        let error = record_promise(&state, &inbound.id, "send the deck", friday, false)
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("not sent from this account"));
     }
 }

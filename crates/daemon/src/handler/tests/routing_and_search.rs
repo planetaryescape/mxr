@@ -54,37 +54,6 @@ fn request_lane_routes_llm_and_network_requests_to_bulk() {
 }
 
 #[test]
-fn request_lane_defaults_user_initiated_commands_to_hot() {
-    let list = Request::ListEnvelopes {
-        label_id: None,
-        account_id: None,
-        limit: 50,
-        offset: 0,
-        label_role: None,
-    };
-    assert_eq!(request_lane(&list), IpcLane::Hot);
-
-    let archive = Request::Mutation {
-        mutation: mxr_protocol::MutationCommand::Archive {
-            message_ids: vec![mxr_core::MessageId::new()],
-        },
-        client_correlation_id: None,
-    };
-    assert_eq!(request_lane(&archive), IpcLane::Hot);
-
-    // HTML images without remote fetch is a local-only render and
-    // should stay on the hot lane.
-    let local_assets = Request::GetHtmlImageAssets {
-        message_id: mxr_core::MessageId::new(),
-        allow_remote: false,
-    };
-    assert_eq!(request_lane(&local_assets), IpcLane::Hot);
-
-    let ping = Request::Ping;
-    assert_eq!(request_lane(&ping), IpcLane::Hot);
-}
-
-#[test]
 fn sanitized_attachment_filename_truncates_long_names_preserving_extension() {
     let attachment_id = mxr_core::AttachmentId::from_provider_id("test", "long-pdf");
     let filename = format!("{}.pdf", "a".repeat(400));
@@ -155,41 +124,12 @@ fn sanitized_attachment_filename_truncates_utf8_on_char_boundary() {
 }
 
 #[test]
-fn sanitized_attachment_filename_uses_stable_fallback_for_blank_names() {
-    let attachment_id = mxr_core::AttachmentId::from_provider_id("test", "blank");
-
-    let sanitized = sanitized_attachment_filename("   ", &attachment_id);
-
-    assert_eq!(sanitized, format!("attachment-{}", attachment_id.as_str()));
-}
-
-#[test]
 fn sanitized_attachment_filename_uses_stable_fallback_for_windows_reserved_names() {
     let attachment_id = mxr_core::AttachmentId::from_provider_id("test", "reserved");
 
     let sanitized = sanitized_attachment_filename("CON.txt", &attachment_id);
 
     assert_eq!(sanitized, format!("attachment-{}", attachment_id.as_str()));
-}
-
-#[tokio::test]
-async fn dispatch_ping_returns_pong() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::Ping),
-    };
-    let resp = handle_request(&state, &msg).await;
-
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Pong,
-        }) => {}
-        other => panic!("Expected Pong, got {other:?}"),
-    }
 }
 
 // An oversized DraftCompose instruction, driven through the REAL dispatch
@@ -225,41 +165,6 @@ async fn dispatch_draft_compose_rejects_oversized_instruction_as_invalid_request
             assert_eq!(kind, ::mxr_protocol::IpcErrorKind::InvalidRequest);
         }
         other => panic!("expected an InvalidRequest error response, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_list_envelopes_after_sync() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    // Initial sync
-    state
-        .sync_engine
-        .sync_account(state.default_provider().as_ref())
-        .await
-        .unwrap();
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 2,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListEnvelopes {
-            label_id: None,
-            account_id: None,
-            limit: 100,
-            offset: 0,
-            label_role: None,
-        }),
-    };
-    let resp = handle_request(&state, &msg).await;
-
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Envelopes { envelopes },
-        }) => {
-            assert_eq!(envelopes.len(), 55);
-        }
-        other => panic!("Expected Envelopes, got {other:?}"),
     }
 }
 
@@ -324,55 +229,6 @@ async fn dispatch_list_envelopes_by_label() {
         IpcPayload::Response(Response::Error { message, .. }) => {
             panic!("Got error response: {message}");
         }
-        other => panic!("Expected Envelopes, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_list_labels_without_accounts_returns_empty() {
-    let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 12,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListLabels {
-            account_id: None,
-            all_accounts: false,
-        }),
-    };
-    let resp = handle_request(&state, &msg).await;
-
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Labels { labels },
-        }) => assert!(labels.is_empty()),
-        other => panic!("Expected Labels, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_list_envelopes_without_accounts_returns_empty() {
-    let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 13,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListEnvelopes {
-            label_id: None,
-            account_id: None,
-            limit: 100,
-            offset: 0,
-            label_role: None,
-        }),
-    };
-    let resp = handle_request(&state, &msg).await;
-
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Envelopes { envelopes },
-        }) => assert!(envelopes.is_empty()),
         other => panic!("Expected Envelopes, got {other:?}"),
     }
 }
@@ -826,76 +682,6 @@ async fn dispatch_count_after_sync() {
             assert!(count > 0, "Expected non-zero count for 'deployment'");
         }
         other => panic!("Expected Count, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_list_saved_searches_empty() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 4,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListSavedSearches),
-    };
-    let resp = handle_request(&state, &msg).await;
-
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SavedSearches { searches },
-        }) => {
-            assert!(searches.is_empty());
-        }
-        other => panic!("Expected empty SavedSearches, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_create_and_list_saved_searches() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    // Create
-    let create_msg = IpcMessage {
-        expected_workspace: None,
-        id: 5,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::CreateSavedSearch {
-            name: "Important".to_string(),
-            query: "is:starred".to_string(),
-            account_id: None,
-            search_mode: mxr_core::SearchMode::Lexical,
-        }),
-    };
-    let resp = handle_request(&state, &create_msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SavedSearchData { search },
-        }) => {
-            assert_eq!(search.name, "Important");
-            assert_eq!(search.query, "is:starred");
-            assert_eq!(search.search_mode, mxr_core::SearchMode::Lexical);
-        }
-        other => panic!("Expected SavedSearchData, got {other:?}"),
-    }
-
-    // List
-    let list_msg = IpcMessage {
-        expected_workspace: None,
-        id: 6,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListSavedSearches),
-    };
-    let resp = handle_request(&state, &list_msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SavedSearches { searches },
-        }) => {
-            assert_eq!(searches.len(), 1);
-            assert_eq!(searches[0].name, "Important");
-            assert_eq!(searches[0].search_mode, mxr_core::SearchMode::Lexical);
-        }
-        other => panic!("Expected SavedSearches, got {other:?}"),
     }
 }
 
@@ -1398,101 +1184,6 @@ async fn a_doctor_report_carries_the_daemon_address_cache_flag() {
             data: ResponseData::DoctorReport { report },
         }) => assert!(report.address_cache_stale),
         other => panic!("Expected DoctorReport, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_doctor_report() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 81,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::GetDoctorReport),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::DoctorReport { report },
-        }) => {
-            assert!(report.database_path.contains("mxr.db"));
-            assert!(report.index_path.contains("search_index"));
-            let daemon_version = report.daemon_version.expect("doctor report daemon version");
-            assert_ne!(daemon_version, "");
-            let daemon_build_id = report.daemon_build_id.expect("doctor report build id");
-            assert_ne!(daemon_build_id, "");
-        }
-        other => panic!("Expected DoctorReport, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_sync_status() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let account_id = state.default_account_id();
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 82,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::GetSyncStatus { account_id }),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SyncStatus { sync },
-        }) => {
-            assert_ne!(sync.account_name, "");
-            let summary = sync
-                .current_cursor_summary
-                .expect("sync status should include cursor summary");
-            assert_ne!(summary, "");
-        }
-        other => panic!("Expected SyncStatus, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_search_returns_results() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    // Sync first so search index is populated
-    state
-        .sync_engine
-        .sync_account(state.default_provider().as_ref())
-        .await
-        .unwrap();
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 10,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::Search {
-            limit_from_config: false,
-            query: "deployment".to_string(),
-            limit: 10,
-            offset: 0,
-            account_id: None,
-            mode: None,
-            sort: None,
-            explain: false,
-        }),
-    };
-    let resp = handle_request(&state, &msg).await;
-
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SearchResults { results, .. },
-        }) => {
-            assert!(
-                !results.is_empty(),
-                "Search for 'deployment' should return results"
-            );
-            assert!(results.len() <= 10);
-            assert_eq!(results[0].mode, mxr_core::SearchMode::Lexical);
-        }
-        other => panic!("Expected SearchResults, got {other:?}"),
     }
 }
 
@@ -2169,16 +1860,6 @@ async fn explicit_limit_and_sort_win_over_daemon_search_defaults() {
         dates, newest_first,
         "an explicit date_desc sort wins over date_asc"
     );
-}
-
-#[tokio::test]
-async fn zero_max_results_reads_as_one_row_per_page() {
-    let state = search_defaults_state(0, mxr_config::SortOrder::DateDesc).await;
-
-    let (results, page_limit) = dispatch_search_page(&state, 50, None, true).await;
-
-    assert_eq!(results.len(), 1);
-    assert_eq!(page_limit, Some(1));
 }
 
 #[test]

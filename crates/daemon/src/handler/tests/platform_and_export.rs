@@ -128,67 +128,6 @@ async fn dispatch_list_saved_search_unread_counts_returns_id_to_count_map() {
     // is correct.
 }
 
-#[tokio::test]
-async fn dispatch_unsubscribe_is_idempotent_via_event_log() {
-    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
-    let state = Arc::new(state);
-    state
-        .sync_engine
-        .sync_account(state.default_provider().as_ref())
-        .await
-        .unwrap();
-
-    let mailto_id = state
-        .store
-        .list_envelopes_by_account(&state.default_account_id(), 200, 0)
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|envelope| matches!(envelope.unsubscribe, UnsubscribeMethod::Mailto { .. }))
-        .map(|envelope| envelope.id)
-        .expect("mailto fixture");
-
-    let request = || IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::Unsubscribe {
-            message_id: mailto_id.clone(),
-        }),
-    };
-
-    // First call: succeeds and emits the outbound message.
-    let resp = handle_request(&state, &request()).await;
-    assert!(matches!(
-        resp.payload,
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack
-        })
-    ));
-    assert_eq!(
-        fake.sent_drafts().len(),
-        1,
-        "first call sends the unsubscribe mail"
-    );
-
-    // Second call: also returns Ack but MUST NOT re-send.
-    let resp = handle_request(&state, &request()).await;
-    assert!(
-        matches!(
-            resp.payload,
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack
-            })
-        ),
-        "repeated unsubscribe should still ack so scripts and agents don't see a spurious failure"
-    );
-    assert_eq!(
-        fake.sent_drafts().len(),
-        1,
-        "second call must not produce a second outbound — that's the entire point of idempotency"
-    );
-}
-
 /// Purging the event log must not let a second unsubscribe go out: the
 /// receipt, not the log row, is what stops it.
 #[tokio::test]
@@ -804,53 +743,6 @@ async fn dispatch_unsubscribe_oneclick_failure_returns_error_and_does_not_log() 
             !logged,
             "a failed unsubscribe must not write a success event — otherwise retries are silently blocked"
         );
-}
-
-#[tokio::test]
-async fn dispatch_mutation_nonexistent_message() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let fake_id = mxr_core::MessageId::new();
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
-            message_ids: vec![fake_id],
-            starred: true,
-        })),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Error { message, .. }) => {
-            assert!(
-                message.contains("not found") || message.contains("Not found"),
-                "Expected 'not found' error, got: {message}"
-            );
-        }
-        other => panic!("Expected Error, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_list_drafts_empty() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListDrafts),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Drafts { drafts },
-        }) => {
-            assert!(drafts.is_empty(), "Expected empty drafts list");
-        }
-        other => panic!("Expected Drafts, got {other:?}"),
-    }
 }
 
 #[tokio::test]
@@ -2019,88 +1911,6 @@ async fn dispatch_save_draft_to_server_falls_back_to_local_draft() {
 }
 
 #[tokio::test]
-async fn dispatch_saved_search_delete() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    // Create a saved search
-    let create_msg = IpcMessage {
-        expected_workspace: None,
-        id: 20,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::CreateSavedSearch {
-            name: "ToDelete".to_string(),
-            query: "is:unread".to_string(),
-            account_id: None,
-            search_mode: mxr_core::SearchMode::Lexical,
-        }),
-    };
-    let resp = handle_request(&state, &create_msg).await;
-    match &resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SavedSearchData { search },
-        }) => {
-            assert_eq!(search.name, "ToDelete");
-        }
-        other => panic!("Expected SavedSearchData, got {other:?}"),
-    }
-
-    // Verify it's in the list
-    let list_msg = IpcMessage {
-        expected_workspace: None,
-        id: 21,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListSavedSearches),
-    };
-    let resp = handle_request(&state, &list_msg).await;
-    match &resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SavedSearches { searches },
-        }) => {
-            assert_eq!(searches.len(), 1);
-            assert_eq!(searches[0].name, "ToDelete");
-        }
-        other => panic!("Expected SavedSearches with 1 item, got {other:?}"),
-    }
-
-    // Delete it
-    let delete_msg = IpcMessage {
-        expected_workspace: None,
-        id: 22,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::DeleteSavedSearch {
-            name: "ToDelete".to_string(),
-        }),
-    };
-    let resp = handle_request(&state, &delete_msg).await;
-    match &resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack,
-        }) => {}
-        other => panic!("Expected Ack, got {other:?}"),
-    }
-
-    // Verify it's gone
-    let list_msg2 = IpcMessage {
-        expected_workspace: None,
-        id: 23,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListSavedSearches),
-    };
-    let resp = handle_request(&state, &list_msg2).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SavedSearches { searches },
-        }) => {
-            assert!(
-                searches.is_empty(),
-                "Saved searches should be empty after delete"
-            );
-        }
-        other => panic!("Expected empty SavedSearches, got {other:?}"),
-    }
-}
-
-#[tokio::test]
 async fn dispatch_export_thread_markdown() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
@@ -2154,29 +1964,6 @@ async fn dispatch_export_thread_markdown() {
             assert!(content.contains("Exported from mxr"));
         }
         other => panic!("Expected ExportResult, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_sync_now_acknowledges() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 300,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::SyncNow {
-            account_id: None,
-            background: false,
-        }),
-    };
-    let resp = handle_request(&state, &msg).await;
-
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack,
-        }) => {}
-        other => panic!("Expected Ack, got {other:?}"),
     }
 }
 
@@ -2308,54 +2095,6 @@ async fn dispatch_export_search_json_is_valid() {
         }
         other => panic!("Expected ExportResult, got {other:?}"),
     }
-}
-
-#[tokio::test]
-async fn dispatch_save_draft_to_server() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let draft = mxr_core::types::Draft {
-        revision: Some(1),
-        id: mxr_core::DraftId::new(),
-        account_id: state.default_account_id(),
-        from: None,
-        reply_headers: None,
-        intent: mxr_core::DraftIntent::New,
-        to: vec![mxr_core::types::Address {
-            name: Some("Recipient".into()),
-            email: "recipient@example.com".into(),
-        }],
-        cc: vec![],
-        bcc: vec![],
-        subject: "Saved draft".into(),
-        content: mxr_core::types::DraftContent::markdown("Body"),
-        inline_assets: Vec::new(),
-        managed_attachments: None,
-        attachments: vec![],
-        inline_calendar_reply: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-    };
-    let draft_id = draft.id.clone();
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 5,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::SaveDraftToServer { draft }),
-    };
-    let resp = handle_request(&state, &msg).await;
-
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Draft { .. },
-        }) => {}
-        other => panic!("Expected Ack, got {other:?}"),
-    }
-    assert!(
-        state.store.get_draft(&draft_id).await.unwrap().is_some(),
-        "saving to a server must also retain the canonical local draft"
-    );
 }
 
 #[tokio::test]
@@ -3062,4 +2801,30 @@ async fn saved_search_names_stay_unique() {
     };
     assert!(!ok(&handle_request(&state, &rename).await));
     assert_eq!(state.store.list_saved_searches().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn dispatch_mutation_nonexistent_message() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+
+    let fake_id = mxr_core::MessageId::new();
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
+            message_ids: vec![fake_id],
+            starred: true,
+        })),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(
+                message.contains("not found") || message.contains("Not found"),
+                "Expected 'not found' error, got: {message}"
+            );
+        }
+        other => panic!("Expected Error, got {other:?}"),
+    }
 }

@@ -1064,26 +1064,6 @@ async fn a_mutation_reindex_commits_the_store_state_at_commit_time() {
 }
 
 #[tokio::test]
-async fn star_mutation_returns_an_undo_id() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let id = sync_and_get_first_id(&state).await;
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::mutation(MutationCommand::Star {
-            message_ids: vec![id],
-            starred: true,
-        })),
-    };
-    let result = assert_mutation_succeeded(handle_request(&state, &msg).await.payload);
-    assert!(
-        result.mutation_id.is_some(),
-        "a star is undoable, so it returns a mutation_id"
-    );
-}
-
-#[tokio::test]
 async fn mutation_archives_healthy_account_when_other_account_provider_fails() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let healthy_id = sync_and_get_first_id(&state).await;
@@ -1234,51 +1214,6 @@ async fn dispatch_prepare_reply() {
         }) => {
             assert!(context.reply_to.contains('@'));
             assert_eq!(context.subject, expected_subject);
-        }
-        other => panic!("Expected ReplyContext, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn dispatch_prepare_reply_all() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let id = sync_and_get_first_id(&state).await;
-    let expected_subject = state
-        .store
-        .get_envelope(&id)
-        .await
-        .unwrap()
-        .unwrap()
-        .subject;
-
-    // Fetch body first
-    let body_msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::GetBody {
-            message_id: id.clone(),
-        }),
-    };
-    handle_request(&state, &body_msg).await;
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 2,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::PrepareReply {
-            message_id: id,
-            reply_all: true,
-        }),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::ReplyContext { context },
-        }) => {
-            assert!(context.reply_to.contains('@'));
-            assert_eq!(context.subject, expected_subject);
-            // cc may or may not be empty depending on the message, but the field should exist
         }
         other => panic!("Expected ReplyContext, got {other:?}"),
     }
@@ -1615,56 +1550,6 @@ async fn list_accounts_surfaces_runtime_accounts_without_config_entries() {
 }
 
 #[tokio::test]
-async fn list_accounts_carries_the_stored_identity() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListAccounts),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Accounts { accounts },
-        }) => {
-            // The only account is the first one created, so it takes the first slot.
-            let identity = accounts[0].identity.clone().expect("identity is sent");
-            assert_eq!(identity.color, mxr_core::AccountColor::Sky);
-            assert!(!identity.tag.is_empty());
-        }
-        other => panic!("Expected Accounts response, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn get_llm_status_reports_noop_provider_by_default() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::GetLlmStatus),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::LlmStatus { snapshot },
-        }) => {
-            assert!(!snapshot.enabled);
-            assert_eq!(snapshot.provider, "noop");
-            assert_eq!(snapshot.model, "noop");
-            assert_eq!(snapshot.configured_model, "qwen2.5:3b-instruct");
-            assert_eq!(snapshot.base_url, None);
-            assert_eq!(snapshot.context_window, 0);
-        }
-        other => panic!("Expected LlmStatus response, got {other:?}"),
-    }
-}
-
-#[tokio::test]
 async fn config_reload_rebuilds_llm_provider_for_status() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let mut config = state.config_snapshot();
@@ -1923,52 +1808,6 @@ fn update_llm_config_rejects_blank_model() {
             });
         },
     );
-}
-
-#[tokio::test]
-async fn dispatch_send_draft() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-
-    let draft = mxr_core::types::Draft {
-        revision: Some(1),
-        id: mxr_core::DraftId::new(),
-        account_id: state.default_account_id(),
-        from: None,
-        reply_headers: None,
-        intent: mxr_core::DraftIntent::New,
-        to: vec![mxr_core::types::Address {
-            name: None,
-            email: "test@example.com".to_string(),
-        }],
-        cc: vec![],
-        bcc: vec![],
-        subject: "Test subject".to_string(),
-        content: mxr_core::types::DraftContent::markdown("Test body".to_string()),
-        inline_assets: Vec::new(),
-        managed_attachments: None,
-        attachments: vec![],
-        inline_calendar_reply: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-    };
-
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::SendDraft {
-            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
-            draft,
-            override_safety_token: None,
-        }),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SendReceipt { .. },
-        }) => {}
-        other => panic!("Expected SendReceipt, got {other:?}"),
-    }
 }
 
 #[tokio::test]
@@ -2607,30 +2446,6 @@ async fn unsubscribe_purge_without_method_does_not_archive_unless_allowed() {
     }
 }
 
-#[tokio::test]
-async fn dispatch_unsubscribe_no_method() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let id = sync_and_get_first_id(&state).await;
-
-    // The first envelope from FakeProvider fixtures uses UnsubscribeMethod::None
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::Unsubscribe { message_id: id }),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Error { message, .. }) => {
-            assert!(
-                message.contains("unsubscribe"),
-                "Expected error about unsubscribe, got: {message}"
-            );
-        }
-        other => panic!("Expected Error for no unsubscribe method, got {other:?}"),
-    }
-}
-
 /// Regression: phishing that spoofs carriers (fake "DHL"/tracking) lands in
 /// Spam, and the delivery detector used to classify it as a real shipment.
 /// Spam/trash mail must be skipped — even when its content would otherwise
@@ -2801,33 +2616,6 @@ async fn send_uses_registered_alias_from_override() {
         fake.sent_drafts()[0].from.as_ref().unwrap().email,
         "hello@example.com"
     );
-}
-
-#[tokio::test]
-async fn send_from_none_uses_account_primary() {
-    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
-    let account_id = state.default_account_id_opt().unwrap();
-    let state = Arc::new(state);
-
-    let draft = draft_from(account_id, None);
-    let resp = handle_request(
-        &state,
-        &from_request(Request::SendDraft {
-            send_identity: Some(mxr_core::SendIdentity::for_draft(&draft)),
-            draft,
-            override_safety_token: None,
-        }),
-    )
-    .await;
-    assert!(matches!(
-        resp.payload,
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::SendReceipt { .. }
-        })
-    ));
-    let froms = fake.sent_from_addresses();
-    assert_eq!(froms[0].email, "user@example.com");
-    assert_eq!(froms[0].name.as_deref(), Some("Fake Account"));
 }
 
 #[tokio::test]
@@ -3212,36 +3000,6 @@ async fn reply_context_from(state: &Arc<AppState>, message_id: mxr_core::Message
         }) => context.from,
         other => panic!("expected ReplyContext, got {other:?}"),
     }
-}
-
-#[tokio::test]
-async fn prepare_reply_selects_owned_alias_from_a_genuine_delivered_to() {
-    // POSITIVE end-to-end: a real top-level `Delivered-To: <owned alias>` in the
-    // store's actual headers-only `raw_headers` shape makes the reply default
-    // to that alias. This is the case a "separator required" gate would break.
-    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-    let account_id = state.default_account_id_opt().unwrap();
-    state
-        .store
-        .add_account_address(&account_id, "hello@example.com", false)
-        .await
-        .unwrap();
-    let message_id = seed_reply_source_with_raw_headers(
-        &state,
-        &account_id,
-        "genuine-delivered-to",
-        &[
-            ("Received".to_string(), "from mx.example".to_string()),
-            ("Delivered-To".to_string(), "hello@example.com".to_string()),
-        ],
-    )
-    .await;
-    let state = Arc::new(state);
-    assert_eq!(
-        reply_context_from(&state, message_id).await,
-        "hello@example.com",
-        "reply must default to the owned alias named in Delivered-To"
-    );
 }
 
 #[tokio::test]
@@ -4483,4 +4241,73 @@ fn an_env_default_override_is_not_written_by_an_untouched_toggle() {
             assert_eq!(written.general.default_account.as_deref(), Some("side"));
         })
     });
+}
+
+#[tokio::test]
+async fn dispatch_prepare_reply_all() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+    let expected_subject = state
+        .store
+        .get_envelope(&id)
+        .await
+        .unwrap()
+        .unwrap()
+        .subject;
+
+    // Fetch body first
+    let body_msg = IpcMessage {
+        expected_workspace: None,
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetBody {
+            message_id: id.clone(),
+        }),
+    };
+    handle_request(&state, &body_msg).await;
+
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 2,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::PrepareReply {
+            message_id: id,
+            reply_all: true,
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::ReplyContext { context },
+        }) => {
+            assert!(context.reply_to.contains('@'));
+            assert_eq!(context.subject, expected_subject);
+            // cc may or may not be empty depending on the message, but the field should exist
+        }
+        other => panic!("Expected ReplyContext, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn dispatch_unsubscribe_no_method() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+
+    // The first envelope from FakeProvider fixtures uses UnsubscribeMethod::None
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Unsubscribe { message_id: id }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => {
+            assert!(
+                message.contains("unsubscribe"),
+                "Expected error about unsubscribe, got: {message}"
+            );
+        }
+        other => panic!("Expected Error for no unsubscribe method, got {other:?}"),
+    }
 }

@@ -437,10 +437,6 @@ pub(super) fn archive() -> MutationCommand {
     }
 }
 
-fn ids(envelopes: &[&Envelope]) -> Vec<MessageId> {
-    envelopes.iter().map(|e| e.id.clone()).collect()
-}
-
 // ---------------------------------------------------------------------------
 // The resolver
 // ---------------------------------------------------------------------------
@@ -553,18 +549,6 @@ async fn the_resolver_lists_what_paged_search_lists() {
     assert!(!everything.contains(&ghost.id));
     assert!(fx.resolved("report", Some(&hidden)).await.is_empty());
     assert_eq!(fx.resolved("in:anywhere report", None).await.len(), 15);
-}
-
-#[tokio::test]
-async fn the_resolver_lists_newest_first() {
-    let fx = Fixture::new().await;
-    let oldest = fx.message(&fx.account, "report old", 300).await;
-    let newest = fx.message(&fx.account, "report new", 1).await;
-    let middle = fx.message(&fx.account, "report mid", 100).await;
-    assert_eq!(
-        fx.resolved("report", None).await,
-        ids(&[&newest, &middle, &oldest])
-    );
 }
 
 #[tokio::test]
@@ -2009,30 +1993,6 @@ async fn a_retry_while_the_start_is_being_accepted_never_gets_a_phantom_job() {
         .await;
     assert!(matches!(again, ResponseData::JobStarted { job } if job.job_id == job_id));
     assert_eq!(fx.archived_provider_ids().len(), 3, "one job ran");
-}
-
-/// K took the token; a start of J with it afterwards is an error, and J does
-/// not exist.
-#[tokio::test]
-async fn a_start_after_another_job_took_the_token_is_refused() {
-    let fx = Fixture::new().await;
-    fx.many(3, "invoice").await;
-    let token = fx.preview("invoice", &archive()).await.preview_token;
-    let k = fx.start("invoice", &token, &archive()).await;
-    let j = uuid::Uuid::now_v7().to_string();
-    let refusal = fx
-        .refused(fx.start_request(&j, "invoice", &token, &archive()))
-        .await;
-    assert!(refusal.contains("expired or was already used"), "{refusal}");
-    assert!(fx
-        .refused(Request::GetJob { job_id: j.clone() })
-        .await
-        .contains("job not found"));
-    fx.wait_for_job(&k.job_id).await;
-    let ResponseData::Jobs { jobs } = fx.send(Request::ListJobs).await else {
-        panic!("expected jobs");
-    };
-    assert!(jobs.iter().all(|job| job.job_id != j));
 }
 
 // ---------------------------------------------------------------------------

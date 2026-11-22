@@ -1,6 +1,5 @@
 #![expect(
     clippy::unwrap_used,
-    clippy::panic,
     reason = "private TLS fixtures assert protocol outcomes"
 )]
 use super::*;

@@ -61,10 +61,6 @@ pub use types::*;
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )]
 
     use super::*;
 

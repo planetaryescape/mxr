@@ -238,11 +238,7 @@ fn remove_socket_if_owned(path: &Path, owned: (u64, u64, i64, i64)) {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::panic,
-        reason = "tests assert directly on fixtures"
-    )]
+    #![expect(clippy::unwrap_used, reason = "tests assert directly on fixtures")]
 
     use super::{remove_socket_if_owned, socket_file_identity};
     use std::time::Duration;

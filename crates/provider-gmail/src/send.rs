@@ -1,7 +1,6 @@
 #![cfg_attr(
     test,
     expect(
-        clippy::panic,
         clippy::unwrap_used,
         reason = "tests use panic and unwrap for direct fixture failures"
     )

@@ -1,7 +1,6 @@
 #![cfg_attr(
     test,
     expect(
-        clippy::infallible_destructuring_match,
         clippy::unwrap_used,
         reason = "attachment tests unwrap and match exact fixture failures"
     )

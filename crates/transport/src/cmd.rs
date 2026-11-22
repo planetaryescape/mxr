@@ -137,11 +137,7 @@ impl AsyncWrite for CmdStream {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::panic,
-        reason = "tests assert directly on fixtures"
-    )]
+    #![expect(clippy::unwrap_used, reason = "tests assert directly on fixtures")]
 
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};

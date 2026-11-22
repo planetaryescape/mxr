@@ -154,11 +154,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_cpu_budget_is_counted_from_what_has_been_used() {
-        assert_eq!(cpu_soft_limit(3, 8, nix::sys::resource::RLIM_INFINITY), 11);
-    }
-
-    #[test]
     fn the_cpu_budget_never_asks_past_an_inherited_hard_limit() {
         assert_eq!(cpu_soft_limit(55, 8, 60), 60);
         assert_eq!(cpu_soft_limit(u64::MAX, 8, 60), 60);

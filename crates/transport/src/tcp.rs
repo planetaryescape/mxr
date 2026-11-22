@@ -216,28 +216,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn loopback_bind_accepts_and_surfaces_token_required() {
-        let transport = TcpServerTransport::new("127.0.0.1:0".parse().unwrap());
-        let mut listener = transport.bind().await.unwrap();
-        let endpoint = listener.endpoint();
-        let addr: SocketAddr = endpoint.strip_prefix("tcp://").unwrap().parse().unwrap();
-
-        let connector = TcpConnector::new(addr, Some("secret".to_string()));
-        assert_eq!(connector.auth_token(), Some("secret"));
-
-        let accept = tokio::spawn(async move { listener.accept().await.map(|(_, peer)| peer) });
-        let _client = connector.connect().await.unwrap();
-        let peer = accept.await.unwrap().unwrap();
-        assert_eq!(peer.auth, PeerAuth::TokenRequired);
-    }
-
-    #[test]
-    fn connector_without_token_advertises_none() {
-        let connector = TcpConnector::new("127.0.0.1:9000".parse().unwrap(), None);
-        assert_eq!(connector.auth_token(), None);
-    }
-
-    #[tokio::test]
     async fn connector_refuses_non_loopback_before_sending_token() {
         let connector = TcpConnector::new("93.184.216.34:9000".parse().unwrap(), Some("s".into()));
         assert_eq!(

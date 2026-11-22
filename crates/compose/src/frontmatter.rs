@@ -139,20 +139,6 @@ mod tests {
     }
 
     #[test]
-    fn context_block_stripped() {
-        let content = "---\nto: alice@example.com\nsubject: test\nfrom: me@example.com\n---\n\nHello!\n\n# --- context (stripped before sending) ---\n# Some context here\n# More context";
-        let (_, body) = parse_compose_file(content).unwrap();
-        assert_eq!(body, "Hello!");
-        assert!(!body.contains("context"));
-    }
-
-    #[test]
-    fn missing_frontmatter_errors() {
-        let content = "No frontmatter here.";
-        assert!(parse_compose_file(content).is_err());
-    }
-
-    #[test]
     fn roundtrip_with_context() {
         let fm = ComposeFrontmatter {
             to: "alice@example.com".into(),

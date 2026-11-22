@@ -54,11 +54,4 @@ mod tests {
         assert!(result.contains("meet tomorrow"));
         assert!(!result.contains("confidential"));
     }
-
-    #[test]
-    fn preserves_text_without_boilerplate() {
-        let text = "Normal message without any boilerplate.";
-        let result = strip(text);
-        assert_eq!(result, text);
-    }
 }

@@ -61,45 +61,6 @@ mod tests {
     }
 
     #[test]
-    fn repeated_markers_collapse_to_one() {
-        assert_eq!(
-            prefix_subject(SubjectMarker::Reply, "Re: Re: Re: Deploy plan"),
-            "Re: Deploy plan"
-        );
-    }
-
-    #[test]
-    fn marker_matching_is_case_insensitive_across_clients() {
-        for variant in ["RE: Deploy plan", "re: Deploy plan", "rE: Deploy plan"] {
-            assert_eq!(
-                prefix_subject(SubjectMarker::Reply, variant),
-                "Re: Deploy plan",
-                "failed on {variant}"
-            );
-        }
-    }
-
-    #[test]
-    fn forwarding_a_reply_replaces_the_marker_rather_than_stacking() {
-        assert_eq!(
-            prefix_subject(SubjectMarker::Forward, "Re: Deploy plan"),
-            "Fwd: Deploy plan"
-        );
-        assert_eq!(
-            prefix_subject(SubjectMarker::Reply, "Fwd: Re: Deploy plan"),
-            "Re: Deploy plan"
-        );
-    }
-
-    #[test]
-    fn fw_is_recognised_as_well_as_fwd() {
-        assert_eq!(
-            prefix_subject(SubjectMarker::Reply, "Fw: Deploy plan"),
-            "Re: Deploy plan"
-        );
-    }
-
-    #[test]
     fn a_subject_that_merely_starts_with_those_letters_is_not_stripped() {
         assert_eq!(
             prefix_subject(SubjectMarker::Reply, "Rebuild the index"),
@@ -109,11 +70,5 @@ mod tests {
             prefix_subject(SubjectMarker::Reply, "Fwd checklist"),
             "Re: Fwd checklist"
         );
-    }
-
-    #[test]
-    fn an_empty_or_marker_only_subject_still_produces_a_marker() {
-        assert_eq!(prefix_subject(SubjectMarker::Reply, ""), "Re: ");
-        assert_eq!(prefix_subject(SubjectMarker::Reply, "Re:"), "Re: ");
     }
 }

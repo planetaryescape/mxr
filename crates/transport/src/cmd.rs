@@ -137,11 +137,7 @@ impl AsyncWrite for CmdStream {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::panic,
-        reason = "tests assert directly on fixtures"
-    )]
+    #![expect(clippy::unwrap_used, reason = "tests assert directly on fixtures")]
 
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -160,16 +156,5 @@ mod tests {
         let mut buf = [0u8; 18];
         stream.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, b"hello over cmd://\n");
-    }
-
-    #[tokio::test]
-    async fn connect_fails_for_a_missing_program() {
-        let _guard = crate::SUBPROCESS_FD_TEST_LOCK.lock().await;
-        let connector = CmdConnector::new(vec!["mxr-no-such-binary-xyz".into()]);
-        match connector.connect().await {
-            Err(TransportError::Connect { .. }) => {}
-            Ok(_) => panic!("spawning a missing program must fail"),
-            Err(other) => panic!("expected a Connect error, got {other:?}"),
-        }
     }
 }

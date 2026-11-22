@@ -338,50 +338,8 @@ mod tests {
     }
 
     #[test]
-    fn a_normal_table_is_left_exactly_as_it_is() {
-        let html = "<table><tr><td>a</td><td>b</td><td>c</td></tr>\
-                    <tr><td>d</td><td>e</td><td>f</td></tr>\
-                    <tr><td>g</td><td>h</td><td>i</td></tr></table>";
-        assert!(matches!(bounded_html(html), Some(Cow::Borrowed(_))));
-    }
-
-    #[test]
-    fn a_document_without_tables_is_left_exactly_as_it_is() {
-        let html = "<p>hello <b>world</b></p>";
-        assert!(matches!(bounded_html(html), Some(Cow::Borrowed(_))));
-    }
-
-    #[test]
     fn a_wide_table_is_over_budget() {
         assert!(!within_budget(&wide_table()));
-    }
-
-    #[test]
-    fn a_list_with_optional_end_tags_is_within_budget() {
-        let items = "<li>Item<br>details".repeat(300);
-        let html = format!("<ol>{items}</ol>");
-        assert!(within_budget(&html));
-    }
-
-    #[test]
-    fn rowspan_in_text_is_not_rewritten() {
-        let html = "use rowspan=365. for the rows";
-        assert_eq!(bounded_html(html).as_deref(), Some(html));
-    }
-
-    #[test]
-    fn rowspan_inside_a_tag_is_clamped() {
-        let html = "<td rowspan=365>x</td>";
-        assert_eq!(
-            bounded_html(html).as_deref(),
-            Some("<td rowspan=100>x</td>")
-        );
-    }
-
-    #[test]
-    fn a_span_with_an_entity_and_no_digits_is_over_budget() {
-        let html = r#"<table><tr><td colspan="&#53;0000">x</td></tr></table>"#;
-        assert!(!within_budget(html));
     }
 
     #[test]

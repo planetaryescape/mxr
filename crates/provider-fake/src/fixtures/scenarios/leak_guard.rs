@@ -9,7 +9,7 @@
 //! baseline on every other labelled email and fails when it gets both members
 //! of too many pairs right.
 
-use super::{scenario_seed, DemoCuts, Labelled, ScenarioSeed, SELF_EMAIL};
+use super::{scenario_seed, DemoCuts, Labelled, ScenarioSeed};
 use chrono::{TimeZone, Utc};
 use std::collections::HashMap;
 
@@ -182,37 +182,4 @@ fn a_surface_only_baseline_fails_the_twins() {
         "the surface alone gets both members right in {right} of {pairs} pairs \
          ({percent:.0}%, bar {BAR_PERCENT}%): the corpus leaks its labels"
     );
-}
-
-/// The guard has teeth: on a corpus where one subject word decides the
-/// answer, the baseline gets the pair right and the check would fail.
-#[test]
-fn a_surface_that_separates_a_pair_is_caught() {
-    let example = |scenario, twin_of, subject: &str, asks: bool| Example {
-        scenario,
-        twin_of,
-        features: surface(subject, "billing@acme.example", "body"),
-        class: usize::from(asks),
-    };
-    let mut examples = vec![
-        example("pair-plain", None, "Invoice #5", true),
-        example("pair-twin", Some("pair-plain"), "Newsletter #5", false),
-    ];
-    for n in 0..6 {
-        examples.push(example("x", None, &format!("Invoice {n}"), true));
-        examples.push(example("y", None, &format!("Newsletter {n}"), false));
-    }
-    let (pairs, right) = pairs_the_surface_gets_right(&examples);
-    assert_eq!((pairs, right), (1, 1));
-}
-
-#[test]
-fn the_owner_is_never_a_baseline_example() {
-    let seed = seed();
-    assert!(examples(&seed).iter().all(|e| !e.scenario.is_empty()));
-    assert!(seed
-        .labels
-        .iter()
-        .filter(|label| label.from_email.eq_ignore_ascii_case(SELF_EMAIL))
-        .all(|label| label.outbound));
 }

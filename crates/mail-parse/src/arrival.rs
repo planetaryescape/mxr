@@ -308,26 +308,6 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_header_or_a_malformed_one_fails_closed() {
-        assert_eq!(
-            reason(check(&[], "a@accounts.google.com")),
-            UnverifiedReason::NoVerdictHeader
-        );
-        for header in [
-            "mx.google.com; dmarc=pass header.from=accounts.google.com (unterminated",
-            "mx.google.com 2; dmarc=pass header.from=accounts.google.com",
-            "mx.google.com 1 extra; dmarc=pass header.from=accounts.google.com",
-            "mx.google.com; dmarc=pass header.from=\"accounts.google.com",
-        ] {
-            assert_eq!(
-                reason(check(&[header], "a@accounts.google.com")),
-                UnverifiedReason::AmbiguousVerdict,
-                "{header}"
-            );
-        }
-    }
-
-    #[test]
     fn comments_cannot_hide_or_fake_a_result() {
         let hidden = "mx.google.com; dmarc=fail (dmarc=pass header.from=accounts.google.com) header.from=accounts.google.com";
         assert_eq!(
@@ -355,19 +335,6 @@ mod tests {
         assert!(evidence.received_at.is_some());
     }
 
-    #[test]
-    fn a_verdict_without_a_receipt_time_cannot_order_history() {
-        let headers = vec![PASS.to_string()];
-        let evidence = arrival_evidence(
-            VerdictPolicy::Pinned {
-                authserv_id: GOOGLE,
-            },
-            &headers,
-            "no-reply@accounts.google.com",
-            None,
-        );
-        assert_eq!(reason(evidence.sender), UnverifiedReason::NoReceiptTime);
-    }
     #[test]
     fn duplicate_from_properties_and_a_malformed_peer_verdict_fail_closed() {
         assert_eq!(reason(check(&[

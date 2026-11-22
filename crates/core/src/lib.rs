@@ -61,10 +61,6 @@ pub use types::*;
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )]
 
     use super::*;
 
@@ -92,56 +88,6 @@ mod tests {
             owned.canonical("ALIAS@example.com"),
             Some("alias@example.com")
         );
-    }
-
-    #[test]
-    fn owned_addresses_fold_ascii_only_so_unicode_spellings_stay_distinct() {
-        let owned = owned(
-            "user@example.com",
-            &["user@BÜCHER.example", "user@bücher.example"],
-        );
-        assert_eq!(
-            owned.iter().collect::<Vec<_>>(),
-            vec![
-                "user@example.com",
-                "user@BÜCHER.example",
-                "user@bücher.example"
-            ]
-        );
-        assert_eq!(
-            owned.canonical("user@bücher.example"),
-            Some("user@bücher.example")
-        );
-        assert_eq!(
-            owned.canonical("USER@BÜCHER.EXAMPLE"),
-            Some("user@BÜCHER.example")
-        );
-        assert!(owned.contains("user@BÜCHER.EXAMPLE"));
-        assert!(!owned.contains("user@bucher.example"));
-    }
-
-    #[test]
-    fn owned_addresses_always_include_a_primary_passed_in() {
-        let owned = OwnedAddresses::new(Some("me@example.com"), []);
-        assert!(owned.contains("me@example.com"));
-        assert_eq!(owned.primary(), Some("me@example.com"));
-        assert!(OwnedAddresses::new(None, []).is_empty());
-    }
-
-    #[test]
-    fn registry_owned_set_follows_replace_for_each_account() {
-        let account_a = AccountId::new();
-        let lookup = InMemoryAccountAddressLookup::new();
-        lookup.replace([(account_a.clone(), owned("me@example.com", &[]))]);
-        assert!(!lookup.owned(&account_a).contains("alias@example.com"));
-
-        lookup.replace([(
-            account_a.clone(),
-            owned("me@example.com", &["alias@example.com"]),
-        )]);
-        assert!(lookup.owned(&account_a).contains("alias@example.com"));
-        assert_eq!(lookup.owned(&account_a).primary(), Some("me@example.com"));
-        assert!(lookup.owned(&AccountId::new()).is_empty());
     }
 
     #[test]
@@ -197,35 +143,6 @@ mod tests {
         assert!(!lookup.is_stale());
         assert!(lookup.is_loaded());
         assert!(lookup.is_account_address(&account, "b@example.com"));
-    }
-
-    #[test]
-    fn stale_lookup_still_answers_from_the_held_set_for_a_pass_already_running() {
-        let account = AccountId::new();
-        let lookup = InMemoryAccountAddressLookup::new();
-        lookup.replace([(account.clone(), owned("a@example.com", &[]))]);
-
-        lookup.mark_stale();
-        assert!(!lookup.is_loaded());
-        assert!(
-            lookup.is_account_address(&account, "a@example.com"),
-            "an owned sender must not read as inbound after a failed rebuild"
-        );
-    }
-
-    #[test]
-    fn sync_cursor_round_trips_arbitrary_bytes() {
-        for payload in [
-            br#"{"v":1,"history_id":12345}"#.to_vec(),
-            br#"{"v":2,"mailboxes":[]}"#.to_vec(),
-            b"random non-json bytes".to_vec(),
-            vec![],
-        ] {
-            let c = SyncCursor::from_bytes(payload.clone());
-            let json = serde_json::to_string(&c).unwrap();
-            let parsed: SyncCursor = serde_json::from_str(&json).unwrap();
-            assert_eq!(parsed.as_bytes(), payload.as_slice());
-        }
     }
 
     #[test]

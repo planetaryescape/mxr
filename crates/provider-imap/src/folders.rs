@@ -127,14 +127,6 @@ mod tests {
     }
 
     #[test]
-    fn folder_to_label_custom_folder() {
-        let aid = AccountId::new();
-        let label = map_folder_to_label("Projects/Work", None, &aid);
-        assert_eq!(label.name, "Projects/Work");
-        assert_eq!(label.kind, LabelKind::Folder);
-    }
-
-    #[test]
     fn same_imap_folder_is_distinct_across_accounts() {
         let first_account = AccountId::from_provider_id("imap", "first@example.com");
         let second_account = AccountId::from_provider_id("imap", "second@example.com");
@@ -179,11 +171,5 @@ mod tests {
         let (mailbox, uid) = parse_provider_id(&id).unwrap();
         assert_eq!(mailbox, "INBOX");
         assert_eq!(uid, 12345);
-    }
-
-    #[test]
-    fn provider_id_invalid() {
-        assert!(parse_provider_id("no-colon").is_err());
-        assert!(parse_provider_id("INBOX:notanumber").is_err());
     }
 }

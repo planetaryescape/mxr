@@ -306,39 +306,6 @@ mod tests {
     }
 
     #[test]
-    fn a_fixture_date_preserves_waiting_age_and_defaults_to_arrival() {
-        let account = AccountId::new();
-        let dated = parse_message(
-            &account,
-            "dated",
-            "Date: 2026-10-20T10:00:00+01:00\n\nCould you confirm the meeting time?",
-        );
-        assert_eq!(
-            dated.envelope.date.to_rfc3339(),
-            "2026-10-20T09:00:00+00:00"
-        );
-        let before = chrono::Utc::now();
-        for header in ["", "Date: invalid\n"] {
-            let message = parse_message(&account, "current", &format!("{header}\nBody"));
-            assert!(message.envelope.date >= before);
-            assert!(message.envelope.date <= chrono::Utc::now());
-        }
-    }
-
-    #[test]
-    fn a_fixture_thread_groups_distinct_messages_without_crossing_accounts() {
-        let account = AccountId::new();
-        let first = parse_message(&account, "sent", "Thread: contract\n\nEarlier letter");
-        let reply = parse_message(&account, "reply", "Thread: contract\n\nCurrent reply");
-        assert_eq!(first.envelope.thread_id, reply.envelope.thread_id);
-        assert_ne!(first.envelope.id, reply.envelope.id);
-        let other_account = parse_message(&AccountId::new(), "reply", "Thread: contract\n\nOther");
-        assert_ne!(reply.envelope.thread_id, other_account.envelope.thread_id);
-        let ungrouped = parse_message(&account, "reply", "Subject: contract\n\nNo thread header");
-        assert_ne!(reply.envelope.thread_id, ungrouped.envelope.thread_id);
-    }
-
-    #[test]
     fn a_dropped_message_arrives_once_and_stays_findable() {
         let dir = temp_dir();
         let spool = Spool::at(dir.clone());

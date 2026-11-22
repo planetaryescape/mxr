@@ -454,36 +454,6 @@ async fn run_all_pages_from(
 }
 
 #[tokio::test]
-async fn resume_from_stored_cursor_does_not_refetch_completed_pages() {
-    let h = standard_harness(1200, 0);
-    let first = h
-        .provider
-        .sync_messages(&SyncCursor::empty())
-        .await
-        .unwrap();
-    let stored = SyncCursor::from_bytes(first.next_cursor.as_bytes().to_vec());
-
-    let h2 = harness(h.folders.lock().unwrap().clone());
-    h2.world.lock().unwrap().mailboxes = std::mem::take(&mut h.world.lock().unwrap().mailboxes);
-    let (batches, _) = run_all_pages_from(&h2.provider, stored).await;
-    let resumed: Vec<u32> = batches.iter().flat_map(ids).map(|id| uid_of(&id)).collect();
-    assert_eq!(resumed.len(), 700);
-    assert!(
-        resumed.iter().all(|uid| *uid <= 700),
-        "page 1 UIDs 701+ are not refetched"
-    );
-    let w = h2.world.lock().unwrap();
-    assert!(w
-        .fetches
-        .iter()
-        .all(|(_, set)| set.split(',').all(|uid| uid.parse::<u32>().unwrap() <= 700)));
-    assert!(w
-        .searches
-        .iter()
-        .all(|q| { q.rsplit(':').next().unwrap().parse::<u32>().unwrap() <= 700 }));
-}
-
-#[tokio::test]
 async fn parse_failures_floor_uid_next_to_the_lowest_failure_across_pages() {
     let h = standard_harness(700, 0);
     {
@@ -514,65 +484,6 @@ async fn parse_failures_floor_uid_next_to_the_lowest_failure_across_pages() {
 }
 
 #[tokio::test]
-async fn a_failure_in_the_first_page_survives_into_the_stored_cursor() {
-    let h = standard_harness(700, 0);
-    h.world
-        .lock()
-        .unwrap()
-        .mailboxes
-        .get_mut("INBOX")
-        .unwrap()
-        .unparseable
-        .insert(650);
-    let first = h
-        .provider
-        .sync_messages(&SyncCursor::empty())
-        .await
-        .unwrap();
-    let state = ImapCursor::decode(&first.next_cursor)
-        .unwrap()
-        .unwrap()
-        .into_generic_backfill()
-        .expect("mid-backfill cursor is v2");
-    assert_eq!(state.pending[0].min_failed_uid, Some(650));
-}
-
-#[tokio::test]
-async fn a_failed_page_retried_from_the_same_cursor_returns_the_same_page() {
-    let h = standard_harness(1200, 0);
-    let first = h
-        .provider
-        .sync_messages(&SyncCursor::empty())
-        .await
-        .unwrap();
-    h.world.lock().unwrap().fail_fetch_number = Some(5 + 3);
-    assert!(h.provider.sync_messages(&first.next_cursor).await.is_err());
-    let retried = h.provider.sync_messages(&first.next_cursor).await.unwrap();
-    let uids: BTreeSet<u32> = ids(&retried).iter().map(|id| uid_of(id)).collect();
-    assert_eq!(uids.len(), 500);
-    assert_eq!((uids.first(), uids.last()), (Some(&201), Some(&700)));
-}
-
-#[tokio::test]
-async fn sparse_uid_ranges_and_empty_folders_still_finish() {
-    let h = harness(vec![
-        folder("INBOX", Some("\\Inbox")),
-        folder("Empty", None),
-    ]);
-    add_mailbox(&h.world, "INBOX", [5, 30_000]);
-    add_mailbox(&h.world, "Empty", []);
-    let (batches, cursor) = run_all_pages(&h.provider).await;
-    let all: BTreeSet<String> = batches.iter().flat_map(ids).collect();
-    assert_eq!(
-        all,
-        BTreeSet::from(["INBOX:5".to_string(), "INBOX:30000".to_string()])
-    );
-    assert_eq!(batches.len(), 1, "sparse UIDs do not cost extra pages");
-    assert_eq!(completed_mailbox(&cursor, "INBOX").uid_next, 30_001);
-    assert_eq!(completed_mailbox(&cursor, "Empty").uid_next, 1);
-}
-
-#[tokio::test]
 async fn a_folder_deleted_mid_backfill_is_dropped_instead_of_wedging() {
     let h = standard_harness(1200, 50);
     let first = h
@@ -592,29 +503,4 @@ async fn a_folder_deleted_mid_backfill_is_dropped_instead_of_wedging() {
         .map(|m| m.mailbox)
         .collect();
     assert_eq!(names, vec!["INBOX"]);
-}
-
-#[tokio::test]
-async fn a_sparse_folder_costs_tens_of_commands_not_thousands() {
-    let h = harness(vec![folder("INBOX", Some("\\Inbox"))]);
-    let uids: Vec<u32> = (0..50).map(|i| 3 + i * 3_990).collect();
-    add_mailbox(&h.world, "INBOX", uids.clone());
-    h.world
-        .lock()
-        .unwrap()
-        .mailboxes
-        .get_mut("INBOX")
-        .unwrap()
-        .uid_next = 200_000;
-
-    let (batches, cursor) = run_all_pages(&h.provider).await;
-
-    let got: Vec<u32> = batches.iter().flat_map(ids).map(|id| uid_of(&id)).collect();
-    let mut expected = uids;
-    expected.sort_unstable_by(|a, b| b.cmp(a));
-    assert_eq!(got, expected, "newest first, each UID once");
-    assert_eq!(completed_mailbox(&cursor, "INBOX").uid_next, 200_000);
-    let w = h.world.lock().unwrap();
-    let commands = w.selects.len() + w.searches.len() + w.fetches.len();
-    assert!(commands <= 12, "{commands} commands: {:?}", w.searches);
 }

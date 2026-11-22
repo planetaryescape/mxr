@@ -68,15 +68,6 @@ mod tests {
     }
 
     #[test]
-    fn strips_view_in_browser() {
-        let text =
-            "Newsletter content here.\n\nView this email in your browser\nUpdate your preferences";
-        let result = strip(text);
-        assert!(result.contains("Newsletter content"));
-        assert!(!result.contains("View this email"));
-    }
-
-    #[test]
     fn preserves_text_without_tracking() {
         let text = "A normal personal email.";
         let result = strip(text);

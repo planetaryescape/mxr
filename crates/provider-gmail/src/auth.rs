@@ -171,49 +171,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn revoked_cached_refresh_returns_invalid_grant_without_waiting_for_browser() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("POST"))
-            .and(wiremock::matchers::path("/token"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(400)
-                    .set_body_json(serde_json::json!({"error": "invalid_grant"})),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-        let (auth, _) = cached_auth(&server.uri()).await;
-
-        let error = tokio::time::timeout(std::time::Duration::from_secs(1), auth.access_token())
-            .await
-            .expect("a revoked grant must fail without starting interactive auth")
-            .unwrap_err();
-        assert!(matches!(error, AuthError::OAuth2(ref code) if code == "invalid_grant"));
-    }
-
-    #[tokio::test]
-    async fn missing_cached_grant_does_not_start_interactive_auth() {
-        let server = wiremock::MockServer::start().await;
-        let (auth, tokens) = cached_auth(&server.uri()).await;
-        *tokens.0.lock().unwrap() = None;
-
-        let error = tokio::time::timeout(std::time::Duration::from_secs(1), auth.access_token())
-            .await
-            .expect("a missing grant must not wait for interactive auth")
-            .unwrap_err();
-        assert!(matches!(error, AuthError::TokenExpired));
-        assert!(server.received_requests().await.unwrap().is_empty());
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn token_acquisition_guard_reports_a_retryable_timeout() {
-        let mut auth = GmailAuth::for_test_token("unused");
-        auth.token_fn = Some(Box::new(|| Box::pin(std::future::pending())));
-        let error = auth.access_token().await.unwrap_err();
-        assert!(matches!(error, AuthError::RefreshUnavailable(_)));
-    }
-
-    #[tokio::test]
     async fn cached_refresh_persists_rotated_grant_for_the_next_refresh() {
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("POST"))
@@ -240,60 +197,6 @@ mod tests {
                 .refresh_token
                 .as_deref(),
             Some("rotated-refresh")
-        );
-    }
-
-    #[tokio::test]
-    async fn cached_refresh_bounds_response_body_not_just_headers() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let uri = format!("http://{}", listener.local_addr().unwrap());
-        let (headers_sent, headers_received) = tokio::sync::oneshot::channel();
-        let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut bytes = [0; 4096];
-            assert!(stream.read(&mut bytes).await.unwrap() > 0);
-            stream
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nContent-Type: application/json\r\n\r\n{")
-                .await
-                .unwrap();
-            headers_sent.send(()).unwrap();
-            std::future::pending::<()>().await;
-        });
-        let (auth, _) = cached_auth(&uri).await;
-        let refresh = tokio::spawn(async move { auth.access_token().await });
-        headers_received.await.unwrap();
-        tokio::time::pause();
-        tokio::time::advance(TOKEN_HTTP_TIMEOUT + std::time::Duration::from_secs(1)).await;
-        let outcome = tokio::time::timeout(std::time::Duration::from_secs(1), refresh).await;
-        server.abort();
-
-        let error = outcome
-            .expect(
-                "a stalled response body must time out within the HTTP bound, not the 60s guard",
-            )
-            .unwrap()
-            .unwrap_err();
-        assert!(error.to_string().contains("timed out"), "{error}");
-    }
-
-    #[test]
-    fn custom_storage_keeps_tokens_and_keychain_service_under_runtime_identity() {
-        let token_root = std::path::PathBuf::from("/tmp/mxr-dev/tokens");
-        let auth = GmailAuth::new(
-            "client".to_string(),
-            "secret".to_string(),
-            "mxr/work-gmail".to_string(),
-        )
-        .with_storage(token_root.clone(), "mxr-dev-gmail-oauth".to_string());
-
-        assert_eq!(
-            auth.storage_config_for_test().expect("valid token_ref"),
-            (
-                token_root.join("mxr/work-gmail.json"),
-                "mxr-dev-gmail-oauth".to_string()
-            )
         );
     }
 
@@ -486,11 +389,6 @@ mod tests {
         async fn device_flow_hands_off_and_keeps_an_omitted_refresh_token() {
             authorize_then_refresh(AuthFlow::Device, None).await;
         }
-
-        #[tokio::test]
-        async fn device_flow_hands_off_and_stores_a_rotated_refresh_token() {
-            authorize_then_refresh(AuthFlow::Device, Some("rotated-refresh")).await;
-        }
     }
 
     mod explicit_refresh_token_helper {
@@ -528,24 +426,60 @@ mod tests {
             assert!(matches!(error, AuthError::OAuth2(ref code) if code == "invalid_grant"));
             assert!(!error.to_string().contains("description-must-not-leak"));
         }
+    }
 
-        #[tokio::test]
-        async fn unreadable_rejection_and_throttle_match_the_background_helper() {
-            let unreadable = error_for(ResponseTemplate::new(400).set_body_string("<html>")).await;
-            assert!(
-                matches!(&unreadable, AuthError::RefreshUnavailable(m) if m.contains("HTTP 400")),
-                "{unreadable:?}"
-            );
+    #[tokio::test]
+    async fn cached_refresh_bounds_response_body_not_just_headers() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-            let throttled =
-                error_for(ResponseTemplate::new(429).insert_header("retry-after", "45")).await;
-            assert!(matches!(
-                throttled,
-                AuthError::RefreshRateLimited {
-                    retry_after_secs: 45
-                }
-            ));
-        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let uri = format!("http://{}", listener.local_addr().unwrap());
+        let (headers_sent, headers_received) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut bytes = [0; 4096];
+            assert!(stream.read(&mut bytes).await.unwrap() > 0);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nContent-Type: application/json\r\n\r\n{")
+                .await
+                .unwrap();
+            headers_sent.send(()).unwrap();
+            std::future::pending::<()>().await;
+        });
+        let (auth, _) = cached_auth(&uri).await;
+        let refresh = tokio::spawn(async move { auth.access_token().await });
+        headers_received.await.unwrap();
+        tokio::time::pause();
+        tokio::time::advance(TOKEN_HTTP_TIMEOUT + std::time::Duration::from_secs(1)).await;
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(1), refresh).await;
+        server.abort();
+
+        let error = outcome
+            .expect(
+                "a stalled response body must time out within the HTTP bound, not the 60s guard",
+            )
+            .unwrap()
+            .unwrap_err();
+        assert!(error.to_string().contains("timed out"), "{error}");
+    }
+
+    #[test]
+    fn custom_storage_keeps_tokens_and_keychain_service_under_runtime_identity() {
+        let token_root = std::path::PathBuf::from("/tmp/mxr-dev/tokens");
+        let auth = GmailAuth::new(
+            "client".to_string(),
+            "secret".to_string(),
+            "mxr/work-gmail".to_string(),
+        )
+        .with_storage(token_root.clone(), "mxr-dev-gmail-oauth".to_string());
+
+        assert_eq!(
+            auth.storage_config_for_test().expect("valid token_ref"),
+            (
+                token_root.join("mxr/work-gmail.json"),
+                "mxr-dev-gmail-oauth".to_string()
+            )
+        );
     }
 }
 

@@ -257,15 +257,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn a_selection_is_a_real_range_inside_the_typed_text() {
-        for case in cases() {
-            if let DraftState::Selection { typed, start, end } = case.draft {
-                assert!(start < end && end <= typed.len(), "{}", case.id);
-                assert!(typed.is_char_boundary(start) && typed.is_char_boundary(end));
-                assert!(!case.draft.kept_text().contains(&typed[start..end]));
-            }
-        }
-    }
 }

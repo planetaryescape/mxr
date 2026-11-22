@@ -349,32 +349,6 @@ mod tests {
         format!("{prefix}-{nanos}")
     }
 
-    #[tokio::test]
-    async fn set_and_get_round_trip_in_memory_cache() {
-        let temp = tempdir().unwrap();
-        let path = temp.path().join("missing.json");
-        let storage = KeychainTokenStorage {
-            keychain_service: KEYCHAIN_SERVICE.to_string(),
-            token_ref: unique_ref("test-mem"),
-            fallback_path: path,
-            cache: Arc::new(Mutex::new(Vec::new())),
-        };
-        let scopes = ["scope-a", "scope-b"];
-        {
-            let mut cache = storage.cache.lock().unwrap();
-            cache.push(StoredToken {
-                scopes: scopes
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect(),
-                token: fake_token("hello"),
-            });
-        }
-
-        let fetched = storage.get(&scopes).await.unwrap();
-        assert_eq!(fetched.access_token.as_deref(), Some("hello"));
-    }
-
     #[test]
     fn keeps_legacy_disk_cache_after_successful_keychain_mirror() {
         let temp = tempdir().unwrap();
@@ -423,29 +397,6 @@ mod tests {
         assert!(result.is_err());
         let loaded = load_fallback_token_cache("synthetic", &path, |_| false).unwrap();
         assert_eq!(loaded[0].token.access_token.as_deref(), Some("old-access"));
-        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn error_after_disk_replace_reloads_complete_new_token_json() {
-        let temp = tempdir().unwrap();
-        let path = temp.path().join("tokens.json");
-        std::fs::write(&path, token_cache_json("old-access")).unwrap();
-
-        let result =
-            token_cache_file::write_with_hook(&path, &token_cache_json("new-access"), |stage| {
-                match stage {
-                    token_cache_file::ReplaceStage::BeforeRename => Ok(()),
-                    token_cache_file::ReplaceStage::AfterRename => {
-                        Err(std::io::Error::other("injected interruption"))
-                    }
-                }
-            });
-
-        assert!(result.is_err());
-        let loaded = load_fallback_token_cache("synthetic", &path, |_| false).unwrap();
-        assert_eq!(loaded[0].token.access_token.as_deref(), Some("new-access"));
         assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
     }
 

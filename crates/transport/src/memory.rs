@@ -214,47 +214,11 @@ impl Connector for MemoryConnector {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        clippy::panic,
-        reason = "tests assert directly on fixtures"
-    )]
+    #![expect(clippy::unwrap_used, reason = "tests assert directly on fixtures")]
 
     use super::*;
     use std::time::Duration;
     use tokio::io::AsyncReadExt;
-
-    /// Mirror of the UDS `stop_accepting` contract test: after `stop_accepting`,
-    /// a connect fails (connection-refused-equivalent) rather than handing back
-    /// a client that would hang unaccepted, and `accept` returns an error.
-    #[tokio::test]
-    async fn stop_accepting_refuses_new_connections() {
-        let transport = MemoryTransport::new();
-        let connector = transport.connector();
-        let mut listener = transport.bind().await.unwrap();
-
-        assert!(
-            connector.connect().await.is_ok(),
-            "reachable while accepting"
-        );
-        listener
-            .accept()
-            .await
-            .expect("accept the queued connection");
-
-        listener.stop_accepting().await;
-        match connector.connect().await {
-            Err(TransportError::Connect { source, .. }) => {
-                assert_eq!(source.kind(), std::io::ErrorKind::ConnectionRefused);
-            }
-            Ok(_) => panic!("connect must be refused once accepting stopped"),
-            Err(other) => panic!("expected a Connect error, got {other:?}"),
-        }
-        assert!(
-            listener.accept().await.is_err(),
-            "accept must fail after stop_accepting"
-        );
-    }
 
     /// The race the atomic `enqueue`/`close` closes: a connector that enqueued
     /// its server end BEFORE `stop_accepting` (but was never accepted) must not

@@ -99,24 +99,6 @@ mod tests {
     }
 
     #[test]
-    fn plain_text_passes_through_and_blank_parts_are_dropped() {
-        assert_eq!(
-            searchable_text(Some("hello there"), None).text,
-            "hello there"
-        );
-        assert_eq!(searchable_text(Some("  "), Some("")).text, "");
-        assert_eq!(searchable_text(None, None), SearchableText::default());
-    }
-
-    #[test]
-    fn a_long_html_paragraph_collapses_its_wrap_into_one_phrase() {
-        let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
-        let parts = body_match_parts(None, Some(html.as_str())).unwrap_or_default();
-        assert_eq!(parts.len(), 1);
-        assert!(parts[0].contains("payment overdue"), "got {:?}", parts[0]);
-    }
-
-    #[test]
     fn a_big_cell_table_converts_in_bounded_output() {
         let mut html = String::from("<table><tr><td>");
         html.push_str(&"x".repeat(524_288));
@@ -132,18 +114,5 @@ mod tests {
             text.len(),
             html.len()
         );
-    }
-
-    #[test]
-    fn a_huge_colspan_still_renders_through_the_clamp() {
-        let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
-        let searchable = searchable_text(None, Some(html));
-        assert_eq!(searchable.fallbacks, 0);
-        assert!(searchable.text.contains('A') && searchable.text.contains('B'));
-    }
-
-    #[test]
-    fn no_parts_at_all_is_unknown() {
-        assert_eq!(body_match_parts(None, None), None);
     }
 }

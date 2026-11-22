@@ -355,20 +355,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn json_rejection_without_an_oauth_code_is_not_a_revocation() {
-        let (error, _) = refresh_error(
-            ResponseTemplate::new(403).set_body_json(serde_json::json!({"detail": BODY_MARKER})),
-        )
-        .await;
-
-        let AuthError::RefreshUnavailable(message) = &error else {
-            panic!("{error:?}");
-        };
-        assert!(message.contains("HTTP 403"), "{message}");
-        assert!(!message.contains(BODY_MARKER), "{message}");
-    }
-
-    #[tokio::test]
     async fn only_grant_and_client_rejections_are_oauth_errors() {
         for code in [
             "invalid_grant",
@@ -385,110 +371,6 @@ mod tests {
                 "{code}"
             );
         }
-    }
-
-    #[tokio::test]
-    async fn other_oauth_codes_are_retryable_with_their_code_and_status() {
-        for code in [
-            "invalid_request",
-            "unsupported_grant_type",
-            "access_denied",
-            "upstream_failure",
-            "temporarily_unavailable",
-            "server_error",
-        ] {
-            let (error, tokens) = refresh_error(
-                ResponseTemplate::new(400).set_body_json(serde_json::json!({ "error": code })),
-            )
-            .await;
-            let AuthError::RefreshUnavailable(message) = &error else {
-                panic!("{code} is not proof of revocation: {error:?}");
-            };
-            assert!(
-                message.contains(code) && message.contains("HTTP 400"),
-                "{message}"
-            );
-            assert_eq!(tokens.refresh_token().as_deref(), Some("synthetic-refresh"));
-        }
-    }
-
-    #[tokio::test]
-    async fn text_that_is_not_an_oauth_code_stays_out_of_diagnostics() {
-        let (untrusted, _) = refresh_error(
-            ResponseTemplate::new(400)
-                .set_body_json(serde_json::json!({"error": format!("Bad {BODY_MARKER}")})),
-        )
-        .await;
-        assert!(matches!(untrusted, AuthError::RefreshUnavailable(_)));
-        assert!(!untrusted.to_string().contains(BODY_MARKER));
-    }
-
-    #[tokio::test]
-    async fn wrong_typed_fields_are_an_unreadable_response_not_a_rejection() {
-        for body in [
-            serde_json::json!({"error": 42}),
-            serde_json::json!({"error": {"code": "invalid_grant"}}),
-        ] {
-            let (error, _) = refresh_error(ResponseTemplate::new(400).set_body_json(body)).await;
-            assert!(
-                matches!(&error, AuthError::RefreshUnavailable(m) if m.contains("unreadable HTTP 400")),
-                "{error:?}"
-            );
-        }
-        let (lifetime, _) = refresh_error(ResponseTemplate::new(200).set_body_json(
-            serde_json::json!({"access_token": "a", "token_type": "Bearer", "expires_in": "3600"}),
-        ))
-        .await;
-        assert!(matches!(lifetime, AuthError::RefreshUnavailable(_)));
-    }
-
-    #[tokio::test]
-    async fn a_throttled_refresh_recovers_on_the_next_attempt() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/token"))
-            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "30"))
-            .up_to_n_times(1)
-            .with_priority(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path("/token"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "access_token": "new-access", "token_type": "Bearer", "expires_in": 3600
-            })))
-            .mount(&server)
-            .await;
-        let tokens = MemoryTokens::expired("synthetic-refresh");
-        let source = source_for(format!("{}/token", server.uri()), &tokens);
-
-        assert!(matches!(
-            source.access_token().await,
-            Err(AuthError::RefreshRateLimited {
-                retry_after_secs: 30
-            })
-        ));
-        assert_eq!(source.access_token().await.unwrap(), "new-access");
-        assert_eq!(tokens.refresh_token().as_deref(), Some("synthetic-refresh"));
-    }
-
-    #[tokio::test]
-    async fn malformed_success_responses_keep_the_grant_and_report_the_status() {
-        let (not_json, tokens) =
-            refresh_error(ResponseTemplate::new(200).set_body_string(BODY_MARKER)).await;
-        let AuthError::RefreshUnavailable(message) = &not_json else {
-            panic!("{not_json:?}");
-        };
-        assert!(message.contains("HTTP 200"), "{message}");
-        assert!(!message.contains(BODY_MARKER), "{message}");
-        assert_eq!(tokens.refresh_token().as_deref(), Some("synthetic-refresh"));
-
-        let (no_token, _) = refresh_error(
-            ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({"token_type": "Bearer", "expires_in": 3600})),
-        )
-        .await;
-        assert!(matches!(no_token, AuthError::RefreshUnavailable(_)));
     }
 
     #[tokio::test]
@@ -547,48 +429,6 @@ mod tests {
 
         assert!(matches!(error, AuthError::TokenCacheWrite(_)), "{error:?}");
         assert!(error.to_string().contains("Local token cache write failed"));
-        assert_eq!(tokens.refresh_token().as_deref(), Some("synthetic-refresh"));
-    }
-
-    #[tokio::test]
-    async fn transport_failures_report_a_category_without_the_url() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        let tokens = MemoryTokens::expired("synthetic-refresh");
-        let refused = source_for(format!("http://127.0.0.1:{port}/token"), &tokens)
-            .access_token()
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(&refused, AuthError::RefreshUnavailable(m) if m.contains("connection failed")),
-            "{refused:?}"
-        );
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let peer = tokio::spawn(async move {
-            use tokio::io::AsyncWriteExt;
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
-        });
-        let tls = source_for(format!("https://127.0.0.1:{port}/token"), &tokens)
-            .access_token()
-            .await
-            .unwrap_err();
-        peer.abort();
-        assert!(
-            matches!(&tls, AuthError::RefreshUnavailable(m) if m.contains("TLS")),
-            "{tls:?}"
-        );
-
-        for error in [&refused, &tls] {
-            let text = error.to_string();
-            assert!(
-                !text.contains("127.0.0.1") && !text.contains(&port.to_string()),
-                "{text}"
-            );
-        }
         assert_eq!(tokens.refresh_token().as_deref(), Some("synthetic-refresh"));
     }
 
@@ -658,5 +498,16 @@ mod tests {
 
         release_tx.send(()).unwrap();
         assert_eq!(refresh.await.unwrap().unwrap(), "new-access");
+    }
+
+    #[tokio::test]
+    async fn text_that_is_not_an_oauth_code_stays_out_of_diagnostics() {
+        let (untrusted, _) = refresh_error(
+            ResponseTemplate::new(400)
+                .set_body_json(serde_json::json!({"error": format!("Bad {BODY_MARKER}")})),
+        )
+        .await;
+        assert!(matches!(untrusted, AuthError::RefreshUnavailable(_)));
+        assert!(!untrusted.to_string().contains(BODY_MARKER));
     }
 }

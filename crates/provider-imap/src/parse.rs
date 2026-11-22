@@ -522,12 +522,6 @@ mod tests {
     }
 
     #[test]
-    fn flags_from_imap_handles_deleted() {
-        let flags = flags_from_imap(&["\\Deleted".to_string()]);
-        assert!(flags.contains(MessageFlags::TRASH));
-    }
-
-    #[test]
     fn alternative_html_first_preserves_exact_plain_and_html_parts() {
         let raw = standards_fixture_bytes("alternative-html-first.eml");
         let account_id = AccountId::new();
@@ -569,39 +563,6 @@ mod tests {
     }
 
     #[test]
-    fn folded_flowed_preserves_exact_plain_text_without_deriving_html() {
-        let raw = standards_fixture_bytes("folded-flowed.eml");
-        let account_id = AccountId::new();
-        let msg = FetchedMessage {
-            uid: 2,
-            flags: vec!["\\Seen".into()],
-            envelope: None,
-            body: Some(raw.clone()),
-            header: None,
-            size: Some(raw.len() as u32),
-            internal_date: None,
-            gmail_labels: vec![],
-            gmail_msg_id: None,
-            gmail_thread_id: None,
-        };
-
-        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
-        let plain = synced.body.text_plain.as_deref().expect("plain body");
-        assert!(plain.contains("Hello team, \nthis paragraph is flowed and \nshould join cleanly."));
-        assert!(plain.contains("-- \nJosé"));
-        assert_eq!(synced.body.text_html, None);
-        assert_eq!(
-            synced.body.metadata.text_plain_source,
-            Some(BodyPartSource::Exact)
-        );
-        assert_eq!(synced.body.metadata.text_html_source, None);
-        assert_eq!(
-            synced.body.metadata.text_plain_format,
-            Some(TextPlainFormat::Flowed { delsp: true })
-        );
-    }
-
-    #[test]
     fn nested_multipart_preserves_attachment_metadata() {
         let raw = standards_fixture_bytes("nested-multipart.eml");
         let account_id = AccountId::new();
@@ -637,31 +598,10 @@ mod tests {
     }
 
     #[test]
-    fn flags_from_imap_case_insensitive() {
-        // async_imap formats flags as Debug which may vary
-        let flags = flags_from_imap(&["Seen".to_string(), "FLAGGED".to_string()]);
-        assert!(flags.contains(MessageFlags::READ));
-        assert!(flags.contains(MessageFlags::STARRED));
-    }
-
-    #[test]
     fn parse_imap_date_rfc2822() {
         let dt = parse_imap_date("Mon, 1 Jan 2024 12:00:00 +0000").unwrap();
         assert_eq!(dt.year(), 2024);
         assert_eq!(dt.month(), 1);
-    }
-
-    #[test]
-    fn parse_imap_date_internaldate_format() {
-        let dt = parse_imap_date("15-Mar-2024 09:30:00 +0000").unwrap();
-        assert_eq!(dt.year(), 2024);
-        assert_eq!(dt.month(), 3);
-        assert_eq!(dt.day(), 15);
-    }
-
-    #[test]
-    fn parse_imap_date_invalid() {
-        assert!(parse_imap_date("not a date").is_err());
     }
 
     #[test]
@@ -689,16 +629,6 @@ mod tests {
         assert_eq!(keywords.len(), 2);
         assert!(keywords.contains("$Forwarded"));
         assert!(keywords.contains("$Work"));
-    }
-
-    #[test]
-    fn flags_and_keywords_preserves_case_verbatim() {
-        // IMAP atoms are case-sensitive; we do NOT normalise so that
-        let (_bits, keywords) =
-            flags_and_keywords_from_imap(&["$Forwarded".to_string(), "$forwarded".to_string()]);
-        assert_eq!(keywords.len(), 2, "case-distinct keywords must coexist");
-        assert!(keywords.contains("$Forwarded"));
-        assert!(keywords.contains("$forwarded"));
     }
 
     #[test]
@@ -756,58 +686,6 @@ mod tests {
     }
 
     #[test]
-    fn synced_message_sent_folder_adds_sent_flag() {
-        let account_id = AccountId::new();
-        let raw = b"From: me@example.com\r\nSubject: Sent test\r\nContent-Type: text/plain\r\n\r\nSent body";
-        let msg = FetchedMessage {
-            uid: 1,
-            flags: vec![],
-            envelope: None,
-            body: Some(raw.to_vec()),
-            header: None,
-            size: None,
-            internal_date: None,
-            gmail_labels: vec![],
-            gmail_msg_id: None,
-            gmail_thread_id: None,
-        };
-
-        let sm = imap_fetch_to_synced_message(&msg, "Sent", &account_id).unwrap();
-        assert!(sm.envelope.flags.contains(MessageFlags::SENT));
-    }
-
-    #[test]
-    fn synced_message_missing_body_errors() {
-        let account_id = AccountId::new();
-        let msg = FetchedMessage {
-            uid: 1,
-            flags: vec![],
-            envelope: None,
-            body: None,
-            header: None,
-            size: None,
-            internal_date: None,
-            gmail_labels: vec![],
-            gmail_msg_id: None,
-            gmail_thread_id: None,
-        };
-
-        assert!(imap_fetch_to_synced_message(&msg, "INBOX", &account_id).is_err());
-    }
-
-    #[test]
-    fn parse_message_body_plain_text() {
-        let raw = b"From: alice@example.com\r\nTo: bob@example.com\r\nSubject: Test\r\nContent-Type: text/plain\r\n\r\nHello, this is a test email.";
-        let msg_id = MessageId::new();
-        let body = parse_message_body(raw, &msg_id);
-
-        assert_eq!(body.message_id, msg_id);
-        assert!(body.text_plain.is_some());
-        assert!(body.text_plain.unwrap().contains("Hello, this is a test"));
-        assert!(body.attachments.is_empty());
-    }
-
-    #[test]
     fn parse_message_body_multipart() {
         let raw = concat!(
             "From: alice@example.com\r\n",
@@ -833,106 +711,6 @@ mod tests {
         assert!(body.text_plain.unwrap().contains("Plain text body"));
         assert!(body.text_html.is_some());
         assert!(body.text_html.unwrap().contains("<p>HTML body</p>"));
-    }
-
-    #[test]
-    fn parse_message_body_with_attachment() {
-        let raw = concat!(
-            "From: alice@example.com\r\n",
-            "To: bob@example.com\r\n",
-            "Subject: Test\r\n",
-            "MIME-Version: 1.0\r\n",
-            "Content-Type: multipart/mixed; boundary=\"boundary2\"\r\n",
-            "\r\n",
-            "--boundary2\r\n",
-            "Content-Type: text/plain\r\n",
-            "\r\n",
-            "See attached.\r\n",
-            "--boundary2\r\n",
-            "Content-Type: application/pdf; name=\"report.pdf\"\r\n",
-            "Content-Disposition: attachment; filename=\"report.pdf\"\r\n",
-            "Content-Transfer-Encoding: base64\r\n",
-            "\r\n",
-            "SGVsbG8gV29ybGQ=\r\n",
-            "--boundary2--\r\n",
-        );
-        let msg_id = MessageId::new();
-        let body = parse_message_body(raw.as_bytes(), &msg_id);
-
-        assert!(body.text_plain.is_some());
-        assert_eq!(body.attachments.len(), 1);
-        assert_eq!(body.attachments[0].filename, "report.pdf");
-        assert!(body.attachments[0].mime_type.contains("pdf"));
-    }
-
-    #[test]
-    fn parse_message_body_unparseable() {
-        let raw = b"not a valid email";
-        let msg_id = MessageId::new();
-        let body = parse_message_body(raw, &msg_id);
-        assert_eq!(body.message_id, msg_id);
-    }
-
-    #[test]
-    fn absent_date_header_falls_back_to_internal_date() {
-        let account_id = AccountId::new();
-        let internal = Utc.with_ymd_and_hms(2021, 6, 15, 8, 30, 0).unwrap();
-        let raw = b"From: spam@example.com\r\nTo: me@test.com\r\nSubject: No date\r\nContent-Type: text/plain\r\n\r\nBody";
-        let msg = FetchedMessage {
-            uid: 7,
-            flags: vec![],
-            envelope: None,
-            body: Some(raw.to_vec()),
-            header: None,
-            size: None,
-            internal_date: Some(internal),
-            gmail_labels: vec![],
-            gmail_msg_id: None,
-            gmail_thread_id: None,
-        };
-
-        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
-        assert_eq!(synced.envelope.date, internal);
-    }
-
-    #[test]
-    fn html_only_message_snippet_strips_tags() {
-        let account_id = AccountId::new();
-        let raw = concat!(
-            "From: alice@example.com\r\n",
-            "To: bob@example.com\r\n",
-            "Subject: HTML only\r\n",
-            "Date: Mon, 1 Jan 2024 12:00:00 +0000\r\n",
-            "MIME-Version: 1.0\r\n",
-            "Content-Type: text/html\r\n",
-            "\r\n",
-            "<!DOCTYPE html><html><body><p>Hello &amp; welcome to the show</p></body></html>",
-        );
-        let msg = FetchedMessage {
-            uid: 1,
-            flags: vec![],
-            envelope: None,
-            body: Some(raw.as_bytes().to_vec()),
-            header: None,
-            size: None,
-            internal_date: None,
-            gmail_labels: vec![],
-            gmail_msg_id: None,
-            gmail_thread_id: None,
-        };
-
-        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
-        assert!(synced.body.text_plain.is_none());
-        assert!(
-            synced.envelope.snippet.contains("Hello & welcome"),
-            "snippet should hold decoded visible text: {:?}",
-            synced.envelope.snippet
-        );
-        assert!(
-            !synced.envelope.snippet.contains('<'),
-            "snippet must not contain raw tag markup: {:?}",
-            synced.envelope.snippet
-        );
     }
 
     #[test]

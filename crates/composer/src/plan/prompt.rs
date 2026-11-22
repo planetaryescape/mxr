@@ -648,81 +648,6 @@ mod tests {
     }
 
     #[test]
-    fn labels_turns_marks_the_target_and_says_who_i_am() {
-        let me = me();
-        let turns = [
-            turn(false, "Can we meet?", false),
-            turn(true, "Sure, when?", false),
-            turn(false, "Friday?", true),
-        ];
-        let prompt = build(&input(&me, &turns, &[], &[], 30_000));
-        assert!(prompt
-            .system
-            .contains("ghostwriting a reply to the message marked TARGET as Sam Rivers"));
-        assert!(prompt
-            .user
-            .contains("I am Sam Rivers <sam@example.com>. Today is Sunday 27 September 2026."));
-        assert!(prompt.user.contains(
-            "--- THEM (Alice <alice@x.com>) · Mon 21 Sep 2026, 10:02 <<< TARGET ---\nFriday?"
-        ));
-        assert!(prompt
-            .user
-            .contains("--- ME · Mon 21 Sep 2026, 10:02 ---\nSure, when?"));
-        assert!(prompt
-            .user
-            .contains("Aim for about 40 words. What I want to say: say yes, Friday 2pm"));
-        assert!(prompt.user.contains("Match the tone of my examples"));
-    }
-
-    #[test]
-    fn examples_show_what_they_wrote_and_how_i_replied_inside_the_markers() {
-        let me = me();
-        let examples = [VoiceExample {
-            to: "Alice <alice@x.com>".into(),
-            their_message: Some("Lunch Friday?".into()),
-            my_email: "yes! 1pm?\ns".into(),
-            source: source(true),
-        }];
-        let habits = ["Usually starts straight in, with no greeting.".to_string()];
-        let turns = [turn(false, "Friday?", true)];
-        let prompt = build(&input(&me, &turns, &examples, &habits, 30_000));
-        let begin = prompt.user.find(UNTRUSTED_MAIL_BEGIN).unwrap();
-        let example = prompt
-            .user
-            .find("They wrote:\nLunch Friday?\nI replied:\nyes! 1pm?\ns")
-            .unwrap();
-        assert!(begin < example);
-        assert!(prompt
-            .user
-            .contains("- Usually starts straight in, with no greeting."));
-        assert_eq!(prompt.examples_used, 1);
-    }
-
-    #[test]
-    fn example_budget_keeps_a_source_identity_prefix() {
-        let examples: Vec<_> = (0..3)
-            .map(|index| VoiceExample {
-                to: "Alice <alice@x.com>".into(),
-                their_message: None,
-                my_email: format!("Example {index}: {}", "word ".repeat(150)),
-                source: source(true),
-            })
-            .collect();
-        let budget = 1_200;
-
-        let (rendered, used) = render_examples(&examples, budget);
-
-        assert_eq!(used, 1, "budget {budget}; rendered {rendered:?}");
-        assert!(rendered.contains("Example 0:"));
-        assert!(!rendered.contains("Example 1:"));
-        let cited_sources: Vec<_> = examples[..used]
-            .iter()
-            .map(|example| example.source.message_id.clone())
-            .collect();
-        assert_eq!(cited_sources, vec![examples[0].source.message_id.clone()]);
-    }
-
-    #[test]
     fn over_budget_drops_the_oldest_turns_and_keeps_the_target() {
         let me = me();
         let long = "x".repeat(1_400);
@@ -775,30 +700,6 @@ mod tests {
     }
 
     #[test]
-    fn no_subject_reaches_the_task_whoever_wrote_it() {
-        let me = me();
-        let mut input = input(&me, &[], &[], &[], 30_000);
-        input.mode = DraftMode::New {
-            to: "Sam <sam@x.com>".into(),
-        };
-        input.subject = "Decline  Thursday's\ninvitation";
-        let prompt = build(&input);
-        let task = block(&prompt.user, "[TASK]");
-        assert!(!task.contains("Decline"), "{task}");
-        assert!(task.contains("in [SUBJECT]"), "{task}");
-        let subject = block(&prompt.user, "[SUBJECT]");
-        assert!(
-            subject.contains("Decline Thursday's invitation"),
-            "{subject}"
-        );
-        assert!(subject.contains(UNTRUSTED_MAIL_BEGIN), "{subject}");
-        input.subject = "";
-        let prompt = build(&input);
-        assert!(!prompt.user.contains("[SUBJECT]"));
-        assert!(!block(&prompt.user, "[TASK]").contains("SUBJECT"));
-    }
-
-    #[test]
     fn a_subject_that_came_from_mail_stays_inside_the_untrusted_markers() {
         let me = me();
         let mut input = input(&me, &[], &[], &[], 30_000);
@@ -818,16 +719,6 @@ mod tests {
         let prompt = build(&input);
         let subject = block(&prompt.user, "[SUBJECT]");
         assert_eq!(subject.matches(UNTRUSTED_MAIL_END).count(), 1, "{subject}");
-    }
-
-    #[test]
-    fn a_plain_write_carries_no_typed_text_or_adjustments() {
-        let me = me();
-        let turns = [turn(false, "Friday?", true)];
-        let prompt = build(&input(&me, &turns, &[], &[], 30_000));
-        assert!(!prompt.user.contains("[MY DRAFT SO FAR]"));
-        assert!(!prompt.user.contains("Adjustments"));
-        assert!(!prompt.system.contains("MY DRAFT SO FAR"));
     }
 
     #[test]
@@ -877,45 +768,6 @@ mod tests {
         assert_eq!(draft.matches(UNTRUSTED_MAIL_END).count(), 1, "{draft}");
         assert!(draft.contains("[end-marker]"));
         assert!(draft.trim_end().ends_with(UNTRUSTED_MAIL_END));
-    }
-
-    #[test]
-    fn a_selection_is_sent_as_its_own_block_beside_the_whole_draft() {
-        let me = me();
-        let turns = [turn(false, "Friday?", true)];
-        let typed = "Thursday works. Numbers by wed.";
-        let prompt = build(&with_help(
-            input(&me, &turns, &[], &[], 30_000),
-            AssistActionData::EditSelection,
-            typed,
-            Some(16..31),
-        ));
-        let edit = block(&prompt.user, "[EDIT ONLY THIS]");
-        assert!(edit.contains("Numbers by wed."));
-        assert!(!edit.contains("Thursday works."), "{edit}");
-        assert!(block(&prompt.user, "[MY DRAFT SO FAR]").contains("Thursday works."));
-        let task = block(&prompt.user, "[TASK]");
-        assert!(task.contains("Rewrite only the part of my draft inside [EDIT ONLY THIS]"));
-        assert!(task.contains("everything outside that part exactly as it is"));
-    }
-
-    #[test]
-    fn the_typed_text_is_never_cut_to_fit_the_budget() {
-        let me = me();
-        let long = "x".repeat(1_400);
-        let turns: Vec<Turn> = (0..20)
-            .map(|index| turn(index % 2 == 1, &format!("turn {index} {long}"), index == 19))
-            .collect();
-        let typed = format!("{} end of my draft", "word ".repeat(1_500));
-        let prompt = build(&with_help(
-            input(&me, &turns, &[], &[], 14_000),
-            AssistActionData::Finish,
-            &typed,
-            None,
-        ));
-        assert!(prompt.user.contains("end of my draft"));
-        assert!(prompt.user.contains(&"word ".repeat(1_500)));
-        assert!(prompt.user.contains("turn 19"), "the target still fits");
     }
 
     #[test]

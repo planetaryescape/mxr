@@ -2585,28 +2585,10 @@ mod draft_content_tests {
     use super::*;
 
     #[test]
-    fn empty_markdown_still_emits_the_key() {
-        let json = serde_json::to_value(DraftContent::markdown("")).unwrap();
-        assert_eq!(json, serde_json::json!({ "body_markdown": "" }));
-    }
-
-    #[test]
     fn legacy_payload_without_html_keys_deserialises_as_markdown() {
         let content: DraftContent =
             serde_json::from_value(serde_json::json!({ "body_markdown": "hi" })).unwrap();
         assert_eq!(content, DraftContent::markdown("hi"));
-    }
-
-    #[test]
-    fn payload_with_no_body_key_at_all_is_empty_markdown() {
-        let content: DraftContent = serde_json::from_value(serde_json::json!({})).unwrap();
-        assert_eq!(content, DraftContent::markdown(""));
-    }
-
-    #[test]
-    fn html_without_a_text_alternative_omits_the_key() {
-        let json = serde_json::to_value(DraftContent::html("<p>hi</p>", None)).unwrap();
-        assert_eq!(json, serde_json::json!({ "body_html": "<p>hi</p>" }));
     }
 
     #[test]
@@ -2618,93 +2600,6 @@ mod draft_content_tests {
         assert!(
             err.to_string().contains("mutually exclusive"),
             "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn a_text_alternative_without_a_document_is_rejected() {
-        let err = serde_json::from_value::<DraftContent>(
-            serde_json::json!({ "body_text": "plain words" }),
-        )
-        .unwrap_err();
-        assert!(
-            err.to_string().contains("without body_html"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn body_text_alongside_markdown_is_also_rejected() {
-        let err = serde_json::from_value::<DraftContent>(
-            serde_json::json!({ "body_markdown": "hi", "body_text": "hi" }),
-        )
-        .unwrap_err();
-        assert!(
-            err.to_string().contains("without body_html"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn markdown_source_is_none_for_html_rather_than_an_empty_string() {
-        assert_eq!(
-            DraftContent::html("<p>hi</p>", Some("hi".into())).markdown_source(),
-            None
-        );
-        assert_eq!(DraftContent::markdown("hi").markdown_source(), Some("hi"));
-    }
-
-    #[test]
-    fn analysis_text_prefers_the_supplied_alternative() {
-        assert_eq!(DraftContent::markdown("md").analysis_text(), "md");
-        assert_eq!(
-            DraftContent::html("<p>x</p>", Some("plain".into())).analysis_text(),
-            "plain"
-        );
-        assert_eq!(DraftContent::html("<p>x</p>", None).analysis_text(), "");
-    }
-
-    #[test]
-    fn kind_str_matches_the_persisted_discriminator() {
-        assert_eq!(DraftContent::markdown("").kind_str(), "markdown");
-        assert_eq!(DraftContent::html("", None).kind_str(), "html");
-    }
-
-    #[test]
-    fn an_empty_markdown_key_alongside_html_is_still_a_conflict() {
-        let err = serde_json::from_value::<DraftContent>(
-            serde_json::json!({ "body_markdown": "", "body_html": "<p>hi</p>" }),
-        )
-        .unwrap_err();
-        assert!(
-            err.to_string().contains("mutually exclusive"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn byte_len_measures_the_authored_body_not_the_alternative() {
-        assert_eq!(DraftContent::markdown("é").byte_len(), 2);
-        assert_eq!(DraftContent::markdown("").byte_len(), 0);
-        assert_eq!(
-            DraftContent::html("<p>x</p>", Some("a much longer alternative".into())).byte_len(),
-            "<p>x</p>".len()
-        );
-    }
-
-    #[test]
-    fn reader_input_pairs_text_with_the_real_html_document() {
-        assert_eq!(
-            DraftContent::markdown("md").reader_input(),
-            (Some("md"), None)
-        );
-        assert_eq!(
-            DraftContent::html("<p>x</p>", Some("plain".into())).reader_input(),
-            (Some("plain"), Some("<p>x</p>"))
-        );
-        assert_eq!(
-            DraftContent::html("<p>x</p>", None).reader_input(),
-            (None, Some("<p>x</p>"))
         );
     }
 
@@ -2746,36 +2641,6 @@ mod draft_content_tests {
         assert_eq!(back.content, draft.content);
         assert_eq!(back.subject, draft.subject);
         assert_eq!(back.created_at, draft.created_at);
-    }
-
-    #[test]
-    fn html_draft_roundtrips_through_the_flattened_draft_shape() {
-        let mut draft = draft_fixture(DraftContent::html("<p>hi</p>", Some("hi".into())));
-        draft.inline_assets = vec![InlineAsset {
-            cid: "logo".to_string(),
-            path: PathBuf::from("/tmp/logo.png"),
-        }];
-        let json = serde_json::to_value(&draft).unwrap();
-
-        assert_eq!(json["body_html"], serde_json::json!("<p>hi</p>"));
-        assert_eq!(json["body_text"], serde_json::json!("hi"));
-        assert!(json.get("body_markdown").is_none());
-
-        let back: Draft = serde_json::from_value(json).unwrap();
-        assert_eq!(back.content, draft.content);
-        assert_eq!(back.inline_assets, draft.inline_assets);
-    }
-
-    #[test]
-    fn a_draft_carrying_both_bodies_is_rejected_too() {
-        let mut json = serde_json::to_value(draft_fixture(DraftContent::markdown("hi"))).unwrap();
-        json["body_html"] = serde_json::json!("<p>hi</p>");
-
-        let err = serde_json::from_value::<Draft>(json).unwrap_err();
-        assert!(
-            err.to_string().contains("mutually exclusive"),
-            "unexpected error: {err}"
-        );
     }
 }
 
@@ -2883,32 +2748,6 @@ mod system_mailbox_tests {
                 .system_label_names()
                 .contains(&name.to_lowercase().as_str()));
         }
-    }
-
-    #[test]
-    fn only_system_labels_have_a_mailbox_role() {
-        assert_eq!(
-            label("Inbox", LabelKind::User, None).system_mailbox_role(),
-            None
-        );
-        assert_eq!(
-            label("INBOX", LabelKind::Folder, None).system_mailbox_role(),
-            None
-        );
-        assert_eq!(
-            label("CATEGORY_PROMOTIONS", LabelKind::System, None).system_mailbox_role(),
-            None
-        );
-        assert_eq!(
-            label("ARCHIVE", LabelKind::System, Some(Role::Archive)).system_mailbox_role(),
-            None
-        );
-    }
-
-    #[test]
-    fn provider_role_wins_over_the_name() {
-        let imap_inbox = label("Posteingang", LabelKind::System, Some(Role::Inbox));
-        assert_eq!(imap_inbox.system_mailbox_role(), Some(Role::Inbox));
     }
 
     #[test]

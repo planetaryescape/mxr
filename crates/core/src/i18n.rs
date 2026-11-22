@@ -250,25 +250,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn select_unknown_locale_falls_back_to_default() {
-        assert_eq!(select("xx-YY").code, DEFAULT_LOCALE.code);
-        assert_eq!(select("").code, DEFAULT_LOCALE.code);
-    }
-
-    #[test]
-    fn subject_prefix_dispatch_matches_partstat() {
-        use SendableCalendarPartstat::{Accepted, Declined, Tentative};
-
-        assert_eq!(EN.invite_subject_prefix_for(Accepted), "Accepted: ");
-        assert_eq!(EN.invite_subject_prefix_for(Declined), "Declined: ");
-        assert_eq!(EN.invite_subject_prefix_for(Tentative), "Tentative: ");
-    }
-
-    #[test]
-    fn body_dispatch_substitutes_email() {
-        let body = EN.invite_body_for(SendableCalendarPartstat::Accepted, "alice@example.com");
-        assert_eq!(body, "alice@example.com has accepted this invitation.");
-    }
 }

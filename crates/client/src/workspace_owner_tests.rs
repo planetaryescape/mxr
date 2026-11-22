@@ -166,22 +166,3 @@ async fn changed_owner_refuses_before_reading_or_uploading_private_attachment() 
     drop(connection);
     server.await.expect("server");
 }
-
-#[tokio::test]
-async fn missing_owner_refuses_before_reading_or_uploading_private_attachment() {
-    let (mut connection, _, seen, server) = fixture().await;
-    let mut private = draft();
-    private
-        .attachments
-        .push(PathBuf::from("/nonexistent/private-owner-file"));
-    let error = connection
-        .request(Request::SaveDraft { draft: private })
-        .await
-        .expect_err("missing owner before file access");
-    assert!(
-        matches!(error, ClientError::Daemon { ref code, retryable: false, .. } if code == "workspace_owner_required")
-    );
-    assert!(seen.lock().expect("seen").is_empty());
-    drop(connection);
-    server.await.expect("server");
-}

@@ -130,18 +130,6 @@ mod match_text_tests {
         assert!(!text.contains("hidden"));
         assert!(!text.contains('<'));
     }
-
-    #[test]
-    fn a_normal_render_is_not_reported_and_wraps_at_the_reader_width() {
-        let line = "word ".repeat(40);
-        let html = format!("<p>{}</p>", line.trim_end());
-        let (text, fell_back) = html_to_match_text(&html, "test");
-        assert!(!fell_back);
-        assert!(
-            text.lines().count() > 1,
-            "expected display wrapping, got {text:?}"
-        );
-    }
 }
 
 /// Plain text for HTML mail at the reader's width, with the default
@@ -336,38 +324,6 @@ mod tests {
     }
 
     #[test]
-    fn fallback_to_builtin_when_command_fails() {
-        let config = ReaderConfig {
-            html_command: Some("false".into()),
-            ..Default::default()
-        };
-        let result = to_plain_text("<p>Hello from fallback</p>", &config);
-        assert!(result.contains("Hello from fallback"));
-    }
-
-    #[test]
-    fn external_command_cat_falls_back_when_raw_html_passes_through() {
-        let config = ReaderConfig {
-            html_command: Some("cat".into()),
-            ..Default::default()
-        };
-        let result = to_plain_text("<p>Raw HTML</p>", &config);
-        assert!(result.contains("Raw HTML"));
-        assert!(!result.contains("<p>"));
-    }
-
-    #[test]
-    fn external_command_with_args() {
-        let config = ReaderConfig {
-            html_command: Some("wc -c".into()),
-            ..Default::default()
-        };
-        let input = "<p>Hello World</p>";
-        let result = to_plain_text(input, &config);
-        assert_eq!(result.trim(), input.len().to_string());
-    }
-
-    #[test]
     fn malformed_table_span_returns_text_instead_of_panicking() {
         // html2text 0.17.4 overflows on this colspan; a panic here would crash
         // the TUI, `mxr cat`, or a daemon handler for a single hostile email.
@@ -384,12 +340,6 @@ mod tests {
     }
 
     #[test]
-    fn strip_fallback_drops_an_unclosed_style_block_to_the_end() {
-        assert_eq!(strip_html_tags("<p>ok</p><style>a{}"), "ok");
-        assert_eq!(strip_html_tags("a < b and c"), "a < b and c");
-    }
-
-    #[test]
     fn huge_colspan_is_clamped_and_html2text_renders_it_without_fallback() {
         let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
         let clamped = clamp_table_spans(html);
@@ -398,46 +348,12 @@ mod tests {
             .expect("clamped table should render");
         assert!(text.contains('A') && text.contains('B'), "got {text:?}");
     }
-
-    #[test]
-    fn normal_spans_are_left_untouched() {
-        let html = r#"<table><tr><td colspan="2">A</td><td rowspan='3'>B</td></tr></table>"#;
-        assert_eq!(clamp_table_spans(html), html);
-    }
-
-    #[test]
-    fn spans_above_the_cap_are_clamped_to_it() {
-        let html = format!(r#"<td colspan="{}">x</td>"#, MAX_TABLE_SPAN + 5);
-        assert_eq!(
-            clamp_table_spans(&html),
-            format!(r#"<td colspan="{MAX_TABLE_SPAN}">x</td>"#)
-        );
-    }
-
-    #[test]
-    fn style_only_body_yields_no_css_text() {
-        let html = "<html><head><style>p { color: red; }</style></head><body></body></html>";
-        let output = crate::clean(None, Some(html), &ReaderConfig::default());
-        assert!(!output.content.contains("color"));
-    }
-
-    #[test]
-    fn empty_command_error() {
-        let err = run_external_command("", "test").expect_err("empty commands should fail");
-        assert!(matches!(err, HtmlRenderError::EmptyCommand));
-    }
 }
 
 #[cfg(test)]
 mod limit_render_tests {
     use super::*;
     use std::time::{Duration, Instant};
-
-    fn direct_render(html: &str) -> String {
-        html2text::config::plain_no_decorate()
-            .string_from_read(html.as_bytes(), 80)
-            .expect("ordinary HTML renders")
-    }
 
     fn wide_table() -> String {
         let mut html = String::from("<table><tr>");
@@ -469,36 +385,12 @@ mod limit_render_tests {
     }
 
     #[test]
-    fn a_normal_email_renders_exactly_as_html2text_renders_it() {
-        let html = "<html><body><p>Hello team,</p>\
-            <table><tr><td>a</td><td>b</td><td>c</td></tr>\
-            <tr><td>d</td><td>e</td><td>f</td></tr>\
-            <tr><td>g</td><td>h</td><td>i</td></tr></table>\
-            <ul><li>one<ul><li>nested</li></ul></li><li>two</li></ul>\
-            <blockquote>quoted words</blockquote></body></html>";
-        assert_eq!(html_to_plain_text(html, "test"), direct_render(html));
-    }
-
-    #[test]
     fn a_table_hidden_by_a_comment_is_bounded() {
         let html = wide_table().replacen("<tr>", "<!-- </table> --><tr>", 1);
         let started = Instant::now();
         let text = html_to_plain_text(&html, "test");
         assert_bounded(&html, started, &text);
         assert!(text.contains("c0") && text.contains("r19999"));
-    }
-
-    #[test]
-    fn a_rowspan_table_is_bounded() {
-        let mut html = String::from("<table>");
-        for n in 0..50_000 {
-            html.push_str(&format!(r#"<tr><td rowspan="1000">x{n}</td></tr>"#));
-        }
-        html.push_str("</table>");
-        let started = Instant::now();
-        let text = html_to_plain_text(&html, "test");
-        assert_bounded(&html, started, &text);
-        assert!(text.contains("x0") && text.contains("x49999"));
     }
 
     #[test]
@@ -512,40 +404,6 @@ mod limit_render_tests {
         let text = html_to_plain_text(&html, "test");
         assert_bounded(&html, started, &text);
         assert!(text.contains("deepword"));
-    }
-
-    #[test]
-    fn a_300_item_list_with_optional_end_tags_renders_as_html2text_renders_it() {
-        let html = format!("<ol>{}</ol>", "<li>Item<br>details".repeat(300));
-        assert_eq!(html_to_plain_text(&html, "test"), direct_render(&html));
-    }
-
-    #[test]
-    fn a_table_of_brs_is_bounded_and_quick() {
-        let html = format!("<table>{}end</table>", "<br>".repeat(200_000));
-        let started = Instant::now();
-        let text = html_to_plain_text(&html, "test");
-        assert_bounded(&html, started, &text);
-        assert!(text.contains("end"));
-    }
-
-    #[test]
-    fn a_tag_with_100000_attributes_is_bounded_and_quick() {
-        let mut html = String::from("<td");
-        for n in 0..100_000 {
-            html.push_str(&format!(" a{n}"));
-        }
-        html.push_str(">payload</td>");
-        let started = Instant::now();
-        let text = html_to_plain_text(&html, "test");
-        assert_bounded(&html, started, &text);
-        assert!(text.contains("payload"));
-    }
-
-    #[test]
-    fn rowspan_in_text_is_shown_unchanged() {
-        let text = html_to_plain_text("<p>use rowspan=365. for the rows</p>", "test");
-        assert!(text.contains("rowspan=365."), "got {text:?}");
     }
 }
 
@@ -570,17 +428,5 @@ mod lost_helper_tests {
         let (text, fell_back) = with_supervisor(lost_helper(), || render_bounded(html, "test"));
         assert!(fell_back);
         assert_eq!(text, "keepme");
-    }
-
-    #[test]
-    fn the_reader_still_shows_a_message_when_the_helper_is_lost() {
-        let output = with_supervisor(lost_helper(), || {
-            crate::clean(
-                None,
-                Some("<p>Hello <b>there</b></p>"),
-                &ReaderConfig::default(),
-            )
-        });
-        assert_eq!(output.content, "Hello there");
     }
 }

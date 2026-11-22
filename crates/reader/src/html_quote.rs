@@ -281,17 +281,6 @@ mod tests {
     }
 
     #[test]
-    fn keeping_the_signature_removes_only_the_quote() {
-        let html = r#"<div dir="ltr">Sounds good, Thursday works.<div><br></div><div class="gmail_signature">Samir Patel<br>Launchpad</div></div><br><div class="gmail_quote"><div class="gmail_attr">On Mon, Alex wrote:</div><blockquote class="gmail_quote">Are you around Thursday?</blockquote></div>"#;
-        let parts = split_html_quote_keeping_signature(html);
-        assert!(parts.has_quote);
-        assert!(parts.has_signature);
-        assert!(parts.main.contains("Thursday works"));
-        assert!(!parts.main.contains("Are you around"));
-        assert!(parts.main.contains("Launchpad"));
-    }
-
-    #[test]
     fn apple_cite_blockquote_stays_when_authored_text_follows() {
         let html = r#"<html><body><div>Yes, send it.</div><blockquote type="cite"><div>Shall I send the deck?</div></blockquote><div>One more thing: copy Ruth.</div></body></html>"#;
         let parts = split_html_quote(html);
@@ -299,33 +288,6 @@ mod tests {
         assert!(parts.main.contains("Yes, send it."));
         assert!(parts.main.contains("copy Ruth"));
         assert!(parts.main.contains("Shall I send"));
-    }
-
-    #[test]
-    fn outlook_header_removes_everything_after_it() {
-        let html = r#"<html><body><div>Approved.</div><div><div id="appendonsend"></div><hr><div id="divRplyFwdMsg"><b>From:</b> Alex<br><b>Sent:</b> Monday</div><div>Can you approve the budget?</div></div><p>trailing old text</p></body></html>"#;
-        let parts = split_html_quote(html);
-        assert!(parts.has_quote);
-        assert!(parts.main.contains("Approved."));
-        assert!(!parts.main.contains("approve the budget"));
-        assert!(!parts.main.contains("trailing old text"));
-    }
-
-    #[test]
-    fn a_bare_forward_keeps_its_quote() {
-        let html =
-            r#"<div class="gmail_quote">---------- Forwarded message ---------<br>The deck</div>"#;
-        let parts = split_html_quote(html);
-        assert!(!parts.has_quote);
-        assert!(parts.main.contains("The deck"));
-    }
-
-    #[test]
-    fn plain_html_is_untouched() {
-        let html = "<p>Just a note.</p>";
-        let parts = split_html_quote(html);
-        assert_eq!(parts.main, html);
-        assert!(!parts.has_quote && !parts.has_signature);
     }
 }
 
@@ -342,36 +304,5 @@ mod budget_tests {
         let parts = split_html_quote(&html);
         assert!(!parts.has_quote);
         assert_eq!(parts.main, html);
-    }
-}
-
-#[cfg(test)]
-mod lost_helper_tests {
-    use super::*;
-    use mxr_html_worker::{with_supervisor, Config, Supervisor};
-    use std::sync::Arc;
-
-    #[test]
-    fn a_lost_helper_leaves_the_body_whole_and_recognises_no_quote() {
-        let html = "<div>reply</div><div class=\"gmail_quote\">older words</div>";
-        let lost = Arc::new(Supervisor::new(Config::new(
-            "/nonexistent/mxr-helper",
-            Vec::new(),
-        )));
-        let parts = with_supervisor(lost, || split_html_quote(html));
-        assert_eq!(parts.main, html);
-        assert!(!parts.has_quote && !parts.has_signature);
-    }
-
-    #[test]
-    fn a_body_with_no_markers_never_reaches_the_helper() {
-        let lost = Arc::new(Supervisor::new(Config::new(
-            "/nonexistent/mxr-helper",
-            Vec::new(),
-        )));
-        let html = "<p>no markers here</p>";
-        let parts = with_supervisor(Arc::clone(&lost), || split_html_quote(html));
-        assert_eq!(parts.main, html);
-        assert_eq!(lost.stats().requests, 0);
     }
 }

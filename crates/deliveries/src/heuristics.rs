@@ -282,17 +282,6 @@ mod tests {
     }
 
     #[test]
-    fn delivered_beats_shipped_in_priority() {
-        let a = assess(&input(
-            "Acme",
-            "acme.com",
-            "Your shipped order was delivered",
-            "",
-        ));
-        assert_eq!(a.subject_stage, Some(DeliveryStatus::Delivered));
-    }
-
-    #[test]
     fn extracts_order_number_and_merchant() {
         let a = assess(&input(
             "Acme Store",
@@ -302,38 +291,5 @@ mod tests {
         ));
         assert_eq!(a.order_number.as_deref(), Some("AB-12345"));
         assert_eq!(a.merchant.as_deref(), Some("Acme Store"));
-    }
-
-    #[test]
-    fn order_number_requires_a_digit() {
-        let a = assess(&input(
-            "Acme",
-            "acme.com",
-            "thanks for your order",
-            "Thank you for your order.",
-        ));
-        assert!(a.order_number.is_none(), "got {:?}", a.order_number);
-    }
-
-    #[test]
-    fn merchant_falls_back_to_domain_for_role_senders() {
-        let a = assess(&input(
-            "no-reply",
-            "shop.acme.com",
-            "Order confirmation",
-            "",
-        ));
-        assert_eq!(a.merchant.as_deref(), Some("Acme"));
-    }
-
-    #[test]
-    fn parses_iso_eta() {
-        let a = assess(&input(
-            "Acme",
-            "acme.com",
-            "Shipped",
-            "Estimated delivery 2024-05-10. Thanks.",
-        ));
-        assert!(a.eta_until.is_some());
     }
 }

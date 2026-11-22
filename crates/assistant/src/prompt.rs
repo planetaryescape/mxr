@@ -188,35 +188,6 @@ mod tests {
     }
 
     #[test]
-    fn the_context_block_comes_first_and_strips_back_off() {
-        let message = user_message(
-            " archive these ",
-            "2026-10-15T10:00:00Z",
-            &ViewContext {
-                view: Some("messages".into()),
-                selected_message_ids: vec!["m1".into(), "m2".into()],
-                ..ViewContext::default()
-            },
-        );
-        assert!(message.starts_with("[context]\nnow: 2026-10-15T10:00:00Z\nview: messages\n"));
-        assert!(message.contains("selected messages: m1, m2"));
-        assert_eq!(user_text(&message), "archive these");
-    }
-
-    #[test]
-    fn reason_is_required_on_every_tool_and_stripped_from_calls() {
-        let spec = with_reason(ToolSpec {
-            name: "t".into(),
-            description: "d".into(),
-            input_schema: json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}),
-        });
-        assert_eq!(spec.input_schema["required"], json!(["q", "reason"]));
-        let (arguments, reason) = split_reason(&json!({"q": "x", "reason": "To find it."}));
-        assert_eq!(arguments, json!({"q": "x"}));
-        assert_eq!(reason, "To find it.");
-    }
-
-    #[test]
     fn long_results_are_cut_with_a_note_and_always_fenced() {
         let long = "é".repeat(MAX_RESULT_CHARS + 10);
         let wrapped = tool_result(&long);

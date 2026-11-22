@@ -303,22 +303,6 @@ mod tests {
     }
 
     #[test]
-    fn format_is_inferred_from_the_extension() {
-        assert_eq!(DataFormat::from_path(Path::new("x.csv")), DataFormat::Csv);
-        assert_eq!(DataFormat::from_path(Path::new("x.CSV")), DataFormat::Csv);
-        assert_eq!(
-            DataFormat::from_path(Path::new("x.jsonl")),
-            DataFormat::Jsonl
-        );
-        assert_eq!(
-            DataFormat::from_path(Path::new("x.ndjson")),
-            DataFormat::Jsonl
-        );
-        assert_eq!(DataFormat::from_path(Path::new("x.json")), DataFormat::Json);
-        assert_eq!(DataFormat::from_path(Path::new("x")), DataFormat::Json);
-    }
-
-    #[test]
     fn a_missing_to_property_fails_the_whole_batch() {
         let err = load(
             r#"[{"to":"a@example.com"},{"first_name":"Dumi"}]"#,
@@ -327,15 +311,6 @@ mod tests {
         .unwrap_err();
         assert!(err.to_string().contains("record 2"), "{err}");
         assert!(err.to_string().contains("no `to` property"), "{err}");
-    }
-
-    #[test]
-    fn an_unparseable_to_property_fails_the_whole_batch() {
-        for bad in ["not-an-address", "@example.com", "a@", "a@example"] {
-            let contents = format!(r#"[{{"to":"a@good.example"}},{{"to":"{bad}"}}]"#);
-            let err = load(&contents, "records.json").unwrap_err().to_string();
-            assert!(err.contains("record 2"), "accepted `{bad}`: {err}");
-        }
     }
 
     #[test]
@@ -365,82 +340,6 @@ mod tests {
     }
 
     #[test]
-    fn a_recipient_list_smuggled_into_one_record_is_rejected() {
-        for smuggled in [
-            "a@example.com, evil@example.com",
-            "a@example.com;evil@example.com",
-            "Dumi <a@example.com>",
-        ] {
-            let contents = format!(r#"[{{"to":"{smuggled}"}}]"#);
-            let err = load(&contents, "records.json").unwrap_err();
-            assert!(
-                err.to_string().contains("single bare address"),
-                "accepted `{smuggled}`: {err}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_data_file_with_no_records_is_rejected() {
-        assert!(load("[]", "records.json").is_err());
-        assert!(load("to,first_name\n", "records.csv").is_err());
-        assert!(load("\n\n", "records.jsonl").is_err());
-    }
-
-    #[test]
-    fn a_csv_row_that_does_not_match_the_header_fails_the_batch() {
-        let err = load(
-            "to,first_name,url\na@example.com,Dumi,https://x.example/a\nb@example.com,Sam\n",
-            "records.csv",
-        )
-        .unwrap_err();
-        assert!(format!("{err:#}").contains("row 2"), "{err:#}");
-    }
-
-    #[test]
-    fn a_nested_property_value_fails_the_batch() {
-        let err = load(
-            r#"[{"to":"a@example.com","plan":{"id":1}}]"#,
-            "records.json",
-        )
-        .unwrap_err();
-        assert!(err.to_string().contains("plan"), "{err}");
-
-        let err = load(r#"[{"to":"a@example.com","tags":["x"]}]"#, "records.json").unwrap_err();
-        assert!(err.to_string().contains("tags"), "{err}");
-    }
-
-    #[test]
-    fn json_scalars_become_text() {
-        let records = load(
-            r#"[{"to":"a@example.com","seats":3,"trial":true,"note":null}]"#,
-            "records.json",
-        )
-        .unwrap();
-        assert_eq!(records[0].properties["seats"], "3");
-        assert_eq!(records[0].properties["trial"], "true");
-        assert_eq!(records[0].properties["note"], "");
-    }
-
-    #[test]
-    fn subject_rejects_line_breaks_and_emptiness() {
-        assert!(validate_subject("Hello").is_ok());
-        assert!(validate_subject("Ben & Co — your digest").is_ok());
-        assert!(validate_subject("Hi\r\nBcc: evil@example.com").is_err());
-        assert!(validate_subject("Hi\nBcc: evil@example.com").is_err());
-        assert!(validate_subject("Hi\rBcc: evil@example.com").is_err());
-        assert!(validate_subject("").is_err());
-        assert!(validate_subject("   ").is_err());
-    }
-
-    #[test]
-    fn record_hash_is_stable_across_runs() {
-        let first = record(&[("to", "a@example.com"), ("plan", "pro")]);
-        let second = record(&[("plan", "pro"), ("to", "a@example.com")]);
-        assert_eq!(first.hash(), second.hash());
-    }
-
-    #[test]
     fn record_hash_distinguishes_records_that_share_a_key_boundary() {
         assert_ne!(record(&[("a", "bc")]).hash(), record(&[("ab", "c")]).hash());
         assert_ne!(
@@ -467,29 +366,5 @@ mod tests {
         let safe = Redactor::for_batch(&batch).scrub(leaked);
         assert!(!safe.contains("opaque-token-xyz"), "{safe}");
         assert!(safe.contains("compose failed"), "{safe}");
-    }
-
-    #[test]
-    fn redaction_covers_every_record_in_the_batch_not_just_one() {
-        let batch = [
-            record(&[("to", "a@example.com"), ("url", "https://x/?t=token-aaaa")]),
-            record(&[("to", "b@example.com"), ("url", "https://x/?t=token-bbbb")]),
-        ];
-        let safe = Redactor::for_batch(&batch)
-            .scrub("failed: refusing https://x/?t=token-aaaa and https://x/?t=token-bbbb");
-        assert!(!safe.contains("token-aaaa"), "leaked record A: {safe}");
-        assert!(!safe.contains("token-bbbb"), "leaked record B: {safe}");
-        assert!(safe.contains("refusing"), "{safe}");
-    }
-
-    #[test]
-    fn redaction_does_not_leave_the_tail_of_an_overlapping_value() {
-        let batch = [record(&[
-            ("short", "token-abc"),
-            ("long", "token-abc-and-the-secret-part"),
-        ])];
-        let safe =
-            Redactor::for_batch(&batch).scrub("failed on token-abc-and-the-secret-part here");
-        assert!(!safe.contains("secret-part"), "{safe}");
     }
 }

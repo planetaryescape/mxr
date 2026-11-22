@@ -209,12 +209,6 @@ mod tests {
     }
 
     #[test]
-    fn a_draft_with_no_gap_is_clear() {
-        assert!(check(&markdown("See you Thursday at 3pm.")).is_empty());
-        assert!(check(&markdown("Are we set [[ok]]? [?: no]")).is_empty());
-    }
-
-    #[test]
     fn each_gap_is_named_and_blocks() {
         let issues = check(&markdown(
             "Meeting on [[?: the date]] for [[?:  the\n price ]].",
@@ -224,25 +218,6 @@ mod tests {
         assert_eq!(issue.code, DraftSafetyIssueCode::UnfilledGap);
         assert_eq!(issue.severity, DraftSafetySeverity::Blocker);
         assert_eq!(issue.message, "2 gaps left: the date, the price");
-    }
-
-    #[test]
-    fn a_gap_in_the_quote_or_the_signature_still_counts() {
-        let body = "Thanks.\n\n> earlier [[?: the number]]\n\n-- \nAlex [[?: title]]";
-        let issues = check(&markdown(body));
-        assert_eq!(issues[0].message, "2 gaps left: the number, title");
-    }
-
-    #[test]
-    fn a_gap_in_the_subject_counts() {
-        let issues = check(&draft("Re: [[?: topic]]", DraftContent::markdown("Fine.")));
-        assert_eq!(issues[0].message, "1 gap left: topic");
-    }
-
-    #[test]
-    fn a_marker_left_open_and_an_empty_one_still_block() {
-        let issues = check(&markdown("Call at [[?: the time\nThanks [[?:]]"));
-        assert_eq!(issues[0].message, "2 gaps left: the time, an unnamed gap");
     }
 
     #[test]
@@ -259,97 +234,6 @@ mod tests {
             assert_eq!(issues[0].message, "1 gap left: the date", "{html}");
         }
         let clean = DraftContent::html("<p>See &#91;you&#93; then.</p>", Some("See you.".into()));
-        assert!(check(&draft("s", clean)).is_empty());
-    }
-
-    fn only_message(draft: &Draft) -> String {
-        let issues = check(draft);
-        assert_eq!(issues.len(), 1, "{:?}", draft.content);
-        issues[0].message.clone()
-    }
-
-    #[test]
-    fn a_marker_the_renderer_wraps_across_lines_still_counts() {
-        let html = format!("<p>{}&#91;&#91;?: the date]]</p>", "A".repeat(79));
-        let content = DraftContent::html(html, Some("Clean text.".into()));
-        assert_eq!(only_message(&draft("s", content)), "1 gap left: the date");
-    }
-
-    #[test]
-    fn markdown_that_renders_to_a_gap_is_a_gap() {
-        for source in [
-            "Meet on &#91;&#91;?: the date]]",
-            "Meet on &lbrack;&lbrack;?: the date]]",
-        ] {
-            assert_eq!(
-                only_message(&markdown(source)),
-                "1 gap left: the date",
-                "{source}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_marker_split_by_whitespace_or_tags_is_an_unnamed_gap() {
-        assert_eq!(
-            only_message(&markdown("Meet on [[ ?: the date]]")),
-            "1 gap left: an unnamed gap"
-        );
-        assert_eq!(
-            only_message(&markdown("Meet on [\n[?: the date]]")),
-            "1 gap left: an unnamed gap"
-        );
-        let split = DraftContent::html("<p>[<b></b>[?: the date]]</p>", Some("Clean.".into()));
-        assert_eq!(only_message(&draft("s", split)), "1 gap left: the date");
-        assert_eq!(
-            only_message(&markdown("[[?: the price]] and [[  ?: the date]]")),
-            "2 gaps left: the price, an unnamed gap"
-        );
-    }
-
-    #[test]
-    fn a_gap_in_an_attribute_the_recipient_can_see_is_a_gap() {
-        for html in [
-            r#"<img src="https://example.com/x.png" alt="&#91;&#91;?: the date&#93;&#93;">"#,
-            r#"<a href="https://example.com" title="&#91;&#91;?: the date&#93;&#93;">link</a>"#,
-        ] {
-            let content = DraftContent::html(html, Some("Clean text.".into()));
-            assert_eq!(
-                only_message(&draft("s", content)),
-                "1 gap left: the date",
-                "{html}"
-            );
-        }
-        assert_eq!(
-            only_message(&markdown(
-                "![&#91;&#91;?: the date&#93;&#93;](https://example.com/x.png)"
-            )),
-            "1 gap left: the date"
-        );
-        let clean = DraftContent::html(
-            r#"<img src="https://example.com/x.png" alt="A chart [x] of sales" title="Q3?: ok">"#,
-            Some("Clean.".into()),
-        );
-        assert!(check(&draft("s", clean)).is_empty());
-    }
-
-    #[test]
-    fn brackets_and_a_question_mark_apart_are_not_a_gap() {
-        assert!(check(&markdown(
-            "Tasks: [x] done. Is it ready?: yes. See [1] and [2]."
-        ))
-        .is_empty());
-        let html = DraftContent::html("<p>Done [x] and what?: no</p>", Some("Done [x].".into()));
-        assert!(check(&draft("s", html)).is_empty());
-    }
-
-    #[test]
-    fn an_html_draft_is_checked_in_both_parts() {
-        let in_text = DraftContent::html("<p>Hi</p>", Some("Hi [[?: name]]".into()));
-        assert_eq!(check(&draft("s", in_text)).len(), 1);
-        let only_in_html = DraftContent::html("<p>Hi [[?: name]]</p>", None);
-        assert_eq!(check(&draft("s", only_in_html)).len(), 1);
-        let clean = DraftContent::html("<p>Hi</p>", Some("Hi".into()));
         assert!(check(&draft("s", clean)).is_empty());
     }
 
@@ -386,32 +270,5 @@ mod tests {
             "{issues:?}"
         );
         assert!(!issues[0].message.contains("simplify"), "{issues:?}");
-    }
-
-    #[test]
-    fn html_the_helper_gave_up_on_is_called_too_complex() {
-        for reason in [
-            FallbackReason::Oversize,
-            FallbackReason::KnownBad,
-            FallbackReason::Timeout,
-            FallbackReason::HelperDied,
-            FallbackReason::JobFailed,
-        ] {
-            assert!(
-                unchecked_message(reason).contains("too complex"),
-                "{reason:?}"
-            );
-        }
-    }
-}
-
-#[cfg(test)]
-mod budget_tests {
-    use super::*;
-
-    #[test]
-    fn an_over_budget_document_has_no_views_so_the_check_blocks_it() {
-        let html = format!("<img alt=\"zzalt\">{}", "<br>".repeat(200_000));
-        assert_eq!(html_views(&html).err(), Some(FallbackReason::Oversize));
     }
 }

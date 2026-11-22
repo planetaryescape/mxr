@@ -28,33 +28,12 @@ impl Stub {
         Self::with(true, Reply::Draft, Reply::Literal(String::new()))
     }
 
-    pub fn failing(stderr: &str) -> Self {
-        Self::with(
-            false,
-            Reply::Fail(stderr.to_string()),
-            Reply::Fail(stderr.to_string()),
-        )
-    }
-
-    /// A stub whose compose succeeds but prints this instead of a draft id.
-    pub fn replying(stdout: &str) -> Self {
-        Self::with(
-            true,
-            Reply::Literal(stdout.to_string()),
-            Reply::Literal(String::new()),
-        )
-    }
-
     pub fn compose_fails(stderr: &str) -> Self {
         Self::with(
             true,
             Reply::Fail(stderr.to_string()),
             Reply::Literal(String::new()),
         )
-    }
-
-    pub fn send_fails(stderr: &str) -> Self {
-        Self::with(true, Reply::Draft, Reply::Fail(stderr.to_string()))
     }
 
     pub fn with(version_ok: bool, compose: Reply, send: Reply) -> Self {
@@ -180,34 +159,6 @@ exit 1
     pub fn value_after<'a>(&self, argv: &'a [String], flag: &str) -> Option<&'a str> {
         let position = argv.iter().position(|arg| arg == flag)?;
         argv.get(position + 1).map(String::as_str)
-    }
-
-    /// What was sitting in the directory of rendered bodies at the moment of
-    /// each compose, in call order. Lets a test see how long a personalised
-    /// body stays on disk, which nothing observable after the run can show.
-    pub fn workdir_at_each_compose(&self) -> Vec<Vec<String>> {
-        let Ok(entries) = std::fs::read_dir(self.dir.path().join("workdirs")) else {
-            return Vec::new();
-        };
-        let mut listings: Vec<(usize, Vec<String>)> = entries
-            .map(|entry| {
-                let path = entry.unwrap().path();
-                let call: usize = path
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .parse()
-                    .expect("stub names each listing after its call number");
-                let files = std::fs::read_to_string(&path)
-                    .unwrap_or_default()
-                    .lines()
-                    .map(str::to_string)
-                    .collect();
-                (call, files)
-            })
-            .collect();
-        listings.sort_by_key(|(call, _)| *call);
-        listings.into_iter().map(|(_, files)| files).collect()
     }
 
     pub fn captured_bodies(&self) -> Vec<String> {

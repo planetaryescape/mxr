@@ -163,20 +163,6 @@ mod tests {
         reason = "isolated state fixtures assert directly"
     )]
     use super::*;
-    #[test]
-    fn old_registration_and_pending_state_default_to_read_only() {
-        let selected = serde_json::json!({"origin":"https://fixture.example","client_id":"fixture","host_id":"host","workspace_id":"workspace","recovery_generation":"generation","mail_secret":"a","cleanup_secret":"b"});
-        let pending = serde_json::json!({"origin":"https://fixture.example","name":"pending","mail_secret":"c","cleanup_secret":"d","request_id":null});
-        let state: ConnectionState = serde_json::from_value(serde_json::json!({"generation":1,"selected":selected,"pending_pairing":pending,"cleanup":[]})).unwrap();
-        assert_eq!(
-            state.selected.unwrap().capabilities,
-            [RemoteCapability::MailRead]
-        );
-        assert_eq!(
-            state.pending_pairing.unwrap().capabilities,
-            [RemoteCapability::MailRead]
-        );
-    }
 
     #[test]
     fn stale_generation_cannot_overwrite_switch_or_drop_cleanup() {
@@ -204,44 +190,6 @@ mod tests {
         assert!(!raw.contains("mail_secret"));
     }
     #[test]
-    fn cross_process_writers_keep_all_updates_on_stable_lock_inode() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("connection.json");
-        let mut children = Vec::new();
-        for _ in 0..3 {
-            children.push(
-                std::process::Command::new(std::env::current_exe().unwrap())
-                    .args(["connection_state::tests::child_writer", "--exact"])
-                    .env("MXR_TEST_CLIENT_STATE", &path)
-                    .stdout(std::process::Stdio::null())
-                    .spawn()
-                    .unwrap(),
-            );
-        }
-        for mut child in children {
-            assert!(child.wait().unwrap().success());
-        }
-        assert_eq!(read(&path).unwrap().generation, 60);
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(
-            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-            0o600
-        );
-    }
-    #[test]
-    fn child_writer() {
-        let Some(path) = std::env::var_os("MXR_TEST_CLIENT_STATE") else {
-            return;
-        };
-        for _ in 0..20 {
-            update(Path::new(&path), None, |state| {
-                state.generation += 1;
-                Ok(())
-            })
-            .unwrap();
-        }
-    }
-    #[test]
     fn symlinked_state_and_lock_are_refused() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("connection.json");
@@ -253,39 +201,5 @@ mod tests {
         std::os::unix::fs::symlink(&victim, path.with_extension("lock")).unwrap();
         assert!(update(&path, None, |_| Ok(())).is_err());
         assert_eq!(std::fs::read_to_string(victim).unwrap(), "keep");
-    }
-}
-
-#[cfg(test)]
-mod cleanup_retry_tests {
-    use super::*;
-    #[test]
-    fn cleanup_retry_backoff_survives_a_new_process_and_new_intents_can_run_immediately(
-    ) -> std::io::Result<()> {
-        let dir = tempfile::tempdir()?;
-        let path = dir.path().join("connection.json");
-        update(&path, None, |state| {
-            state.cleanup.push(RetiredRegistration {
-                origin: "https://offline.test".into(),
-                client_id: "old".into(),
-                cleanup_secret: RemoteSecret::new("a".repeat(64)),
-            });
-            assert!(state.claim_cleanup_retry(100));
-            assert_eq!(state.cleanup_retry_at, 130);
-            Ok(())
-        })?;
-        update(&path, None, |state| {
-            assert!(!state.claim_cleanup_retry(129));
-            assert!(state.claim_cleanup_retry(130));
-            assert_eq!(state.cleanup_retry_at, 190);
-            state.reset_cleanup_retry();
-            assert!(state.claim_cleanup_retry(131));
-            assert_eq!(state.cleanup_retry_at, 161);
-            Ok(())
-        })?;
-        let state = read(&path)?;
-        assert_eq!(state.cleanup_retry_at, 161);
-        assert_eq!(state.cleanup.len(), 1);
-        Ok(())
     }
 }

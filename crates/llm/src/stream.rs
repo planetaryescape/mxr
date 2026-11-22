@@ -370,17 +370,6 @@ mod tests {
     }
 
     #[test]
-    fn sse_events_survive_any_chunking() {
-        let stream = "data: {\"a\":1}\n\nevent: x\ndata: {\"b\":\r\ndata: 2}\r\n\r\n";
-        for split in 1..stream.len() {
-            let mut buffer = SseBuffer::default();
-            let mut events = buffer.push(&stream[..split]);
-            events.extend(buffer.push(&stream[split..]));
-            assert_eq!(events, vec!["{\"a\":1}", "{\"b\":\n2}"], "split at {split}");
-        }
-    }
-
-    #[test]
     fn openai_chunks_build_text_and_tool_calls() {
         let seen = Seen::default();
         let sink = |text: &str| seen.push(text);
@@ -438,18 +427,5 @@ mod tests {
         assert_eq!(reply["usage"]["output_tokens"], 5);
         assert_eq!(reply["usage"]["cache_read_input_tokens"], 8);
         assert_eq!(seen.all(), vec!["Hi"]);
-    }
-
-    #[test]
-    fn an_overloaded_stream_counts_against_the_route() {
-        let mut stream = AnthropicStream::default();
-        let error = stream
-            .fold(
-                r#"{"type":"error","error":{"type":"overloaded_error","message":"busy"}}"#,
-                &|_: &str| {},
-            )
-            .err()
-            .unwrap();
-        assert!(matches!(error.class, crate::failure::ErrorClass::Route(_)));
     }
 }

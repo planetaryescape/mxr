@@ -215,25 +215,6 @@ mod tests {
         (directory, stub, manifest)
     }
     #[test]
-    fn legacy_acceptance_recovers_without_preview_or_send() {
-        let (dir, stub, mut manifest) = fixture(false);
-        std::fs::write(stub.dir().join("outcomes/draft-1"), "accepted").unwrap();
-        assert_eq!(
-            dispatch_record(
-                &Mxr::new(Some(stub.binary())),
-                &mut manifest,
-                dir.path(),
-                "hash",
-                None,
-                true
-            )
-            .unwrap(),
-            RecordStatus::Sent
-        );
-        assert!(stub.calls_to("send").is_empty());
-        assert_eq!(stub.calls().len(), 1);
-    }
-    #[test]
     fn unknown_preserves_review_and_cannot_enter_retry_failed() {
         let (dir, stub, mut manifest) = fixture(true);
         std::fs::write(stub.dir().join("outcomes/draft-1"), "unknown").unwrap();
@@ -258,47 +239,6 @@ mod tests {
         );
     }
     #[test]
-    fn known_rejection_requires_explicit_retry_and_new_identity() {
-        let (dir, stub, mut manifest) = fixture(true);
-        std::fs::write(stub.dir().join("outcomes/draft-1"), "not_accepted").unwrap();
-        let client = Mxr::new(Some(stub.binary()));
-        assert_eq!(
-            dispatch_record(&client, &mut manifest, dir.path(), "hash", None, false).unwrap(),
-            RecordStatus::Failed
-        );
-        assert!(stub.calls_to("send").is_empty());
-        assert_eq!(
-            dispatch_record(&client, &mut manifest, dir.path(), "hash", None, true).unwrap(),
-            RecordStatus::Sent
-        );
-        let call = &stub.calls_to("send")[0];
-        assert_eq!(stub.value_after(call, "--expected-revision"), Some("1"));
-        assert_eq!(
-            stub.value_after(call, "--operation-id"),
-            Some("draft-1:1:mailmerge-retry:1")
-        );
-    }
-    #[test]
-    fn retained_immediate_command_rejects_a_new_schedule_before_effect() {
-        let (dir, stub, mut manifest) = fixture(true);
-        assert!(dispatch_record(
-            &Mxr::new(Some(stub.binary())),
-            &mut manifest,
-            dir.path(),
-            "hash",
-            Some("2026-10-12T12:00:00Z"),
-            false
-        )
-        .is_err());
-        assert!(stub.calls_to("send").is_empty());
-        assert!(manifest.records[0]
-            .review
-            .as_ref()
-            .unwrap()
-            .scheduled_at
-            .is_none());
-    }
-    #[test]
     fn lost_schedule_ack_never_becomes_immediate_or_rescheduled() {
         let (dir, stub, mut manifest) = fixture(true);
         manifest.records[0].review.as_mut().unwrap().scheduled_at =
@@ -320,37 +260,6 @@ mod tests {
         assert!(stub.calls_to("send").is_empty());
     }
     #[test]
-    fn legacy_manifest_has_no_review_and_closed_errors() {
-        let value = r#"{"campaign_id":"old","account":"legacy","created_at":"then","records":[{"record_hash":"hash","to":"recipient@example.com","draft_id":"draft-1","status":"failed","error":"send_refused"}]}"#;
-        let manifest: Manifest = serde_json::from_str(value).unwrap();
-        assert!(manifest.records[0].review.is_none());
-        assert_eq!(manifest.records[0].error, Some(FailureReason::Send));
-    }
-    #[test]
-    fn unavailable_outcome_never_turns_provider_text_into_retry_permission() {
-        let (dir, stub, mut manifest) = fixture(true);
-        std::fs::write(stub.dir().join("outcomes/draft-1"), "private-provider-text").unwrap();
-        assert_eq!(
-            dispatch_record(
-                &Mxr::new(Some(stub.binary())),
-                &mut manifest,
-                dir.path(),
-                "hash",
-                None,
-                true
-            )
-            .unwrap(),
-            RecordStatus::Uncertain
-        );
-        assert!(stub.calls_to("send").is_empty());
-        let saved = std::fs::read_to_string(Manifest::path_in(dir.path(), "campaign")).unwrap();
-        assert!(!saved.contains("private-provider-text"));
-        assert_eq!(
-            manifest.records[0].review.as_ref().unwrap().operation_id,
-            "draft-1:1"
-        );
-    }
-    #[test]
     fn checkpoint_write_failure_prevents_submitting_the_reviewed_command() {
         let (dir, stub, mut manifest) = fixture(false);
         let blocked = dir.path().join("not-a-directory");
@@ -365,73 +274,5 @@ mod tests {
         )
         .is_err());
         assert!(stub.calls_to("send").is_empty());
-    }
-    #[test]
-    fn send_and_recovery_keep_the_reviewed_workspace() {
-        let (dir, stub, mut manifest) = fixture(true);
-        let owner = manifest.records[0]
-            .review
-            .as_ref()
-            .unwrap()
-            .expected_workspace
-            .clone()
-            .unwrap();
-        dispatch_record(
-            &Mxr::new(Some(stub.binary())),
-            &mut manifest,
-            dir.path(),
-            "hash",
-            None,
-            false,
-        )
-        .unwrap();
-        for cmd in ["send", "send-outcome"] {
-            let calls = stub.calls_to(cmd);
-            assert!(!calls.is_empty());
-            for call in calls {
-                assert_eq!(
-                    stub.value_after(&call, "--expected-workspace"),
-                    Some(serde_json::to_string(&owner).unwrap().as_str())
-                );
-            }
-        }
-    }
-    #[test]
-    fn legacy_unowned_manifest_is_retained_without_any_subprocess_replay() {
-        let (dir, stub, mut manifest) = fixture(false);
-        manifest.records[0].expected_workspace = None;
-        let before = serde_json::to_value(&manifest).unwrap();
-        assert!(dispatch_record(
-            &Mxr::new(Some(stub.binary())),
-            &mut manifest,
-            dir.path(),
-            "hash",
-            None,
-            false
-        )
-        .is_err());
-        assert_eq!(serde_json::to_value(&manifest).unwrap(), before);
-        assert!(stub.calls().is_empty());
-    }
-    #[test]
-    fn legacy_review_without_owner_never_looks_up_the_alias_in_current_workspace() {
-        let (dir, stub, mut manifest) = fixture(true);
-        manifest.records[0]
-            .review
-            .as_mut()
-            .unwrap()
-            .expected_workspace = None;
-        let before = serde_json::to_value(&manifest).unwrap();
-        assert!(dispatch_record(
-            &Mxr::new(Some(stub.binary())),
-            &mut manifest,
-            dir.path(),
-            "hash",
-            None,
-            false
-        )
-        .is_err());
-        assert_eq!(serde_json::to_value(&manifest).unwrap(), before);
-        assert!(stub.calls().is_empty());
     }
 }

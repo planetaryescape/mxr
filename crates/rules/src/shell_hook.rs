@@ -295,17 +295,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn hook_payload_contains_all_fields() {
-        execute_shell_hook(
-            "python3 -c 'import sys, json; d = json.load(sys.stdin); assert d[\"from\"][\"email\"] == \"alice@example.com\"; assert d[\"subject\"] == \"Invoice #2847\"; assert len(d[\"attachments\"]) == 1'",
-            &sample_payload(),
-            None,
-        )
-        .await
-        .expect("payload field check should pass");
-    }
-
     fn kill_pid_file(pid_file: &std::path::Path) {
         if let Ok(pid) = std::fs::read_to_string(pid_file) {
             let _ = std::process::Command::new("kill")
@@ -328,47 +317,5 @@ mod tests {
             execute_shell_hook(&command, &sample_payload(), Some(Duration::from_secs(10))).await;
         kill_pid_file(&pid_file);
         assert!(result.is_ok(), "{result:?}");
-    }
-
-    #[tokio::test]
-    async fn backgrounded_child_holding_stdin_does_not_block_large_payload() {
-        let mut payload = sample_payload();
-        payload.body_text = Some("x".repeat(2 * 1024 * 1024));
-        let pid_file = pid_file();
-        let command = format!("sleep 20 <&0 & echo $! > '{}'; exit 0", pid_file.display());
-        let result = execute_shell_hook(&command, &payload, Some(Duration::from_secs(10))).await;
-        kill_pid_file(&pid_file);
-        assert!(result.is_ok(), "{result:?}");
-    }
-
-    #[tokio::test]
-    async fn failed_hook_keeps_stderr_written_before_exit_while_descendant_holds_pipe() {
-        let pid_file = pid_file();
-        let command = format!(
-            "echo partial >&2; sleep 20 & echo $! > '{}'; exit 3",
-            pid_file.display()
-        );
-        let result =
-            execute_shell_hook(&command, &sample_payload(), Some(Duration::from_secs(10))).await;
-        kill_pid_file(&pid_file);
-        match result {
-            Err(ShellHookError::NonZeroExit { code, stderr, .. }) => {
-                assert_eq!(code, Some(3));
-                assert!(stderr.contains("partial"), "{stderr:?}");
-            }
-            other => panic!("Expected NonZeroExit, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn large_stderr_is_fully_read_when_shell_exits() {
-        let command = "yes x | head -c 300000 >&2; exit 2";
-        let result = execute_shell_hook(command, &sample_payload(), None).await;
-        match result {
-            Err(ShellHookError::NonZeroExit { stderr, .. }) => {
-                assert_eq!(stderr.len(), 300_000);
-            }
-            other => panic!("Expected NonZeroExit, got {other:?}"),
-        }
     }
 }

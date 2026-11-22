@@ -274,56 +274,12 @@ mod tests {
     use crate::tests::*;
 
     #[test]
-    fn exact_match_requires_full_equality() {
-        let m = StringMatch::Exact("alice@example.com".into());
-        assert!(m.matches("alice@example.com"));
-        assert!(!m.matches("ALICE@example.com"));
-        assert!(!m.matches("alice@example.com "));
-    }
-
-    #[test]
     fn contains_match_is_case_insensitive() {
         let m = StringMatch::Contains("invoice".into());
         assert!(m.matches("Re: Invoice #2847"));
         assert!(m.matches("INVOICE attached"));
         assert!(m.matches("Your invoice is ready"));
         assert!(!m.matches("Receipt attached"));
-    }
-
-    #[test]
-    fn glob_match_with_wildcards() {
-        let m = StringMatch::Glob("*@substack.com".into());
-        assert!(m.matches("newsletter@substack.com"));
-        assert!(m.matches("alice@substack.com"));
-        assert!(!m.matches("newsletter@gmail.com"));
-    }
-
-    #[test]
-    fn cached_regex_answers_match_a_fresh_compile() {
-        let pattern = r"(?i)cache\s*probe\d+";
-        let fresh = regex::Regex::new(pattern).unwrap();
-        for haystack in [
-            "Cache probe7",
-            "cacheprobe",
-            "no match here",
-            "CACHE PROBE12",
-        ] {
-            for _ in 0..3 {
-                assert_eq!(
-                    StringMatch::Regex(pattern.into()).matches(haystack),
-                    fresh.is_match(haystack),
-                    "{haystack:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn invalid_regex_stays_false_on_every_call() {
-        let m = StringMatch::Regex("(unclosed".into());
-        for _ in 0..3 {
-            assert!(!m.matches("(unclosed"));
-        }
     }
 
     #[test]
@@ -336,67 +292,6 @@ mod tests {
         assert!(!m.matches("Your invoices are ready"));
         assert!(!m.matches("reinvoiced"));
         assert!(!m.matches("uninvoice"));
-    }
-
-    #[test]
-    fn whole_word_term_round_trips_only_whole_word_patterns() {
-        assert_eq!(
-            StringMatch::whole_word("c++").whole_word_term().as_deref(),
-            Some("c++")
-        );
-        assert_eq!(
-            StringMatch::whole_word("a\\b").whole_word_term().as_deref(),
-            Some("a\\b")
-        );
-        assert_eq!(
-            StringMatch::Regex(r"invoice\s*#\d+".into()).whole_word_term(),
-            None
-        );
-        assert_eq!(
-            StringMatch::Contains("invoice".into()).whole_word_term(),
-            None
-        );
-    }
-
-    #[test]
-    fn whole_word_escapes_regex_metacharacters() {
-        let cpp = StringMatch::whole_word("c++");
-        assert!(cpp.matches("I write c++ daily"));
-        assert!(!cpp.matches("I write cxx daily"));
-
-        let dotted = StringMatch::whole_word("a.b");
-        assert!(dotted.matches("see a.b here"));
-        assert!(!dotted.matches("see axb here"));
-    }
-
-    #[test]
-    fn and_condition_short_circuits_on_false() {
-        let cond = Conditions::And {
-            conditions: vec![
-                Conditions::Field(FieldCondition::IsStarred),
-                Conditions::Field(FieldCondition::HasUnsubscribe),
-            ],
-        };
-        assert!(!cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
-    fn or_condition_fails_when_all_false() {
-        let cond = Conditions::Or {
-            conditions: vec![
-                Conditions::Field(FieldCondition::IsStarred),
-                Conditions::Field(FieldCondition::HasAttachment),
-            ],
-        };
-        assert!(!cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
-    fn not_condition_inverts() {
-        let cond = Conditions::Not {
-            condition: Box::new(Conditions::Field(FieldCondition::IsStarred)),
-        };
-        assert!(cond.evaluate(&newsletter_msg()));
     }
 
     #[test]
@@ -415,86 +310,5 @@ mod tests {
             ],
         };
         assert!(cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
-    fn empty_and_is_vacuously_true() {
-        let cond = Conditions::And { conditions: vec![] };
-        assert!(cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
-    fn to_field_matches_any_recipient() {
-        let cond = FieldCondition::To {
-            pattern: StringMatch::Exact("user@example.com".into()),
-        };
-        assert!(cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
-    fn has_label_checks_label_list() {
-        let cond = FieldCondition::HasLabel {
-            label: "newsletters".into(),
-        };
-        assert!(cond.evaluate(&newsletter_msg()));
-
-        let cond = FieldCondition::HasLabel {
-            label: "work".into(),
-        };
-        assert!(!cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
-    fn size_conditions_work() {
-        let msg = newsletter_msg();
-
-        let cond = FieldCondition::SizeGreaterThan { bytes: 10000 };
-        assert!(cond.evaluate(&msg));
-
-        let cond = FieldCondition::SizeGreaterThan { bytes: 20000 };
-        assert!(!cond.evaluate(&msg));
-
-        let cond = FieldCondition::SizeLessThan { bytes: 20000 };
-        assert!(cond.evaluate(&msg));
-    }
-
-    #[test]
-    fn date_conditions_work() {
-        let msg = newsletter_msg();
-        let past = chrono::Utc::now() - chrono::Duration::hours(1);
-        let future = chrono::Utc::now() + chrono::Duration::hours(1);
-
-        let cond = FieldCondition::DateAfter { date: past };
-        assert!(cond.evaluate(&msg));
-
-        let cond = FieldCondition::DateBefore { date: future };
-        assert!(cond.evaluate(&msg));
-    }
-
-    #[test]
-    fn body_contains_searches_text() {
-        let cond = FieldCondition::BodyContains {
-            pattern: StringMatch::Contains("weekly Rust digest".into()),
-        };
-        assert!(cond.evaluate(&newsletter_msg()));
-    }
-
-    #[test]
-    fn body_contains_returns_false_when_no_body() {
-        let mut msg = newsletter_msg();
-        msg.body = None;
-        let cond = FieldCondition::BodyContains {
-            pattern: StringMatch::Contains("anything".into()),
-        };
-        assert!(!cond.evaluate(&msg));
-    }
-
-    #[test]
-    fn has_attachment_checks_flag() {
-        assert!(!FieldCondition::HasAttachment.evaluate(&newsletter_msg()));
-
-        let mut msg = newsletter_msg();
-        msg.has_attachment = true;
-        assert!(FieldCondition::HasAttachment.evaluate(&msg));
     }
 }

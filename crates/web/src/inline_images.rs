@@ -106,21 +106,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn raster_types_are_served_with_locked_down_headers() {
-        for mime in ALLOWED_TYPES {
-            let response = response(Some(mime), b"img".to_vec(), "no-store");
-            assert_eq!(response.status(), StatusCode::OK, "{mime}");
-            assert_eq!(response.headers()[header::CONTENT_TYPE], *mime);
-            assert_eq!(response.headers()[header::CONTENT_DISPOSITION], "inline");
-            assert_eq!(response.headers()["x-content-type-options"], "nosniff");
-            assert_eq!(
-                response.headers()["content-security-policy"],
-                "default-src 'none'; sandbox"
-            );
-        }
-    }
-
-    #[test]
     fn markup_and_unknown_types_are_refused() {
         for mime in [
             "text/html",

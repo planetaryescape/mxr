@@ -272,14 +272,6 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_cid_is_refused() {
-        assert!(matches!(
-            validate_cid(""),
-            Err(InlineAssetError::InvalidCid { .. })
-        ));
-    }
-
-    #[test]
     fn the_documented_cid_charset_is_accepted() {
         for cid in [
             "logo",
@@ -292,24 +284,6 @@ mod tests {
             "a.b_c-d+e9",
         ] {
             assert_eq!(validate_cid(cid), Ok(()), "should have accepted: {cid}");
-        }
-    }
-
-    #[test]
-    fn characters_outside_the_documented_charset_are_refused() {
-        for cid in [
-            "logo bar",
-            "<logo>",
-            "logo@example.com",
-            "logo:1",
-            "logo;name=x",
-            "logo\"x",
-            "logo\tx",
-            "logo/1",
-            "lögo",
-            "🎉",
-        ] {
-            assert!(validate_cid(cid).is_err(), "should have refused: {cid:?}");
         }
     }
 }

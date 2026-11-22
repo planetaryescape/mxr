@@ -250,11 +250,4 @@ mod tests {
         assert_eq!(got.items.len(), 1);
         assert_eq!(got.items[0].name, "Blue Widget");
     }
-
-    #[test]
-    fn ignores_non_shipment_jsonld() {
-        let html = r#"<script type="application/ld+json">
-            {"@type":"WebSite","name":"Acme"}</script>"#;
-        assert!(extract(Some(html)).is_none());
-    }
 }

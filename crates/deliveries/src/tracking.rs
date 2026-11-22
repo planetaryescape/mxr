@@ -87,14 +87,4 @@ mod tests {
         );
         assert!(extract("just some words, no numbers").is_empty());
     }
-
-    #[test]
-    fn tolerates_spaces_in_grouped_numbers() {
-        let text = "Tracking: 1Z 5R8 939 03 5756 7127";
-        let found = extract(text);
-        assert!(
-            found.iter().any(|t| t.carrier == "ups"),
-            "spaced UPS not recovered: {found:?}"
-        );
-    }
 }

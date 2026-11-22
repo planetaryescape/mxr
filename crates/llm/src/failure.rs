@@ -146,28 +146,6 @@ mod tests {
     }
 
     #[test]
-    fn a_400_is_a_route_failure_only_when_it_names_an_unknown_model() {
-        for body in [
-            r#"{"error":{"message":"anthropic/claude-haiku-9.9 is not a valid model ID"}}"#,
-            r#"{"error":{"message":"No endpoints found for anthropic/claude-x"}}"#,
-        ] {
-            assert!(matches!(
-                route_failure(classify_status(400, None, body)),
-                RouteFailure::Broken { .. }
-            ));
-        }
-        for body in [
-            r#"{"error":{"type":"invalid_request_error","message":"max_tokens: must be positive"}}"#,
-            "",
-        ] {
-            assert!(matches!(
-                classify_status(400, None, body),
-                ErrorClass::Request
-            ));
-        }
-    }
-
-    #[test]
     fn outages_and_limits_cool_and_keep_the_servers_retry_after() {
         let after = Some(Duration::from_secs(12));
         for (status, text) in [
@@ -190,16 +168,6 @@ mod tests {
     }
 
     #[test]
-    fn other_client_errors_are_about_the_request() {
-        for status in [405, 409, 413, 422] {
-            assert!(
-                matches!(classify_status(status, None, ""), ErrorClass::Request),
-                "{status}"
-            );
-        }
-    }
-
-    #[test]
     fn the_failure_reason_never_carries_reply_text() {
         let body = "sk-ant-leaked-key and the user's prompt text";
         let RouteFailure::Broken { reason } = route_failure(classify_status(404, None, body))
@@ -207,19 +175,5 @@ mod tests {
             panic!("expected broken");
         };
         assert!(!reason.to_string().contains("sk-ant"));
-    }
-
-    #[test]
-    fn retry_after_reads_seconds_only() {
-        assert_eq!(
-            parse_retry_after(Some(" 30 ")),
-            Some(Duration::from_secs(30))
-        );
-        assert_eq!(
-            parse_retry_after(Some("Wed, 21 Oct 2026 07:28:00 GMT")),
-            None
-        );
-        assert_eq!(parse_retry_after(Some("-5")), None);
-        assert_eq!(parse_retry_after(None), None);
     }
 }

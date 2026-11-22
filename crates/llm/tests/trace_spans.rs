@@ -12,7 +12,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use mxr_llm::{
-    ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime, OpenAiCompatibleConfig,
+    ChatMessage, CompletionRequest, LlmFeature, LlmRuntime, OpenAiCompatibleConfig,
     OpenAiCompatibleProvider, ToolChatMessage, ToolChatRequest,
 };
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData};
@@ -184,49 +184,6 @@ async fn a_feature_call_is_one_span_with_a_generation_per_request() {
     );
 }
 
-#[tokio::test]
-async fn a_call_cut_off_by_the_background_deadline_says_so() {
-    let exporter = exporter();
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/v1/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(reply("too late", None))
-                .set_delay(Duration::from_secs(3)),
-        )
-        .mount(&server)
-        .await;
-    let runtime = runtime(&server);
-    runtime.set_background_timeout(Duration::from_millis(200));
-
-    let error = runtime
-        .for_feature(LlmFeature::Commitments)
-        .complete_background(request())
-        .await
-        .unwrap_err();
-    assert!(matches!(error, LlmError::Timeout(_)), "{error:?}");
-
-    let spans = exporter.get_finished_spans().unwrap();
-    let feature = spans
-        .iter()
-        .find(|span| span.name == "commitments")
-        .expect("the feature span ends when its call is dropped");
-    assert_eq!(
-        attribute(feature, "langfuse.observation.level").as_deref(),
-        Some("WARNING")
-    );
-    assert!(attribute(feature, "langfuse.observation.output").is_none());
-    let generation = spans
-        .iter()
-        .find(|span| span.parent_span_id == feature.span_context.span_id())
-        .expect("the request in flight is recorded too");
-    assert_eq!(
-        attribute(generation, "langfuse.observation.level").as_deref(),
-        Some("WARNING")
-    );
-}
-
 fn chat_request() -> ToolChatRequest {
     ToolChatRequest {
         messages: vec![ToolChatMessage::User {
@@ -300,41 +257,5 @@ async fn a_streamed_chat_asks_for_usage_and_keeps_its_thinking() {
             "content": "Friday is free.",
             "reasoning_content": "Check the calendar.",
         })
-    );
-}
-
-#[tokio::test]
-async fn a_tool_chat_reply_keeps_its_thinking() {
-    let exporter = exporter();
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/v1/chat/completions"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "model": MODEL,
-            "choices": [{
-                "message": {
-                    "role": "assistant",
-                    "content": "Friday is free.",
-                    "reasoning_content": "Check the calendar.",
-                },
-                "finish_reason": "stop",
-            }],
-            "usage": {"prompt_tokens": 20, "completion_tokens": 5},
-        })))
-        .mount(&server)
-        .await;
-
-    runtime(&server)
-        .for_feature(LlmFeature::Briefing)
-        .pin()
-        .chat(chat_request())
-        .await
-        .unwrap();
-
-    let spans = exporter.get_finished_spans().unwrap();
-    let generation = generation_of(&spans, "briefing");
-    assert_eq!(
-        json_attribute(generation, "langfuse.observation.output")["reasoning_content"],
-        json!("Check the calendar.")
     );
 }

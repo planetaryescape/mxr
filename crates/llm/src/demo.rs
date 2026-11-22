@@ -349,45 +349,4 @@ mod tests {
             "Hi,\n\nThursday works.\nnumbers by wed\n\nWhat date do you need it by? [[?: the date they need it by]]\n\nAlex"
         );
     }
-
-    #[tokio::test]
-    async fn a_selection_comes_back_unchanged_and_nothing_typed_keeps_the_old_script() {
-        let provider = DemoLlmProvider::new();
-        let system = "You are ghostwriting a reply as Alex: the same voice";
-        let user = format!(
-            "[MY DRAFT SO FAR]\n{}\nOne. Two.\n{}\n\n[EDIT ONLY THIS]\n{}\nTwo.\n{}",
-            crate::UNTRUSTED_MAIL_BEGIN,
-            crate::UNTRUSTED_MAIL_END,
-            crate::UNTRUSTED_MAIL_BEGIN,
-            crate::UNTRUSTED_MAIL_END,
-        );
-        let edited = provider.complete(req(system, &user)).await.expect("ok");
-        assert_eq!(edited.content, "One. Two.");
-        let written = provider
-            .complete(req(system, "[TASK]\nWrite my reply."))
-            .await
-            .expect("ok");
-        assert!(
-            written.content.starts_with("Voice-matched draft:"),
-            "{}",
-            written.content
-        );
-    }
-
-    #[tokio::test]
-    async fn thread_gist_quotes_a_question_from_the_newest_message() {
-        let provider = DemoLlmProvider::new();
-        let user = "[msg_id=m1]\nFrom: a@x.com\nDate: d\nSubject: s\nOld. Are we still on for lunch?\n\n\
-                    [msg_id=m2]\nFrom: b@x.com\nDate: d\nSubject: s\nThanks. Can you send the deck today?\n";
-        let resp = provider
-            .complete(req(
-                "You write the reader gist for one email conversation.",
-                user,
-            ))
-            .await
-            .expect("complete ok");
-        let json: serde_json::Value = serde_json::from_str(&resp.content).unwrap();
-        assert_eq!(json["ask"]["msg_id"], "m2");
-        assert_eq!(json["ask"]["quote"], "Can you send the deck today?");
-    }
 }

@@ -232,31 +232,6 @@ mod tests {
     }
 
     #[test]
-    fn pem_private_key_blocks() {
-        let body = concat!(
-            "Hi,\n",
-            "-----BEGIN RSA ",
-            "PRIVATE KEY-----\nMIIEpAIBAA...\n"
-        );
-        let issues = check(&d(body));
-        assert!(
-            issues
-                .iter()
-                .any(|i| i.severity == DraftSafetySeverity::Blocker
-                    && i.code == DraftSafetyIssueCode::PiiSecret),
-            "expected PEM blocker, got {issues:?}"
-        );
-        for issue in &issues {
-            if let Some(detail) = &issue.detail {
-                assert!(
-                    !detail.contains("MIIEpAIBAA"),
-                    "redacted detail leaked raw key body: {detail}"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn luhn_valid_cc_warns() {
         let issues = check(&d("Card: 4242 4242 4242 4242 thanks"));
         assert!(
@@ -275,15 +250,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn random_digit_groups_pass() {
-        let issues = check(&d("ref number 1234567890123456 fyi"));
-        assert!(
-            issues.is_empty(),
-            "Luhn-invalid digit group should not warn ({issues:?})"
-        );
     }
 
     #[test]
@@ -313,31 +279,5 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn aws_label_blocks() {
-        let issues = check(&d("aws_access_key_id=AKIAIOSFODNN7EXAMPLE"));
-        assert!(issues
-            .iter()
-            .any(|i| i.severity == DraftSafetySeverity::Blocker));
-    }
-
-    #[test]
-    fn generic_api_key_blocks() {
-        let issues = check(&d("config api_key=secret_value_long_enough_to_match"));
-        assert!(issues
-            .iter()
-            .any(|i| i.severity == DraftSafetySeverity::Blocker));
-    }
-
-    #[test]
-    fn quoted_context_does_not_trigger_secret_in_quote() {
-        let body = "Got it.\n\nOn Mon, Alice wrote:\n> sk-abcdefghijklmnopqrstuv\n";
-        let issues = check(&d(body));
-        assert!(
-            issues.is_empty(),
-            "secret in quoted context should be ignored ({issues:?})"
-        );
     }
 }

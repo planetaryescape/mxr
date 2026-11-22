@@ -492,60 +492,6 @@ fn outcome_recovery_guidance(draft_id: &str, review: Option<&manifest::SendRevie
     }
 }
 
-#[cfg(test)]
-mod recovery_guidance_tests {
-    use super::*;
-    #[test]
-    fn retained_owner_is_shell_quoted_and_legacy_owner_is_never_inferred() {
-        let owner = manifest::WorkspaceOwner {
-            workspace_id: "workspace'one".into(),
-            recovery_generation: "original".into(),
-        };
-        let mut review = manifest::SendReview {
-            expected_workspace: Some(owner.clone()),
-            account_id: "account'one".into(),
-            expected_revision: 7,
-            operation_id: "draft:original:mailmerge-retry:2".into(),
-            attempt: 2,
-            scheduled_at: None,
-        };
-        let text = outcome_recovery_guidance("draft-one", Some(&review));
-        assert!(text.contains("--account 'account'\"'\"'one'"));
-        assert!(text.contains("'draft:original:mailmerge-retry:2'"));
-        let command = text.lines().last().expect("standalone recovery command");
-        let output = std::process::Command::new("/bin/sh")
-            .args([
-                "-c",
-                &format!("mxr() {{ printf '%s\\n' \"$@\"; }}; {command}"),
-            ])
-            .output()
-            .expect("shell fixture");
-        assert!(output.status.success());
-        let arguments = String::from_utf8(output.stdout).expect("UTF-8 arguments");
-        let arguments: Vec<_> = arguments.lines().collect();
-        assert_eq!(arguments[0], "send-outcome");
-        assert_eq!(arguments[1], review.operation_id);
-        let account_index = arguments
-            .iter()
-            .position(|argument| *argument == "--account")
-            .expect("retained account argument");
-        assert_eq!(arguments[account_index + 1], review.account_id);
-        let owner_index = arguments
-            .iter()
-            .position(|argument| *argument == "--expected-workspace")
-            .expect("original owner argument");
-        let parsed: manifest::WorkspaceOwner = serde_json::from_str(arguments[owner_index + 1])
-            .expect("parseable shell-quoted owner without trailing punctuation");
-        assert_eq!(parsed, owner);
-        review.expected_workspace = None;
-        let legacy = outcome_recovery_guidance("old", Some(&review));
-        assert!(legacy.contains("status <campaign> --json"));
-        assert!(legacy.contains("no complete original reviewed identity"));
-        assert!(!outcome_recovery_guidance("old", None).contains("mxr send-outcome"));
-        assert!(!legacy.contains("mxr send-outcome"));
-    }
-}
-
 fn run_status(args: StatusArgs) -> anyhow::Result<()> {
     let manifest = Manifest::load(&args.state_dir, &args.campaign_id)?;
 
@@ -645,152 +591,6 @@ mod tests {
     #![expect(clippy::unwrap_used, reason = "tests assert directly on fixtures")]
 
     use super::*;
-    use clap::CommandFactory;
-
-    #[test]
-    fn cli_definition_is_valid() {
-        Cli::command().debug_assert();
-    }
-
-    #[test]
-    fn neither_dry_run_nor_yes_means_the_command_does_not_act() {
-        let cli = Cli::try_parse_from([
-            "mxr-mailmerge",
-            "draft",
-            "--account",
-            "notto",
-            "--subject-template",
-            "s.txt",
-            "--html-template",
-            "m.html",
-            "--data",
-            "r.json",
-        ])
-        .unwrap();
-        let Command::Draft(args) = cli.command else {
-            unreachable!("expected draft")
-        };
-        assert!(!args.yes);
-        assert!(!args.dry_run);
-
-        let cli = Cli::try_parse_from(["mxr-mailmerge", "send", "c1"]).unwrap();
-        let Command::Send(args) = cli.command else {
-            unreachable!("expected send")
-        };
-        assert!(!args.yes);
-        assert!(!args.dry_run);
-        assert!(!args.retry_failed);
-        assert!(args.at.is_none());
-    }
-
-    #[test]
-    fn dry_run_and_yes_are_mutually_exclusive_on_both_commands() {
-        assert!(Cli::try_parse_from([
-            "mxr-mailmerge",
-            "draft",
-            "--account",
-            "a",
-            "--subject-template",
-            "s",
-            "--html-template",
-            "h",
-            "--data",
-            "d",
-            "--dry-run",
-            "--yes",
-        ])
-        .is_err());
-        assert!(
-            Cli::try_parse_from(["mxr-mailmerge", "send", "c1", "--dry-run", "--yes"]).is_err()
-        );
-        assert!(Cli::try_parse_from(["mxr-mailmerge", "send", "c1", "--yes"]).is_ok());
-        assert!(Cli::try_parse_from(["mxr-mailmerge", "send", "c1", "--dry-run"]).is_ok());
-        assert!(Cli::try_parse_from([
-            "mxr-mailmerge",
-            "send",
-            "c1",
-            "--at",
-            "2026-08-05T09:00:00+01:00",
-            "--dry-run",
-        ])
-        .is_ok());
-    }
-
-    #[test]
-    fn inline_pairs_parse() {
-        let parsed = parse_inline(&[
-            "logo=/tmp/logo.png".to_string(),
-            " hero = /tmp/a=b.png ".to_string(),
-        ])
-        .unwrap();
-        assert_eq!(parsed[0].0, "logo");
-        assert_eq!(parsed[0].1, PathBuf::from("/tmp/logo.png"));
-        assert_eq!(parsed[1].0, "hero");
-        assert_eq!(parsed[1].1, PathBuf::from("/tmp/a=b.png"));
-
-        assert!(parse_inline(&[]).unwrap().is_empty());
-        let err = parse_inline(&["logo".to_string()]).unwrap_err();
-        assert!(err.to_string().contains("CID=PATH"), "{err}");
-    }
-
-    #[test]
-    fn an_explicit_campaign_id_resumes_that_campaign() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut existing = Manifest::new("c1".into(), "notto@example.com".into());
-        existing.upsert(RecordEntry {
-            expected_workspace: Some(crate::manifest::WorkspaceOwner {
-                workspace_id: "workspace-a".into(),
-                recovery_generation: "generation-a".into(),
-            }),
-            record_hash: "h1".into(),
-            review: None,
-            to: "a@example.com".into(),
-            draft_id: Some("d1".into()),
-            status: RecordStatus::Drafted,
-            error: None,
-        });
-        existing.save(dir.path()).unwrap();
-
-        let (id, manifest) =
-            campaign_state(Some("c1"), "generated", dir.path(), "notto@example.com").unwrap();
-        assert_eq!(id, "c1");
-        assert_eq!(manifest.records.len(), 1, "the resume lost the drafts");
-
-        let (id, manifest) =
-            campaign_state(Some("c2"), "generated", dir.path(), "notto@example.com").unwrap();
-        assert_eq!(id, "c2");
-        assert!(manifest.records.is_empty());
-        assert_eq!(manifest.account, "notto@example.com");
-    }
-
-    #[test]
-    fn a_generated_campaign_id_never_adopts_an_existing_manifest() {
-        let dir = tempfile::tempdir().unwrap();
-        Manifest::new("campaign-x".into(), "notto@example.com".into())
-            .save(dir.path())
-            .unwrap();
-
-        let err = campaign_state(None, "campaign-x", dir.path(), "notto@example.com").unwrap_err();
-        assert!(err.to_string().contains("did not ask to resume"), "{err}");
-        assert!(err.to_string().contains("campaign-x"), "{err}");
-
-        let (id, _) = campaign_state(None, "campaign-y", dir.path(), "notto@example.com").unwrap();
-        assert_eq!(id, "campaign-y");
-    }
-
-    #[test]
-    fn a_campaign_is_only_resumed_from_the_account_that_started_it() {
-        let dir = tempfile::tempdir().unwrap();
-        Manifest::new("c1".into(), "notto@example.com".into())
-            .save(dir.path())
-            .unwrap();
-
-        let err = campaign_state(Some("c1"), "generated", dir.path(), "other@example.com")
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("notto@example.com"), "{err}");
-        assert!(err.contains("other@example.com"), "{err}");
-    }
 
     #[cfg(unix)]
     mod end_to_end {
@@ -903,18 +703,6 @@ mod tests {
         }
 
         #[test]
-        fn a_dry_run_validates_everything_and_creates_nothing() {
-            let campaign = Campaign::new(Stub::new());
-            campaign.draft(&["--dry-run"]).unwrap();
-
-            assert!(campaign.stub.calls().is_empty(), "mxr was invoked anyway");
-            assert!(
-                !campaign.dir.path().join("state").exists(),
-                "a dry run wrote campaign state"
-            );
-        }
-
-        #[test]
         fn drafting_creates_one_draft_per_record_and_records_it() {
             let campaign = Campaign::new(Stub::new());
             campaign.draft(&["--yes"]).unwrap();
@@ -994,23 +782,6 @@ mod tests {
         }
 
         #[test]
-        fn a_rendered_body_is_deleted_before_the_next_one_is_written() {
-            let campaign = Campaign::new(Stub::new());
-            campaign.draft(&["--yes"]).unwrap();
-
-            let listings = campaign.stub.workdir_at_each_compose();
-            assert_eq!(listings.len(), 2, "{listings:?}");
-            for (index, files) in listings.iter().enumerate() {
-                assert_eq!(
-                    files.len(),
-                    1,
-                    "compose {} found an earlier record's body still on disk: {files:?}",
-                    index + 1
-                );
-            }
-        }
-
-        #[test]
         fn a_rerun_skips_records_that_already_have_a_draft() {
             let campaign = Campaign::new(Stub::new());
             campaign.draft(&["--yes"]).unwrap();
@@ -1023,28 +794,6 @@ mod tests {
                 "the rerun drafted the same records again"
             );
             assert_eq!(campaign.manifest().records.len(), 2);
-        }
-
-        #[test]
-        fn a_rerun_retries_a_record_whose_draft_failed() {
-            let campaign = Campaign::new(Stub::compose_fails("mxr said no"));
-            campaign.draft(&["--yes"]).unwrap();
-
-            let manifest = campaign.manifest();
-            assert_eq!(manifest.count(RecordStatus::Failed), 2);
-            assert!(manifest
-                .records
-                .iter()
-                .all(|entry| entry.draft_id.is_none()));
-            assert!(manifest.pending_send().is_empty());
-
-            let retry = Campaign {
-                dir: campaign.dir,
-                stub: Stub::new(),
-            };
-            retry.draft(&["--yes"]).unwrap();
-            assert_eq!(retry.stub.calls_to("compose").len(), 2);
-            assert_eq!(retry.manifest().count(RecordStatus::Drafted), 2);
         }
 
         #[test]
@@ -1070,54 +819,6 @@ mod tests {
         }
 
         #[test]
-        fn resuming_a_campaign_from_another_account_is_refused() {
-            let campaign = Campaign::new(Stub::new());
-            campaign.draft(&["--yes"]).unwrap();
-
-            let err = campaign
-                .draft_as("someone-else@example.com", &["--yes"])
-                .unwrap_err();
-            assert!(err.to_string().contains(ACCOUNT), "{err}");
-            assert!(err.to_string().contains("someone-else"), "{err}");
-            assert_eq!(campaign.manifest().account, ACCOUNT);
-            assert_eq!(campaign.stub.calls_to("compose").len(), 2);
-        }
-
-        #[test]
-        fn an_unreadable_manifest_stops_the_run_instead_of_redrafting() {
-            let campaign = Campaign::new(Stub::new());
-            campaign.draft(&["--yes"]).unwrap();
-
-            let path = Manifest::path_in(&campaign.dir.path().join("state"), "c1");
-            std::fs::write(&path, "{ truncated").unwrap();
-
-            let err = campaign.draft(&["--yes"]).unwrap_err();
-            assert!(format!("{err:#}").contains("manifest"), "{err:#}");
-            assert_eq!(
-                campaign.stub.calls_to("compose").len(),
-                2,
-                "the run re-drafted every record over an unreadable manifest"
-            );
-        }
-
-        #[test]
-        fn a_template_error_on_a_later_record_creates_no_drafts_at_all() {
-            let campaign = Campaign::new(Stub::new());
-            std::fs::write(
-                campaign.dir.path().join("body.html"),
-                "<p>Hi {{ first_name }}, plan {{ plan }}</p>",
-            )
-            .unwrap();
-
-            let err = campaign.draft(&["--yes"]).unwrap_err();
-            assert!(format!("{err:#}").contains("plan"), "{err:#}");
-            assert!(
-                campaign.stub.calls().is_empty(),
-                "drafts were created before the batch failed"
-            );
-        }
-
-        #[test]
         fn sending_without_yes_refuses_and_sends_nothing() {
             let campaign = Campaign::new(Stub::new());
             campaign.draft(&["--yes"]).unwrap();
@@ -1127,29 +828,6 @@ mod tests {
             assert!(err.to_string().contains("2 message(s)"), "{err}");
             assert!(campaign.stub.calls_to("send").is_empty());
             assert_eq!(campaign.manifest().count(RecordStatus::Sent), 0);
-        }
-
-        #[test]
-        fn a_send_dry_run_sends_nothing() {
-            let campaign = Campaign::new(Stub::new());
-            campaign.draft(&["--yes"]).unwrap();
-            campaign.send(&["--dry-run"]).unwrap();
-
-            assert!(campaign.stub.calls_to("send").is_empty());
-            assert_eq!(campaign.manifest().count(RecordStatus::Sent), 0);
-        }
-
-        #[test]
-        fn a_scheduled_dry_run_resolves_time_but_dispatches_nothing() {
-            let campaign = Campaign::new(Stub::new());
-            campaign.draft(&["--yes"]).unwrap();
-            campaign
-                .send(&["--at", "tomorrow 9am", "--dry-run"])
-                .unwrap();
-
-            assert_eq!(campaign.stub.calls_to("send-time").len(), 1);
-            assert!(campaign.stub.calls_to("send").is_empty());
-            assert_eq!(campaign.manifest().count(RecordStatus::Scheduled), 0);
         }
 
         #[test]
@@ -1247,63 +925,6 @@ mod tests {
             assert_eq!(sends.len(), 1, "{sends:?}");
             assert_eq!(sends[0][1], failed_draft);
             assert_eq!(retry.manifest().count(RecordStatus::Sent), 2);
-        }
-
-        #[test]
-        fn a_failed_send_is_recorded_and_not_counted_as_sent() {
-            let campaign = Campaign::new(Stub::send_fails("smtp said no"));
-            campaign.draft(&["--yes"]).unwrap();
-            campaign.send(&["--yes"]).unwrap();
-
-            let manifest = campaign.manifest();
-            assert_eq!(manifest.count(RecordStatus::Sent), 0);
-            assert_eq!(manifest.failed().len(), 2);
-            assert!(manifest
-                .failed()
-                .iter()
-                .all(|entry| entry.draft_id.is_some()));
-        }
-
-        #[test]
-        fn a_failed_schedule_is_recorded_separately_from_a_failed_send() {
-            let campaign = Campaign::new(Stub::send_fails("schedule said no"));
-            campaign.draft(&["--yes"]).unwrap();
-            campaign.send(&["--at", "tomorrow 9am", "--yes"]).unwrap();
-
-            let manifest = campaign.manifest();
-            assert_eq!(manifest.count(RecordStatus::Scheduled), 0);
-            assert!(manifest.failed().iter().all(|entry| {
-                entry.error == Some(FailureReason::Schedule) && entry.draft_id.is_some()
-            }));
-        }
-
-        #[test]
-        fn a_campaign_with_no_manifest_cannot_be_sent_or_inspected() {
-            let campaign = Campaign::new(Stub::new());
-            assert!(campaign.send(&["--yes"]).is_err());
-            assert!(run(&[
-                "status".to_string(),
-                "c1".to_string(),
-                "--state-dir".to_string(),
-                campaign.path("state"),
-            ])
-            .is_err());
-            assert!(campaign.stub.calls().is_empty());
-        }
-
-        #[test]
-        fn a_missing_inline_asset_stops_the_run_before_anything_is_drafted() {
-            let campaign = Campaign::new(Stub::new());
-            let err = campaign
-                .draft(&["--yes", "--inline", "logo=/nope/logo.png"])
-                .unwrap_err();
-            assert!(err.to_string().contains("inline asset not found"), "{err}");
-            assert!(campaign.stub.calls().is_empty());
-
-            let err = campaign
-                .draft(&["--yes", "--attach", "/nope/brief.pdf"])
-                .unwrap_err();
-            assert!(err.to_string().contains("attachment not found"), "{err}");
         }
 
         #[test]

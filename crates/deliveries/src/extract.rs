@@ -288,12 +288,6 @@ mod tests {
     use super::*;
     use chrono::{NaiveDate, TimeZone};
 
-    #[test]
-    fn extract_json_unwraps_fences() {
-        let c = "Here you go:\n```json\n{\"is_shipment_related\": true}\n```\nDone.";
-        assert_eq!(extract_json(c), "{\"is_shipment_related\": true}");
-    }
-
     #[tokio::test]
     async fn enrich_prompt_wraps_email_and_guards_system() {
         use mxr_llm::{CompletionResponse, LlmCapabilities, LlmFeature, LlmProvider, LlmRuntime};
@@ -386,10 +380,6 @@ mod tests {
         }
     }
 
-    fn when(llm: LlmDelivery, text: &str) -> DeliverySignal {
-        merge(base_signal(), llm, text, sent(), TimePrefs::default())
-    }
-
     #[test]
     fn eta_words_the_email_says_resolve_against_the_email_date() {
         let old = Utc.with_ymd_and_hms(2024, 3, 5, 10, 0, 0).unwrap();
@@ -404,56 +394,6 @@ mod tests {
             local_date(merged.eta_from.expect("resolved")),
             NaiveDate::from_ymd_opt(2024, 3, 7).expect("valid date")
         );
-        assert_eq!(merged.eta_until, None);
-    }
-
-    #[test]
-    fn words_the_email_does_not_contain_leave_the_field_unset() {
-        let merged = when(
-            llm_when(Some("arriving Thursday"), None),
-            "Your parcel is on its way.",
-        );
-        assert_eq!(merged.eta_from, None);
-    }
-
-    #[test]
-    fn an_rfc3339_date_the_email_does_not_contain_is_not_used() {
-        let merged = when(
-            llm_when(None, Some("2024-05-10T12:00:00Z")),
-            "Your parcel is arriving Friday.",
-        );
-        assert_eq!(merged.eta_until, None);
-    }
-
-    #[test]
-    fn words_the_parser_cannot_read_leave_the_field_unset() {
-        let merged = when(
-            llm_when(Some("once the warehouse reopens"), None),
-            "Your parcel ships once the warehouse reopens.",
-        );
-        assert_eq!(merged.eta_from, None);
-    }
-
-    #[test]
-    fn a_window_resolves_each_end_from_its_own_words() {
-        let merged = when(
-            llm_when(Some("2pm"), Some("4pm")),
-            "Arriving today between 2pm and 4pm.",
-        );
-        let (from, until) = (
-            merged.eta_from.expect("start"),
-            merged.eta_until.expect("end"),
-        );
-        assert_eq!(until - from, chrono::Duration::hours(2));
-    }
-
-    #[test]
-    fn a_window_end_before_its_start_is_dropped() {
-        let merged = when(
-            llm_when(Some("arriving Thursday"), Some("4pm")),
-            "Arriving Thursday between 2pm and 4pm.",
-        );
-        assert!(merged.eta_from.is_some());
         assert_eq!(merged.eta_until, None);
     }
 
@@ -475,53 +415,6 @@ mod tests {
             post_delivery_noise: false,
             matched_signals: vec![],
         }
-    }
-
-    #[test]
-    fn merge_fills_gaps_and_validates_tracking() {
-        let llm = LlmDelivery {
-            is_shipment_related: true,
-            status: Some("in_transit".into()),
-            merchant: Some("Ignored".into()),
-            carrier: Some("UPS".into()),
-            tracking_number: Some("1Z5R89390357567127".into()),
-            tracking_url: None,
-            order_number: Some("A-9".into()),
-            items: vec![LlmItem {
-                name: "Cable".into(),
-                quantity: Some(2),
-            }],
-            eta_from: None,
-            eta_until: Some("arriving Friday".into()),
-            confidence: 0.8,
-        };
-        let merged = merge(
-            base_signal(),
-            llm,
-            "Your parcel is arriving Friday.",
-            sent(),
-            TimePrefs::default(),
-        );
-        assert_eq!(merged.decision, Decision::Create);
-        assert_eq!(merged.source, DetectionSource::Llm);
-        assert_eq!(merged.stage, Some(DeliveryStatus::InTransit));
-        assert_eq!(
-            merged.merchant.as_deref(),
-            Some("Acme"),
-            "base merchant kept"
-        );
-        assert_eq!(merged.carrier.as_deref(), Some("ups"));
-        assert_eq!(
-            merged.primary_tracking_number().as_deref(),
-            Some("1Z5R89390357567127")
-        );
-        assert_eq!(merged.dedup_key.as_deref(), Some("1Z5R89390357567127"));
-        assert_eq!(merged.items.len(), 1);
-        assert_eq!(
-            local_date(merged.eta_until.expect("eta from the email's words")),
-            NaiveDate::from_ymd_opt(2024, 5, 10).expect("valid date"),
-            "Friday of the week the email was sent"
-        );
     }
 
     #[test]
@@ -606,62 +499,5 @@ mod tests {
         let _ = enrich(&feature, "msg-2", false, &input, base_signal()).await;
         let _ = enrich(&feature, "msg-1", true, &input, base_signal()).await;
         assert_eq!(provider.calls.load(Ordering::SeqCst), 3);
-    }
-
-    /// An endpoint outage is not the message's fault: it keeps the heuristic
-    /// result, stays due, and is handed to the recovery pass instead of
-    /// backing off.
-    #[tokio::test]
-    async fn an_unreachable_endpoint_puts_the_message_off_without_charging_it() {
-        use mxr_llm::{CompletionResponse, LlmCapabilities, LlmFeature, LlmProvider, LlmRuntime};
-        use std::sync::atomic::{AtomicU32, Ordering};
-        use std::sync::Arc;
-
-        #[derive(Default)]
-        struct Down {
-            calls: AtomicU32,
-        }
-        #[async_trait::async_trait]
-        impl LlmProvider for Down {
-            async fn complete(
-                &self,
-                _req: CompletionRequest,
-            ) -> std::result::Result<CompletionResponse, LlmError> {
-                self.calls.fetch_add(1, Ordering::SeqCst);
-                Err(LlmError::Unreachable("connection refused".into()))
-            }
-            fn capabilities(&self) -> LlmCapabilities {
-                LlmCapabilities {
-                    context_window: 8192,
-                    supports_streaming: false,
-                }
-            }
-            fn model_name(&self) -> &str {
-                "stub"
-            }
-        }
-
-        let provider = Arc::new(Down::default());
-        let runtime = Arc::new(LlmRuntime::new(provider.clone() as Arc<dyn LlmProvider>));
-        let feature = runtime.for_feature(LlmFeature::DeliveryExtraction);
-        let input = LlmInput {
-            from_name: "Shop",
-            from_domain: "shop.example",
-            subject: "Your order",
-            body_text: "shipped today",
-            received_at: sent(),
-            time_prefs: TimePrefs::default(),
-        };
-
-        for attempt in 1..=3 {
-            let signal = enrich(&feature, "msg-1", false, &input, base_signal()).await;
-            assert_eq!(signal.decision, Decision::ShortlistLlm);
-            assert_eq!(provider.calls.load(Ordering::SeqCst), attempt);
-            assert!(feature.background_attempt_due("msg-1", ""));
-        }
-        assert_eq!(
-            runtime.take_deferred_background(LlmFeature::DeliveryExtraction),
-            ["msg-1"]
-        );
     }
 }

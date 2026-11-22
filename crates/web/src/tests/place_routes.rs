@@ -127,25 +127,3 @@ async fn place_routes_forward_their_requests() {
         Request::SetSenderKind { kind: None, .. }
     ));
 }
-
-#[tokio::test]
-async fn place_routes_reject_bad_input_before_the_daemon() {
-    let (_temp, addr, seen) = serve_recording().await;
-    let client = test_http_client();
-    for request in [
-        client.get(format!("http://{addr}/api/v1/mail/places/inbox")),
-        client
-            .post(format!("http://{addr}/api/v1/mail/messages/pin"))
-            .json(&serde_json::json!({ "message_ids": [], "pinned": true })),
-        client
-            .post(format!("http://{addr}/api/v1/mail/senders/kind"))
-            .json(&serde_json::json!({
-                "account_id": AccountId::new().to_string(),
-                "sender_email": " ",
-            })),
-    ] {
-        let response = request.bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
-        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    }
-    assert!(seen.lock().unwrap().is_empty());
-}

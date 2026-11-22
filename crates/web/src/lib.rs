@@ -54,7 +54,7 @@ use axum::{
     Json, Router,
 };
 #[cfg(test)]
-use base64::{engine::general_purpose, Engine as _};
+use base64::Engine as _;
 use chrome::{ack_mutation, ack_request, build_bridge_chrome, load_mailbox_selection};
 use chrono::{DateTime, Utc};
 use envelope_list::{

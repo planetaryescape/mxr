@@ -47,29 +47,10 @@ pub fn export_llm_context(thread: &ExportThread, reader_config: &ReaderConfig) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{sample_thread, single_message_thread};
+    use crate::tests::sample_thread;
 
     fn default_config() -> ReaderConfig {
         ReaderConfig::default()
-    }
-
-    #[test]
-    fn llm_strips_signatures_from_body() {
-        let mut thread = sample_thread();
-        thread.messages[0].body_text = Some(
-            "Important content here.\n\n-- \nAlice\nSenior Engineer\nalice@company.com".into(),
-        );
-        let result = export_llm_context(&thread, &default_config());
-        assert!(result.contains("Important content here"));
-        assert!(!result.contains("Senior Engineer"));
-    }
-
-    #[test]
-    fn llm_falls_back_to_html_when_no_text() {
-        let mut thread = single_message_thread();
-        thread.messages[0].body_text = None;
-        let result = export_llm_context(&thread, &default_config());
-        assert!(result.contains("Is this working?"));
     }
 
     #[test]

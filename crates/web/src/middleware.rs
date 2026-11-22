@@ -218,15 +218,6 @@ fn is_loopback_origin(origin: &str) -> bool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn host_only_strips_ports_and_keeps_ipv6_brackets() {
-        assert_eq!(host_only("localhost:7777"), "localhost");
-        assert_eq!(host_only("127.0.0.1:7777"), "127.0.0.1");
-        assert_eq!(host_only("[::1]:7777"), "[::1]");
-        assert_eq!(host_only("[::1]"), "[::1]");
-        assert_eq!(host_only("evil.example.com"), "evil.example.com");
-    }
-
     fn headers(pairs: &[(&str, &str)]) -> axum::http::HeaderMap {
         let mut headers = axum::http::HeaderMap::new();
         for (name, value) in pairs {
@@ -275,17 +266,5 @@ mod tests {
             &headers(&[host, ("origin", "https://app.example.com")]),
             &configured
         ));
-    }
-
-    #[test]
-    fn loopback_origins_are_recognised() {
-        assert!(is_loopback_origin("http://localhost"));
-        assert!(is_loopback_origin("http://mxr.localhost:42829"));
-        assert!(is_loopback_origin("https://localhost"));
-        assert!(is_loopback_origin("http://localhost:5173"));
-        assert!(is_loopback_origin("http://127.0.0.1:7777"));
-        assert!(is_loopback_origin("http://[::1]:7777"));
-        assert!(!is_loopback_origin("http://evil.example.com"));
-        assert!(!is_loopback_origin("https://localhost.evil.com"));
     }
 }

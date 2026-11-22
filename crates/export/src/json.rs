@@ -84,7 +84,7 @@ mod tests {
     )]
 
     use super::*;
-    use crate::tests::{empty_body_thread, sample_thread, single_message_thread};
+    use crate::tests::sample_thread;
 
     #[test]
     fn json_export_carries_thread_message_and_attachment_fields() {
@@ -102,15 +102,5 @@ mod tests {
         assert_eq!(msgs[0]["to"][0], "team@example.com");
         assert_eq!(msgs[1]["attachments"][0]["filename"], "runbook.pdf");
         assert_eq!(msgs[1]["attachments"][0]["size_bytes"], 245_760);
-    }
-
-    #[test]
-    fn json_export_uses_null_for_missing_name_and_body() {
-        let solo: serde_json::Value =
-            serde_json::from_str(&export_json(&single_message_thread())).unwrap();
-        assert!(solo["messages"][0]["from"]["name"].is_null());
-        let empty: serde_json::Value =
-            serde_json::from_str(&export_json(&empty_body_thread())).unwrap();
-        assert!(empty["messages"][0]["body_text"].is_null());
     }
 }

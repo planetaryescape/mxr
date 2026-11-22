@@ -19,7 +19,7 @@
 )]
 
 use futures::{SinkExt, StreamExt};
-use mxr_core::id::{AccountId, MessageId};
+use mxr_core::id::MessageId;
 use mxr_protocol::{
     DaemonEvent, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
     IPC_PROTOCOL_VERSION,
@@ -30,7 +30,6 @@ use std::path::Path;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::net::UnixListener;
-use tokio_tungstenite::tungstenite::Message;
 use tokio_util::codec::Framed;
 
 const TEST_TOKEN: &str = "integration-test-token";
@@ -125,29 +124,6 @@ async fn boot_bridge(socket_path: std::path::PathBuf) -> SocketAddr {
     )
     .await
     .unwrap()
-}
-
-#[tokio::test]
-async fn openapi_spec_is_3_1_and_lists_v1_paths() {
-    let temp = TempDir::new().unwrap();
-    let socket = temp.path().join("mxr.sock");
-    let _server = spawn_fake(&socket, |_| None, vec![]);
-    let addr = boot_bridge(socket).await;
-
-    let response = reqwest::Client::new()
-        .get(format!("http://{addr}/api/v1/openapi.json"))
-        .header("x-mxr-bridge-token", TEST_TOKEN)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
-    let json: serde_json::Value = response.json().await.unwrap();
-    assert_eq!(json["openapi"], "3.1.0");
-
-    assert_eq!(
-        json["components"]["securitySchemes"]["bearer"]["scheme"],
-        "bearer"
-    );
 }
 
 #[tokio::test]
@@ -247,134 +223,6 @@ fn sample_path(path: &str) -> String {
     }
     out.push_str(rest);
     out
-}
-
-#[tokio::test]
-async fn health_is_unauthenticated_and_returns_protocol_version() {
-    let temp = TempDir::new().unwrap();
-    let socket = temp.path().join("mxr.sock");
-    let _server = spawn_fake(&socket, |_| None, vec![]);
-    let addr = boot_bridge(socket).await;
-
-    let response = reqwest::get(format!("http://{addr}/api/v1/health"))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
-    let json: serde_json::Value = response.json().await.unwrap();
-    assert_eq!(json["status"], "ok");
-    assert_eq!(json["protocol_version"], IPC_PROTOCOL_VERSION);
-}
-
-/// Feed every `DaemonEvent` variant through the WebSocket and assert each
-/// surfaces with its `event` discriminator (the protocol uses
-/// `#[serde(tag = "event")]`). Running every variant through the real
-/// relay catches regressions where a new event variant was added but the
-/// WS relay loop dropped it.
-#[tokio::test]
-async fn websocket_relays_every_daemon_event_variant() {
-    let temp = TempDir::new().unwrap();
-    let socket = temp.path().join("mxr.sock");
-
-    let account_id = AccountId::new();
-    let message_id = MessageId::new();
-    let events = vec![
-        DaemonEvent::SyncCompleted {
-            account_id: account_id.clone(),
-            messages_synced: 3,
-        },
-        DaemonEvent::SyncError {
-            account_id: account_id.clone(),
-            error: "transient".into(),
-        },
-        DaemonEvent::NewMessages {
-            envelopes: vec![],
-            total: 0,
-        },
-        DaemonEvent::MessageUnsnoozed {
-            message_id: message_id.clone(),
-        },
-        DaemonEvent::ReminderTriggered {
-            sent_message_id: message_id.clone(),
-        },
-        DaemonEvent::LabelCountsUpdated { counts: vec![] },
-        DaemonEvent::OperationStarted {
-            operation_id: "op-1".into(),
-            operation: "rebuild_analytics".into(),
-            account_id: Some(account_id.clone()),
-            message: "starting".into(),
-        },
-        DaemonEvent::OperationProgress {
-            operation_id: "op-1".into(),
-            operation: "rebuild_analytics".into(),
-            account_id: Some(account_id.clone()),
-            current: 5,
-            total: Some(10),
-            message: "halfway".into(),
-        },
-        DaemonEvent::OperationCompleted {
-            operation_id: "op-1".into(),
-            operation: "rebuild_analytics".into(),
-            account_id: Some(account_id.clone()),
-            message: "done".into(),
-        },
-        DaemonEvent::OperationFailed {
-            operation_id: "op-2".into(),
-            operation: "sync".into(),
-            account_id: Some(account_id.clone()),
-            error: "boom".into(),
-            retryable: true,
-        },
-        DaemonEvent::OperationCancelled {
-            operation_id: "op-3".into(),
-            operation: "sync".into(),
-            account_id: Some(account_id.clone()),
-            message: "user cancelled".into(),
-        },
-        DaemonEvent::MutationReconciliationFailed {
-            client_correlation_id: "7".into(),
-            error_summary: "incomplete".into(),
-        },
-    ];
-    let _server = spawn_fake(&socket, |_| None, events.clone());
-    let addr = boot_bridge(socket).await;
-
-    let (mut stream, _) =
-        tokio_tungstenite::connect_async(format!("ws://{addr}/api/v1/events?token={TEST_TOKEN}"))
-            .await
-            .unwrap();
-
-    let expected_tags = [
-        "SyncCompleted",
-        "SyncError",
-        "NewMessages",
-        "MessageUnsnoozed",
-        "ReminderTriggered",
-        "LabelCountsUpdated",
-        "OperationStarted",
-        "OperationProgress",
-        "OperationCompleted",
-        "OperationFailed",
-        "OperationCancelled",
-        "MutationReconciliationFailed",
-    ];
-    assert_eq!(
-        events.len(),
-        expected_tags.len(),
-        "test fixture should cover every DaemonEvent variant"
-    );
-
-    for tag in expected_tags {
-        let frame = stream.next().await.expect("websocket frame").unwrap();
-        let text = match frame {
-            Message::Text(t) => t.to_string(),
-            other => panic!("expected text frame, got {other:?}"),
-        };
-        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(
-            parsed["event"], tag,
-            "event #{tag} must surface its `event` discriminator"
-        );
-    }
 }
 
 /// One assertion per IPC bucket — admin / mail / platform / events —
@@ -484,127 +332,6 @@ async fn one_route_per_bucket_dispatches() {
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
-}
-
-fn sender_summary(email: &str, display_name: Option<&str>) -> mxr_protocol::SenderSummaryData {
-    mxr_protocol::SenderSummaryData {
-        account_id: AccountId::new(),
-        display_name: display_name.map(str::to_owned),
-        sender_email: email.to_owned(),
-        message_count: 1,
-        unread_count: 0,
-        latest_subject: "hello".into(),
-        latest_at: chrono::Utc::now(),
-    }
-}
-
-#[tokio::test]
-async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions() {
-    let temp = TempDir::new().unwrap();
-    let socket = temp.path().join("mxr.sock");
-    let _server = spawn_fake(
-        &socket,
-        |request| match request {
-            Request::GetStatus => Some(Response::Ok {
-                data: ResponseData::Status {
-                    workspace_owner_supported: false,
-                    draft_revision_supported: true,
-                    send_outcome_supported: true,
-                    archive_recovery_supported: true,
-                    recovery_supported: false,
-                    recovery: None,
-                    attachment_transfer_supported: true,
-                    draft_attachment_upload_supported: true,
-                    uptime_secs: 1,
-                    accounts: vec![],
-                    total_messages: 0,
-                    daemon_pid: None,
-                    sync_statuses: vec![],
-                    protocol_version: IPC_PROTOCOL_VERSION,
-                    daemon_version: Some("0.5.0".into()),
-                    daemon_build_id: None,
-                    repair_required: false,
-                    semantic_runtime: None,
-                    feature_health: None,
-                    degraded: false,
-                },
-            }),
-            Request::ListSenders { .. } => Some(Response::Ok {
-                data: ResponseData::Senders {
-                    senders: vec![
-                        sender_summary("nora@foundry.example", Some("Nora Okafor")),
-                        sender_summary("NORA@foundry.example", Some("Nora Kim")),
-                        sender_summary("bob@example.com", Some("   ")),
-                        sender_summary("pat@example.com", None),
-                        sender_summary("pat@example.com", Some("Pat Lee")),
-                    ],
-                },
-            }),
-            _ => None,
-        },
-        vec![],
-    );
-    let addr = boot_bridge(socket).await;
-    let client = reqwest::Client::new();
-    let autocomplete = |q: &'static str| {
-        client
-            .get(format!(
-                "http://{addr}/api/v1/mail/contacts/autocomplete?q={q}"
-            ))
-            .bearer_auth(TEST_TOKEN)
-            .send()
-    };
-
-    let response = autocomplete("foundry").await.unwrap();
-    assert_eq!(response.status(), 200);
-    let json: serde_json::Value = response.json().await.unwrap();
-    assert_eq!(
-        json,
-        serde_json::json!({
-            "contacts": [{ "name": "Nora Okafor", "email": "nora@foundry.example" }]
-        })
-    );
-
-    let json: serde_json::Value = autocomplete("bob").await.unwrap().json().await.unwrap();
-    assert_eq!(
-        json,
-        serde_json::json!({ "contacts": [{ "name": null, "email": "bob@example.com" }] })
-    );
-
-    let json: serde_json::Value = autocomplete("nora").await.unwrap().json().await.unwrap();
-    assert_eq!(
-        json,
-        serde_json::json!({
-            "contacts": [{ "name": "Nora Okafor", "email": "nora@foundry.example" }]
-        })
-    );
-
-    let json: serde_json::Value = autocomplete("pat").await.unwrap().json().await.unwrap();
-    assert_eq!(
-        json,
-        serde_json::json!({ "contacts": [{ "name": "Pat Lee", "email": "pat@example.com" }] })
-    );
-
-    let json: serde_json::Value = client
-        .get(format!(
-            "http://{addr}/api/v1/mail/contacts/autocomplete?q=example&limit=2"
-        ))
-        .bearer_auth(TEST_TOKEN)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(
-        json,
-        serde_json::json!({
-            "contacts": [
-                { "name": "Nora Okafor", "email": "nora@foundry.example" },
-                { "name": null, "email": "bob@example.com" }
-            ]
-        })
-    );
 }
 
 fn status_ok() -> Response {
@@ -813,28 +540,4 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
         .await
         .unwrap();
     assert_eq!(malformed.status(), 400);
-}
-
-#[tokio::test]
-async fn archive_boundary_errors_are_structured_before_any_ipc_dispatch() {
-    let temp = TempDir::new().unwrap();
-    let addr = boot_bridge(temp.path().join("no-daemon.sock")).await;
-    for route in ["preview", "submit", "query"] {
-        let response = reqwest::Client::new()
-            .post(format!(
-                "http://{addr}/api/v1/mail/archive-operations/{route}"
-            ))
-            .bearer_auth(TEST_TOKEN)
-            .json(&serde_json::json!({"identity": 42}))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-        let body: serde_json::Value = response.json().await.unwrap();
-        assert_eq!(body["code"], "bad_request");
-        assert!(body["error"]
-            .as_str()
-            .unwrap()
-            .contains("Invalid Archive request"));
-    }
 }

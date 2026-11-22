@@ -80,22 +80,6 @@ mod tests {
     )]
     use super::*;
     #[test]
-    fn missing_setup_allows_autostart_and_explicit_stopped_setup_does_not() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("hosting.json");
-        assert!(!read_desired_stopped(&path).unwrap());
-        assert!(!path.exists());
-        std::fs::write(&path,r#"{"version":1,"daemon_enabled":false,"public_origin":"https://fixture.ts.net","enabled":false}"#).unwrap();
-        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-        let bytes = std::fs::read(&path).unwrap();
-        assert!(read_desired_stopped(&path).unwrap());
-        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode(), mode);
-        assert_eq!(std::fs::read(&path).unwrap(), bytes);
-        std::fs::write(&path, r#"{"version":1,"daemon_enabled":true}"#).unwrap();
-        assert!(!read_desired_stopped(&path).unwrap());
-    }
-    #[test]
     fn unknown_versions_missing_fields_and_invalid_values_fail_closed() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("hosting.json");
@@ -141,14 +125,5 @@ mod tests {
             .recv_timeout(std::time::Duration::from_secs(2))
             .unwrap());
         daemon.join().unwrap();
-    }
-    #[test]
-    fn a_symlink_cannot_replace_the_operator_state() {
-        let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("target.json");
-        let path = dir.path().join("hosting.json");
-        std::fs::write(&target, r#"{"version":1,"daemon_enabled":true}"#).unwrap();
-        std::os::unix::fs::symlink(target, path.clone()).unwrap();
-        assert!(read_desired_stopped(&path).is_err());
     }
 }

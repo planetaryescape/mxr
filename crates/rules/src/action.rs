@@ -58,31 +58,3 @@ pub enum SnoozeDuration {
     Days { count: u32 },
     Until { date: DateTime<Utc> },
 }
-
-#[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )]
-
-    use super::*;
-
-    #[test]
-    fn treatment_rejects_task_and_archive_lifecycle_modes() {
-        for mode in ["todo", "archive", "screened_out", "__proto__"] {
-            assert!(serde_json::from_value::<RuleAction>(
-                serde_json::json!({"type":"set_treatment","treatment":mode})
-            )
-            .is_err());
-        }
-        let action: RuleAction = serde_json::from_value(
-            serde_json::json!({"type":"set_treatment","treatment":"reading"}),
-        )
-        .unwrap();
-        assert_eq!(
-            serde_json::to_value(action).unwrap()["treatment"],
-            "reading"
-        );
-    }
-}

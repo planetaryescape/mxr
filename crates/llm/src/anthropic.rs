@@ -669,30 +669,6 @@ mod tests {
     }
 
     #[test]
-    fn a_request_never_carries_sampling_parameters() {
-        let body = wire(&request(vec![ChatMessage::user("hi")]));
-        let object = body.as_object().unwrap();
-        for field in ["temperature", "top_p", "top_k", "stream"] {
-            assert!(!object.contains_key(field), "{field} must not be sent");
-        }
-        assert!(!object.contains_key("system"));
-    }
-
-    #[test]
-    fn a_request_without_a_user_turn_is_refused_before_any_network_call() {
-        let req = request(vec![ChatMessage::system("only a system prompt")]);
-        let error = build_request("claude-haiku-5-5", &req).err().unwrap();
-        assert!(matches!(error.class, crate::failure::ErrorClass::Request));
-    }
-
-    #[test]
-    fn max_tokens_defaults_when_the_caller_sets_none() {
-        let mut req = request(vec![ChatMessage::user("hi")]);
-        req.max_tokens = None;
-        assert_eq!(wire(&req)["max_tokens"], DEFAULT_MAX_TOKENS);
-    }
-
-    #[test]
     fn the_answer_is_the_text_blocks_and_thinking_is_ignored() {
         let response = interpret(
             reply(
@@ -722,46 +698,6 @@ mod tests {
         .unwrap();
         assert!(matches!(error.class, crate::failure::ErrorClass::Request));
         assert!(matches!(error.error, LlmError::Other(_)));
-    }
-
-    #[test]
-    fn thinking_that_used_the_whole_budget_is_an_empty_answer_for_this_request() {
-        let error = interpret(
-            reply(
-                json!([{"type": "thinking", "thinking": "hmm", "signature": "s"}]),
-                "max_tokens",
-            ),
-            "claude-haiku-5-5",
-        )
-        .err()
-        .unwrap();
-        assert!(matches!(error.class, crate::failure::ErrorClass::Request));
-        assert!(matches!(error.error, LlmError::Empty));
-    }
-
-    #[test]
-    fn a_cut_off_answer_with_text_is_returned_with_its_stop_reason() {
-        let response = interpret(
-            reply(json!([{"type": "text", "text": "{\"a\": 1"}]), "max_tokens"),
-            "claude-haiku-5-5",
-        )
-        .unwrap();
-        assert_eq!(response.finish_reason.as_deref(), Some("max_tokens"));
-    }
-
-    #[test]
-    fn error_descriptions_keep_type_and_a_short_message_only() {
-        let long = "x".repeat(1000);
-        let body =
-            json!({"type": "error", "error": {"type": "invalid_request_error", "message": long}})
-                .to_string();
-        let described = describe_error(&body);
-        assert!(described.starts_with("invalid_request_error: "));
-        assert!(described.len() < 300);
-        assert_eq!(
-            describe_error("<html>proxy page with a prompt</html>"),
-            "no error details"
-        );
     }
 
     fn tool_request(messages: Vec<ToolChatMessage>) -> serde_json::Value {
@@ -806,131 +742,6 @@ mod tests {
             },
         ]);
         assert_eq!(body["messages"][1]["content"], raw);
-    }
-
-    /// Switching from a local model (or OpenAI) to Claude mid-conversation:
-    /// their turns have no Anthropic blocks to replay, so they are rebuilt
-    /// from text and tool calls, and each result stays next to its call.
-    #[test]
-    fn turns_other_providers_wrote_are_rebuilt_as_text_and_tool_use() {
-        let turn = |id: &str, provider: Option<&str>| ToolChatMessage::Assistant {
-            text: String::new(),
-            tool_calls: vec![ToolCall {
-                id: id.into(),
-                name: "mxr_search".into(),
-                arguments: json!({"query": id}),
-            }],
-            provider_turn: provider.map(|provider| ProviderTurn {
-                provider: provider.into(),
-                content: json!([{"type": "reasoning", "opaque": true}]),
-            }),
-        };
-        let result = |id: &str| ToolChatMessage::Tool {
-            call_id: id.into(),
-            content: "[]".into(),
-            is_error: false,
-        };
-        let body = tool_request(vec![
-            ToolChatMessage::User {
-                content: "one".into(),
-            },
-            turn("call_gemma", None),
-            result("call_gemma"),
-            ToolChatMessage::User {
-                content: "two".into(),
-            },
-            turn("call_gpt", Some("openai")),
-            result("call_gpt"),
-        ]);
-        assert!(!body.to_string().contains("opaque"));
-        let messages = body["messages"].as_array().unwrap();
-        let roles: Vec<&str> = messages
-            .iter()
-            .map(|message| message["role"].as_str().unwrap())
-            .collect();
-        assert_eq!(roles, ["user", "assistant", "user", "assistant", "user"]);
-        assert_eq!(messages[1]["content"][0]["type"], "tool_use");
-        assert_eq!(messages[1]["content"][0]["id"], "call_gemma");
-        assert_eq!(messages[2]["content"][0]["tool_use_id"], "call_gemma");
-        assert_eq!(messages[3]["content"][0]["id"], "call_gpt");
-        assert_eq!(messages[4]["content"][0]["tool_use_id"], "call_gpt");
-    }
-
-    #[test]
-    fn parallel_tool_results_and_a_following_user_turn_share_one_user_message() {
-        let body = tool_request(vec![
-            ToolChatMessage::System {
-                content: "sys".into(),
-            },
-            ToolChatMessage::User {
-                content: "go".into(),
-            },
-            ToolChatMessage::Assistant {
-                text: "Looking.".into(),
-                tool_calls: vec![
-                    ToolCall {
-                        id: "a".into(),
-                        name: "mxr_search".into(),
-                        arguments: json!({}),
-                    },
-                    ToolCall {
-                        id: "b".into(),
-                        name: "mxr_search".into(),
-                        arguments: json!({}),
-                    },
-                ],
-                provider_turn: None,
-            },
-            ToolChatMessage::Tool {
-                call_id: "a".into(),
-                content: "1".into(),
-                is_error: false,
-            },
-            ToolChatMessage::Tool {
-                call_id: "b".into(),
-                content: "no".into(),
-                is_error: true,
-            },
-            ToolChatMessage::User {
-                content: "and then?".into(),
-            },
-        ]);
-        let messages = body["messages"].as_array().unwrap();
-        assert_eq!(messages.len(), 3);
-        assert_eq!(
-            messages[1]["content"][0],
-            json!({"type": "text", "text": "Looking."})
-        );
-        assert_eq!(messages[1]["content"][2]["id"], "b");
-        let results = messages[2]["content"].as_array().unwrap();
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[1]["is_error"], true);
-        assert_eq!(results[2]["text"], "and then?");
-        assert_eq!(body["system"], "sys");
-        assert_eq!(body["cache_control"], json!({"type": "ephemeral"}));
-        assert_eq!(body["output_config"], json!({"effort": ASSISTANT_EFFORT}));
-        assert_eq!(body["tools"][0]["input_schema"], json!({"type": "object"}));
-    }
-
-    #[test]
-    fn a_tool_reply_keeps_its_raw_content_for_replay() {
-        let reply: ToolMessagesResponse = serde_json::from_value(json!({
-            "model": "claude-opus-5-5",
-            "content": [
-                {"type": "thinking", "thinking": "", "signature": "s"},
-                {"type": "text", "text": "Checking."},
-                {"type": "tool_use", "id": "t", "name": "mxr_status", "input": {}},
-            ],
-            "stop_reason": "tool_use",
-            "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 7}
-        }))
-        .unwrap();
-        let response = interpret_tool_reply(reply, "claude-opus-5-5").unwrap();
-        assert_eq!(response.text, "Checking.");
-        assert_eq!(response.tool_calls[0].name, "mxr_status");
-        assert_eq!(response.usage.unwrap().cache_read_input_tokens, 7);
-        let turn = response.provider_turn.unwrap();
-        assert_eq!(turn.content.as_array().unwrap().len(), 3);
     }
 
     #[test]

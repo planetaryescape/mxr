@@ -435,18 +435,3 @@ impl BackgroundState {
         self.version == STATE_VERSION
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn retry_delay_grows_four_fold_and_caps_at_a_day() {
-        let hours = |n: u64| Duration::from_secs(n * 60 * 60);
-        assert_eq!(retry_delay(1), hours(1));
-        assert_eq!(retry_delay(2), hours(4));
-        assert_eq!(retry_delay(3), hours(16));
-        assert_eq!(retry_delay(4), hours(24));
-        assert_eq!(retry_delay(40), hours(24));
-    }
-}

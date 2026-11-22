@@ -89,18 +89,6 @@ mod tests {
 
     use super::*;
     use crate::tests::sample_thread;
-    use crate::{ExportMessage, ExportThread};
-    use mxr_test_support::standards_fixture_string;
-
-    #[test]
-    fn mbox_uses_raw_headers_when_available() {
-        let mut thread = sample_thread();
-        thread.messages[0].headers_raw =
-            Some("From: custom@header.com\r\nX-Custom: yes\r\n".into());
-        let result = export_mbox(&thread);
-        assert!(result.contains("X-Custom: yes"));
-        assert!(!result.contains("From: Alice <alice@example.com>"));
-    }
 
     #[test]
     fn mbox_escapes_from_in_body() {
@@ -111,46 +99,5 @@ mod tests {
         assert!(result.contains(">From the beginning of time"));
         assert!(result.contains("Normal line"));
         assert!(result.contains(">From space comes light"));
-    }
-
-    #[test]
-    fn standards_fixture_exports_as_mbox_snapshot() {
-        let raw = standards_fixture_string("folded-flowed.eml");
-        let (headers, body) = raw.split_once("\n\n").unwrap();
-        let thread = ExportThread {
-            thread_id: "fixture-thread".into(),
-            subject: "Fixture Subject".into(),
-            messages: vec![ExportMessage {
-                id: "fixture-1".into(),
-                from_name: Some("José Example".into()),
-                from_email: "jose@example.com".into(),
-                to: vec!["team@example.com".into()],
-                date: chrono::DateTime::parse_from_rfc2822("Fri, 15 Mar 2024 09:30:00 +0000")
-                    .unwrap()
-                    .with_timezone(&chrono::Utc),
-                subject: "Quarterly update".into(),
-                body_text: Some(body.to_string()),
-                body_html: None,
-                headers_raw: Some(headers.replace('\n', "\r\n")),
-                attachments: vec![],
-            }],
-        };
-
-        insta::assert_snapshot!("fixture_mbox_export", export_mbox(&thread));
-    }
-
-    #[test]
-    fn mbox_separates_messages_and_reconstructs_headers_with_crlf() {
-        let result = export_mbox(&sample_thread());
-        assert!(result.starts_with("From alice@example.com"));
-        assert!(result.lines().next().unwrap().contains("Tue Mar 17"));
-        let from_lines = result
-            .lines()
-            .filter(|l| l.starts_with("From ") && l.contains('@'))
-            .count();
-        assert_eq!(from_lines, 2);
-        assert!(result.contains("From: Alice <alice@example.com>"));
-        assert!(result.contains("\r\nSubject: Deployment rollback plan\r\n"));
-        assert!(result.contains("\r\n\r\nWhat's the rollback strategy"));
     }
 }

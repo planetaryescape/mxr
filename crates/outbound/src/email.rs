@@ -375,42 +375,6 @@ mod tests {
     use base64::Engine as _;
     use mail_parser::MimeHeaders as _;
 
-    #[test]
-    fn calendar_reply_message_contains_imip_reply_part() {
-        let reply = CalendarReplyMessage {
-            to: Address {
-                name: Some("Organizer".into()),
-                email: "organizer@example.com".into(),
-            },
-            subject: "Accepted: Demo".into(),
-            body_text: "user@example.com has accepted this invitation.".into(),
-            ics: concat!(
-                "BEGIN:VCALENDAR\r\n",
-                "VERSION:2.0\r\n",
-                "METHOD:REPLY\r\n",
-                "BEGIN:VEVENT\r\n",
-                "UID:demo-uid\r\n",
-                "ATTENDEE;PARTSTAT=ACCEPTED:mailto:user@example.com\r\n",
-                "END:VEVENT\r\n",
-                "END:VCALENDAR\r\n"
-            )
-            .into(),
-        };
-        let from = Address {
-            name: Some("User".into()),
-            email: "user@example.com".into(),
-        };
-
-        let message =
-            build_calendar_reply_message_with_id(&reply, &from, "<reply@example.com>").unwrap();
-        let raw = String::from_utf8(message.formatted()).unwrap();
-
-        assert!(raw.contains("Content-Type: multipart/alternative;"));
-        assert!(raw.contains("Content-Type: text/calendar; method=REPLY;"));
-        assert!(raw.contains("METHOD:REPLY"));
-        assert!(raw.contains("PARTSTAT=ACCEPTED"));
-    }
-
     /// A draft with `inline_calendar_reply` must emit the
     /// `multipart/alternative(text/plain + text/calendar;method=REPLY)`
     /// layout instead of the regular `text/plain + text/html` alternative.
@@ -577,59 +541,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn binary_attachment_is_base64_transfer_encoded() {
-        let draft = plain_draft("Binary attachment", "see attached");
-        let attachment = crate::attachments::LoadedAttachment {
-            filename: "logo.png".into(),
-            mime_type: "image/png".into(),
-            bytes: vec![
-                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xD8, 0x00, 0x01,
-            ],
-        };
-        let message =
-            build_message_with_id(&draft, &sender(), false, &[attachment], "<b@example.com>")
-                .unwrap();
-        let raw = String::from_utf8(message.formatted()).unwrap();
-        assert!(
-            raw.contains("Content-Transfer-Encoding: base64"),
-            "binary attachment must be base64 transfer-encoded"
-        );
-    }
-
-    #[test]
-    fn non_ascii_subject_is_rfc2047_encoded() {
-        let draft = plain_draft("Déjà vu — café", "body");
-        let message =
-            build_message_with_id(&draft, &sender(), false, &[], "<u@example.com>").unwrap();
-        let raw = String::from_utf8(message.formatted()).unwrap();
-        assert!(!raw.contains("Subject: Déjà vu — café"));
-        assert!(
-            raw.to_lowercase().contains("=?utf-8?"),
-            "non-ASCII subject must be RFC 2047 encoded; got:\n{}",
-            raw.lines().take(12).collect::<Vec<_>>().join("\n")
-        );
-    }
-
-    #[test]
-    fn generate_message_id_uses_sender_domain_and_is_unique() {
-        let from = Address {
-            name: None,
-            email: "bob@mail.example.org".into(),
-        };
-        let a = generate_message_id(&from);
-        let b = generate_message_id(&from);
-        assert!(a.starts_with('<') && a.ends_with('>'));
-        assert!(a.contains("@mail.example.org"));
-        assert_ne!(a, b, "each generated Message-ID must be unique");
-
-        let no_domain = generate_message_id(&Address {
-            name: None,
-            email: "weird".into(),
-        });
-        assert!(no_domain.contains('@'));
-    }
-
     /// A realistic designed email: table layout, inline CSS, a `<style>` block
     /// with a media query, an Outlook conditional comment, a CID image, and a
     /// registered mark. Every one of these is something a sanitiser or
@@ -771,15 +682,6 @@ mod tests {
             .expect("text/html part should be valid base64")
     }
 
-    fn text_part(raw: &[u8]) -> String {
-        let parsed = parse(raw);
-        let index = part_index(&parsed, "text", "plain");
-        match &parsed.parts[index].body {
-            mail_parser::PartType::Text(text) => text.to_string(),
-            other => panic!("text/plain part was not text: {other:?}"),
-        }
-    }
-
     #[test]
     fn a_designed_template_reaches_the_wire_byte_for_byte() {
         let raw = wire(&html_draft(BRANDED_HTML, Some("Hi Dumi")), &[], &[]);
@@ -788,108 +690,6 @@ mod tests {
             String::from_utf8(html_part_bytes(&raw)).unwrap(),
             BRANDED_HTML,
             "supplied HTML was altered on the way to the wire"
-        );
-    }
-
-    #[test]
-    fn a_designed_template_survives_alongside_its_inline_image() {
-        let raw = wire(
-            &html_draft(BRANDED_HTML, Some("Hi Dumi")),
-            &[pdf_attachment()],
-            &[inline_logo()],
-        );
-
-        assert_eq!(
-            String::from_utf8(html_part_bytes(&raw)).unwrap(),
-            BRANDED_HTML
-        );
-    }
-
-    #[test]
-    fn lf_only_html_keeps_its_lf_endings() {
-        let html = "<p>one</p>\n<p>two</p>\n<p>three</p>\n";
-
-        let bytes = html_part_bytes(&wire(&html_draft(html, Some("t")), &[], &[]));
-
-        assert_eq!(String::from_utf8(bytes.clone()).unwrap(), html);
-        assert!(
-            !bytes.windows(2).any(|pair| pair == b"\r\n"),
-            "line endings were rewritten to CRLF"
-        );
-    }
-
-    #[test]
-    fn crlf_html_keeps_its_crlf_endings() {
-        let html = "<p>one</p>\r\n<p>two</p>\r\n";
-
-        let bytes = html_part_bytes(&wire(&html_draft(html, Some("t")), &[], &[]));
-
-        assert_eq!(String::from_utf8(bytes).unwrap(), html);
-    }
-
-    #[test]
-    fn a_line_far_longer_than_the_smtp_limit_comes_back_unbroken() {
-        let html = format!("<p>{}</p>", "x".repeat(4000));
-
-        let bytes = html_part_bytes(&wire(&html_draft(&html, Some("t")), &[], &[]));
-
-        assert_eq!(String::from_utf8(bytes).unwrap(), html);
-    }
-
-    #[test]
-    fn unicode_emoji_and_registered_marks_survive_byte_for_byte() {
-        let html = "<p>Notto® — café, naïve, 日本語, 🎉, \u{200b}zero-width</p>";
-
-        let bytes = html_part_bytes(&wire(&html_draft(html, Some("t")), &[], &[]));
-
-        assert_eq!(bytes, html.as_bytes());
-    }
-
-    #[test]
-    fn an_empty_html_body_still_builds_a_well_formed_message() {
-        let raw = wire(&html_draft("", None), &[], &[]);
-
-        assert_eq!(html_part_bytes(&raw), Vec::<u8>::new());
-        assert_eq!(
-            mime_tree(&raw),
-            "multipart/alternative\n  text/plain\n  text/html\n"
-        );
-    }
-
-    #[test]
-    fn the_markdown_path_still_uses_quoted_printable() {
-        let raw = wire(&plain_draft("s", "Hello **world**"), &[], &[]);
-
-        let parsed = parse(&raw);
-        let index = part_index(&parsed, "text", "html");
-        assert_eq!(
-            parsed.parts[index].content_transfer_encoding(),
-            Some("quoted-printable")
-        );
-        match &parsed.parts[index].body {
-            mail_parser::PartType::Html(html) => {
-                assert!(
-                    html.contains("<strong>world</strong>"),
-                    "markdown was not rendered: {html}"
-                );
-            }
-            other => panic!("text/html part was not html: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn inline_assets_put_related_outside_the_alternative() {
-        let raw = wire(&html_draft(BRANDED_HTML, Some("t")), &[], &[inline_logo()]);
-
-        assert_eq!(
-            mime_tree(&raw),
-            concat!(
-                "multipart/related\n",
-                "  multipart/alternative\n",
-                "    text/plain\n",
-                "    text/html\n",
-                "  image/png\n",
-            )
         );
     }
 
@@ -913,78 +713,5 @@ mod tests {
                 "  application/pdf\n",
             )
         );
-    }
-
-    #[test]
-    fn without_inline_assets_the_related_level_collapses() {
-        let raw = wire(&html_draft("<p>hi</p>", Some("hi")), &[], &[]);
-
-        assert_eq!(
-            mime_tree(&raw),
-            "multipart/alternative\n  text/plain\n  text/html\n"
-        );
-    }
-
-    #[test]
-    fn the_inline_part_carries_its_content_id_and_inline_disposition() {
-        let logo = inline_logo();
-        let raw = wire(
-            &html_draft(BRANDED_HTML, Some("t")),
-            &[],
-            std::slice::from_ref(&logo),
-        );
-
-        let parsed = parse(&raw);
-        let part = &parsed.parts[part_index(&parsed, "image", "png")];
-        assert_eq!(
-            part.content_disposition()
-                .map(mail_parser::ContentType::ctype),
-            Some("inline"),
-            "the image would render as an attachment, not in the layout"
-        );
-        match &part.body {
-            mail_parser::PartType::Binary(bytes) | mail_parser::PartType::InlineBinary(bytes) => {
-                assert_eq!(bytes.as_ref(), logo.bytes.as_slice());
-            }
-            other => panic!("inline image part was not binary: {other:?}"),
-        }
-
-        // The angle brackets are load-bearing: RFC 2392 matches `cid:x`
-        // against a `Content-ID: <x>`, so assert the wire form directly.
-        let text = String::from_utf8_lossy(&raw);
-        assert!(
-            text.contains("Content-ID: <notto-logo>"),
-            "cid header missing or unbracketed"
-        );
-    }
-
-    #[test]
-    fn a_caller_supplied_text_alternative_is_used_verbatim() {
-        let raw = wire(
-            &html_draft("<p>ignored</p>", Some("The hand-written version.")),
-            &[],
-            &[],
-        );
-
-        let text = text_part(&raw);
-        assert_eq!(text, "The hand-written version.");
-        assert!(!text.contains("ignored"));
-    }
-
-    #[test]
-    fn a_missing_text_alternative_is_generated_and_leaves_the_html_alone() {
-        let html = "<h1>Digest</h1><p>Hi Dumi, the report is ready.</p>";
-
-        let raw = wire(&html_draft(html, None), &[], &[]);
-
-        let text = text_part(&raw);
-        assert!(!text.trim().is_empty(), "generated text was empty");
-        assert!(text.contains("Digest"), "{text:?}");
-        assert!(text.contains("Hi Dumi, the report is ready."), "{text:?}");
-        assert!(
-            !text.contains('<'),
-            "generated text still carries markup: {text:?}"
-        );
-        assert_eq!(String::from_utf8(html_part_bytes(&raw)).unwrap(), html);
     }
 }

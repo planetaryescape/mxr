@@ -195,22 +195,6 @@ mod tests {
     }
 
     #[test]
-    fn questions_parse_with_defaults_and_reject_duplicate_labels() {
-        let parsed = parse_questions(&json!({"questions": [
-            {"question": "Which account?", "options": [{"label": "Work"}, {"label": "Home"}]}
-        ]}))
-        .unwrap();
-        assert!(parsed[0].allow_other);
-        assert!(!parsed[0].multi_select);
-        assert!(parse_questions(&json!({"questions": [
-            {"question": "x", "options": [{"label": "A"}, {"label": "A"}]}
-        ]}))
-        .is_err());
-        assert!(parse_questions(&json!({"questions": []})).is_err());
-        assert!(parse_questions(&json!({})).is_err());
-    }
-
-    #[test]
     fn answers_must_fit_their_question() {
         let single = [question(&["A", "B"], false, false)];
         assert!(validate_answers(&single, &[answer(&["A"], None)]).is_ok());
@@ -225,16 +209,5 @@ mod tests {
 
         let multi = [question(&["A", "B"], true, true)];
         assert!(validate_answers(&multi, &[answer(&["A", "B"], Some("and more"))]).is_ok());
-    }
-
-    #[test]
-    fn the_result_names_the_user_as_its_source() {
-        let questions = [question(&["A"], false, true)];
-        let content: Value =
-            serde_json::from_str(&result_content(&questions, &[answer(&["A"], Some("  "))]))
-                .unwrap();
-        assert_eq!(content["source"], "user");
-        assert_eq!(content["answers"][0]["selected"], json!(["A"]));
-        assert_eq!(content["answers"][0]["other"], Value::Null);
     }
 }

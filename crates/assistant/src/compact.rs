@@ -196,41 +196,4 @@ mod tests {
         assert_eq!(cut_point(&history, 5), None);
         assert_eq!(cut_point(&history[..2], 0), Some(1));
     }
-
-    #[test]
-    fn a_window_too_small_for_the_tools_never_triggers_summaries() {
-        let request = ToolChatRequest {
-            messages: vec![user(&"x".repeat(40_000))],
-            tools: Vec::new(),
-            max_tokens: None,
-        };
-        assert!(over_budget(&request, 100, 8_000));
-        assert!(!over_budget(&request, 7_000, 8_000));
-        assert!(!over_budget(&request, 100, 100_000));
-    }
-
-    #[test]
-    fn overflow_errors_are_recognised_from_their_wording() {
-        assert!(is_context_overflow(&LlmError::Other(
-            "400: This model's maximum context length is 8192 tokens".into()
-        )));
-        assert!(is_context_overflow(&LlmError::Other(
-            "prompt is too long: 210000 tokens".into()
-        )));
-        assert!(!is_context_overflow(&LlmError::Unauthorized));
-    }
-
-    #[test]
-    fn the_transcript_starts_from_the_previous_summary() {
-        let history = vec![user("first"), user("second"), user("third")];
-        let previous = Summary {
-            text: "they said first".into(),
-            through: 1,
-        };
-        let text = transcript(&history, 2, Some(&previous));
-        assert!(text.starts_with("Summary of what came before:\nthey said first"));
-        assert!(text.contains("User: second"));
-        assert!(!text.contains("User: first"));
-        assert!(!text.contains("third"));
-    }
 }

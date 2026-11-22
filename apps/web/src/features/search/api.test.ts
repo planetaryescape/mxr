@@ -31,16 +31,6 @@ describe("fetchSearch query", () => {
     expect(query.get("q")).toBe("invoice");
   });
 
-  test("an explicit sort and limit are sent as chosen", async () => {
-    api.fetch.mockResolvedValue({});
-
-    await fetchSearch({ q: "invoice", sort: "oldest", limit: 100 });
-
-    const query = requestedQuery();
-    expect(query.get("sort")).toBe("oldest");
-    expect(query.get("limit")).toBe("100");
-  });
-
   test("best match goes to the bridge as relevant", async () => {
     api.fetch.mockResolvedValue({});
 

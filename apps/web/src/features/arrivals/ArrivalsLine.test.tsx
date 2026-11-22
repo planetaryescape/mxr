@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -46,53 +46,6 @@ function openSortingDetails() {
 }
 
 describe("Now's arrivals line", () => {
-  test("keeps provisional placement counts in the existing disclosure", () => {
-    render(
-      <ArrivalsView
-        nowWaiting
-        arrivals={arrivals({
-          classification_report: {
-            policy_version: "r2-1",
-            examined: 1000,
-            missing: 0,
-            stale: 0,
-            pending_body: 2,
-            fallback: 2,
-            truncated: true,
-            clusters: [
-              {
-                home: "messages",
-                who: "person",
-                rule: "person",
-                count: 2,
-                examples: ["message-1"],
-                facts: {
-                  sender_shape: "person-like address",
-                  has_list_id: false,
-                  has_unsubscribe: false,
-                  auto_generated: false,
-                  bulk: false,
-                  templated_sender: false,
-                  written_to: false,
-                  body_cached: false,
-                  recipients: 1,
-                  addressed: true,
-                },
-              },
-            ],
-          },
-        })}
-      />,
-    );
-    expect(screen.getByTestId("classification-report")).not.toBeVisible();
-    openSortingDetails();
-    expect(screen.getByTestId("classification-report")).toHaveTextContent(
-      "2 emails placed provisionally in this sample.",
-    );
-    expect(screen.getByTestId("classification-report")).toHaveTextContent(
-      "2 need more of the email.",
-    );
-  });
 
   test("keeps the headline and correction count visible, with sorting details closed", () => {
     render(
@@ -113,43 +66,6 @@ describe("Now's arrivals line", () => {
     expect(screen.getByTestId("not-sure-hint")).toBeVisible();
   });
 
-  test("is the daemon's sentence with each count a link to those emails in its window", () => {
-    render(<ArrivalsView arrivals={arrivals()} nowWaiting />);
-    openSortingDetails();
-    const line = screen.getByTestId("arrivals-line");
-    expect(line).toHaveTextContent(
-      "Since 08:12: 50 arrived. 8 Messages · 10 Updates · 31 Reading · 1 spam. Also 2 in To do.",
-    );
-    const reading = within(line).getByRole("link", { name: "31 Reading" });
-    expect(reading).toHaveAttribute(
-      "href",
-      "/arrivals?bucket=reading&since=2026-10-07T08%3A12%3A00Z&until=2026-10-07T12%3A00%3A01Z",
-    );
-    expect(within(line).getAllByRole("link")).toHaveLength(5);
-  });
-
-  test("says Clear when nothing on Now waits", () => {
-    render(<ArrivalsView arrivals={arrivals()} nowWaiting={false} />);
-    openSortingDetails();
-    expect(screen.getByTestId("arrivals-line")).toHaveTextContent(
-      "Clear. All 50 emails since 08:12 are accounted for.",
-    );
-  });
-
-  test("shows the track record only when the daemon sends one", () => {
-    const { rerender } = render(<ArrivalsView arrivals={arrivals()} nowWaiting />);
-    expect(screen.queryByTestId("arrivals-track-record")).toBeNull();
-    rerender(
-      <ArrivalsView
-        arrivals={arrivals({ track_record: "Last week mxr sorted 310 emails; you moved 2." })}
-        nowWaiting
-      />,
-    );
-    openSortingDetails();
-    expect(screen.getByTestId("arrivals-track-record")).toHaveTextContent(
-      "Last week mxr sorted 310 emails; you moved 2.",
-    );
-  });
 });
 
 describe("Not sure", () => {

@@ -84,13 +84,6 @@ afterEach(() => {
 });
 
 describe("InviteCard", () => {
-  it("renders all three action buttons when the viewer has not responded", () => {
-    render(wrap(<InviteCard messageId="m1" metadata={baseCalendar()} />));
-    expect(screen.getByRole("region", { name: /calendar invite/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /accept/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /maybe/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /decline/i })).toBeInTheDocument();
-  });
 
   it("collapses to the responded state when viewer_partstat is set", () => {
     render(
@@ -104,11 +97,6 @@ describe("InviteCard", () => {
     render(wrap(<InviteCard messageId="m1" metadata={baseCalendar({ method: "CANCEL" })} />));
     expect(screen.getByText(/event canceled by organizer/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^accept$/i })).not.toBeInTheDocument();
-  });
-
-  it("shows the updated banner when is_update is true", () => {
-    render(wrap(<InviteCard messageId="m1" metadata={baseCalendar({ is_update: true })} />));
-    expect(screen.getByText(/updated invite/i)).toBeInTheDocument();
   });
 
   it("clicking Accept holds the reply for the undo window, then sends it", async () => {

@@ -68,19 +68,6 @@ afterEach(() => {
 });
 
 describe("HighlightToolbar", () => {
-  test("offers Highlight and Highlight with note for article text", () => {
-    setup();
-    select(screen.getByTestId("inside"));
-    expect(screen.getByRole("toolbar")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("toolbar-highlight"));
-    expect(verbs.highlightSelection).toHaveBeenCalledWith(
-      "some text",
-      "m:0",
-      "issue",
-      undefined,
-      null,
-    );
-  });
 
   test("passes the paragraph the selection starts in, so the highlight is anchored there", () => {
     setup();

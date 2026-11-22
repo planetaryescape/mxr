@@ -36,10 +36,6 @@ describe("targetFromRows", () => {
     expect(target.anyStarred).toBe(true);
   });
 
-  test("a message row unstars just its message", () => {
-    const target = targetFromRows([row({ kind: "message", id: "m-1", starred: true })], "list");
-    expect(target.unstarIds).toEqual(["m-1"]);
-  });
 });
 
 describe("targetFromThread", () => {

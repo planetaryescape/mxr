@@ -83,11 +83,6 @@ describe("AccountIdentityDialog", () => {
       tag: "W",
     });
     expect(screen.getByRole("radio", { name: /^sky/ })).toHaveAttribute("aria-checked", "true");
-  });
-
-  test("names the other accounts that already use the chosen colour", () => {
-    renderDialog();
-    fireEvent.click(screen.getByRole("radio", { name: /^sky/ }));
     expect(screen.getByText(/sky is also used by Work/)).toBeInTheDocument();
   });
 

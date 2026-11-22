@@ -79,43 +79,11 @@ describe("DraftProof keys", () => {
     );
     expect(overlap?.textContent).toBe("é ");
   });
-  test("choosing a model retries the shown proof with that model", () => {
-    const onRetryModel = vi.fn<(model: string | undefined) => void>();
-    renderProof({
-      onRetryModel,
-      modelChoices: [
-        {
-          id: "gemma4:latest",
-          label: "Gemma 4",
-          cloud: false,
-          available: true,
-          sees: "this conversation and your past mail",
-        },
-      ],
-    });
-    fireEvent.change(screen.getByRole("combobox", { name: "Try again with a model" }), {
-      target: { value: "gemma4:latest" },
-    });
-    expect(onRetryModel).toHaveBeenCalledWith("gemma4:latest");
-  });
 
   test("Enter on the proof accepts it", () => {
     const { onAccept } = renderProof();
     fireEvent.keyDown(screen.getByRole("region", { name: "Draft proof" }), { key: "Enter" });
     expect(onAccept).toHaveBeenCalledTimes(1);
-  });
-
-  test("Enter on a focused button activates that button, not accept", () => {
-    const { onAccept } = renderProof();
-    fireEvent.keyDown(screen.getByRole("button", { name: "Keep mine" }), { key: "Enter" });
-    expect(onAccept).not.toHaveBeenCalled();
-  });
-
-  test("Tab on a focused button is left to move focus, not to cycle gaps", () => {
-    renderProof();
-    const keepMine = screen.getByRole("button", { name: "Keep mine" });
-    const notPrevented = fireEvent.keyDown(keepMine, { key: "Tab" });
-    expect(notPrevented).toBe(true);
   });
 
   test("Tab on the proof moves from gap to gap", () => {

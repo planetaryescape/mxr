@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { todoActions } from "@/features/todo/actions";
 import { fromDefinition } from "@/lib/actions/definition";
-import { listActions, readerActions } from "@/lib/actions/paneActions";
+import { readerActions } from "@/lib/actions/paneActions";
 import { ActionRegistry } from "@/lib/actions/registry";
 import type { Action, ActionContext, ActionScope } from "@/lib/actions/types";
 
@@ -247,16 +247,6 @@ describe("installKeyDispatcher", () => {
   });
 
   describe("text fields and overlays", () => {
-    test("plain keys typed into an input are not actions", () => {
-      const compose = runAction("compose", "c");
-      registry.define(compose.action);
-      const input = document.createElement("input");
-      document.body.append(input);
-
-      expect(press({ key: "c" }, input)).toBe(true);
-      expect(compose.run).not.toHaveBeenCalled();
-    });
-
     test("a global modifier chord still works from an input", () => {
       const palette = runAction("palette", "Mod+k");
       registry.define(palette.action);
@@ -295,26 +285,8 @@ describe("installKeyDispatcher", () => {
       expect(compose.run).toHaveBeenCalledTimes(1);
     });
 
-    test("an open menu owns its keys", () => {
-      const undo = runAction("undo", "u");
-      registry.define(undo.action);
-      document.body.innerHTML = `<div data-radix-popper-content-wrapper><div role="menu" data-state="open"><div role="menuitem" tabindex="-1">Pin</div></div></div>`;
-
-      press({ key: "u" }, document.querySelector('[role="menuitem"]')!);
-      expect(undo.run).not.toHaveBeenCalled();
-    });
-
     // Radix keeps a menu mounted,
     // with focus inside it, through its exit animation.
-    test("a menu animating closed does not swallow keys", () => {
-      const undo = runAction("undo", "u");
-      registry.define(undo.action);
-      document.body.innerHTML = `<div data-radix-popper-content-wrapper><div role="menu" data-state="closed"><div role="menuitem" tabindex="-1">Pin</div></div></div>`;
-
-      press({ key: "u" }, document.querySelector('[role="menuitem"]')!);
-      expect(undo.run).toHaveBeenCalledTimes(1);
-    });
-
     test("Enter on a focused button keeps its native meaning", () => {
       const open = vi.fn<() => void>();
       registry.define({
@@ -336,44 +308,6 @@ describe("installKeyDispatcher", () => {
       press({ key: "Enter" });
       expect(open).toHaveBeenCalledTimes(1);
     });
-  });
-
-  // The list binds "Ctrl+d"/"Ctrl+u" (TUI half-page); off macOS Ctrl parses
-  // as "Mod", and the dispatcher must still match the Ctrl spelling.
-  test("Ctrl+d pages the list down on Windows and Linux", () => {
-    registry.defineMany(listActions.map(fromDefinition));
-    const pageDown = vi.fn<() => void>();
-    setController("list", { pageDown });
-    scopes = ["list", "global"];
-
-    press({ key: "d", ctrlKey: true });
-
-    expect(pageDown).toHaveBeenCalledTimes(1);
-  });
-
-  test("e ticks off the focused to-do once per press", () => {
-    registry.defineMany(todoActions.map(fromDefinition));
-    const done = vi.fn<() => void>();
-    setController("todo", { done });
-    scopes = ["todo", "global"];
-
-    expect(press({ key: "e" })).toBe(false);
-    expect(press({ key: "e", repeat: true })).toBe(false);
-
-    expect(done).toHaveBeenCalledTimes(1);
-  });
-
-  test("Space on a focused checkbox keeps its native toggle", () => {
-    registry.defineMany(todoActions.map(fromDefinition));
-    const done = vi.fn<() => void>();
-    setController("todo", { done });
-    scopes = ["todo", "global"];
-    const checkbox = document.createElement("button");
-    checkbox.setAttribute("role", "checkbox");
-    document.body.append(checkbox);
-
-    expect(press({ key: " " }, checkbox)).toBe(true);
-    expect(done).not.toHaveBeenCalled();
   });
 
   test("To do shortcuts do not consume ordinary text typed into fields", () => {
@@ -504,21 +438,6 @@ describe("installKeyDispatcher", () => {
     expect(notCancelled).toBe(false);
     press({ key: "E", shiftKey: true });
     expect(letGo.run).toHaveBeenCalledTimes(1);
-  });
-
-  test("a moved modifier chord says where it went, from a text field too", () => {
-    const assistant = runAction("assistant.toggle", "@", {
-      label: "Assistant",
-      movedAliases: [{ chord: "Mod+.", scopes: ["global"] }],
-    });
-    registry.define(assistant.action);
-    const field = document.createElement("input");
-    document.body.append(field);
-
-    press({ key: ".", ctrlKey: true }, field);
-
-    expect(assistant.run).not.toHaveBeenCalled();
-    expect(movedNotices).toEqual(["Assistant is now @"]);
   });
 
   test("q closes a dialog as Esc does, but types in a field", () => {

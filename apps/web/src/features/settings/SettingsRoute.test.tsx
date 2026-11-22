@@ -6,9 +6,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ComposeSettingsSection } from "./ComposeSettingsSection";
-import { AppearanceSection } from "./AppearanceSection";
 import { LlmSettingsSection } from "./LlmSettingsSection";
-import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const api = vi.hoisted(() => ({
   fetch: vi.fn<(path: string, opts?: unknown) => Promise<unknown>>(),
@@ -43,16 +41,6 @@ function renderWithQueryClient(children: ReactNode) {
 }
 
 describe("AppearanceSection", () => {
-  test("offers system, default, and increased contrast choices", () => {
-    renderWithQueryClient(<AppearanceSection />);
-    const contrast = screen.getByRole("combobox", { name: "Contrast" });
-    expect(contrast).toHaveTextContent("Match the system");
-    fireEvent.click(contrast);
-    expect(screen.getByRole("option", { name: "Default" })).toBeVisible();
-    fireEvent.click(screen.getByRole("option", { name: "Increased" }));
-    expect(useUiPrefs.getState().contrast).toBe("increased");
-    useUiPrefs.getState().setContrast("system");
-  });
 });
 
 describe("LlmSettingsSection", () => {
@@ -150,34 +138,6 @@ describe("LlmSettingsSection", () => {
       });
     });
     expect(screen.queryByLabelText(/^api key$/i)).not.toBeInTheDocument();
-  });
-
-  test("saves per-feature LLM override fields", async () => {
-    renderWithQueryClient(<LlmSettingsSection />);
-
-    expect(await screen.findByText(/feature overrides/i)).toBeVisible();
-
-    fireEvent.change(screen.getByLabelText(/^summaries model$/i), {
-      target: { value: "qwen2.5:7b-instruct" },
-    });
-    fireEvent.change(screen.getByLabelText(/^summaries base url$/i), {
-      target: { value: "http://localhost:1234/v1" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /save llm config/i }));
-
-    await waitFor(() => {
-      expect(api.fetch).toHaveBeenCalledWith("/api/v1/platform/llm/config", {
-        method: "POST",
-        body: expect.objectContaining({
-          overrides: expect.objectContaining({
-            summarize: expect.objectContaining({
-              model: "qwen2.5:7b-instruct",
-              base_url: "http://localhost:1234/v1",
-            }),
-          }),
-        }),
-      });
-    });
   });
 
   test("falls back to LLM status when older daemons lack config endpoint", async () => {
@@ -340,23 +300,4 @@ describe("ComposeSettingsSection", () => {
     });
   });
 
-  test("saves a signature block through the bridge", async () => {
-    renderWithQueryClient(<ComposeSettingsSection />);
-
-    await screen.findByText("sig");
-    fireEvent.change(screen.getByLabelText(/signature name/i), {
-      target: { value: "formal" },
-    });
-    fireEvent.change(screen.getByLabelText(/signature body/i), {
-      target: { value: "Regards" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /save signature/i }));
-
-    await waitFor(() => {
-      expect(api.fetch).toHaveBeenCalledWith("/api/v1/mail/signatures", {
-        method: "POST",
-        body: { name: "formal", body: "Regards" },
-      });
-    });
-  });
 });

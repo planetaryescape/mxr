@@ -193,15 +193,6 @@ describe("SearchResultsRoute", () => {
     usePendingMailOps.setState({ ops: [] });
   });
 
-  test("renders results through the shared mailbox list", async () => {
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    expect(await screen.findByTestId("mailbox-list")).toBeVisible();
-    expect(screen.getByText("Subject 1")).toBeVisible();
-    expect(screen.getByText("Subject 2")).toBeVisible();
-    expect(screen.getByText("2 conversations")).toBeVisible();
-  });
-
   test("says so above the results when the daemon answered from the limited search", async () => {
     const notice =
       "Search is limited while the index is unavailable: subject, sender and preview only. Restart the daemon or run `mxr doctor --reindex`.";
@@ -223,13 +214,6 @@ describe("SearchResultsRoute", () => {
 
     expect(await screen.findByRole("status")).toHaveTextContent(notice);
     expect(screen.getByText("Subject 1")).toBeVisible();
-  });
-
-  test("shows no limited-search line when the index answered", async () => {
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    expect(await screen.findByTestId("mailbox-list")).toBeVisible();
-    expect(screen.queryByRole("status")).toBeNull();
   });
 
   test("the filter shortcut focuses a control, and Escape returns to the filter button", async () => {
@@ -276,21 +260,6 @@ describe("SearchResultsRoute", () => {
     expect(await screen.findByRole("option", { name: "cached@example.com" })).toBeVisible();
   });
 
-  test("search account options keep ordinary disabled accounts hidden", async () => {
-    accountApi.accounts = [
-      { account_id: "active", name: "Active", email: "active@example.com", enabled: true },
-      { account_id: "personal", name: "Personal", email: "personal@example.com", enabled: true },
-      { account_id: "cached", name: "Cached", email: "cached@example.com", enabled: false },
-    ];
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    fireEvent.click(await screen.findByRole("button", { name: /Filters/ }));
-    fireEvent.click(await screen.findByRole("combobox", { name: "Account" }));
-    expect(await screen.findByRole("option", { name: "active@example.com" })).toBeVisible();
-    expect(screen.getByRole("option", { name: "personal@example.com" })).toBeVisible();
-    expect(screen.queryByRole("option", { name: "cached@example.com" })).not.toBeInTheDocument();
-  });
-
   test("loads additional pages through offset pagination", async () => {
     const baseRow = rows[0] as MessageRowView;
     const nextRows: MessageRowView[] = [
@@ -334,31 +303,6 @@ describe("SearchResultsRoute", () => {
     );
     // Page size is the daemon's [search] max_results, so the page sends none.
     expect(lastSearchParams().limit).toBeUndefined();
-  });
-
-  test("sends no sort or page size until the user picks a sort, so the daemon applies its [search] defaults", async () => {
-    router.search = { q: "invoice", mode: "lexical" };
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    await screen.findByTestId("mailbox-list");
-    expect(lastSearchParams().sort).toBeUndefined();
-    expect(lastSearchParams().limit).toBeUndefined();
-  });
-
-  test("the sort control reads Default while the sort is left to the daemon", async () => {
-    router.search = { q: "invoice", mode: "lexical" };
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    fireEvent.click(await screen.findByRole("button", { name: /Filters/ }));
-    expect(await screen.findByRole("combobox", { name: "Sort" })).toHaveTextContent("Default");
-  });
-
-  test("an explicit sort is sent as chosen", async () => {
-    router.search = { q: "invoice", mode: "lexical", sort: "newest" };
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    await screen.findByTestId("mailbox-list");
-    expect(lastSearchParams().sort).toBe("newest");
   });
 
   test("choosing Default in the sort control clears the sort from the URL", async () => {

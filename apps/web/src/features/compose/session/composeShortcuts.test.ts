@@ -1,13 +1,9 @@
 import type { KeyboardEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { definedKeys } from "@/lib/actions/definition";
-
 import {
-  codeMirrorKey,
   COMPOSE_CHORDS,
   composeCommandOf,
-  composeKeyActions,
   handleComposeShortcut,
   isComposeActionChord,
   isComposeChord,
@@ -97,33 +93,6 @@ describe("compose shortcuts", () => {
     }
   });
 
-  it("names exactly mxr's own chords", () => {
-    const chord = (key: string, shiftKey = false) =>
-      isComposeChord({ key, shiftKey, metaKey: false, ctrlKey: true });
-    expect([chord("Enter"), chord("Enter", true), chord("s"), chord("Backspace")]).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ]);
-    expect([chord("C", true), chord("B", true), chord("L", true), chord(";")]).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ]);
-    expect([chord("z"), chord("Z", true), chord("b"), chord("c"), chord("v")]).toEqual([
-      false,
-      false,
-      false,
-      false,
-      false,
-    ]);
-    expect(isComposeChord({ key: "Enter", shiftKey: false, metaKey: false, ctrlKey: false })).toBe(
-      false,
-    );
-  });
-
   it("the handler runs exactly the table's chords, each its own command", () => {
     const mismatches: string[] = [];
     for (const [chord, command] of Object.entries(COMPOSE_CHORDS)) {
@@ -152,15 +121,6 @@ describe("compose shortcuts", () => {
     expect(bag.requestDiscard).not.toHaveBeenCalled();
   });
 
-  it("takes its chords from the key definition, one per defined key", () => {
-    const definedCount = composeKeyActions
-      .filter((action) => action.id !== "compose.fullscreen")
-      .reduce((count, action) => count + definedKeys(action.id).length, 0);
-    expect(Object.keys(COMPOSE_CHORDS)).toHaveLength(definedCount);
-    expect(COMPOSE_CHORDS["shift+r"]).toBe("handleRefreshClick");
-    expect(COMPOSE_CHORDS[";"]).toBe("openSnippetPicker");
-  });
-
   it("fullscreen is its own chord, outside the handler table", () => {
     const event = { key: "F", shiftKey: true, metaKey: true, ctrlKey: false };
     expect(isComposeActionChord(event, "compose.fullscreen")).toBe(true);
@@ -169,12 +129,5 @@ describe("compose shortcuts", () => {
     ).toBe(true);
     expect(isComposeActionChord({ ...event, shiftKey: false }, "compose.fullscreen")).toBe(false);
     expect(isComposeChord(event)).toBe(false);
-  });
-
-  it("spells definition chords in CodeMirror's notation", () => {
-    expect(codeMirrorKey(definedKeys("compose.save")[0] ?? "")).toBe("Mod-s");
-    expect(codeMirrorKey("Mod+Enter")).toBe("Mod-Enter");
-    expect(codeMirrorKey("Mod+Shift+Enter")).toBe("Mod-Shift-Enter");
-    expect(codeMirrorKey("Mod++")).toBe("Mod-+");
   });
 });

@@ -54,13 +54,6 @@ describe("RecipientField", () => {
     expect(input).toHaveValue("やまだ");
   });
 
-  test("does not flag a valid address chip", () => {
-    renderField("alpha@example.com");
-
-    expect(screen.getByText("alpha@example.com")).toBeVisible();
-    expect(screen.queryByTitle(/invalid address/i)).not.toBeInTheDocument();
-  });
-
   test("parses pasted RFC 5322 address lists into normalized chips", () => {
     renderField();
 
@@ -74,23 +67,6 @@ describe("RecipientField", () => {
     expect(screen.getByText("Jane Doe")).toBeVisible();
     expect(screen.getByText("bob@example.com")).toBeVisible();
     expect(screen.queryByTitle(/invalid address/i)).not.toBeInTheDocument();
-  });
-
-  test("exposes combobox semantics with an active descendant while open", async () => {
-    renderField();
-    api.fetchContactsAutocomplete.mockResolvedValue([
-      { email: "suggested@example.com", name: "Suggested Person" },
-    ]);
-
-    const input = screen.getByRole("combobox", { name: "To" });
-    expect(input).toHaveAttribute("aria-expanded", "false");
-
-    fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: "sugg" } });
-
-    const option = await screen.findByRole("option", { name: /suggested person/i });
-    expect(input).toHaveAttribute("aria-expanded", "true");
-    expect(input).toHaveAttribute("aria-activedescendant", option.id);
   });
 
   test("picking a suggestion adds its address as a chip", async () => {

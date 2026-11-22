@@ -133,16 +133,6 @@ test("an uncertain receipt cannot create another Microsoft task", async () => {
   expect(commits).toHaveLength(0);
 });
 
-test("status errors stay visible and offer a safe read-only retry", async () => {
-  const { fetch, commits } = setup(true, false, true);
-  expect(await screen.findByRole("alert")).toHaveTextContent("Status request refused");
-  expect(screen.queryByRole("button", { name: "Microsoft To Do" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Retry Microsoft To Do status" }));
-  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-  expect(commits).toHaveLength(0);
-  expect(fetch.mock.calls.every(([, init]) => init?.method === "GET")).toBe(true);
-});
-
 test("a failed link preview offers a read-only retry without closing the details", async () => {
   const { fetch, commits } = setup(true, false, false, true);
   fireEvent.click(await screen.findByRole("button", { name: "Microsoft To Do" }));

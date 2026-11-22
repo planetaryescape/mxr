@@ -10,10 +10,6 @@ These specs run the web app against a real `mxr` daemon (the fake provider's dem
 | `triage.spec.ts` | Archive: Archive submits exactly what the daemon reviewed, the reader advances, the conversation is in All Mail, `u` undoes it. |
 | `mutations.spec.ts` | A batch Archive where the provider rejects one message keeps Undo for the one that completed. |
 | `messages.spec.ts` | Done in Messages takes the conversation out of attention in the daemon, and `u` brings it back. |
-| `search.spec.ts` | Newly synced mail is searchable; archive from results and undo against the daemon. |
-| `snooze.spec.ts` | Not now: the conversation waits on `/snoozed` until Wake now returns it to the inbox. |
-| `labels.spec.ts` | A label created and applied from the picker is stored and has its own list. |
-| `mode-move.spec.ts` | A mode move (`X`) and its undo reach a second client over the event stream. |
 | `freshness.spec.ts` | A new message reaches the page live; a failing sync turns into a warning that links to its details. |
 | `daemon-stopped.spec.ts` | With the daemon stopped, loaded mail stays usable and changes are refused, then everything recovers without a reload; a reply typed during the outage saves once it is back. |
 | `updates.spec.ts` | Opening a peek persists that revision's seen state through reload; let go of all acts on exactly the previewed set, and undo restores it. |

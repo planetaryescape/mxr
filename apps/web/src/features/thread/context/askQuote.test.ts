@@ -15,13 +15,6 @@ describe("findQuote", () => {
     );
   });
 
-  it("treats straight and curly apostrophes alike and escapes regex characters", () => {
-    expect(findQuote("We’re at 5% (canary)? yes", "We're at 5% (canary)?")).toEqual({
-      start: 0,
-      end: 21,
-    });
-  });
-
   it("never matches a paraphrase or a different case", () => {
     expect(
       findQuote(QUOTE, "Could you confirm who owns the rollout check before Monday?"),

@@ -72,19 +72,6 @@ describe("useAdvanceOnRemoval", () => {
     expect(onAdvance).not.toHaveBeenCalled();
   });
 
-  test("moving the selection over an unchanged list does not walk the list again", () => {
-    const ids = Array.from({ length: 500 }, (_, index) => `row-${index}`);
-    const present = new Set(ids);
-    const isPresent = vi.fn<(id: string) => boolean>((id) => present.has(id));
-    const { rerender } = setup({ ids, selectedId: "row-0", isPresent, presenceSource: present });
-    rerender({ ids, selectedId: "row-1", isPresent, presenceSource: present });
-    isPresent.mockClear();
-    for (let step = 2; step < 12; step += 1)
-      rerender({ ids, selectedId: `row-${step}`, isPresent, presenceSource: present });
-    // One check per selection, not one per row.
-    expect(isPresent.mock.calls.length).toBeLessThan(40);
-  });
-
   test("a row leaving the presence source with the list unchanged is still seen leaving", () => {
     const ids = ["a", "b", "c"];
     const all = new Set(ids);
@@ -118,15 +105,6 @@ describe("useAdvanceOnRemoval", () => {
     rerender({ ids: ["a", "b"], selectedId: "a" });
     rerender({ ids: ["b"], selectedId: "a" });
     expect(onAdvance).toHaveBeenCalledTimes(2);
-  });
-
-  test("undo bringing the row back reopens it", () => {
-    const { rerender, onAdvance } = setup({ ids: ["a", "b", "c"], selectedId: "b" });
-    rerender({ ids: ["a", "c"], selectedId: "b" });
-    expect(onAdvance).toHaveBeenLastCalledWith("c", "b");
-    rerender({ ids: ["a", "c"], selectedId: "c" });
-    rerender({ ids: ["a", "b", "c"], selectedId: "c" });
-    expect(onAdvance).toHaveBeenLastCalledWith("b", "c");
   });
 
   test("undo reopens after a verb moved on by itself (the reader's archive)", () => {

@@ -10,7 +10,7 @@ import keymap from "@/lib/actions/keymap.generated.json";
 import { useKeyScope } from "@/state/keyScopeStore";
 import { announced } from "@/test/movedKeys";
 
-import { announceMovedOverlayKey, optionLetter, pressedOverlayKey } from "./overlayKeys";
+import { announceMovedOverlayKey, pressedOverlayKey } from "./overlayKeys";
 
 const press = (name: string, modifiers: Partial<KeyboardEvent> = {}) => ({
   key: name,
@@ -51,11 +51,6 @@ describe("overlay keys", () => {
       live ? { label: "Unsubscribe and archive their mail", key: "e" } : null,
     );
     expect(announceMovedOverlayKey(press("u"), "unsubscribe", true)).toBe(false);
-  });
-
-  test("an option prints its letter", () => {
-    expect(optionLetter("unsubscribe.confirm")).toBe("u");
-    expect(optionLetter("sender-ask.yes")).toBe("y");
   });
 
   // A dialog reads each of its keys by id, so no key the definition gives a

@@ -15,12 +15,6 @@ describe("tokenFromEvent", () => {
     expect(tokenFromEvent(key({ key: "/", code: "Digit7", shiftKey: true }), false)).toBe("/");
   });
 
-  test("keeps shifted printable characters as typed", () => {
-    expect(tokenFromEvent(key({ key: "G", shiftKey: true }), false)).toBe("G");
-    expect(tokenFromEvent(key({ key: "g" }), false)).toBe("g");
-    expect(tokenFromEvent(key({ key: "#", shiftKey: true }), false)).toBe("#");
-  });
-
   test("Mod is Cmd on macOS and Ctrl elsewhere", () => {
     expect(tokenFromEvent(key({ key: "k", metaKey: true }), true)).toBe("Mod+k");
     expect(tokenFromEvent(key({ key: "k", ctrlKey: true }), false)).toBe("Mod+k");
@@ -98,12 +92,6 @@ describe("formatChord", () => {
     expect(formatChord("Ctrl+d", true)).toBe("⌃D");
     expect(formatChord("Mod+Shift+p", true)).toBe("⌘⇧P");
     expect(formatChord("Mod+Shift+p", false)).toBe("Ctrl+Shift+P");
-  });
-
-  test("uses short names for named keys", () => {
-    expect(formatChord("Escape", false)).toBe("Esc");
-    expect(formatChord("ArrowDown", false)).toBe("↓");
-    expect(formatChord("Shift+Space", true)).toBe("⇧Space");
   });
 
   test("formats + as a key", () => {

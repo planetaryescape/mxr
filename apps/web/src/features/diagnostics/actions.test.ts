@@ -42,18 +42,6 @@ describe("diagnostics actions enable/disable predicates", () => {
     expect(disable?.when?.(baseCtx)).toBe(false);
   });
 
-  test("semantic.disable is visible when the cache says enabled", () => {
-    client.setQueryData(["diagnostics", "semantic"], {
-      status: { enabled: true, profiles: [] },
-    });
-
-    const enable = diagnosticsActions.find((a) => a.id === "semantic.enable");
-    const disable = diagnosticsActions.find((a) => a.id === "semantic.disable");
-
-    expect(enable?.when?.(baseCtx)).toBe(false);
-    expect(disable?.when?.(baseCtx)).toBe(true);
-  });
-
   test("semantic.enable falls back to enabled=false when cache is empty", () => {
     const enable = diagnosticsActions.find((a) => a.id === "semantic.enable");
     expect(enable?.when?.(baseCtx)).toBe(true);

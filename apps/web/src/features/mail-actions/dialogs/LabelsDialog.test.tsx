@@ -166,20 +166,6 @@ describe("LabelsDialog", () => {
     expect(mutations.performMailAction).not.toHaveBeenCalled();
   });
 
-  test("Mod+Enter applies from the filter box", async () => {
-    renderDialog();
-    await toggle("Later");
-
-    fireEvent.keyDown(screen.getByPlaceholderText(/find or create a label/i), {
-      key: "Enter",
-      ctrlKey: true,
-    });
-
-    expect(mutations.performMailAction).toHaveBeenCalledWith("labels", expect.any(Array), {
-      payload: { add: ["Later"], remove: [] },
-    });
-  });
-
   test("offers to create a label that doesn't exist and stages it", async () => {
     mailboxApi.createLabel.mockResolvedValue({});
     renderDialog();

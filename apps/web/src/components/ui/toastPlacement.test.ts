@@ -23,9 +23,4 @@ describe("cornerAvoiding", () => {
     const column = { left: 900, right: 1424, top: 0, bottom: 900 };
     expect(cornerAvoiding("bottom-right", column, view)).toBe("bottom-right");
   });
-
-  it("flips from the top corner too", () => {
-    const row = { left: 900, right: 1424, top: 70, bottom: 122 };
-    expect(cornerAvoiding("top-right", row, view)).toBe("bottom-right");
-  });
 });

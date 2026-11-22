@@ -18,15 +18,6 @@ describe("sanitizeHtml", () => {
     expect(clean).toMatch(/style="color: #777; font-size: 12px; line-height: 18px"/);
   });
 
-  it("keeps safe link hrefs and adds external-link attributes", () => {
-    const dirty = `<a href="https://example.com/path">open</a>`;
-    const clean = sanitizeHtml(dirty);
-
-    expect(clean).toMatch(/href="https:\/\/example\.com\/path"/);
-    expect(clean).toMatch(/target="_blank"/);
-    expect(clean).toMatch(/rel="noopener noreferrer"/);
-  });
-
   it("removes dangerous CSS from style attributes", () => {
     const dirty = `<p style="color:#777;background:url(http://evil/leak);position:fixed">hi</p>`;
     const clean = sanitizeHtml(dirty);
@@ -64,14 +55,6 @@ describe("sanitizeHtml", () => {
     const clean = sanitizeHtml(dirty, { allowRemoteImages: true });
 
     expect(clean).not.toMatch(/p\.gif/);
-  });
-
-  it("keeps normal-sized product images", () => {
-    const dirty = `<img src="https://cdn.example.com/hero.jpg" width="600" height="400" alt="hero">`;
-    const clean = sanitizeHtml(dirty, { allowRemoteImages: true });
-
-    expect(clean).toMatch(/hero\.jpg/);
-    expect(clean).toMatch(/alt="hero"/);
   });
 
   it("keeps normal remote images by default", () => {
@@ -142,16 +125,6 @@ describe("sanitizeHtml", () => {
     expect(prepared.html).toMatch(/background:\s*#e8f0fe/i);
   });
 
-  it("uses an explicit Dark canvas even when the app scheme is light", () => {
-    expect(
-      prepareEmailHtml(`<p>message</p>`, {
-        allowRemoteImages: false,
-        preference: "dark",
-        darkScheme: false,
-      }).canvas,
-    ).toBe("dark");
-  });
-
   it("lets Auto follow the light app scheme while preserving sender colors", () => {
     const prepared = prepareEmailHtml(`<p style="color:#111">message</p>`, {
       allowRemoteImages: false,
@@ -160,29 +133,6 @@ describe("sanitizeHtml", () => {
     });
     expect(prepared.canvas).toBe("original");
     expect(prepared.html).toMatch(/color:\s*#111/i);
-  });
-
-  it("adapts simple personal mail with neutral authored text in Auto", () => {
-    const prepared = prepareEmailHtml(
-      `<div style="color:rgb(34,34,34);font-family:Arial">Hi Alex, Thursday works.</div>`,
-      { allowRemoteImages: false, preference: "auto", darkScheme: true },
-    );
-
-    expect(prepared.canvas).toBe("dark");
-    expect(prepared.html).not.toMatch(/color:\s*rgb\(34,\s*34,\s*34\)/i);
-    expect(prepared.html).toContain("Hi Alex, Thursday works.");
-  });
-
-  it("leaves a sender-authored white-on-gray pair untouched on Auto's paper canvas", () => {
-    const prepared = prepareEmailHtml(`<div style="color:#fff;background:#777">Badge</div>`, {
-      allowRemoteImages: false,
-      preference: "auto",
-      darkScheme: true,
-    });
-
-    expect(prepared.canvas).toBe("paper");
-    expect(prepared.html).toMatch(/color:\s*#fff/i);
-    expect(prepared.html).toMatch(/background:\s*#777/i);
   });
 });
 

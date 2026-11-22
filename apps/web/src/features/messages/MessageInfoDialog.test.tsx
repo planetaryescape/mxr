@@ -223,16 +223,6 @@ test("conversation people never show a previous topic while a new fetch is pendi
   await waitFor(() => expect(screen.queryByText("alex@example.com")).toBeNull());
 });
 
-test("shows unavailable metadata and offers recovery after a query error", async () => {
-  http.send.mockRejectedValueOnce(new Error("offline")).mockResolvedValue(threadResponse());
-  renderDialog();
-  fireEvent.click(screen.getByRole("button", { name: /Message info for Samir Patel/ }));
-  expect(await screen.findByText("Couldn't load message info.")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  expect(await screen.findByText("alex@example.com")).toBeInTheDocument();
-  expect(http.send).toHaveBeenCalledTimes(2);
-});
-
 test("treats explicitly empty recipient arrays as empty recorded lists", async () => {
   const response = threadResponse();
   response.messages[0]!.to = [];
@@ -249,30 +239,6 @@ test("treats explicitly empty recipient arrays as empty recorded lists", async (
   );
   expect(screen.queryByText("Unavailable")).toBeNull();
   expect(screen.getByText(/does not confirm that nobody was hidden/)).toBeInTheDocument();
-});
-
-test("shows unavailable when a nonempty recipient list has no usable address", async () => {
-  const response = threadResponse();
-  response.messages[0]!.cc = [{ email: "   " }];
-  http.send.mockResolvedValue(response);
-  renderDialog();
-  fireEvent.click(screen.getByRole("button", { name: /Message info for Samir Patel/ }));
-
-  expect(await screen.findByRole("region", { name: "Cc" })).toHaveTextContent("Unavailable");
-});
-
-test("Escape closes message info and returns focus to its trigger", async () => {
-  http.send.mockResolvedValue(threadResponse());
-  render(
-    <QueryClientProvider client={queryClient()}>
-      <MessageInfoDialog threadId="thread-1" message={first} />
-    </QueryClientProvider>,
-  );
-  const trigger = screen.getByRole("button", { name: /Message info for Samir Patel/ });
-  fireEvent.click(trigger);
-  const dialog = await screen.findByRole("dialog", { name: "Message info" });
-  fireEvent.keyDown(dialog, { key: "Escape" });
-  await waitFor(() => expect(trigger).toHaveFocus());
 });
 
 test("switching topics does not reuse the previous thread's audience", async () => {

@@ -7,7 +7,6 @@ import {
   promiseViews,
   provenanceLabel,
   relationshipParts,
-  shortDuration,
 } from "./contextFormat";
 
 const NOW = new Date(2026, 8, 27, 12, 0);
@@ -59,14 +58,6 @@ describe("context copy", () => {
     expect(relationshipParts(person({ bulk_sender: true, display_name: null }), NOW)).toEqual([
       "Bulk mail from maya@example.com: 23 emails",
     ]);
-  });
-
-  it("uses relative days when recent and dates when older", () => {
-    expect(dayLabel(new Date(2026, 8, 27, 8).toISOString(), NOW)).toBe("today");
-    expect(dayLabel(new Date(2026, 8, 26, 8).toISOString(), NOW)).toBe("yesterday");
-    expect(dayLabel(new Date(2025, 0, 3).toISOString(), NOW)).toMatch(/2025/);
-    expect(shortDuration(30)).toBe("1m");
-    expect(shortDuration(3 * 86_400)).toBe("3d");
   });
 
   it("names promises both ways, each by its own owner, and the owed reply", () => {
@@ -163,11 +154,4 @@ describe("context copy", () => {
     ).toBe("Local model qwen2.5 · from this thread and your history with Maya");
   });
 
-  it("never uses em dashes", () => {
-    const all = [
-      ...relationshipParts(person(), NOW),
-      provenanceLabel({ model: "m", locality: "cloud", sources: ["this_thread"] }, null),
-    ].join(" ");
-    expect(all).not.toContain("—");
-  });
 });

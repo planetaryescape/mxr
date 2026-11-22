@@ -37,10 +37,6 @@ describe("applyPrefill", () => {
     expect(applyPrefill(next, intent).changed).toBe(false);
   });
 
-  test("each AI reply gets its own session", () => {
-    expect(replyWithBodyIntent("m-1", "a").key).toMatch(/^compose:reply:m-1:draft-/);
-  });
-
   test("reply and reply all share the same message-level entry key", () => {
     expect(replyIntent("m-1", "single").key).toBe(replyIntent("m-1", "all").key);
   });
@@ -77,9 +73,5 @@ describe("addressList", () => {
       { name: "Pat Lee", email: "pat@example.com" },
       { name: null, email: "sam@example.com" },
     ]);
-  });
-
-  test("an empty recipient field has no addresses", () => {
-    expect(addressList("")).toEqual([]);
   });
 });

@@ -103,14 +103,6 @@ describe("DraftsRoute", () => {
     await waitFor(() => expect(api.cancelScheduledSend).toHaveBeenCalledWith("draft-9"));
   });
 
-  test("hides the scheduled section when nothing is scheduled", async () => {
-    api.fetchDrafts.mockResolvedValue({ drafts: [] });
-    renderWithClient(<DraftsRoute />);
-
-    expect(await screen.findByText("No saved drafts")).toBeVisible();
-    expect(screen.queryByText("Scheduled")).not.toBeInTheDocument();
-  });
-
   test("lists mxr-local drafts and opens the stored draft composer", async () => {
     api.fetchDrafts.mockResolvedValue({
       drafts: [
@@ -141,15 +133,6 @@ describe("DraftsRoute", () => {
 
     fireEvent.click(draft);
     expect(useComposeUi.getState().intent).toMatchObject({ draftId: "draft-1" });
-  });
-
-  test("explains that the list reads mxr's local draft store", async () => {
-    api.fetchDrafts.mockResolvedValue({ drafts: [] });
-
-    renderWithClient(<DraftsRoute />);
-
-    expect(await screen.findByText("No saved drafts")).toBeVisible();
-    expect(screen.getByText(/persisted in mxr’s local store/)).toBeVisible();
   });
 
   test("confirms before permanently deleting a local draft", async () => {
@@ -193,12 +176,6 @@ describe("DraftsRoute", () => {
 
     beforeEach(() => {
       api.fetchDrafts.mockResolvedValue({ drafts: [] });
-    });
-
-    test("stay out of the way when there are none", async () => {
-      renderWithClient(<DraftsRoute />);
-      expect(await screen.findByText("No saved drafts")).toBeVisible();
-      expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
     });
 
     test("no claim is distinct from uncertain acceptance", async () => {

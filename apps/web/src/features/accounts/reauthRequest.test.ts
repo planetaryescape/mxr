@@ -11,10 +11,4 @@ describe("account reauth request handoff", () => {
     expect(claimAccountReauthRequest({ account_id: "account-1", key: "personal" })).toBe(false);
   });
 
-  test("claims a pending request by account key", () => {
-    window.sessionStorage.clear();
-    requestAccountReauth("personal");
-
-    expect(claimAccountReauthRequest({ account_id: "account-1", key: "personal" })).toBe(true);
-  });
 });

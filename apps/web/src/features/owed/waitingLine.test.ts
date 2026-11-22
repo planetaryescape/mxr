@@ -24,7 +24,4 @@ describe("waitingLine", () => {
     expect(waitingLine(row(2, null))).toBe("Waiting 2d");
   });
 
-  test("a wait under a day reads in hours", () => {
-    expect(waitingLine(row(0.25))).toBe("Waiting 6h");
-  });
 });

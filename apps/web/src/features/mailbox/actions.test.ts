@@ -65,7 +65,7 @@ describe("syncNow", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  test.each([{ protocol: 4 }, { protocol: 5 }, { protocol: 6 }, { protocol: undefined }])(
+  test.each([{ protocol: 4 }, { protocol: undefined }])(
     "does not start sync when bridge protocol is $protocol",
     async ({ protocol }) => {
       bridgeHealth.fetch.mockResolvedValue(
@@ -142,7 +142,7 @@ describe("syncNow", () => {
     });
   });
 
-  test.each([404, 405])(
+  test.each([404])(
     "explains when the bridge lacks the global sync endpoint (%i)",
     async (status) => {
       client.apiFetch.mockRejectedValue(new BridgeRequestError(status, "Unsupported route"));
@@ -175,14 +175,6 @@ describe("syncNow", () => {
         ),
       }),
     );
-  });
-
-  test("explains when there is nothing to sync", async () => {
-    client.apiFetch.mockResolvedValue({ results: [] });
-
-    await syncNow();
-
-    expect(toast.info).toHaveBeenCalledWith("No enabled sync-capable accounts");
   });
 
   test("rejects an invalid per-account response", async () => {

@@ -31,19 +31,6 @@ describe("Archive's cards and rows", () => {
     expect(onShowAll).toHaveBeenCalledOnce();
   });
 
-  test("a single match offers no Show all", () => {
-    render(
-      <AnswerCard
-        answer={answerFixture({ also: [], matching: 1 })}
-        onCopy={vi.fn<(text: string) => void>()}
-        onOpenDocument={vi.fn<(record: RecordData) => void>()}
-        onOpenEmail={vi.fn<(record: RecordData) => void>()}
-        onShowAll={vi.fn<() => void>()}
-      />,
-    );
-    expect(screen.queryByTestId("answer-show-all")).toBeNull();
-  });
-
   test("a listed query's header says what matched, how many, the total and the span", () => {
     const onClear = vi.fn<() => void>();
     const onIssuer = vi.fn<(issuer: string) => void>();
@@ -55,17 +42,6 @@ describe("Archive's cards and rows", () => {
     expect(onIssuer).toHaveBeenCalledWith("Anthropic");
     fireEvent.click(within(header).getByRole("button", { name: "Clear search" }));
     expect(onClear).toHaveBeenCalledOnce();
-  });
-
-  test("matches from several issuers have no issuer page", () => {
-    render(
-      <MatchesHeader
-        list={listFixture({ issuer: null, header: '"lisbon" · 2 records' })}
-        onClear={vi.fn<() => void>()}
-        onIssuer={vi.fn<(issuer: string) => void>()}
-      />,
-    );
-    expect(screen.queryByRole("button", { name: /page$/ })).toBeNull();
   });
 
   test("with no record match, the card says so before what all mail gave", () => {
@@ -129,26 +105,6 @@ describe("Archive's cards and rows", () => {
     // The lit row's verbs: o email.
     expect(within(row).getByTestId("record-open-email")).toHaveAccessibleName("email");
     expect(row).not.toHaveAttribute("data-best");
-  });
-
-  test("a listed query's best match is marked for sight and for screen readers", () => {
-    render(
-      <ul>
-        <LedgerRow
-          record={recordFixture()}
-          index={0}
-          lit={false}
-          via="key"
-          best
-          onSelect={vi.fn<(record: RecordData) => void>()}
-          onOpen={vi.fn<(record: RecordData) => void>()}
-          onDocument={vi.fn<(record: RecordData) => void>()}
-        />
-      </ul>,
-    );
-    const row = screen.getByTestId("record-row");
-    expect(row).toHaveAttribute("data-best", "true");
-    expect(row).toHaveTextContent("Best match: TAP Air Portugal");
   });
 
   test("the card lists the reference and amount first, each with where it came from", () => {

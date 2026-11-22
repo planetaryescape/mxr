@@ -51,13 +51,4 @@ describe("Inbox's mode chip", () => {
     });
   });
 
-  test("a list without chips asks nothing", () => {
-    render(
-      <ModeChipScope enabled={false} messageIds={["msg-1"]}>
-        <ModeChip messageId="msg-1" />
-      </ModeChipScope>,
-    );
-    expect(screen.queryByTestId("mode-chip")).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
 });

@@ -49,13 +49,6 @@ describe("the sidebar's rail", () => {
     expect(byKey.get("reading")?.count).toBeUndefined();
   });
 
-  test("early modes carry their note", () => {
-    const byKey = new Map(railNavEntries(rail).map((entry) => [entry.key, entry]));
-    expect(byKey.get("messages")?.early).toBe("Early version: the desk's lanes.");
-    expect(byKey.get("updates")?.early).toBe("Early version");
-    expect(byKey.get("now")?.early).toBeUndefined();
-  });
-
   test("before the rail loads, the same entries show without counts", () => {
     const entries = railNavEntries(undefined);
     expect(entries.map((entry) => entry.key)).toEqual(

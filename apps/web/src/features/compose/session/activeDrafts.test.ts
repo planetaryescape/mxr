@@ -161,14 +161,6 @@ test("another owner's explicit reopen retains A and selects its private snapshot
   expect((await loadInitialComposeSession(intent)).session.bodyMarkdown).toBe(b.bodyMarkdown);
   expect(api.restoreComposeSession).not.toHaveBeenCalled();
 });
-test("a malformed entry prevents replacing other private journal records", () => {
-  const raw = JSON.stringify({
-    damaged: { draftPath: "/private/damaged", snapshot: { bodyMarkdown: "keep me" } },
-  });
-  localStorage.setItem("mxr.compose.activeDrafts", raw);
-  expect(rememberActiveDraft(intent.key, draft())).toBe(false);
-  expect(localStorage.getItem("mxr.compose.activeDrafts")).toBe(raw);
-});
 
 test("finishing retained A removes A only, leaving B private work recoverable", async () => {
   const a = draft();

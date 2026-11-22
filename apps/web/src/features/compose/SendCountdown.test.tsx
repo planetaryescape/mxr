@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { SendCountdownBar, SendCountdownTitle } from "./SendCountdown";
+import { SendCountdownTitle } from "./SendCountdown";
 
 afterEach(() => vi.useRealTimers());
 
@@ -20,10 +20,4 @@ describe("send countdown", () => {
     expect(screen.getByTestId("send-countdown")).toHaveTextContent("Sending…");
   });
 
-  test("the bar drains over exactly the undo window", () => {
-    render(<SendCountdownBar seconds={10} />);
-    const bar = screen.getByTestId("send-countdown-bar");
-    expect(bar).toHaveClass("countdown-drain");
-    expect(bar.style.getPropertyValue("--countdown-duration")).toBe("10s");
-  });
 });

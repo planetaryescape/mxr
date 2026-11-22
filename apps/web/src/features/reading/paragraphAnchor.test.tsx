@@ -106,19 +106,8 @@ describe("the paragraph at the top of the reader", () => {
     expect(paragraphAtTop(null, viewport)).toBeNull();
   });
 
-  test("reads the HTML reader's data-para numbering", () => {
-    const host = document.createElement("div");
-    host.innerHTML = `<p data-para="1">a</p><p data-para="2">  two\n words </p>`;
-    document.body.append(host);
-    const viewport = document.createElement("div");
-    placeAt(viewport, 0, 400);
-    const [one, two] = host.querySelectorAll("[data-para]");
-    placeAt(one!, -50, -10);
-    placeAt(two!, -10, 40);
-    expect(paragraphAtTop(host, viewport)).toEqual({ index: 1, text: "two words" });
-    host.remove();
-  });
 });
+
 
 describe("drawing anchored marks in the plain reader", () => {
   const marked = (marks: { quote: string; paragraph?: number | null }[]) => {

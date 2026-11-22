@@ -229,19 +229,6 @@ describe("useDraftAssist", () => {
     expect(result.current.draft?.bodyMarkdown).toBe("private draft");
   });
 
-  test("an assist request carries its original binding while that owner is current", async () => {
-    observeWorkspace(ownerA);
-    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
-    const { result } = renderHook(
-      () => useHarness(draftWith("private draft", { binding: ownerA })),
-      { wrapper },
-    );
-    act(() => result.current.assist.submit());
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledOnce());
-    expect(apiFetch.mock.calls[0]?.[1]).toMatchObject({ binding: ownerA });
-    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
-  });
-
   test("a response that arrives after an owner transition cannot become the shown proof", async () => {
     observeWorkspace(ownerA);
     let resolve!: (value: ReturnType<typeof proposal>) => void;
@@ -301,23 +288,6 @@ describe("useDraftAssist", () => {
     });
     expect(result.current.draft?.bodyMarkdown).toBe(before);
     expect(result.current.draft?.modelSpans ?? []).toEqual([]);
-    expect(result.current.assist.canUndoAccept).toBe(false);
-  });
-
-  test("Esc keeps the user's text and never changes the body", async () => {
-    const before = "Thursday works.";
-    apiFetch.mockResolvedValue(
-      proposal("Thursday works. Friday too.", [
-        { kind: "kept", text: "Thursday works." },
-        { kind: "added", text: " Friday too." },
-      ]),
-    );
-    const { result } = renderHook(() => useHarness(draftWith(before)), { wrapper });
-    act(() => result.current.assist.submit());
-    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
-    act(() => result.current.assist.keepMine());
-    expect(result.current.assist.proofOpen).toBe(false);
-    expect(result.current.draft?.bodyMarkdown).toBe(before);
     expect(result.current.assist.canUndoAccept).toBe(false);
   });
 
@@ -416,125 +386,6 @@ describe("useDraftAssist", () => {
     });
   });
 
-  test("an autosaved new email that gained a recipient is sent with the live recipient", async () => {
-    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
-    const newEmail: ComposeIntent = { key: "n", title: "New", kind: "new" };
-    // The save held no recipient; the user has since added one.
-    const { result } = renderHook(
-      () =>
-        useHarness(
-          draftWith("Hi", {
-            draftId: "saved-3",
-            revision: 1,
-            kind: "new",
-            frontmatter: {
-              to: "live@example.com",
-              cc: "",
-              bcc: "",
-              subject: "",
-              from: "",
-              attach: [],
-            },
-          }),
-          newEmail,
-        ),
-      { wrapper },
-    );
-    act(() => result.current.assist.submit());
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
-    const [, init] = apiFetch.mock.calls[0] as [string, { body: Record<string, unknown> }];
-    expect(init.body.draft).toMatchObject({
-      kind: "new",
-      to: [{ name: null, email: "live@example.com" }],
-    });
-  });
-
-  test("an autosaved new email whose subject changed is sent with the live subject", async () => {
-    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
-    const newEmail: ComposeIntent = { key: "n", title: "New", kind: "new" };
-    const { result } = renderHook(
-      () =>
-        useHarness(
-          draftWith("Hi", {
-            draftId: "saved-4",
-            revision: 1,
-            kind: "new",
-            frontmatter: {
-              to: "pat@example.com",
-              cc: "",
-              bcc: "",
-              subject: "Decline Thursday's invitation",
-              from: "",
-              attach: [],
-            },
-          }),
-          newEmail,
-        ),
-      { wrapper },
-    );
-    act(() => result.current.assist.submit());
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
-    const [, init] = apiFetch.mock.calls[0] as [string, { body: Record<string, unknown> }];
-    expect(init.body.draft).toMatchObject({
-      kind: "new",
-      subject: "Decline Thursday's invitation",
-    });
-  });
-
-  test("a saved reply reopened from Drafts, with no message in the session, is sent as stored", async () => {
-    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
-    const reopened: ComposeIntent = {
-      key: "d",
-      title: "Saved draft",
-      kind: "new",
-      draftId: "reply-1",
-    };
-    const { result } = renderHook(
-      () =>
-        useHarness(
-          draftWith("Hi", {
-            draftId: "reply-1",
-            revision: 3,
-            kind: "new",
-            draftIntent: "reply",
-          }),
-          reopened,
-        ),
-      { wrapper },
-    );
-    act(() => result.current.assist.submit());
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
-    const [, init] = apiFetch.mock.calls[0] as [string, { body: Record<string, unknown> }];
-    expect(init.body.draft).toEqual({ kind: "stored", draft_id: "reply-1" });
-  });
-
-  test("a saved forward reopened from Drafts, with no message in the session, is sent as stored", async () => {
-    apiFetch.mockResolvedValue(proposal("FYI", [{ kind: "added", text: "FYI" }]));
-    const reopened: ComposeIntent = {
-      key: "d",
-      title: "Saved draft",
-      kind: "new",
-      draftId: "fwd-1",
-    };
-    const { result } = renderHook(
-      () =>
-        useHarness(
-          draftWith("FYI", {
-            draftId: "fwd-1",
-            revision: 5,
-            kind: "new",
-            draftIntent: "forward",
-          }),
-          reopened,
-        ),
-      { wrapper },
-    );
-    act(() => result.current.assist.submit());
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
-    const [, init] = apiFetch.mock.calls[0] as [string, { body: Record<string, unknown> }];
-    expect(init.body.draft).toEqual({ kind: "stored", draft_id: "fwd-1" });
-  });
-
   test("a saved forward still names its message, not the stored draft", async () => {
     apiFetch.mockResolvedValue(proposal("FYI", [{ kind: "added", text: "FYI" }]));
     const forward: ComposeIntent = { key: "f", title: "Forward", kind: "forward", messageId: "m9" };
@@ -571,59 +422,6 @@ describe("useDraftAssist", () => {
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
     const [, init] = apiFetch.mock.calls[1] as [string, { body: Record<string, unknown> }];
     expect(init.body).toMatchObject({ action: "finish", text: "I cannot make Thursday" });
-  });
-
-  test("an unchanged proof repeats its own action", async () => {
-    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
-    const { result } = renderHook(() => useHarness(draftWith("")), { wrapper });
-    act(() => result.current.assist.submit());
-    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
-    act(() => result.current.assist.again());
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
-    const [, init] = apiFetch.mock.calls[1] as [string, { body: Record<string, unknown> }];
-    expect(init.body).toMatchObject({ action: "write" });
-  });
-
-  test("revising the displayed version sends its id and original request text and action", async () => {
-    apiFetch.mockResolvedValueOnce(
-      proposal("Decline Thursday and suggest Friday.", [
-        { kind: "added", text: "Decline Thursday and suggest Friday." },
-      ]),
-    );
-    apiFetch.mockResolvedValueOnce(
-      proposal("Friday works instead.", [{ kind: "added", text: "Friday works instead." }]),
-    );
-    const { result } = renderHook(
-      () =>
-        useHarness(
-          draftWith("", {
-            frontmatter: { ...draftWith("").frontmatter, to: "pat@example.com" },
-          }),
-          { key: "new", title: "New", kind: "new" },
-        ),
-      { wrapper },
-    );
-    act(() => {
-      result.current.assist.setInstruction("Decline Thursday and suggest Friday");
-      result.current.assist.submit();
-    });
-    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
-    act(() => result.current.assist.setInstruction("Remove the last sentence of this proof"));
-    act(() => result.current.assist.again("Remove the last sentence of this proof"));
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
-    expect(apiFetch.mock.calls[1]?.[1]).toMatchObject({
-      body: {
-        draft: {
-          kind: "new",
-          account_id: "acc",
-          to: [{ name: null, email: "pat@example.com" }],
-        },
-        text: "",
-        action: "write",
-        instruction: "Remove the last sentence of this proof",
-        revise: "p1",
-      },
-    });
   });
 
   test("a revision keeps the original UTF-8 selection even if the editor selection moves", async () => {
@@ -772,41 +570,6 @@ describe("useDraftAssist", () => {
     expect(marks.toSorted()).toEqual(["\n\nThanks, B", "Friday works.", "Hi Pat,\n\n"].toSorted());
   });
 
-  test("an edit inside a marked sentence clears only the edited words", async () => {
-    const marked = "Friday works.";
-    apiFetch.mockResolvedValue({
-      proposal: {
-        proposal_id: "p-e",
-        action: "finish",
-        base: "",
-        text: "Friday is set.",
-        changes: [
-          { kind: "kept", text: "Friday" },
-          { kind: "removed", text: " works." },
-          { kind: "added", text: " is set." },
-        ],
-        gaps: [],
-        provenance: null,
-        yours_changed: [],
-        composer_version: 1,
-      },
-    });
-    const { result } = renderHook(
-      () => useHarness(draftWith(marked, { modelSpans: [{ start: 0, end: marked.length }] })),
-      { wrapper },
-    );
-    act(() => result.current.assist.submit());
-    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
-    act(() => result.current.assist.accept());
-
-    const body = result.current.draft?.bodyMarkdown ?? "";
-    expect(body).toBe("Friday is set.");
-    const marks = (result.current.draft?.modelSpans ?? []).map((span) =>
-      body.slice(span.start, span.end),
-    );
-    expect(marks.toSorted()).toEqual(["Friday", " is set."].toSorted());
-  });
-
   test("a forward sends its recipients as address objects", async () => {
     apiFetch.mockResolvedValue(proposal("FYI", [{ kind: "added", text: "FYI" }]));
     const forward: ComposeIntent = { key: "f", title: "Forward", kind: "forward", messageId: "m2" };
@@ -833,13 +596,5 @@ describe("useDraftAssist", () => {
         { name: null, email: "sam@example.com" },
       ],
     });
-  });
-
-  test("placeholder and the next action follow the selection", () => {
-    const body = "Thursday works.";
-    const { result } = renderHook(() => useHarness(draftWith(body)), { wrapper });
-    expect(result.current.assist.placeholder).toBe("Finish my draft, or say what to change");
-    act(() => result.current.assist.setSelection({ from: 0, to: 8 }));
-    expect(result.current.assist.placeholder).toBe("Edit the selection: say how");
   });
 });

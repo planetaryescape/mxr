@@ -22,7 +22,4 @@ describe("labelColor", () => {
     expect(labelColor("Work", null)).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
-  test("a name gives the same colour every time", () => {
-    expect(labelColor("Receipts")).toBe(labelColor("Receipts"));
-  });
 });

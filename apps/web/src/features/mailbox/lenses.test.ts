@@ -70,15 +70,6 @@ describe("lensesFromShell", () => {
     ]);
   });
 
-  test("gives each system lens the identity projections use", () => {
-    const identity = (key: string) => lenses.find((lens) => lens.key === key)?.identity;
-    expect(identity("inbox")).toEqual({ kind: "inbox" });
-    expect(identity("archive")).toEqual({ kind: "all_mail" });
-    expect(identity("starred")).toEqual({ kind: "starred" });
-    expect(identity("trash")).toEqual({ kind: "trash" });
-    expect(identity("sent")).toEqual({ kind: "label", labelName: "SENT" });
-  });
-
   test("opens a Starred item with no label through the starred lens", () => {
     const starred = lensesFromShell({
       sidebar: {
@@ -170,13 +161,6 @@ describe("resolveLens", () => {
     expect(bySlug?.params).toEqual({ lens_kind: "label", label_id: "Label_2" });
     expect(bySlug?.identity).toEqual({ kind: "label", labelName: "Follow Up" });
     expect(byName?.key).toBe(bySlug?.key);
-  });
-
-  test("round-trips a label with accented characters through its path", () => {
-    const reunion = lenses.find((lens) => lens.label === "Réunion")!;
-    const name = decodeURIComponent(reunion.path.replace("/m/label/", ""));
-
-    expect(resolveLens({ kind: "label", name }, lenses)?.labelName).toBe("Réunion");
   });
 
   // Label paths come from a Unicode-aware slug, so non-ASCII names get

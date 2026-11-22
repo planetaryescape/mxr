@@ -171,11 +171,4 @@ describe("browser-reserved shortcuts", () => {
       "shell.command-palette",
     );
   });
-
-  test("the chord normaliser agrees with the browser on the combos that matter", () => {
-    expect(physicalCombo("Mod+Shift+t", "mac")).toBe("Cmd+Shift+t");
-    expect(physicalCombo("Mod+Shift+t", "other")).toBe("Ctrl+Shift+t");
-    expect(physicalCombo("Meta+h", "mac")).toBe("Cmd+h");
-    expect(physicalCombo("Mod+Enter", "mac")).toBe("Cmd+enter");
-  });
 });

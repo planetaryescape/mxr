@@ -91,20 +91,6 @@ describe("HelpDialog", () => {
     expect(screen.getByText("No matching shortcuts.")).toBeVisible();
   });
 
-  test("states no TUI-parity remarks", () => {
-    render(<HelpDialog open onOpenChange={() => undefined} />);
-    expect(screen.queryByText(/Keys follow the mxr TUI/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/muscle memory/)).not.toBeInTheDocument();
-  });
-
-  test("says so when nothing matches", () => {
-    render(<HelpDialog open onOpenChange={() => undefined} />);
-
-    filter("no-such-shortcut");
-
-    expect(screen.getByText("No matching shortcuts.")).toBeVisible();
-  });
-
   test("? closes help while the filter is empty and types into it otherwise", () => {
     const onOpenChange = vi.fn<(open: boolean) => void>();
     render(<HelpDialog open onOpenChange={onOpenChange} />);

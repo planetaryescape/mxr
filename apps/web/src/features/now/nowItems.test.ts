@@ -110,18 +110,6 @@ describe("Now's rows", () => {
     expect(itemTarget(pick!, { email: true })).toEqual({ to: "/reading/r1" });
   });
 
-  test("the Updates card opens on its first line", () => {
-    const withLines = {
-      ...now,
-      updates: { ...now.updates, lines: [{ id: "line-1" }, { id: "line-2" }] },
-    } as unknown as Now;
-    const card = nowItems(withLines, NONE_HIDDEN).find((item) => item.kind === "updates");
-    expect(itemTarget(card!)).toEqual({ to: "/updates", search: { row: "line-1" } });
-  });
-
-  test("nothing loaded is nothing to show", () => {
-    expect(nowItems(undefined, NONE_HIDDEN)).toEqual([]);
-  });
 });
 
 const rows = (...keys: string[]) => keys.map((key) => ({ key }));

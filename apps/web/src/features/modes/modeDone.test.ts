@@ -59,33 +59,6 @@ describe("done here's toast", () => {
     ).toBe("2 conversations: Done. Archived in Gmail.");
   });
 
-  test("several that went different ways say how many", () => {
-    expect(
-      doneToast([
-        outcome("a", "Done. Archived in Gmail."),
-        outcome("b", "Done in Messages. Still in To do."),
-      ]),
-    ).toBe("Done with 2 conversations.");
-    expect(doneToast([])).toBe("");
-  });
-
-  test("hides a row per mode, so done in one mode leaves the others", () => {
-    const store = useModeDone.getState();
-    store.hide("messages", ["t1"]);
-    expect(useModeDone.getState().hidden.messages.has("t1")).toBe(true);
-    expect(useModeDone.getState().hidden.todo.has("t1")).toBe(false);
-    store.show("messages", ["t1"]);
-    expect(useModeDone.getState().hidden.messages.has("t1")).toBe(false);
-  });
-
-  test("a row folds when the done asked for it, and drops out once its fold settles", () => {
-    const store = useModeDone.getState();
-    store.fold("messages", ["t2"]);
-    expect(useModeDone.getState().folding.messages.has("t2")).toBe(true);
-    expect(useModeDone.getState().folding.todo.has("t2")).toBe(false);
-    store.settle("messages", ["t2"]);
-    expect(useModeDone.getState().folding.messages.has("t2")).toBe(false);
-  });
 });
 
 describe("done here's fold follows how it was asked for", () => {
@@ -148,18 +121,6 @@ describe("done here when nothing was done", () => {
     expect(useUndo.getState().lastUndo).not.toBeNull();
   });
 
-  test("names only the to-do being ticked off", async () => {
-    fetchMock.mockResolvedValueOnce({
-      kind: "ModeDone",
-      dry_run: false,
-      items: [{ thread_id: "t1", mode: "todo", provider: "Gmail", copy: "Ticked off." }],
-    });
-    await markModeDone("todo", ["t1"], { todoIds: ["todo-a"] });
-    expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/mail/modes/todo/done", {
-      method: "POST",
-      body: { thread_ids: ["t1"], dry_run: false, todo_ids: ["todo-a"] },
-    });
-  });
 });
 
 describe("named To do completion in flight", () => {

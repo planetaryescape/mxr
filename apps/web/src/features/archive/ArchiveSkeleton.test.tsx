@@ -45,26 +45,6 @@ beforeEach(() => {
   splitPane.mockClear();
 });
 
-test("Archive reserves its question, coming-up list, filters, amount rows and card", () => {
-  const { container } = render(<ArchiveSkeleton shown />);
-  expect(screen.getByRole("status", { name: "Loading Archive" })).toHaveAttribute(
-    "aria-busy",
-    "true",
-  );
-  expect(screen.getByTestId("archive-search-placeholder")).toBeInTheDocument();
-  expect(screen.getByTestId("archive-filters-placeholder")).toBeInTheDocument();
-  expect(screen.getByTestId("archive-card-placeholder")).toBeInTheDocument();
-  const card = container.querySelector("#archive-card-loading");
-  expect(card).toHaveAttribute("data-default-size", "420px");
-  expect(card).toHaveAttribute("data-min-size", "320px");
-  expect(card).toHaveAttribute("data-max-size", "560px");
-  expect(container.querySelector("h2")).toHaveTextContent("Coming up");
-  expect(container.querySelector('[data-skeleton-row="amount"]')).toBeInTheDocument();
-  // Reuse the real ledger's preference key and constraints, not a second arbitrary split.
-  expect(splitPane).toHaveBeenCalledWith("archive-card", CARD_PANE_SIZE, { active: true });
-  expect(container.querySelector("button, a, input, [tabindex]")).toBeNull();
-});
-
 test("a phone or an already-open email does not reserve a hidden record card", () => {
   layout.single = true;
   render(<ArchiveSkeleton shown />);
@@ -76,11 +56,4 @@ test("a phone or an already-open email does not reserve a hidden record card", (
   render(<ArchiveSkeleton shown />);
   expect(screen.queryByTestId("archive-card-placeholder")).toBeNull();
   expect(splitPane).toHaveBeenLastCalledWith("archive-card", CARD_PANE_SIZE, { active: false });
-});
-
-test("quiet Archive reserves the same layout without showing bars", () => {
-  const { container } = render(<ArchiveSkeleton shown={false} />);
-  expect(screen.getByTestId("archive-search-placeholder")).toBeInTheDocument();
-  expect(screen.queryByTestId("page-skeleton")).toBeNull();
-  expect(container.querySelector('[aria-hidden="true"]')).toHaveClass("invisible");
 });

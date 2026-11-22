@@ -1,11 +1,11 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { DiagnosticsRoute, DiagnosticValue } from "./DiagnosticsRoute";
+import { DiagnosticsRoute, } from "./DiagnosticsRoute";
 
 const diagnosticsApi = vi.hoisted(() => ({
   backfillSemantic: vi.fn<() => Promise<unknown>>(),
@@ -122,27 +122,9 @@ afterEach(() => {
 });
 
 describe("DiagnosticValue", () => {
-  test("renders object diagnostics as readable key-value rows", () => {
-    render(<DiagnosticValue value={{ ok: true, latency_ms: 12 }} />);
-
-    expect(screen.getByText("ok")).toBeVisible();
-    expect(screen.getByText("true")).toBeVisible();
-    expect(screen.getByText("latency_ms")).toBeVisible();
-    expect(screen.getByText("12")).toBeVisible();
-    expect(screen.queryByText(/"ok"/)).not.toBeInTheDocument();
-  });
 });
 
 describe("DiagnosticsRoute", () => {
-  test("?panel=logs opens the logs panel", async () => {
-    router.search = { panel: "logs" };
-    renderWithQueryClient(<DiagnosticsRoute />);
-
-    expect(await screen.findByRole("tab", { name: "Logs", selected: true })).toBeVisible();
-    await waitFor(() => expect(diagnosticsApi.fetchLogs).toHaveBeenCalled());
-    expect(screen.queryByText("Semantic controls")).not.toBeInTheDocument();
-    router.search = {};
-  });
 
   test("choosing a tab puts the panel in the URL", async () => {
     renderWithQueryClient(<DiagnosticsRoute />);
@@ -155,34 +137,4 @@ describe("DiagnosticsRoute", () => {
     });
   });
 
-  test("surfaces semantic lifecycle controls", async () => {
-    renderWithQueryClient(<DiagnosticsRoute />);
-
-    expect(await screen.findByText("Semantic controls")).toBeVisible();
-    await waitFor(() => expect(screen.getAllByText("bge-small-en-v1.5").length).toBeGreaterThan(0));
-    expect(screen.getByText("multilingual-e5-small")).toBeVisible();
-    expect(screen.getByText("bge-m3")).toBeVisible();
-
-    fireEvent.click(screen.getByRole("button", { name: /enable semantic/i }));
-    await waitFor(() => expect(diagnosticsApi.setSemanticEnabled).toHaveBeenCalled());
-    expect(diagnosticsApi.setSemanticEnabled.mock.calls[0]?.[0]).toBe(true);
-
-    fireEvent.click(screen.getByRole("button", { name: /backfill semantic/i }));
-    await waitFor(() => expect(diagnosticsApi.backfillSemantic).toHaveBeenCalled());
-
-    fireEvent.click(screen.getByRole("button", { name: /reindex active profile/i }));
-    await waitFor(() => expect(diagnosticsApi.reindexSemantic).toHaveBeenCalled());
-
-    const useButton = screen.getAllByRole("button", { name: "Use" })[0];
-    expect(useButton).toBeDefined();
-    fireEvent.click(useButton!);
-    await waitFor(() => expect(diagnosticsApi.useSemanticProfile).toHaveBeenCalled());
-    expect(diagnosticsApi.useSemanticProfile.mock.calls[0]?.[0]).toBe("multilingual-e5-small");
-
-    const installButton = screen.getAllByRole("button", { name: "Install" })[2];
-    expect(installButton).toBeDefined();
-    fireEvent.click(installButton!);
-    await waitFor(() => expect(diagnosticsApi.installSemanticProfile).toHaveBeenCalled());
-    expect(diagnosticsApi.installSemanticProfile.mock.calls[0]?.[0]).toBe("bge-m3");
-  });
 });

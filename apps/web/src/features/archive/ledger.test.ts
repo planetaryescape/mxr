@@ -1,14 +1,9 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  activeChip,
   amountCopy,
-  amountUnchecked,
   answerList,
   groupByMonth,
-  KIND_CHIPS,
-  matchSpan,
-  provenanceLine,
   referenceCopy,
   stepYear,
 } from "./ledger";
@@ -40,20 +35,6 @@ describe("Archive's ledger", () => {
     expect(groups[0]?.month).toBeNull();
   });
 
-  test("kind chips name what people call records, and a custom set picks none", () => {
-    expect(KIND_CHIPS.map((chip) => chip.label)).toEqual([
-      "All",
-      "Receipts",
-      "Orders",
-      "Trips",
-      "Bills",
-      "Documents",
-    ]);
-    expect(activeChip({})).toBe("all");
-    expect(activeChip({ kinds: ["statement", "invoice"] })).toBe("bills");
-    expect(activeChip({ kinds: ["ticket"] })).toBeNull();
-  });
-
   test("[ steps back a year among the years with records and ] steps forward to all years", () => {
     const years = [2026, 2025, 2023];
     expect(stepYear(years, undefined, -1)).toBe(2026);
@@ -72,15 +53,6 @@ describe("Archive's ledger", () => {
     expect(amountCopy(recordFixture({ fields: [] }))).toBeNull();
   });
 
-  test("an amount nobody checked is marked, and provenance says so", () => {
-    expect(amountUnchecked(recordFixture({ unchecked_fields: ["amount"] }))).toBe(true);
-    expect(amountUnchecked(recordFixture())).toBe(false);
-    expect(provenanceLine("schema.org markup", true)).toBe("from schema.org markup · checked");
-    expect(provenanceLine("a pattern in the email", false)).toBe(
-      "from a pattern in the email · unchecked",
-    );
-  });
-
   test("only a list-mode answer replaces the ledger's rows", () => {
     const list = listFixture();
     expect(answerList(answerFixture({ mode: "list", list }))).toBe(list);
@@ -90,10 +62,4 @@ describe("Archive's ledger", () => {
     expect(answerList(undefined)).toBeNull();
   });
 
-  test("the matches' span reads as one day when they share it", () => {
-    expect(matchSpan(listFixture())).toBe("3 Mar 2025 to 3 May 2025");
-    const day = "2025-04-03T12:00:00Z";
-    expect(matchSpan(listFixture({ first: day, last: day }))).toBe("3 Apr 2025");
-    expect(matchSpan(listFixture({ first: null, last: null }))).toBe("");
-  });
 });

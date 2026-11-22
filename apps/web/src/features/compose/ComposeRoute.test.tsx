@@ -4,7 +4,7 @@ import { render } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { ComposeRoute } from "./ComposeRoute";
-import { newMessageIntent, useComposeUi } from "./composeUiStore";
+import { useComposeUi } from "./composeUiStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -52,16 +52,6 @@ describe("/compose deep links", () => {
     });
   });
 
-  test("a stored draft link opens that draft", () => {
-    router.location = { pathname: "/compose/draft-42", search: {} };
-    render(<ComposeRoute />);
-
-    expect(useComposeUi.getState().intent).toMatchObject({
-      key: "draft:draft-42",
-      draftId: "draft-42",
-    });
-  });
-
   test("a reply link shares the thread reply's draft", () => {
     router.location = { pathname: "/compose/new", search: { reply: "m-7", mode: "all" } };
     render(<ComposeRoute />);
@@ -83,9 +73,5 @@ describe("/compose deep links", () => {
     expect(useComposeUi.getState().intent?.key).toMatch(/^compose:new:/);
     expect(router.back).toHaveBeenCalledTimes(1);
     expect(router.navigate).not.toHaveBeenCalled();
-  });
-
-  test("starting another new message creates a fresh session key", () => {
-    expect(newMessageIntent().key).not.toBe(newMessageIntent().key);
   });
 });

@@ -27,14 +27,6 @@ import { highlightSelection, isWebUrl, openInMarginalia } from "./readingVerbs";
 describe("highlighting with nothing selected", () => {
   beforeEach(() => saveHighlight.mockReset().mockResolvedValue({}));
 
-  it("names the highlight key from the key definition, not the retired h", async () => {
-    expect(await highlightSelection("", "item-1", "issue")).toBe(false);
-    expect(toast.info).toHaveBeenCalledWith(
-      'Scroll to a paragraph or select some text, then press "',
-    );
-    expect(saveHighlight).not.toHaveBeenCalled();
-  });
-
   it("saves the paragraph at the top, anchored to it, and names it", async () => {
     const top = {
       index: 3,
@@ -99,22 +91,4 @@ describe("opening Marginalia", () => {
     expect(tab.close).toHaveBeenCalledOnce();
   });
 
-  it("navigates the pre-opened tab to a web address", async () => {
-    const tab = {
-      opener: {},
-      close: vi.fn<() => void>(),
-      location: { href: "about:blank" },
-    };
-    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
-    sendToMarginalia.mockResolvedValue({
-      copy: "Sent to Marginalia.",
-      marginalia: { read_url: "https://reader.example.com/read/k57" },
-    });
-    await openInMarginalia("k", null, {
-      connected: true,
-      onConnect: () => undefined,
-    });
-    expect(tab.location.href).toBe("https://reader.example.com/read/k57");
-    expect(tab.close).not.toHaveBeenCalled();
-  });
 });

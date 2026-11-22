@@ -11,6 +11,9 @@ import { keymapModules } from "./src/lib/actions/keymapPlugin";
 // laptop and a CI runner set to en-US or C format dates the same way.
 process.env.LANG = "en_GB.UTF-8";
 process.env.LC_ALL = "en_GB.UTF-8";
+// format.ts builds its Intl formatters at import, before a test file can set
+// TZ, so a laptop outside UK time shifted midnight and year-boundary cases.
+process.env.TZ = "Europe/London";
 
 export default defineConfig({
   // As in vite.config.ts, so tests see the version the build ships in.

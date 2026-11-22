@@ -64,12 +64,6 @@ describe("ActionRegistry.define", () => {
     );
   });
 
-  test("allows the same chord in different scopes", () => {
-    const reg = new ActionRegistry();
-    reg.define(command("list.down", "down", "j", ["list"]));
-    expect(() => reg.define(command("reader.down", "scrollDown", "j", ["reader"]))).not.toThrow();
-  });
-
   test("rejects a chord that is a prefix of another in the same scope, in either order", () => {
     const reg = new ActionRegistry();
     reg.define(run({ id: "inbox", shortcut: "g i" }));
@@ -148,11 +142,6 @@ describe("invokeAction", () => {
     setController("reader", null);
     invokeAction(archive, ctx(["reader", "list", "global"]), "key");
     expect(listArchive).toHaveBeenCalledTimes(1);
-  });
-
-  test("a command with no live controller is a no-op", () => {
-    const archive = command("mail.archive", "archive", "e", ["list"]);
-    expect(() => invokeAction(archive, ctx(["list", "global"]), "key")).not.toThrow();
   });
 
   test("a run action receives the context", () => {

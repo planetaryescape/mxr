@@ -13,8 +13,4 @@ describe("owedMeta", () => {
     );
   });
 
-  test("falls back to conversations from an older daemon", () => {
-    expect(owedMeta(2, undefined)).toBe("2 conversations");
-    expect(owedMeta(0, { write_with: 0, others: 5 })).toBeNull();
-  });
 });

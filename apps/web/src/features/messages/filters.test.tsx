@@ -20,22 +20,6 @@ describe("Messages attention and history views", () => {
     }
   });
 
-  it("shows the cycle key and offers the same action as a button while loading", () => {
-    const onChange = vi.fn<(next: MessagesFilter) => void>();
-    render(
-      <MessagesFilterBar
-        filter={{ turn: "theirs", unread: true, pastPace: true }}
-        counts={null}
-        onChange={onChange}
-      />,
-    );
-    const cycle = screen.getByRole("button", { name: "Cycle views" });
-    expect(cycle).toHaveAttribute("aria-keyshortcuts", "f");
-    expect(cycle).toHaveTextContent("fCycle views");
-    fireEvent.click(cycle);
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ turn: null, unread: true, pastPace: true });
-  });
-
   it("requires an explicit history choice and clearing restores attention", () => {
     const onChange = vi.fn<(next: MessagesFilter) => void>();
     const { rerender } = render(

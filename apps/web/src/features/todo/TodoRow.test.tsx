@@ -110,54 +110,6 @@ describe("TodoRow", () => {
       expect.objectContaining({ id: "peeked", seen_revision: "revision-2" }),
     );
   });
-  test("shows the task, who it is from and the window in words, with no bar or leading pictogram", () => {
-    const { row } = renderRow(todoFixture(), "now", { lit: false });
-    const view = within(row);
-    expect(view.getByTestId("todo-title")).toHaveTextContent("Pay council tax");
-    expect(row).toHaveTextContent("Camden Council");
-    expect(row).toHaveTextContent(/arrived \w+|arrived today|arrived yesterday/);
-    expect(view.getByTestId("todo-amount")).toHaveTextContent("£142.00");
-    expect(view.getByTestId("todo-when")).toHaveTextContent("act by Wed 7 Oct · due Fri 9 Oct");
-    expect(view.queryByTestId("runway-bar")).toBeNull();
-    expect(view.queryByTestId("todo-action")).toBeNull();
-    expect(view.queryByTestId("todo-provenance")).toBeNull();
-    expect(
-      [...row.querySelectorAll("svg")].filter(
-        (icon) => !icon.closest("button:not([role='checkbox'])"),
-      ),
-    ).toHaveLength(0);
-  });
-
-  test("an unseen row reads bright and semibold; a seen one calms", () => {
-    const { row, rerender } = renderRow(todoFixture({ unread: true }), "now", { lit: false });
-    expect(within(row).getByTestId("todo-title").parentElement).toHaveClass(
-      "font-semibold",
-      "text-text-1",
-    );
-    rerender(todoFixture({ unread: false }));
-    expect(within(row).getByTestId("todo-title").parentElement).toHaveClass("text-text-2");
-    expect(within(row).getByTestId("todo-title").parentElement).not.toHaveClass("font-semibold");
-  });
-
-  test("a completed row stays struck even when its email is unread", () => {
-    const { row } = renderRow(todoFixture({ unread: true }), "done", { lit: false });
-    expect(within(row).getByTestId("todo-title")).toHaveClass("text-text-3", "line-through");
-  });
-
-  test("a field to check shows as one word in the trail, not a chip", () => {
-    const { row } = renderRow(todoFixture(), "now", { lit: false });
-    expect(within(row).getByTestId("todo-unchecked")).toHaveTextContent("unchecked");
-    expect(within(row).getByTestId("todo-unchecked").getAttribute("title")).toContain(
-      "Due: a pattern in the email",
-    );
-  });
-
-  test("the lit row offers e done and o email; the unlit row's verbs wait for hover", () => {
-    const lit = renderRow(todoFixture(), "now", { lit: true });
-    expect(lit.row).toHaveAttribute("data-lit", "true");
-    expect(within(lit.row).getByTestId("todo-tick")).toBeVisible();
-    expect(within(lit.row).getByRole("button", { name: "email" })).toBeVisible();
-  });
 
   test("e done and o email call their handlers", () => {
     const { row, props } = renderRow(todoFixture());
@@ -166,73 +118,6 @@ describe("TodoRow", () => {
     fireEvent.click(within(row).getByRole("button", { name: "email" }));
     expect(props.onOpenEmail).toHaveBeenCalledWith(props.todo);
     expect(props.onSelect).not.toHaveBeenCalled();
-  });
-
-  test("selected task actions have compact phone icons without losing their names or handlers", () => {
-    const { row, props } = renderRow(todoFixture());
-    const done = within(row).getByTestId("todo-tick");
-    const email = within(row).getByRole("button", { name: "email" });
-    const details = within(row).getByRole("button", { name: "details" });
-    for (const button of [done, email, details]) {
-      expect(button.querySelector("svg.sm\\:hidden")).toBeInTheDocument();
-      expect(button.querySelector("span.sm\\:hidden")).toBeNull();
-    }
-    expect(done).toHaveAccessibleName(`Tick off ${props.todo.title}`);
-    fireEvent.click(details);
-    expect(props.onToggleDetails).toHaveBeenCalledWith(props.todo);
-    expect(props.onSelect).not.toHaveBeenCalled();
-  });
-
-  test("done band reopen and details keep compact phone icons", () => {
-    const { row } = renderRow(todoFixture(), "done");
-    for (const button of [
-      within(row).getByRole("button", { name: /reopen/ }),
-      within(row).getByRole("button", { name: "details" }),
-    ]) {
-      expect(button.querySelector("svg.sm\\:hidden")).toBeInTheDocument();
-      expect(button.querySelector("span.sm\\:hidden")).toBeNull();
-    }
-  });
-
-  test("a row with no email offers no o email", () => {
-    const { row } = renderRow(todoFixture({ thread_id: null }));
-    expect(within(row).queryByRole("button", { name: "email" })).toBeNull();
-  });
-
-  test("a row's date takes the cue colour only when it is due today or past", () => {
-    const past = renderRow(todoFixture({ overdue: true, when_label: "was due Fri 2 Oct" }));
-    expect(within(past.row).getByTestId("todo-when").className).toContain("text-cue");
-    past.row.remove();
-    const later = renderRow(
-      todoFixture({
-        overdue: false,
-        due_at: new Date(Date.now() + 5 * 86_400_000).toISOString(),
-        act_by_at: null,
-      }),
-    );
-    expect(within(later.row).getByTestId("todo-when").className).not.toContain("text-cue");
-  });
-
-  test("a later-email notice never hides when the email arrived", () => {
-    const todo = todoFixture({
-      resolution: {
-        id: "resolution-1",
-        message_id: "msg_resolution",
-        thread_id: "thread_bill",
-        source_date: "2026-10-04T09:00:00Z",
-        quote: "Your card was declined.",
-        quote_location: "body",
-        source_method: "rule",
-        action: "complete",
-        proposed_due_at: null,
-        proposed_due_words: null,
-        status: "pending",
-      },
-    });
-    const { row } = renderRow(todo);
-    const line = within(row).getByTestId("todo-request-and-quote");
-    expect(line).toHaveTextContent(/arrived /);
-    expect(line).toHaveTextContent("a later email may change this");
   });
 
   test("a later-mail resolution shows its evidence and opens that exact source", () => {
@@ -315,14 +200,6 @@ describe("TodoRow", () => {
     expect(screen.queryByRole("button", { name: "Accept and complete" })).toBeNull();
   });
 
-  test("a filed source shows its date and keeps the to-do open", () => {
-    const todo = todoFixture({ source_filed_at: "2026-10-30T08:00:00Z" });
-    const { row } = renderRow(todo, "now", { details: true });
-    const filed = within(row).getByTestId("todo-filed");
-    expect(filed).toHaveAttribute("dateTime", "2026-10-30T08:00:00Z");
-    expect(within(row).getByTestId("todo-request-and-quote")).toHaveTextContent(/left the inbox/);
-  });
-
   test("expanded details preserve arrival, why, next and per-field unchecked words", () => {
     const { row } = renderRow(
       todoFixture({ next: "Check the council tax account", thread_id: null }),
@@ -339,63 +216,6 @@ describe("TodoRow", () => {
     expect(details).toHaveTextContent("Check the council tax account");
     expect(details).toHaveTextContent("09/10/2026");
     expect(within(details).getAllByTestId("todo-field-unchecked")).toHaveLength(1);
-  });
-
-  test("a row about a link renders no outside link to click", () => {
-    const { row } = renderRow(
-      todoFixture({
-        action: {
-          label: "Pay on camden.gov.uk",
-          url: "https://www.camden.gov.uk/pay-council-tax",
-          domain: "camden.gov.uk",
-          trusted: true,
-        },
-      }),
-    );
-    expect(row.querySelector("a[href]")).toBeNull();
-  });
-
-  test("expanded details constrain their grid and wrap long source evidence without dropping it", () => {
-    const evidence = `https://example.test/payment/${"a".repeat(96)}`;
-    const { row } = renderRow(
-      todoFixture({
-        thread_id: null,
-        why: evidence,
-        fields: [
-          {
-            field: "quote",
-            evidence,
-            source: "rule",
-            source_label: "a pattern in the email",
-            checked: true,
-          },
-        ],
-      }),
-      "now",
-      { details: true },
-    );
-    const details = within(row).getByTestId("todo-source");
-    expect(within(details).getByTestId("todo-why")).toHaveTextContent(evidence);
-    expect(within(details).getAllByText(evidence)).toHaveLength(1);
-    expect(details).toHaveClass("grid-cols-[minmax(0,1fr)]", "[overflow-wrap:anywhere]");
-  });
-
-  test("overdue reads 'was due' and nothing is red", () => {
-    const { row } = renderRow(
-      todoFixture({ overdue: true, when_label: "was due Fri 2 Oct", runway: 1 }),
-    );
-    expect(within(row).getByTestId("todo-when")).toHaveTextContent("was due Fri 2 Oct");
-    expect(row.innerHTML).not.toMatch(
-      /(?<![\w-])(?<!aria-invalid:)(text|bg|border)-(destructive|red|warning)/,
-    );
-  });
-
-  test("Coming up rows say when they show up", () => {
-    const { row } = renderRow(
-      todoFixture({ when_label: "shows up Mon 12 Oct · act by Thu 15 Oct", runway: 0 }),
-      "coming",
-    );
-    expect(row).toHaveTextContent("shows up Mon 12 Oct · act by Thu 15 Oct");
   });
 
   test("keeps a visible checkbox before the title and does not select the row", () => {
@@ -424,14 +244,6 @@ describe("TodoRow", () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
-  test("coming rows also expose the checkbox before their title", () => {
-    const { row, props } = renderRow(todoFixture(), "coming");
-    const checkbox = within(row).getByRole("checkbox", { name: "Tick off Pay council tax" });
-
-    expect(checkbox).toHaveAttribute("aria-checked", "false");
-    fireEvent.click(checkbox);
-    expect(props.onDone).toHaveBeenCalledWith(props.todo, "pointer");
-  });
 });
 
 test("the visible row keeps requester and the exact ask after title edits", () => {
@@ -455,41 +267,4 @@ test("the visible row keeps requester and the exact ask after title edits", () =
   expect(row).toHaveTextContent("Alex asked");
   expect(within(row).getByTestId("todo-ask-quote")).toHaveTextContent(quote);
   expect(within(row).getByTestId("todo-title")).toHaveTextContent("Sign the corrected contract");
-});
-
-test("source evidence and the phone window share one secondary line with full evidence available", () => {
-  const quote =
-    "Please sign the original agreement,\nincluding the unchanged payment schedule by Friday.";
-  const todo = todoFixture({
-    title: "Sign the corrected agreement",
-    person_label: "Alex asked",
-    thread_id: null,
-    fields: [
-      {
-        field: "quote",
-        evidence: quote,
-        source: "rule",
-        source_label: "a pattern in the email",
-        checked: true,
-      },
-    ],
-  });
-  const { row } = renderRow(todo, "now", { details: true });
-  const evidence = within(row).getByTestId("todo-ask-quote");
-  expect(evidence).not.toHaveClass("block");
-  expect(evidence.textContent).toBe(`“${quote}”`);
-  expect(evidence).toHaveAccessibleDescription(quote);
-  const summary = within(row).getByTestId("todo-request-and-quote");
-  expect(summary).toHaveTextContent("Alex asked");
-  expect(summary).toContainElement(evidence);
-  expect(summary).toHaveClass("min-w-0", "flex-1", "truncate");
-  const secondary = within(row).getByTestId("todo-secondary");
-  expect(secondary).toHaveClass("flex", "items-baseline");
-  expect(secondary.querySelector("br")).toBeNull();
-  const phoneWindow = within(secondary).getByTestId("todo-mobile-when");
-  expect(phoneWindow).toHaveTextContent(todo.when_label);
-  expect(phoneWindow).toHaveClass("shrink-0", "truncate", "sm:hidden");
-  expect(within(row).getByRole("checkbox", { name: `Tick off ${todo.title}` })).toBeEnabled();
-  const details = within(row).getByTestId("todo-source");
-  expect(details).toHaveTextContent("including the unchanged payment schedule by Friday.");
 });

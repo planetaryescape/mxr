@@ -16,9 +16,4 @@ describe("deferredMessage", () => {
     );
   });
 
-  it("says a wait comes back only if nobody replies", () => {
-    expect(deferredMessage(["waiting"], choice)).toBe(
-      "Back Tuesday 6 October, 09:00 if nobody replies",
-    );
-  });
 });

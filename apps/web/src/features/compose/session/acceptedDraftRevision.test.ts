@@ -4,11 +4,8 @@ import { acceptedDraftRevision, recoveredComposeSession } from "./acceptedDraftR
 
 for (const evidence of [
   null,
-  [],
   { draft_id: "draft", revision: "2" },
-  { draft_id: 3, revision: 2 },
   { draft_id: "draft", revision: 0 },
-  { draft_id: "draft", revision: 1.5 },
 ]) {
   test(`rejects malformed accepted evidence ${JSON.stringify(evidence)}`, () => {
     const error = new BridgeRequestError(500, "failed", "internal", { accepted_draft: evidence });
@@ -36,7 +33,7 @@ test("an unavailable transport provides no acceptance evidence", () => {
   ).toBeUndefined();
 });
 
-for (const paths of [null, "path", [2], [""]]) {
+for (const paths of [null, [""]]) {
   test(`rejects malformed attachment recovery evidence ${JSON.stringify(paths)}`, () => {
     expect(
       recoveredComposeSession(

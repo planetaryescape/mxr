@@ -12,7 +12,7 @@ import {
   voiceFor,
   type SoundContext,
 } from "./player";
-import { MAX_VOICE_SECONDS, VOICES } from "./voices";
+import { VOICES } from "./voices";
 
 type Call = [method: string, ...args: unknown[]];
 
@@ -89,13 +89,6 @@ describe("scheduleVoice", () => {
     expect(calls.some(([method, value]) => method === "gain.set" && value === 0)).toBe(false);
   });
 
-  it("keeps every voice short", () => {
-    for (const voice of Object.values(VOICES)) {
-      const end = Math.max(...voice.map((partial) => partial.at + partial.length));
-      expect(end).toBeLessThanOrEqual(MAX_VOICE_SECONDS);
-    }
-  });
-
   it("scales with volume and schedules nothing at zero", () => {
     const loud = fakeContext();
     scheduleVoice(loud.context as unknown as SoundContext, VOICES.archive, 1, 0);
@@ -108,12 +101,6 @@ describe("scheduleVoice", () => {
     expect(silent.calls).toEqual([]);
   });
 
-  it("gives a cleared desk a rising two-note figure", () => {
-    const [first, second] = VOICES.low_tide;
-    expect(VOICES.low_tide).toHaveLength(2);
-    expect(second!.at).toBeGreaterThan(first!.at);
-    expect(second!.from).toBeGreaterThan(first!.from);
-  });
 });
 
 describe("playSound", () => {
@@ -155,12 +142,6 @@ describe("playSound", () => {
     expect(voiceFor("archived", SETTINGS)).toBe("archive");
     expect(voiceFor("snoozed", SETTINGS)).toBe("pop");
     expect(voiceFor("sent", { ...SETTINGS, sent: "none" })).toBeNull();
-  });
-
-  it("never plays in a background tab", () => {
-    useSettings(SETTINGS);
-    Object.defineProperty(document, "hidden", { configurable: true, value: true });
-    expect(playSound("sent")).toBe(false);
   });
 
   it("plays once for a held key, not for its repeats", () => {

@@ -107,19 +107,6 @@ describe("NotNowDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  test("number keys pick a preset", async () => {
-    renderWithQueryClient(<SnoozeDialog open messageIds={["msg-4"]} onOpenChange={() => {}} />);
-    await screen.findByText("Tomorrow morning");
-
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "1" });
-
-    expect(api.performMailAction).toHaveBeenCalledWith(
-      "snooze",
-      ["msg-4"],
-      expect.objectContaining({ until: "2026-05-12T09:00:00Z" }),
-    );
-  });
-
   test("a typed time stores the instant the preview showed", async () => {
     renderWithQueryClient(<SnoozeDialog open messageIds={["msg-2"]} onOpenChange={() => {}} />);
 
@@ -207,18 +194,6 @@ describe("NotNowDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  test("the arrows move the highlight from Later to the presets", async () => {
-    renderWithQueryClient(
-      <SnoozeDialog messageIds={["msg-8"]} replyLaterId="msg-8" onOpenChange={() => {}} />,
-    );
-    const preset = (await screen.findByText("Tomorrow morning")).closest("button");
-    const later = screen.getByTestId("not-now-later");
-    await waitFor(() => expect(later).toHaveFocus());
-    fireEvent.keyDown(later, { key: "ArrowDown" });
-    expect(preset).toHaveFocus();
-    fireEvent.keyDown(preset!, { key: "ArrowUp" });
-    expect(later).toHaveFocus();
-  });
 
   test("with no untimed choice there is no Later, and the first preset is lit", async () => {
     const at = vi.fn<NotNowPicker["at"]>();

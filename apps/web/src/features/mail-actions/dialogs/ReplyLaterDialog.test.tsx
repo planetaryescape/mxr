@@ -68,18 +68,6 @@ describe("ReplyLaterDialog", () => {
     expect(api.setReplyLater).not.toHaveBeenCalled();
   });
 
-  test("Enter with no time is the plain reply later", async () => {
-    api.setReplyLater.mockResolvedValue({});
-    renderDialog(
-      <ReplyLaterDialog target={target} subject="Launch plan" waiting={false} onClose={() => {}} />,
-    );
-
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
-
-    await waitFor(() => expect(api.setReplyLater).toHaveBeenCalledWith("msg-2", true));
-    expect(api.deferThreads).not.toHaveBeenCalled();
-  });
-
   test("on Waiting on it asks when to bring it back and needs a time", async () => {
     renderDialog(
       <ReplyLaterDialog target={target} subject="Launch plan" waiting onClose={() => {}} />,

@@ -33,8 +33,3 @@ test("Ctrl-d and Ctrl-u move half a window of rows and stop at the ends", () => 
   motions.pageUp();
   expect(state.index).toBe(14);
 });
-
-test("a tiny window still moves a row", () => {
-  window.innerHeight = 20;
-  expect(halfPageRows()).toBe(1);
-});

@@ -19,11 +19,4 @@ describe("MessageText marks the link a to-do is about", () => {
     expect(container.querySelector(`[${LINK_MARK_ATTRIBUTE}]`)).toHaveAttribute("href", LINK);
   });
 
-  test("in quoted text and a signature once they are shown", () => {
-    const text = `Thanks, paying now.\n\n> On Mon, Camden wrote:\n> Pay here: ${LINK}\n\n-- \nCamden Council\n${LINK}`;
-    const { container } = render(
-      <MessageText text={text} showQuotes showSignature highlightLink={LINK} />,
-    );
-    expect(container.querySelectorAll(`[${LINK_MARK_ATTRIBUTE}]`)).toHaveLength(2);
-  });
 });

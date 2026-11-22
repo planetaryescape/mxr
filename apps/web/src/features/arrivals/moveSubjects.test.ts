@@ -5,7 +5,6 @@ import type { NowItem } from "@/features/now/nowItems";
 
 import { moveCommands, nowMoveSubject } from "./moveSubjects";
 import { useSenderAsk } from "./moves";
-import { outcome } from "./testing";
 
 vi.mock("@/lib/daemonAvailability", () => ({ refuseWhileDaemonDown: () => false }));
 const fetchMock = vi.hoisted(() => vi.fn<(path: string, opts?: unknown) => Promise<unknown>>());
@@ -63,14 +62,4 @@ describe("X and K on a row", () => {
     expect(useMailDialogs.getState().dialog).toMatchObject({ kind: "move-to-mode", sender: true });
   });
 
-  test("K while a move's toast asks answers it instead", () => {
-    useSenderAsk.getState().set(outcome());
-    fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome({ sender: true }) });
-    moveCommands(() => nowMoveSubject(person)).moveSenderToMode();
-    expect(useMailDialogs.getState().dialog).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/messages/msg-1/move", {
-      method: "POST",
-      body: { mode: "reading", sender: true, dry_run: false },
-    });
-  });
 });

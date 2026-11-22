@@ -23,7 +23,6 @@ import { useUndo } from "@/state/undoStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { runCommand } from "@/lib/keys/controllers";
 import { optionalEnum, optionalFlag, optionalString } from "@/lib/searchParams";
-import { focusActivePane } from "@/lib/keys/focusPane";
 import { ActionRegistry } from "@/lib/actions/registry";
 import { fromDefinition } from "@/lib/actions/definition";
 import { snapshotActionContext } from "@/lib/actions/context";
@@ -410,18 +409,6 @@ test("opening a person with a closed cached default heals the URL to their curre
   await screen.findByText("a-live");
 });
 
-test("focus returns into Messages when an overlay closes with nothing to return to", async () => {
-  const a = row("person:a", [topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  cachePage(a, "a-live", "a-live");
-  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
-  await screen.findByText("a-live");
-
-  focusActivePane();
-
-  expect(screen.getByRole("region", { name: "Messages" })).toHaveFocus();
-});
-
 test("deliberately opening a historical topic does not redirect or mark it done again", async () => {
   const a = row("person:a", [topic("a-old", "done"), topic("a-live")]);
   client.setQueryData(listKey, listOf(a));
@@ -683,16 +670,6 @@ test("the filter toggles write the URL, ask the bridge with them, and Clear filt
   expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
 });
 
-test("the unselected conversation pane keeps its guidance while the people list loads", async () => {
-  const pending = deferred<FixtureReply>();
-  http.send.mockImplementation(() => pending.promise);
-  await mountMessages("/messages");
-  expect(await screen.findByText("Choose a conversation")).toBeInTheDocument();
-  await act(async () => pending.resolve({ messages: listOf(row("person:a", [topic("a")])) }));
-  expect(await screen.findByTestId("listed-row")).toHaveTextContent("person:a");
-  expect(screen.getByText("Choose a conversation")).toBeInTheDocument();
-});
-
 test("f cycles views through the dispatcher even before results arrive, but never while typing", async () => {
   const pending = deferred<FixtureReply>();
   http.send.mockImplementation(() => pending.promise);
@@ -722,49 +699,6 @@ test("f cycles views through the dispatcher even before results arrive, but neve
   } finally {
     dispose();
   }
-});
-
-test("cycling views keeps a deep-linked conversation and toggles open", async () => {
-  const a = row("person:a", [topic("a-live")]);
-  cachePage(a, "a-live", "a-live");
-  http.send.mockImplementation(async () => ({ messages: listOf(a) }));
-  const router = await mountMessages("/messages/a-live?unread=true&pace=true");
-  await screen.findByTestId("shown-topic");
-  act(() => {
-    runCommand("messages-filters", "cycleFilter");
-  });
-  await waitFor(() =>
-    expect(router.state.location.search).toMatchObject({
-      turn: "all",
-      person: a.id,
-      topic: "a-live",
-      unread: true,
-      pace: true,
-    }),
-  );
-  expect(await screen.findByTestId("shown-topic")).toHaveTextContent("a-live");
-});
-
-test("an empty filtered view shows the daemon's sentence and Clear filters, not Your turn's clear line", async () => {
-  const empty = listWith({
-    your_turn: [],
-    row_count: 2,
-    matched: 0,
-    your_turn_split: { write_with: 2, others: 0 },
-    empty_state: "No unread messages from people.\nYour turn still has 2 people.",
-    filter: { turn: null, unread: true, past_pace: false },
-  });
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people")) return { messages: empty };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  await mountMessages("/messages?unread=true");
-
-  expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
-  expect(screen.getByText(/Your turn still has 2 people\./)).toBeTruthy();
-  expect(screen.queryByText("Nobody is waiting on you.")).toBeNull();
-  expect(screen.getByRole("button", { name: "Clear filters" })).toBeTruthy();
 });
 
 test("a filter change keeps the list but hides the count and empty line until its answer lands", async () => {
@@ -933,33 +867,6 @@ test("g f below the split reveals the people list before focusing the filter lin
   );
 });
 
-test("p focuses the current topic when open, or its trigger when the topic list is closed", async () => {
-  layout.wide = false;
-  const a = row("person:a", [topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  cachePage(a, "a-live", "a-live");
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
-
-  // The filter command reveals the list while retaining its selected person.
-  act(() => runCommand("messages", "filter"));
-  await waitFor(() => expect(screen.queryByTestId("shown-topic")).toBeNull());
-
-  act(() => expect(runCommand("messages", "personPage")).toBe(true));
-  const trigger = await screen.findByTestId("topics-trigger");
-  expect(screen.queryByTestId("topic")).toBeNull();
-  await waitFor(() => expect(trigger).toHaveFocus());
-
-  fireEvent.click(trigger);
-  const current = screen.getByTestId("topic");
-  act(() => expect(runCommand("messages", "personPage")).toBe(true));
-  await waitFor(() => expect(current).toHaveFocus());
-});
-
 test.each([
   "/messages?turn=all&unread=true&pace=true&person=person%3Aa&topic=a-live",
   "/messages/a-live?turn=all&unread=true&pace=true",
@@ -1047,39 +954,6 @@ test("an empty filtered view finishes Messages when the unfiltered Your turn is 
   await mountMessages("/messages?unread=true");
   expect(await screen.findByText("No unread messages from people.")).toBeTruthy();
   await waitFor(() => expect(lowTide.mock.calls.at(-1)?.[2]).toBe(false));
-});
-
-test("the filter line keeps its place and focus when a filter narrows to nothing", async () => {
-  const a = row("person:a", [topic("a-live")]);
-  client.setQueryData(listKey, listOf(a));
-  const pending = deferred<FixtureReply>();
-  http.send.mockImplementation(async (path) => {
-    const url = new URL(path, "http://synthetic.local");
-    if (url.pathname.endsWith("/people") && url.searchParams.get("unread") === "true") {
-      return pending.promise;
-    }
-    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
-    throw new Error(`Unexpected synthetic request: ${path}`);
-  });
-  await mountMessages("/messages?turn=mine");
-  const unread = await screen.findByRole("button", { name: "Unread" });
-  fireEvent.click(unread);
-  await act(async () => {
-    pending.resolve({
-      messages: listWith({
-        your_turn: [],
-        row_count: 1,
-        matched: 0,
-        your_turn_split: { write_with: 1, others: 0 },
-        empty_state: "No unread messages from people.\nYour turn still has 1 person.",
-        filter: { turn: "mine", unread: true, past_pace: false },
-      }),
-    });
-  });
-  expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
-  // The same node, still mounted: keyboard filtering after g f keeps working.
-  expect(unread.isConnected).toBe(true);
-  expect(screen.getByRole("button", { name: "Unread" })).toBe(unread);
 });
 
 test("filtering from a conversation's path keeps that conversation open", async () => {

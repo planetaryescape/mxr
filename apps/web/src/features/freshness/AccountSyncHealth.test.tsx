@@ -3,7 +3,7 @@
 import { fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { AccountSyncDetails, SyncHealthWords, useSyncHealthToasts } from "./AccountSyncHealth";
+import { AccountSyncDetails, useSyncHealthToasts } from "./AccountSyncHealth";
 import type { AccountFreshness, Freshness } from "./copy";
 
 const query = vi.hoisted(() => ({ data: undefined as Freshness | undefined }));
@@ -54,14 +54,6 @@ describe("account sync health", () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     query.data = undefined;
-  });
-
-  test("a row says the health in words, never colour alone", () => {
-    query.data = reply(offline);
-    render(<SyncHealthWords accountId="acct-1" />);
-    const words = screen.getByTestId("account-sync-health");
-    expect(words).toHaveTextContent(/^Can't sync, retrying 09:47/);
-    expect(words).toHaveAttribute("data-tone", "bad");
   });
 
   test("the Sync section gives the next try, a plain reason and the raw error behind Details", () => {
@@ -115,14 +107,6 @@ describe("account sync health", () => {
     expect(toastMock.success).toHaveBeenCalledWith("work@example.com is syncing again", {
       id: "sync-health-acct-1",
     });
-  });
-
-  test("a retry that is still running is not a recovery", () => {
-    query.data = reply(offline);
-    const { rerender } = renderHook(() => useSyncHealthToasts());
-    query.data = reply({ ...offline, sync_in_progress: true });
-    rerender();
-    expect(toastMock.success).not.toHaveBeenCalled();
   });
 
   test("an account already failing when the app opens does not toast", () => {

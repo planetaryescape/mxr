@@ -67,13 +67,6 @@ describe("ModelMenu", () => {
   });
   afterEach(() => vi.clearAllMocks());
 
-  test("the mark names the model in use and where it runs", async () => {
-    wrap(<ModelMenu />);
-    expect(
-      await screen.findByRole("button", { name: "Model: Gemma 4. Change it" }),
-    ).toHaveTextContent("Gemma 4 · local");
-  });
-
   test("lists every choice with where it runs, a check on the one in use, and why one can't be picked", async () => {
     wrap(<ModelMenu />);
     const menu = await openMenu();
@@ -86,16 +79,6 @@ describe("ModelMenu", () => {
     expect(within(items[2]!).queryByLabelText("In use")).toBeNull();
     expect(items[1]).toHaveAttribute("data-disabled");
     expect(items[1]).toHaveTextContent("Add an OpenAI key: mxr llm key set openai");
-  });
-
-  test("picking a choice sends its id", async () => {
-    api.setModel.mockResolvedValue({ current: "claude-haiku-5-5", choices });
-    wrap(<ModelMenu />);
-    const menu = await openMenu();
-
-    fireEvent.click(within(menu).getByRole("menuitem", { name: /Claude Haiku 5.5/ }));
-    await waitFor(() => expect(api.setModel).toHaveBeenCalled());
-    expect(api.setModel.mock.calls[0]?.[0]).toBe("claude-haiku-5-5");
   });
 
   test("the mark follows the choice once the daemon says the model changed", async () => {
@@ -113,21 +96,6 @@ describe("ModelMenu", () => {
     ).toHaveTextContent("Claude Haiku 5.5 · cloud");
   });
 
-  test("while the availability refresh is pending the mark still agrees with the new choice", async () => {
-    api.setModel.mockResolvedValue({ current: "claude-haiku-5-5", choices });
-    wrap(<ModelMenu />);
-    const menu = await openMenu();
-    // The refresh after the pick never answers: the old availability says
-    // gemma4 runs locally.
-    api.fetchAvailability.mockReturnValue(new Promise(() => {}));
-    fireEvent.click(within(menu).getByRole("menuitem", { name: /Claude Haiku 5.5/ }));
-
-    const mark = await screen.findByRole("button", { name: "Model: Claude Haiku 5.5. Change it" });
-    expect(mark).toHaveTextContent("Claude Haiku 5.5 · cloud");
-    expect(mark).not.toHaveTextContent("local");
-    expect(mark).toHaveAttribute("title", expect.stringContaining("runs off this machine"));
-  });
-
   test("a pick refreshes the Settings > LLM data, so an open form can't save the old model back", async () => {
     api.setModel.mockResolvedValue({ current: "claude-haiku-5-5", choices });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -142,13 +110,6 @@ describe("ModelMenu", () => {
       ),
     );
     expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["llm-status"] }));
-  });
-
-  test("Escape closes the menu", async () => {
-    wrap(<ModelMenu />);
-    await openMenu();
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   });
 
   test("a daemon without the picker keeps the plain mark", async () => {

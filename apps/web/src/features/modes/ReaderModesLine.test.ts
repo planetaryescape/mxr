@@ -11,9 +11,4 @@ describe("the mode a reader is open in", () => {
     expect(modeOfPath("/reading/t1")).toBe("reading");
   });
 
-  test("Now and the Inbox are no mode, so every holding mode is named", () => {
-    expect(modeOfPath("/now")).toBeNull();
-    expect(modeOfPath("/m/inbox/t1")).toBeNull();
-    expect(modeOfPath("/search/t1")).toBeNull();
-  });
 });

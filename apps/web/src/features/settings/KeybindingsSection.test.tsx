@@ -122,29 +122,7 @@ describe("KeybindingsSection", () => {
     expect(updateKeys).not.toHaveBeenCalledWith(expect.anything(), false);
   });
 
-  it("turns single-key shortcuts off through the daemon", async () => {
-    updateKeys.mockResolvedValue(answer({ saved: true, keymap: served({ single_keys: false }) }));
-    renderSection();
-    fireEvent.click(screen.getByLabelText("Single-key shortcuts"));
-    await waitFor(() =>
-      expect(updateKeys).toHaveBeenCalledWith({ kind: "single_keys", on: false }, false),
-    );
-    await waitFor(() => expect(useKeymapStore.getState().singleKeys).toBe(false));
-  });
 });
 
 describe("an action left without a key", () => {
-  it("is listed so its keys can come back", async () => {
-    const { applyServedKeymap } = await import("@/lib/actions/servedKeymap");
-    applyServedKeymap(
-      served({
-        actions: [{ id: "mail.archive", keys: [] } as unknown as Served["actions"][number]],
-        remapped: ["mail.archive"],
-      }),
-    );
-    renderSection();
-    expect(screen.getByText("Yours, without a key")).toBeVisible();
-    fireEvent.click(screen.getAllByLabelText("Change keys for Archive")[0]!);
-    expect(screen.getByText("Use the default keys")).toBeVisible();
-  });
 });

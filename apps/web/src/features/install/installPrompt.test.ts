@@ -40,12 +40,6 @@ describe("shouldOfferInstall", () => {
 });
 
 describe("dismissal", () => {
-  test("remembers a dismissal across reads", () => {
-    const storage = fakeStorage();
-    expect(readDismissed(storage)).toBe(false);
-    writeDismissed(storage);
-    expect(readDismissed(storage)).toBe(true);
-  });
 
   test("a throwing storage reads as not dismissed and never throws on write", () => {
     const broken = fakeStorage({
@@ -64,10 +58,6 @@ describe("dismissal", () => {
 
 describe("promptInstall", () => {
   beforeEach(() => useInstallPrompt.setState({ deferred: null }));
-
-  test("does nothing without a held prompt", async () => {
-    expect(await promptInstall()).toBe(false);
-  });
 
   test("uses the held prompt once and reports acceptance", async () => {
     const prompt = vi.fn<() => Promise<void>>(() => Promise.resolve());

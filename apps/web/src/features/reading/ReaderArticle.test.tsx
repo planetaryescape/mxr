@@ -110,17 +110,11 @@ describe("the reader path for untrusted article HTML", () => {
     );
   });
 
-  test.each([
-    ["missing", null],
-    ["empty", ""],
-    ["blank", "  \n "],
-    ["only script", "<script>1</script><style>a{}</style>"],
-  ])("falls back to paragraphs when the html is %s", (_name, html) => {
-    expect(show(html).clean).toBeNull();
-  });
-
-  test("treats a non-string html value from the server as absent", () => {
+  test("falls back to paragraphs when the html is missing, blank, script-only or not a string", () => {
     // SAFETY: deliberately wrong types, as an unvalidated server response could carry.
+    expect(show(null).clean).toBeNull();
+    expect(show("  \n ").clean).toBeNull();
+    expect(show("<script>1</script><style>a{}</style>").clean).toBeNull();
     expect(show(42 as unknown as string).clean).toBeNull();
     expect(show({} as unknown as string).clean).toBeNull();
   });

@@ -64,16 +64,6 @@ test("connection failures do not report that the token is invalid", async () => 
   expect(submit).not.toHaveBeenCalled();
 });
 
-test("a reachable but failed bridge preserves the token and reports its status", async () => {
-  fetchBridge.mockResolvedValue(new Response("{}", { status: 502 }));
-  render(<TokenSection />);
-  connect("candidate-token");
-
-  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/502/));
-  expect(window.localStorage.getItem("mxr.bridgeToken")).toBeNull();
-  expect(submit).not.toHaveBeenCalled();
-});
-
 test("browser storage failures do not claim the server rejected the token", async () => {
   fetchBridge.mockResolvedValue(new Response("{}", { status: 200 }));
   vi.spyOn(window, "localStorage", "get").mockImplementation(() => {

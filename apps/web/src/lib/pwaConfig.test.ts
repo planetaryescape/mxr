@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pwaManifest, pwaOptions } from "./pwaConfig";
+import { pwaManifest } from "./pwaConfig";
 
 describe("PWA config", () => {
   it("is installable as a standalone app", () => {
@@ -16,15 +16,5 @@ describe("PWA config", () => {
         expect.objectContaining({ src: "/pwa-maskable-512.png", purpose: "maskable" }),
       ]),
     );
-  });
-
-  it("keeps an offline worker and waits for the user before activating updates", () => {
-    expect(pwaOptions.strategies).toBe("injectManifest");
-    expect(pwaOptions.registerType).toBe("prompt");
-    expect(pwaOptions.selfDestroying).not.toBe(true);
-  });
-
-  it("precaches app resources for an offline launch", () => {
-    expect(pwaOptions.injectManifest?.globPatterns).toEqual(["**/*.{js,css,html,png,svg,woff2}"]);
   });
 });

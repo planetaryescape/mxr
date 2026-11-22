@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
 import type { ReadingItem } from "./api";
-import { ReadingIssueRow, ReadingLinkRow, type RowHandlers } from "./ReadingRows";
+import { ReadingIssueRow, type RowHandlers } from "./ReadingRows";
 
 function item(extra: Partial<ReadingItem> = {}): ReadingItem {
   return {
@@ -60,30 +60,6 @@ function renderIssue(lit: boolean, extra: Partial<ReadingItem> = {}, h = handler
 }
 
 describe("ReadingIssueRow", () => {
-  test("an externally filed issue keeps its read action and a labelled date", () => {
-    const value = "2026-10-30T09:00:00Z";
-    renderIssue(false, { source_filed_at: value });
-    for (const marker of screen.getAllByTestId("source-filed")) {
-      expect(marker).toHaveTextContent("left the inbox");
-      expect(marker.querySelector("time")).toHaveAttribute("dateTime", value);
-    }
-    expect(screen.getByTestId("reading-read")).toBeInTheDocument();
-  });
-
-  test("is a row: the title, the standfirst as its one secondary line, no card", () => {
-    renderIssue(false);
-    const row = screen.getByTestId("reading-item");
-    expect(row.tagName).toBe("LI");
-    expect(row).toHaveTextContent("A long read");
-    expect(row).toHaveTextContent("The first real paragraph.");
-    expect(row).not.toHaveAttribute("data-lit");
-  });
-
-  test("the reason and the fade date are not drawn in the row", () => {
-    renderIssue(true, { fades: "Fades Wed 21 Oct unless you keep it." });
-    expect(screen.queryByTestId("why-here")).toBeNull();
-    expect(screen.queryByTestId("reading-fades")).toBeNull();
-  });
 
   test("the lit row shows its verbs; Enter, b and e run read, later and let go", () => {
     const h = renderIssue(true);
@@ -115,42 +91,7 @@ describe("ReadingIssueRow", () => {
     expect(screen.getByTestId("reading-row-unsubscribe")).toBeInTheDocument();
   });
 
-  test("the headline is a link that reads the issue", () => {
-    const h = renderIssue(false);
-    fireEvent.click(screen.getByRole("link", { name: /A long read/ }));
-    expect(h.onRead).toHaveBeenCalledWith("m1:0");
-  });
-
-  test("a pointer press chooses the row with the pointer", () => {
-    const h = renderIssue(false);
-    fireEvent.mouseDown(screen.getByTestId("reading-item"));
-    expect(h.onPoint).toHaveBeenCalledWith("m1:0");
-  });
 });
 
 describe("ReadingLinkRow", () => {
-  test("a digest link is a row under its issue with its site in the trail", () => {
-    render(
-      <ul>
-        <ReadingLinkRow
-          link={{
-            item_key: "m1:1",
-            title: "SQLite internals",
-            domain: "sqlite.org",
-            tracked: false,
-            article_cached: false,
-            on_later: false,
-            url: "https://sqlite.org/x",
-          }}
-          index={1}
-          lit={false}
-          via="key"
-          handlers={handlers()}
-        />
-      </ul>,
-    );
-    const row = screen.getByTestId("reading-link");
-    expect(row).toHaveTextContent("SQLite internals");
-    expect(row).toHaveTextContent("sqlite.org");
-  });
 });

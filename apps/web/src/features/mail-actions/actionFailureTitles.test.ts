@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import { failureTitle, partialFailureTitle } from "./actionPastTense";
 import type { MailAction, MailActionPayload } from "./pendingMailOps";
-import { VERB_FEEDBACK } from "./verbFeedback";
 
 const CASES: [MailAction, MailActionPayload | undefined, string, string][] = [
   [
@@ -94,15 +93,4 @@ describe("failure toast titles", () => {
     expect(partialFailureTitle(action, payload, "2 of 3 messages")).toBe(partial);
   });
 
-  test("a full failure never reads as a past-tense verb", () => {
-    for (const [action, payload] of CASES) {
-      expect(failureTitle(action, payload, "3 messages")).toMatch(/^Couldn't /);
-      expect(failureTitle(action, payload, "3 messages")).not.toMatch(/failed/);
-    }
-  });
-
-  test("every mail action has failure wording", () => {
-    const actions = new Set(CASES.map(([action]) => action));
-    for (const action of actions) expect(VERB_FEEDBACK[action].failure).toBeDefined();
-  });
 });

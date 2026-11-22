@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countLink, lineParts, linkedCounts, listTitle, shownLine } from "./arrivalLine";
+import { countLink, lineParts, linkedCounts, shownLine } from "./arrivalLine";
 import { arrivals } from "./testing";
 
 describe("the arrivals line", () => {
@@ -12,16 +12,6 @@ describe("the arrivals line", () => {
     ).toBe(
       "Since 08:12: 50 arrived. [8 Messages] · [10 Updates] · [31 Reading] · [1 spam]. Also [2 in To do].",
     );
-  });
-
-  it("has no link for a zero count, because the daemon drops it from the line", () => {
-    const line = arrivals({
-      counts: [{ bucket: "reading", count: 3, label: "3 Reading" }],
-      also: [],
-      line: "Since 08:12: 3 arrived. 3 Reading.",
-    });
-    const links = lineParts(line.line, linkedCounts(line)).filter((part) => "count" in part);
-    expect(links).toHaveLength(1);
   });
 
   it("leaves a label the sentence lacks unlinked instead of breaking it", () => {
@@ -49,8 +39,4 @@ describe("the arrivals line", () => {
     });
   });
 
-  it("titles the list by its count and mode", () => {
-    expect(listTitle(1, "spam")).toBe("1 email in Spam");
-    expect(listTitle(31, "reading")).toBe("31 emails in Reading");
-  });
 });

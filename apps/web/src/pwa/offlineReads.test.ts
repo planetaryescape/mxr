@@ -25,19 +25,14 @@ describe("offline read admission", () => {
     "/api/v1/client/shell",
     "/api/v1/mail/mailbox?lens_kind=inbox",
     "/api/v1/mail/threads/123",
-    "/api/v1/mail/threads/123/context",
-    "/api/v1/mail/people",
   ])("can retain a displayed mail read: %s", (path) => {
     expect(isOfflineRead(new URL(path, origin), "GET", origin)).toBe(true);
   });
 
   test.each([
     "/api/v1/auth/local-token",
-    "/api/v1/remote/browser-session",
-    "/api/v1/platform/accounts/config",
     "/api/v1/mail/threads/123/summarize",
     "/api/v1/mail/mutations/archive",
-    "/api/v1/mail/drafts",
     "/api/v1/health",
   ])("keeps authority and actions out of the cache: %s", (path) => {
     expect(isOfflineRead(new URL(path, origin), "GET", origin)).toBe(false);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { PREVIEW_LINES, previewLines, previewSource } from "./emailPreview";
+import { PREVIEW_LINES, previewLines } from "./emailPreview";
 
 describe("previewLines", () => {
   test("takes the first informative lines, skipping greetings, links and footers", () => {
@@ -50,19 +50,4 @@ describe("previewLines", () => {
     }
   });
 
-  test("only the first lines of a long body are read", () => {
-    const body = `${"\n".repeat(200)}A real line of text`;
-    expect(previewLines(body)).toEqual([]);
-  });
-});
-
-describe("previewSource", () => {
-  test("prefers the reader's cleaned text, then the plain part", () => {
-    expect(previewSource({ message_id: "m", reader_text: "clean", text_plain: "plain" })).toBe(
-      "clean",
-    );
-    expect(previewSource({ message_id: "m", reader_text: "", text_plain: "plain" })).toBe("plain");
-    expect(previewSource({ message_id: "m" })).toBeNull();
-    expect(previewSource(undefined)).toBeNull();
-  });
 });

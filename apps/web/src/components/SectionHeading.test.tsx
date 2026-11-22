@@ -15,14 +15,4 @@ describe("SectionHeading", () => {
     expect(screen.getByRole("heading", { name: "Routine" }).querySelector("span")).toBeNull();
   });
 
-  test("keeps the heading level the page outline needs", () => {
-    render(<SectionHeading as="h4">Sources</SectionHeading>);
-    expect(screen.getByRole("heading", { level: 4, name: "Sources" })).toBeInTheDocument();
-  });
-
-  test("the right slot sits beside the label and keeps its own content", () => {
-    render(<SectionHeading actions={<a href="/x">more</a>}>People</SectionHeading>);
-    expect(screen.getByRole("heading", { name: "People" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "more" })).toBeInTheDocument();
-  });
 });

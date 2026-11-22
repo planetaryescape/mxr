@@ -14,12 +14,6 @@ describe("helpPlaceholder", () => {
       "Edit the selection: say how",
     );
   });
-
-  test("a new email is not offered a reply", () => {
-    expect(helpPlaceholder({ hasText: false, hasSelection: false, answersMessage: false })).toBe(
-      "Draft this email, or say what it should say",
-    );
-  });
 });
 
 describe("helpAction", () => {

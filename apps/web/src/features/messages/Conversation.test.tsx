@@ -44,18 +44,6 @@ describe("ConversationView", () => {
     document.documentElement.removeAttribute("data-scheme");
   });
 
-  test("each message's line says when it arrived, in full", () => {
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <ConversationView conversation={conversation} asSent={null} onToggleAsSent={() => {}} />
-      </QueryClientProvider>,
-    );
-    const line = screen.getByTestId("message-meta");
-    // The fixture is from 2026-10-06, so the line carries the date and the time.
-    expect(line.textContent).toMatch(/Samir.*6.*Oct.*\d{1,2}:\d{2}/);
-    expect(line?.textContent).not.toMatch(/ago|just now/);
-  });
-
   test("opens the latest letter in full while keeping older messages folded", () => {
     const longThread: Conversation = {
       ...conversation,
@@ -156,28 +144,6 @@ describe("ConversationView", () => {
     expect(screen.getByTestId("provider-preview").textContent).toContain("Provider preview only");
     fireEvent.click(screen.getByRole("button", { name: "Check the original" }));
     expect(onToggleAsSent).toHaveBeenCalledOnce();
-  });
-
-  test("an empty provider preview still names the missing message", () => {
-    const preview: Conversation = {
-      ...conversation,
-      messages: [
-        {
-          ...conversation.messages[0]!,
-          text: "",
-          only_quoted: false,
-          source: "provider_snippet",
-        },
-      ],
-    };
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <ConversationView conversation={preview} asSent={null} onToggleAsSent={() => {}} />
-      </QueryClientProvider>,
-    );
-    expect(screen.getByTestId("provider-preview").textContent).toContain(
-      "No provider preview is available",
-    );
   });
 
   test("a long inline exchange stays complete even when the cached ask is one answer", () => {

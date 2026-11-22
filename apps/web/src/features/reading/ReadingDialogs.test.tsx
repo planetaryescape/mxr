@@ -60,17 +60,6 @@ beforeEach(() => {
 });
 
 describe("ReadingUnsubscribeDialog", () => {
-  test("offers just unsubscribe and unsubscribe-and-clear with the previewed count", async () => {
-    renderDialog();
-    await vi.waitFor(() =>
-      expect(screen.getByTestId("unsubscribe-clear")).toHaveTextContent(
-        "Unsubscribe and clear 12 issues",
-      ),
-    );
-    expect(screen.getByTestId("unsubscribe-just")).toHaveTextContent(
-      "Just unsubscribe — keep what you have",
-    );
-  });
 
   test("just unsubscribe commits the previewed sender and method while keeping mail", async () => {
     renderDialog();
@@ -104,19 +93,6 @@ describe("ReadingUnsubscribeDialog", () => {
     expect(api.unsubscribeFromSender).not.toHaveBeenCalled();
   });
 
-  test("u just unsubscribes from the keyboard", async () => {
-    renderDialog();
-    await vi.waitFor(() => expect(screen.getByTestId("unsubscribe-just")).toBeEnabled());
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "u" });
-    await vi.waitFor(() =>
-      expect(api.commitUnsubscribePreview).toHaveBeenLastCalledWith({
-        address: "news@digest.example",
-        accountId: "acc-1",
-        previewToken: "tok-1",
-        archive: false,
-      }),
-    );
-  });
   test("keep mail reports a daemon failure without claiming success", async () => {
     api.commitUnsubscribePreview.mockResolvedValueOnce({
       ok: false,

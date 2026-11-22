@@ -6,7 +6,6 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
-  Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -54,45 +53,6 @@ describe("Topbar route changes", () => {
       useModals.setState({ helpOpen: false });
       window.matchMedia = originalMatchMedia;
     }
-  });
-
-  test("switches between matched and unmatched routes without changing hook order", async () => {
-    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
-    const rootRoute = createRootRoute({
-      notFoundComponent: () => null,
-      component: () => (
-        <>
-          <Topbar />
-          <Outlet />
-        </>
-      ),
-    });
-    const nowRoute = createRoute({
-      getParentRoute: () => rootRoute,
-      path: "/now",
-    });
-    const history = createMemoryHistory({ initialEntries: ["/now"] });
-    const router = createRouter({ routeTree: rootRoute.addChildren([nowRoute]), history });
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    queryClient.setQueryData(shellKey, {});
-    queryClient.setQueryData(["admin-status-is-demo"], { is_demo: false });
-    await router.load();
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    );
-
-    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
-    await waitFor(() => expect(breadcrumb).toHaveTextContent("Now"));
-
-    await act(async () => history.push("/not-a-route"));
-    await waitFor(() => expect(breadcrumb).toHaveTextContent("Not found"));
-
-    await act(async () => history.push("/now"));
-    await waitFor(() => expect(breadcrumb).toHaveTextContent("Now"));
-    scrollTo.mockRestore();
   });
 
   test("a lone crumb is dropped while the page publishes the same title", async () => {

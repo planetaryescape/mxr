@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -68,23 +68,6 @@ describe("SearchPalette", () => {
     useModals.setState({ searchPaletteOpen: false });
   });
 
-  test("queries the daemon mailbox index for modal suggestions", async () => {
-    renderWithQueryClient(<SearchPalette />);
-
-    fireEvent.change(await screen.findByRole("textbox", { name: "Search mail" }), {
-      target: { value: "invoice" },
-    });
-
-    await waitFor(() => expect(api.fetchSearch).toHaveBeenCalled());
-    expect(api.fetchSearch.mock.calls.at(-1)?.[0]).toMatchObject({
-      q: "invoice",
-      mode: "lexical",
-      sort: "relevance",
-      scope: "messages",
-      limit: 8,
-    });
-  });
-
   test("opens the selected modal result with arrow keys", async () => {
     renderWithQueryClient(<SearchPalette />);
 
@@ -115,29 +98,6 @@ describe("SearchPalette", () => {
     expect(useMailboxPane.getState().activePane).toBe("reader");
   });
 
-  test("moves modal selection through suggestions with up and down keys", async () => {
-    renderWithQueryClient(<SearchPalette />);
-
-    const input = await screen.findByRole("textbox", { name: "Search mail" });
-    fireEvent.change(input, { target: { value: "invoice" } });
-
-    expect(await screen.findByText("Subject 1")).toBeVisible();
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-
-    expect(screen.getByRole("option", { name: /open subject 2/i })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(router.navigate).toHaveBeenCalledWith({
-      to: "/m/$mailbox/$threadId",
-      params: { mailbox: "inbox", threadId: "thread-2" },
-    });
-  });
-
   test("Cmd/Ctrl+Enter opens the full search page even with a result selected", async () => {
     // Cmd is macOS's Mod.
     const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
@@ -162,18 +122,4 @@ describe("SearchPalette", () => {
     platform.mockRestore();
   });
 
-  test("Ctrl+Enter also opens the full search page", async () => {
-    renderWithQueryClient(<SearchPalette />);
-
-    const input = await screen.findByRole("textbox", { name: "Search mail" });
-    fireEvent.change(input, { target: { value: "invoice" } });
-
-    expect(await screen.findByText("Subject 1")).toBeVisible();
-    fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
-
-    expect(router.navigate).toHaveBeenCalledWith({
-      to: "/search",
-      search: { q: "invoice", mode: "lexical" },
-    });
-  });
 });

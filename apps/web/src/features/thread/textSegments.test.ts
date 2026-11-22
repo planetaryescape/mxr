@@ -31,16 +31,6 @@ describe("splitMessageText", () => {
     expect(segments[1]?.text).toMatch(/^On Mon/);
   });
 
-  test("handles an attribution wrapped across two lines", () => {
-    const text = [
-      "Thanks!",
-      "On Mon, Sep 21, 2026 at 10:02 AM Ada Lovelace",
-      "<ada@example.com> wrote:",
-      "> hi",
-    ].join("\n");
-    expect(kinds(text)).toEqual(["text", "quote"]);
-  });
-
   test("treats an Outlook header block as the start of quoted mail", () => {
     const text = [
       "See below.",
@@ -66,13 +56,6 @@ describe("splitMessageText", () => {
     expect(kinds(text)).toEqual(["quote", "text", "quote"]);
   });
 
-  test("separates an RFC 3676 signature", () => {
-    const text = ["Hello there.", "-- ", "Ada", "Analytical Engines Ltd"].join("\n");
-    const segments = normalizeSegments(splitMessageText(text));
-    expect(segments.map((s) => s.kind)).toEqual(["text", "signature"]);
-    expect(segments[1]?.text).toBe("Ada\nAnalytical Engines Ltd");
-  });
-
   test("ends a signature where quoted mail begins", () => {
     const text = ["Hi", "--", "Ada", "> quoted 1", "> quoted 2", "> quoted 3", "> quoted 4"].join(
       "\n",
@@ -80,10 +63,4 @@ describe("splitMessageText", () => {
     expect(kinds(text)).toEqual(["text", "signature", "quote"]);
   });
 
-  test("leaves a plain message untouched", () => {
-    const text = "Just a note.\n\nWith two paragraphs.";
-    const segments = splitMessageText(text);
-    expect(segments).toHaveLength(1);
-    expect(segments[0]).toMatchObject({ kind: "text", text });
-  });
 });

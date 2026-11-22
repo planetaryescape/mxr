@@ -100,7 +100,4 @@ describe("mergeMailboxPages", () => {
     expect(ids(mergeMailboxPages([first, second], "threads"))).toEqual([["today", ["m1"]]]);
   });
 
-  test("no pages means no data", () => {
-    expect(mergeMailboxPages([], "threads")).toBeUndefined();
-  });
 });

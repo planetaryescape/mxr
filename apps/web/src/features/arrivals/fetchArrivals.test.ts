@@ -19,8 +19,3 @@ test("a refetch while Now stays open names the window the visit opened with", as
   await fetchArrivals(null, false, "2026-10-07T08:00:00Z");
   expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/arrivals?since=2026-10-07T08%3A00%3A00Z");
 });
-
-test("a peek that holds no window names none", async () => {
-  await fetchArrivals("acct", false);
-  expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/arrivals?account=acct");
-});

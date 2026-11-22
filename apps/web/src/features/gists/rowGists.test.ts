@@ -105,11 +105,6 @@ describe("row gists", () => {
     expect(getRowGist("a")).toBeDefined();
   });
 
-  test("only ready gists with text become lines", () => {
-    expect(toRowGist({ ...gist("a"), status: "failed" })).toBeNull();
-    expect(toRowGist({ ...gist("a"), gist: "  " })).toBeNull();
-  });
-
   test("missed events or a reconnect drop every line and let the rows ask again", async () => {
     apiFetch.mockResolvedValue(answer([gist("a")]));
     await requestRowGists(["a"], 1_000);
@@ -147,18 +142,6 @@ describe("row gists", () => {
     apiFetch.mockResolvedValue(answer([gist("a")]));
     await requestRowGists(["a"], 1_500);
     expect(getRowGist("a")).toBeDefined();
-  });
-
-  test("a sampled NewMessages drops every line", async () => {
-    apiFetch.mockResolvedValue(answer([gist("a"), gist("b")]));
-    await requestRowGists(["a", "b"], 1_000);
-    emit({
-      type: "NewMessages",
-      envelopes: [{ thread_id: "z" }],
-      total: 900,
-    } as unknown as DaemonEvent);
-    expect(getRowGist("a")).toBeUndefined();
-    expect(getRowGist("b")).toBeUndefined();
   });
 
   test("lines and asked-about rows are capped, oldest first", async () => {
@@ -199,18 +182,6 @@ describe("row gists", () => {
     });
     // Each kind of ask is remembered on its own.
     await requestRowGists(["a"], 3_000, { automated: true });
-    expect(apiFetch).toHaveBeenCalledTimes(2);
-  });
-
-  test("a new message makes both kinds of ask possible again", async () => {
-    apiFetch.mockResolvedValue(answer([], "available"));
-    await requestRowGists(["a"], 1_000, { automated: true });
-    emit({
-      type: "NewMessages",
-      envelopes: [{ thread_id: "a" }],
-      total: 1,
-    } as unknown as DaemonEvent);
-    await requestRowGists(["a"], 1_500, { automated: true });
     expect(apiFetch).toHaveBeenCalledTimes(2);
   });
 

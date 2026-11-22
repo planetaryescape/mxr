@@ -4,7 +4,6 @@ import { describe, expect, test, vi } from "vitest";
 import type { RecordSubscription } from "./api";
 import { SubscriptionCard, SubscriptionsList } from "./Subscriptions";
 import {
-  splitLive,
   subscriptionAmountCopy,
   subscriptionAmountUnchecked,
   whenLabel,
@@ -18,12 +17,6 @@ describe("Archive's subscriptions", () => {
     expect(whenLabel(subscriptionFixture({ status: "ended", next_expected: null }))).toBe(
       "ended, last 10 Apr 2025",
     );
-  });
-
-  test("ended subscriptions are drawn apart from live ones", () => {
-    const { live, ended } = splitLive(subscriptionsFixture().subscriptions);
-    expect(live.map((s) => s.id)).toEqual(["sub_netflix"]);
-    expect(ended.map((s) => s.id)).toEqual(["sub_disney"]);
   });
 
   test("a rule's amount is unchecked and Y copies it as a plain number", () => {

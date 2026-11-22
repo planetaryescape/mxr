@@ -341,7 +341,6 @@ async fn first_page_is_newest_inbox_then_pages_run_newest_to_oldest() {
     assert_eq!(all.len(), 1500);
     let unique: std::collections::HashSet<_> = all.iter().collect();
     assert_eq!(unique.len(), 1500, "every message exactly once");
-    // Within a folder, each page is entirely below the previous one.
     for name in ["INBOX:", "Archive:"] {
         let pages: Vec<(u32, u32)> = batches
             .iter()
@@ -361,7 +360,6 @@ async fn first_page_is_newest_inbox_then_pages_run_newest_to_oldest() {
             );
         }
     }
-    // INBOX is fully listed before any Archive message.
     let last_inbox = all.iter().rposition(|id| id.starts_with("INBOX:")).unwrap();
     let first_archive = all
         .iter()
@@ -418,7 +416,6 @@ async fn uidvalidity_change_restarts_only_that_folder() {
         .sync_messages(&SyncCursor::empty())
         .await
         .unwrap();
-    // INBOX done (200) and Archive 601..=900 fetched.
     assert_eq!(first.upserted.len(), 500);
     assert!(first.has_more);
     {
@@ -470,7 +467,6 @@ async fn resume_from_stored_cursor_does_not_refetch_completed_pages() {
         .unwrap();
     let stored = SyncCursor::from_bytes(first.next_cursor.as_bytes().to_vec());
 
-    // A restarted daemon: a brand-new provider over the same server.
     let h2 = harness(h.folders.lock().unwrap().clone());
     h2.world.lock().unwrap().mailboxes = std::mem::take(&mut h.world.lock().unwrap().mailboxes);
     let (batches, _) = run_all_pages_from(&h2.provider, stored).await;
@@ -497,8 +493,8 @@ async fn parse_failures_floor_uid_next_to_the_lowest_failure_across_pages() {
     {
         let mut w = h.world.lock().unwrap();
         let inbox = w.mailboxes.get_mut("INBOX").unwrap();
-        inbox.unparseable.insert(650); // page 1
-        inbox.unparseable.insert(5); // page 2, lower
+        inbox.unparseable.insert(650);
+        inbox.unparseable.insert(5);
     }
     let (batches, cursor) = run_all_pages(&h.provider).await;
     let all: Vec<String> = batches.iter().flat_map(ids).collect();
@@ -507,7 +503,6 @@ async fn parse_failures_floor_uid_next_to_the_lowest_failure_across_pages() {
     assert_eq!(all.len(), 698);
     assert_eq!(completed_mailbox(&cursor, "INBOX").uid_next, 5);
 
-    // The message recovers (server fixes it); the first delta picks it up.
     h.world
         .lock()
         .unwrap()
@@ -554,7 +549,6 @@ async fn a_failed_page_retried_from_the_same_cursor_returns_the_same_page() {
         .sync_messages(&SyncCursor::empty())
         .await
         .unwrap();
-    // Next page's third FETCH fails mid-page (fetches so far: 5 for page 1).
     h.world.lock().unwrap().fail_fetch_number = Some(5 + 3);
     assert!(h.provider.sync_messages(&first.next_cursor).await.is_err());
     let retried = h.provider.sync_messages(&first.next_cursor).await.unwrap();
@@ -607,7 +601,6 @@ async fn a_folder_deleted_mid_backfill_is_dropped_instead_of_wedging() {
 #[tokio::test]
 async fn a_sparse_folder_costs_tens_of_commands_not_thousands() {
     let h = harness(vec![folder("INBOX", Some("\\Inbox"))]);
-    // UIDNEXT 200,000 with 50 messages scattered across the whole range.
     let uids: Vec<u32> = (0..50).map(|i| 3 + i * 3_990).collect();
     add_mailbox(&h.world, "INBOX", uids.clone());
     h.world
@@ -627,6 +620,5 @@ async fn a_sparse_folder_costs_tens_of_commands_not_thousands() {
     assert_eq!(completed_mailbox(&cursor, "INBOX").uid_next, 200_000);
     let w = h.world.lock().unwrap();
     let commands = w.selects.len() + w.searches.len() + w.fetches.len();
-    // SELECT + geometric searches (2k, 8k, 32k, 128k, rest) + one FETCH chunk.
     assert!(commands <= 12, "{commands} commands: {:?}", w.searches);
 }

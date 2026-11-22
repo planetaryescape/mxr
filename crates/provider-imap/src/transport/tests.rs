@@ -68,7 +68,6 @@ fn mode_follows_use_tls_and_port() {
         TransportMode::resolve("imap.example.com", 143, true).unwrap(),
         TransportMode::StartTls
     );
-    // use_tls = true on a loopback bridge still means TLS.
     assert_eq!(
         TransportMode::resolve("127.0.0.1", 1143, true).unwrap(),
         TransportMode::ImplicitTls
@@ -98,11 +97,9 @@ fn starttls_is_detected_in_capability_lines() {
     assert!(!advertises_starttls(&lines(
         "* CAPABILITY IMAP4rev1 AUTH=PLAIN\r\n"
     )));
-    // A mailbox or text that merely mentions the word is not a capability.
     assert!(!advertises_starttls(&lines("* OK STARTTLS later\r\n")));
 }
 
-// -- Local server tests ------------------------------------------------------
 
 struct TestCert {
     acceptor: async_native_tls::TlsAcceptor,
@@ -148,7 +145,6 @@ async fn rejects_starttls_response_with_excessive_untagged_lines() {
         assert_eq!(request, "mxr1 CAPABILITY\r\n");
         let line = format!("* OK {}\r\n", "x".repeat(1024));
         let response = format!("{}mxr1 OK done\r\n", line.repeat(100));
-        // A refusing client can close before all bytes have been written.
         let _ = socket.write_all(response.as_bytes()).await;
     });
     let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
@@ -190,8 +186,6 @@ fn serve_plain(listener: TcpListener, starttls: Option<TestCert>) {
         };
         let _ = tcp.write_all(b"* OK ready\r\n").await;
         let Some(cert) = starttls else {
-            // Plain bridge or a server without STARTTLS: answer CAPABILITY
-            // without it, then hold the socket until the client leaves.
             let mut buf = [0u8; 256];
             if let Ok(n) = tcp.read(&mut buf).await {
                 if n > 0 {
@@ -283,7 +277,6 @@ async fn self_signed_certificate_without_a_pin_fails_verification() {
 #[tokio::test]
 async fn tls_against_a_plaintext_server_names_the_mismatch() {
     let (listener, port) = bind_local().await;
-    // Two connections arrive: the failed handshake, then the plaintext probe.
     async_std::task::spawn(async move {
         for _ in 0..2 {
             if let Ok((mut tcp, _)) = listener.accept().await {
@@ -380,8 +373,6 @@ async fn starttls_verification_failure_keeps_the_tls_error() {
             .await
             .expect("allow upgrade");
         let _ = cert.acceptor.accept(tcp).await;
-        // A real STARTTLS listener also greets the diagnostic reconnection
-        // in plaintext. That is expected protocol behaviour, not a mismatch.
         if let Ok((mut tcp, _)) = listener.accept().await {
             let _ = tcp.write_all(b"* OK ready\r\n").await;
         }
@@ -492,7 +483,6 @@ async fn probe_gives_up_on_a_server_that_accepts_and_stays_silent() {
             let mut buf = [0u8; 4096];
             let n = tcp.read(&mut buf).await.unwrap_or(0);
             let _ = seen_tx.send(buf[..n].to_vec());
-            // Hold the socket open without ever replying.
             let _ = tcp.read(&mut buf).await;
         }
     });

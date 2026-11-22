@@ -162,7 +162,6 @@ impl async_imap::Authenticator for AnonymousAuthenticator {
     }
 }
 
-// -- XOAUTH2 authenticator ---------------------------------------------------
 
 /// SASL XOAUTH2 authenticator for OAuth2-based IMAP login (RFC 7628 / Google protocol).
 /// Used by Outlook/Exchange and Gmail IMAP when authenticating with OAuth2 tokens.
@@ -241,7 +240,6 @@ impl XOAuth2ImapSessionFactory {
             .ok_or_else(|| ImapProviderError::Connection("no greeting from server".into()))?
             .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
 
-        // If the server sent PREAUTH, the session is already authenticated.
         let session = match greeting.parsed() {
             async_imap::imap_proto::Response::Data {
                 status: async_imap::imap_proto::Status::PreAuth,
@@ -263,7 +261,6 @@ impl XOAuth2ImapSessionFactory {
     }
 }
 
-// -- Password-based session factory ------------------------------------------
 
 /// Production session factory that connects via TLS to an IMAP server.
 pub struct RealImapSessionFactory {
@@ -407,11 +404,6 @@ impl ImapSessionFactory for RealImapSessionFactory {
     async fn create_idle_watcher(&self) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
         let mut session = self.open_authenticated_session().await?;
 
-        // No IDLE capability → fall back to poll-only. These run on the raw
-        // async-imap session (not the wrapped trait), so they need their own
-        // bounds — a half-open connection here would otherwise wedge the
-        // account's idle task forever (the daemon awaits idle_watch without
-        // a shutdown select).
         let caps = bounded("CAPABILITY (idle setup)", COMMAND_TIMEOUT, async {
             session
                 .capabilities()
@@ -482,10 +474,6 @@ impl RealImapIdleWatcher {
             ImapProviderError::protocol_detail("idle watcher in invalid state".to_string())
         })?;
         let mut handle = session.idle();
-        // Bounded: a half-open connection would otherwise hang the IDLE
-        // handshake forever. On timeout the handle is dropped (socket
-        // closed) and both state slots stay empty, so the next call errors
-        // and the daemon's idle loop reconnects with backoff.
         bounded("IDLE init", COMMAND_TIMEOUT, async {
             handle
                 .init()
@@ -504,9 +492,6 @@ impl RealImapIdleWatcher {
         let Some(handle) = self.handle.take() else {
             return Ok(());
         };
-        // Bounded like `init`: DONE sends a line and reads the tagged
-        // response; a dead connection would otherwise wedge the watcher
-        // silently — no events, no error, no reconnect.
         let session = bounded("IDLE done", COMMAND_TIMEOUT, async {
             handle
                 .done()
@@ -541,7 +526,6 @@ impl mxr_core::IdleWatcher for RealImapIdleWatcher {
                 }
                 async_imap::extensions::idle::IdleResponse::Timeout => {
                     // RFC 2177 cap reset. Re-issue IDLE and keep
-                    // waiting; the daemon doesn't see a wake-up.
                     self.done_idling().await.map_err(mxr_core::MxrError::from)?;
                     continue;
                 }
@@ -652,7 +636,6 @@ fn fetched_message_from_attrs(
             AttributeValue::Uid(value) => uid = Some(*value),
             // imap-proto exposes INTERNALDATE as the raw RFC 3501 date string
             // (e.g. "17-Jul-1996 02:44:25 -0700"); parse it into UTC so it can
-            // back-stop a missing/unparseable `Date:` header downstream.
             AttributeValue::InternalDate(value) => {
                 internal_date = crate::parse::parse_imap_date(value.trim()).ok();
             }
@@ -836,9 +819,6 @@ impl ImapSession for RealImapSession {
         highest_modseq: u64,
         known_uids: &str,
     ) -> Result<QresyncInfo> {
-        // QRESYNC streams one untagged line per changed/vanished message
-        // since the stored MODSEQ inside a single command — after days
-        // offline that is legitimately large, so it gets the slow bound.
         let response = bounded("SELECT (QRESYNC)", SLOW_COMMAND_TIMEOUT, async {
             self.session
                 .select_qresync(
@@ -881,10 +861,6 @@ impl ImapSession for RealImapSession {
 
         let mut messages = Vec::new();
         let mut saw_done = false;
-        // Inactivity bound per response: an initial sync fetches whole
-        // mailboxes in one `UID FETCH 1:*`, so a total deadline would break
-        // large-but-healthy transfers. Each arriving response resets the
-        // clock; only a stalled connection times out.
         while let Some(response) =
             tokio::time::timeout(COMMAND_TIMEOUT, self.session.read_response())
                 .await
@@ -944,7 +920,6 @@ impl ImapSession for RealImapSession {
                 .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))
         })
         .await?;
-        // Consume the stream to apply the store
         let _ = collect_bounded("UID STORE", COMMAND_TIMEOUT, stream).await?;
         Ok(())
     }
@@ -980,9 +955,6 @@ impl ImapSession for RealImapSession {
         // The vendored `mxr-async-imap` `append` returns `Result<()>`: it
         // consumes the tagged OK line without surfacing the APPENDUID, so the
         // new UID is not available here even on a UIDPLUS server. File the
-        // message and report `None`; the daemon's fallback still records the
-        // sent copy locally and the next sync reconciles the real UID by
-        // Message-ID. (Confirmed against mxr-async-imap 0.10.6 `Session::append`.)
         let flags = (!flags.is_empty()).then(|| format!("({})", flags.join(" ")));
         bounded("APPEND", append_timeout(body.len()), async {
             self.session
@@ -1045,17 +1017,7 @@ impl ImapSession for RealImapSession {
                 continue;
             }
 
-            // A STATUS failure for one mailbox must not abort the whole LIST
-            // (and therefore the whole sync). Map any error into the helper,
-            // which warns and emits the folder with unknown counts. A
-            // *timeout* is different: the connection is dead or desynced, so
-            // continuing to issue commands on this session would misattribute
-            // later responses — abort the whole call instead.
             let status = tokio::time::timeout(
-                // Slow bound: STATUS may force the server to recompute
-                // UNSEEN over a large mailbox and legitimately take a
-                // while; a total sync outage from an aggressive deadline
-                // is worse than a slow listing.
                 SLOW_COMMAND_TIMEOUT,
                 self.session
                     .status(name.name(), "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)"),
@@ -1141,7 +1103,6 @@ impl ImapSession for RealImapSession {
     }
 }
 
-// -- Mock session for tests ---------------------------------------------------
 
 #[cfg(test)]
 pub mod mock {
@@ -1678,7 +1639,6 @@ mod tests {
     #[test]
     fn append_timeout_scales_with_body_size() {
         assert_eq!(append_timeout(0).as_secs(), 300);
-        // A 25 MiB message earns ~400 extra seconds (~0.5 Mbps floor).
         assert_eq!(append_timeout(25 * 1024 * 1024).as_secs(), 700);
     }
 
@@ -1708,7 +1668,6 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(30)).await;
             Some((Ok::<u32, ImapProviderError>(n), n + 1))
         });
-        // 5 items × 30ms = 150ms total, well past the 50ms per-item limit.
         let items = collect_bounded("FETCH", limit, stream).await.unwrap();
         assert_eq!(items, vec![0, 1, 2, 3, 4]);
     }
@@ -1756,9 +1715,6 @@ mod tests {
 
     #[test]
     fn folder_info_from_status_error_emits_folder_without_counts() {
-        // Regression: one folder's STATUS failure must not abort discovery of
-        // the others. The un-STATUS-able folder is still emitted, just with
-        // unknown counts, so `list_folders` returns the remaining folders.
         let info = folder_info_from_status(
             "Shared/Team".to_string(),
             None,

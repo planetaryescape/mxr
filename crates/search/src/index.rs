@@ -161,11 +161,6 @@ impl SearchIndex {
         let dir = tantivy::directory::MmapDirectory::open(index_path)
             .map_err(|e| MxrError::Search(e.to_string()))?;
 
-        // The index is rebuildable derived data (SQLite is canonical), so
-        // ANY failure to open an existing index — our schema changed, a
-        // tantivy upgrade changed the on-disk format, or the directory is
-        // corrupt — is handled by wiping and rebuilding rather than failing
-        // daemon startup. Upgrades must never require manual intervention.
         let (index, rebuilt) = match Index::open_or_create(dir, schema_def.schema.clone()) {
             Ok(idx) => (idx, false),
             Err(e) => {
@@ -240,9 +235,6 @@ impl SearchIndex {
         envelope: &Envelope,
         reply_later: bool,
     ) -> Result<(), MxrError> {
-        // Re-indexing is upsert-by-message-id; without delete_term we would leave
-        // stale documents in Tantivy and `mxr search` would return duplicates
-        // after every mutation that triggers a re-index.
         let term = tantivy::Term::from_field_text(self.schema.message_id, &envelope.id.as_str());
         self.writer.delete_term(term);
 
@@ -292,11 +284,6 @@ impl SearchIndex {
             envelope.flags.contains(MessageFlags::ANSWERED),
         );
         doc.add_bool(s.is_reply_later, reply_later);
-        // Phase E: index each keyword as a separate STRING term so
-        // `is:$foo` filters resolve via exact-match TermQuery.
-        // Index keywords lowercased so `is:$Forwarded` / `is:$forwarded`
-        // match the same set. The authoritative case-preserved form
-        // lives in `message_keywords` for round-trip back to IMAP.
         for keyword in &envelope.keywords {
             doc.add_text(s.keywords, keyword.to_lowercase());
         }
@@ -357,7 +344,6 @@ impl SearchIndex {
         }
         for attachment in &body.attachments {
             doc.add_text(s.attachment_filenames, attachment.filename.to_lowercase());
-            // MIME types are words prose can match ("spreadsheet" for an .xlsx).
             doc.add_text(s.attachment_filenames, attachment.mime_type.to_lowercase());
         }
         if let Some(list_id) = body.metadata.list_id.as_deref() {
@@ -389,9 +375,6 @@ impl SearchIndex {
             envelope.flags.contains(MessageFlags::ANSWERED),
         );
         doc.add_bool(s.is_reply_later, reply_later);
-        // Index keywords lowercased so `is:$Forwarded` / `is:$forwarded`
-        // match the same set. The authoritative case-preserved form
-        // lives in `message_keywords` for round-trip back to IMAP.
         for keyword in &envelope.keywords {
             doc.add_text(s.keywords, keyword.to_lowercase());
         }
@@ -572,7 +555,6 @@ impl SearchIndex {
         })
     }
 
-    /// Number of indexed documents.
     pub fn num_docs(&self) -> u64 {
         self.reader.searcher().num_docs()
     }
@@ -611,7 +593,6 @@ impl SearchIndex {
         Ok(())
     }
 
-    /// Clear all documents and prepare for reindexing.
     pub fn clear(&mut self) -> Result<(), MxrError> {
         self.writer
             .delete_all_documents()
@@ -851,8 +832,6 @@ mod reader_text_tests {
 
     #[test]
     fn malformed_table_with_huge_colspan_still_indexes() {
-        // PR 767 clamps spans before html2text runs, so this table converts
-        // without a panic and nothing is counted as a fallback.
         let (index, id) = index_one(None, Some(PANICKING_HTML));
         assert_eq!(search_ids(&index, "body:tablewordalpha"), vec![id.clone()]);
         assert_eq!(search_ids(&index, "body:tablewordbeta"), vec![id]);
@@ -861,7 +840,6 @@ mod reader_text_tests {
 
     #[test]
     fn a_long_html_paragraph_is_one_phrase_in_the_index() {
-        // The reader's 80-column view breaks before "overdue"; the index must not.
         let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
         let (index, id) = index_one(None, Some(html.as_str()));
         assert_eq!(search_ids(&index, "\"payment overdue\""), vec![id]);
@@ -872,8 +850,6 @@ mod reader_text_tests {
         let html = r#"<p>Watch</p><script>var zzscriptword = 1;</script><a href="https://youtube.com/x">clip</a>"#;
         let (index, id) = index_one(None, Some(html));
 
-        // Bare-word search, the string search, and the any-words path that
-        // Archive Ask uses for prose.
         assert!(search_ids(&index, "zzscriptword").is_empty());
         assert!(index
             .search("zzscriptword", 10, 0, SortOrder::Relevance)
@@ -974,8 +950,6 @@ impl SearchResolver {
             )
             .map_err(search_error)?;
 
-        // Read stored fields in address order so each doc-store block is
-        // decompressed once, then put the hits back in date order.
         let mut by_address: Vec<(usize, tantivy::DocAddress)> = ordered
             .iter()
             .enumerate()
@@ -1040,7 +1014,6 @@ mod resolver_tests {
         (index, envelopes)
     }
 
-    /// Every match the way a client pages `search_ast`, newest first.
     fn paged(index: &SearchIndex, text: &str, page: usize) -> Vec<String> {
         let mut found = Vec::new();
         let mut offset = 0;

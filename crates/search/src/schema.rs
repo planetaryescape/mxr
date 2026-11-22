@@ -68,9 +68,6 @@ impl MxrSchema {
         let flags = builder.add_u64_field("flags", INDEXED);
         let has_attachments = builder.add_bool_field("has_attachments", INDEXED);
         let has_calendar = builder.add_bool_field("has_calendar", INDEXED);
-        // Link-density indexing: a boolean for the cheap `has:link` filter
-        // (covers `Some` + `Heavy`) plus a u64 tier (0/1/2) for `has:link-heavy`
-        // and `has:link-none`. See `LinkDensity::as_db_u8` for the encoding.
         let has_link = builder.add_bool_field("has_link", INDEXED);
         let link_density = builder.add_u64_field("link_density", INDEXED);
         let has_user_labels = builder.add_bool_field("has_user_labels", INDEXED);
@@ -82,9 +79,6 @@ impl MxrSchema {
         let is_spam = builder.add_bool_field("is_spam", INDEXED);
         let is_answered = builder.add_bool_field("is_answered", INDEXED);
         let is_reply_later = builder.add_bool_field("is_reply_later", INDEXED);
-        // Phase E: per-message IMAP-style keywords ($Forwarded, $Work, ...).
-        // STRING (not TEXT) so each keyword is one untokenised term, which
-        // lets `is:$forwarded`-style filters do exact-match TermQuery.
         let keywords = builder.add_text_field("keywords", STRING);
 
         let schema = builder.build();

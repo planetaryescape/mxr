@@ -2,7 +2,6 @@
 use super::tests::{judge, judge_complete};
 use super::*;
 
-/// The single bill the mail asks the owner to pay.
 fn bill(a: &AskAssessment) -> (i64, String, Option<String>) {
     let bills: Vec<_> = a
         .units

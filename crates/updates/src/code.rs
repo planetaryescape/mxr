@@ -16,7 +16,6 @@ const AFTER: usize = 120;
 /// How close before the words a code must end: "482913 is your code".
 const BEFORE: usize = 16;
 
-/// The words that say a code follows or precedes.
 static TRIGGER: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?ix)
@@ -85,13 +84,11 @@ fn named_before(before: &str) -> bool {
 static GUARD: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)\bguard\s+code\b").expect("valid guard regex"));
 
-/// Code-shaped words: digits, groups like 123-456, or capitals with digits.
 static CANDIDATE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"\b(?:[A-Z]-)?(?:\d{3}[ -]\d{3}|[A-Z0-9]{3,5}-[A-Z0-9]{3,5}|[A-Z0-9]{4,10})\b")
         .expect("valid code candidate regex")
 });
 
-/// The one-time code in a message, if it gives one.
 pub fn one_time_code(subject: &str, body: Option<&str>) -> Option<String> {
     if let Some(code) = in_text(subject) {
         return Some(code);
@@ -113,7 +110,6 @@ pub fn one_time_code(subject: &str, body: Option<&str>) -> Option<String> {
     })
 }
 
-/// How far into the body a code alone on its line is looked for.
 const ALONE_MAX: usize = 1_500;
 
 fn alone_on_a_line(text: &str) -> Option<String> {
@@ -212,20 +208,17 @@ fn in_text(text: &str) -> Option<String> {
     None
 }
 
-/// Code-shaped whole words between `from` and `to` in `text`.
 fn candidates(text: &str, from: usize, to: usize) -> impl Iterator<Item = regex::Match<'_>> {
     CANDIDATE.find_iter(&text[..to]).filter(move |m| {
         m.start() >= from && looks_like_a_code(text, m.start(), m.end(), Trust::Nearby)
     })
 }
 
-/// How sure the place a word sits in makes it a code.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Trust {
     /// Right after "is" or a colon, or alone on its line: even a
     /// year-shaped number is the code (a named one still is not).
     Placed,
-    /// Just near the words: a year or a named number is not.
     Nearby,
 }
 
@@ -298,7 +291,6 @@ fn sentence_end(text: &str) -> usize {
         .map_or(text.len(), |(i, _)| i)
 }
 
-/// Where the last sentence in `text` starts.
 fn sentence_start(text: &str) -> usize {
     text.char_indices()
         .rev()

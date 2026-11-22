@@ -86,7 +86,6 @@ fn reads_as_money(text: &str, value: Range<usize>, amount: Range<usize>) -> bool
     amount.start < value.start || amount.end > value.end || CENTS.is_match(&text[amount])
 }
 
-/// Whether `text` states an amount, leaving out one that is really a reference.
 fn states_amount(text: &str) -> bool {
     crate::money::find_candidates(text)
         .into_iter()
@@ -109,7 +108,6 @@ pub(super) fn restates_billing_terms(before: &str, line: &str) -> bool {
     states_amount(before) && states_amount(line) || has_due(before) && has_due(line)
 }
 
-/// A remediation with different explicit billing fields is a separate request.
 pub(super) fn billing_fields_conflict(before: &str, after: &str) -> bool {
     let amounts = |text: &str| {
         crate::money::find_candidates(text)

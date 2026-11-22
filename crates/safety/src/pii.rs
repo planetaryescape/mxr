@@ -35,11 +35,6 @@ static SLACK_PREFIX: Lazy<Regex> = Lazy::new(|| {
 });
 static AWS_KEY_ID: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\bAKIA[0-9A-Z]{16}\b").expect("AWS key id regex literal compiles"));
-// Catches all four canonical/loose forms:
-//   AWS_ACCESS_KEY_ID=...      (canonical env var)
-//   AWS_SECRET_ACCESS_KEY=...  (canonical env var)
-//   aws_access_key=...         (loose)
-//   aws_secret_key=...         (loose)
 static AWS_KEY_LABEL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\baws[_-]?(access[_-]?key([_-]?id)?|secret[_-]?(access[_-]?)?key)\s*[:=]\s*\S+",
@@ -251,7 +246,6 @@ mod tests {
                     && i.code == DraftSafetyIssueCode::PiiSecret),
             "expected PEM blocker, got {issues:?}"
         );
-        // Critical: redacted preview must NOT contain raw key bytes.
         for issue in &issues {
             if let Some(detail) = &issue.detail {
                 assert!(
@@ -272,7 +266,6 @@ mod tests {
                     && i.code == DraftSafetyIssueCode::PiiSecret),
             "expected CC warning, got {issues:?}"
         );
-        // Redacted preview present; raw digits absent.
         for issue in &issues {
             if let Some(detail) = &issue.detail {
                 assert!(detail.contains("4242"), "should keep last 4");
@@ -286,7 +279,6 @@ mod tests {
 
     #[test]
     fn random_digit_groups_pass() {
-        // 16 digits but Luhn-invalid.
         let issues = check(&d("ref number 1234567890123456 fyi"));
         assert!(
             issues.is_empty(),
@@ -343,8 +335,6 @@ mod tests {
     fn quoted_context_does_not_trigger_secret_in_quote() {
         let body = "Got it.\n\nOn Mon, Alice wrote:\n> sk-abcdefghijklmnopqrstuv\n";
         let issues = check(&d(body));
-        // After reader cleanup, quoted block is collapsed; secret in the
-        // quote should not raise.
         assert!(
             issues.is_empty(),
             "secret in quoted context should be ignored ({issues:?})"

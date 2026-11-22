@@ -16,16 +16,12 @@ use regex::Regex;
 pub struct Amount {
     /// In the currency's minor unit (pence, cents).
     pub minor: i64,
-    /// ISO 4217 code.
     pub currency: String,
-    /// The text it was read from, verbatim.
     pub text: String,
-    /// False when another amount in the mail was as likely to be the one.
     pub checked: bool,
 }
 
 impl Amount {
-    /// "£142.00", "$15,000.00", "EUR 12.50".
     pub fn display(&self) -> String {
         format_amount(self.minor, &self.currency)
     }
@@ -98,12 +94,10 @@ static OWED: Lazy<Regex> = Lazy::new(|| {
     )
     .expect("valid owed regex")
 });
-/// A price or total that may be what is owed.
 static PRICED: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(total|amount\s*:|renewal\s+(?:price|premium|cost)|premium|price|balance)")
         .expect("valid priced regex")
 });
-/// Words that make an amount history, not what is owed now.
 static PAST: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\b(previous|last\s+(?:month|bill|statement|payment)|paid|credit|refund(?:ed)?|was|saved?)\b",
@@ -111,7 +105,6 @@ static PAST: Lazy<Regex> = Lazy::new(|| {
     .expect("valid past regex")
 });
 
-/// How far before an amount a payment word may sit and still count.
 const CONTEXT_WINDOW: usize = 60;
 
 /// Every amount in `text`, in order.

@@ -13,7 +13,6 @@ use mxr_core::natural_time::{resolve_time, TimePrefs, TimeResolveErrorKind};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// Which number comes first in a numeric date.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DateOrder {
     DayFirst,
@@ -25,9 +24,7 @@ pub struct FoundDate {
     /// End of the named day in the user's zone, or the exact instant for a
     /// lifetime ("expires in 24 hours").
     pub at: DateTime<Utc>,
-    /// The phrase, verbatim: trigger and date.
     pub words: String,
-    /// False for a numeric date that reads two ways.
     pub checked: bool,
 }
 
@@ -62,7 +59,6 @@ static LIFETIME: Lazy<Regex> = Lazy::new(|| {
     .expect("valid lifetime regex")
 });
 
-/// Build a trigger regex: any of `triggers`, then a date expression.
 pub fn trigger_regex(triggers: &str) -> Regex {
     Regex::new(&format!(
         r"(?i)\b(?:{triggers})(?:\s*(?:on|is|date|by|:|-))*\s*(?P<date>{})",
@@ -88,7 +84,6 @@ where
         .find_map(|caps| resolve_due_match(text, &caps, anchor, order))
 }
 
-/// Resolve one match against its original source so preceding tense is retained.
 pub(crate) fn resolve_due_match<Tz>(
     text: &str,
     caps: &regex::Captures<'_>,
@@ -117,7 +112,6 @@ where
     })
 }
 
-/// Which year a date without one means.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum YearIntent {
     /// A deadline or expiry ahead ("due", "renew by", "expires"): the next
@@ -135,7 +129,6 @@ static PAST_INTENT: Lazy<Regex> = Lazy::new(|| {
 static MONTH_NAME: Lazy<Regex> =
     Lazy::new(|| Regex::new(&format!(r"(?i)\b(?:{MONTHS})\b")).expect("valid month regex"));
 
-/// A stated lifetime ("expires in 24 hours") from `sent`.
 pub fn find_lifetime(text: &str, sent: DateTime<Utc>) -> Option<FoundDate> {
     let caps = LIFETIME.captures(text)?;
     let count = match caps.get(1)?.as_str().to_ascii_lowercase().as_str() {

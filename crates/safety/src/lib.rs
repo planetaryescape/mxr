@@ -34,11 +34,8 @@ use mxr_core::types::Draft;
 /// Mode in which the safety pipeline is invoked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SafetyMode {
-    /// User invoked `mxr send --check`. No persistence.
     Check,
-    /// Pre-send gate from `SendDraft` / `SendStoredDraft`.
     Send,
-    /// Scheduled-send flusher.
     ScheduledFlush,
 }
 
@@ -54,7 +51,6 @@ pub struct KnownContact {
 
 impl KnownContact {
     pub fn is_strong(&self) -> bool {
-        // a contact we have meaningful prior signal on
         self.total_inbound + self.total_outbound >= 3
     }
 }

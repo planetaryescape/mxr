@@ -29,7 +29,6 @@ pub fn check(
             None => continue,
         };
 
-        // 1. configured sensitive-domain blocker
         if cfg
             .sensitive_domains
             .iter()
@@ -43,7 +42,6 @@ pub fn check(
             continue;
         }
 
-        // 2. typo distance vs. a stronger contact
         if let Some(better) = best_typo_candidate(&email, ctx) {
             issues.push(DraftSafetyIssue::new(
                 DraftSafetyIssueCode::WrongRecipient,
@@ -56,7 +54,6 @@ pub fn check(
             continue;
         }
 
-        // 3. first-time external (only when configured)
         if cfg.warn_on_first_time_external {
             let known = ctx
                 .known_contacts
@@ -86,9 +83,6 @@ fn is_self(email: &str, ctx: &SafetyContext) -> bool {
 }
 
 fn best_typo_candidate<'a>(email: &str, ctx: &'a SafetyContext) -> Option<&'a KnownContact> {
-    // Only suggest if the typed recipient has zero-or-weak history AND a
-    // strong contact is exactly one edit away. This is the documented
-    // boundary: don't warn when both addresses have strong history.
     let typed_strength = ctx
         .known_contacts
         .iter()
@@ -187,7 +181,7 @@ mod tests {
     fn dl_basic() {
         assert_eq!(damerau_levenshtein("alice", "alice"), 0);
         assert_eq!(damerau_levenshtein("alice", "alicc"), 1);
-        assert_eq!(damerau_levenshtein("alice", "alcie"), 1); // transposition
+        assert_eq!(damerau_levenshtein("alice", "alcie"), 1);
         assert!(damerau_levenshtein("alice", "bob") > 2);
     }
 
@@ -203,7 +197,6 @@ mod tests {
             &Default::default(),
         );
         assert_eq!(issues.len(), 1, "expected typo warning, got {issues:?}");
-        // message must name BOTH the typed address and the candidate.
         assert!(
             issues[0].message.contains("alcie@example.com"),
             "warning omits the typed recipient: {}",
@@ -219,12 +212,10 @@ mod tests {
 
     #[test]
     fn typo_threshold_at_strength_boundary() {
-        // is_strong() is sum >= 3. A typed recipient at sum == 3 must
-        // suppress the warning; sum == 2 must allow it.
         let ctx_typed_strong = SafetyContext {
             known_contacts: vec![
                 contact("alice@example.com", 50, 50),
-                contact("alcie@example.com", 2, 1), // sum=3 → strong, suppresses
+                contact("alcie@example.com", 2, 1),
             ],
             ..Default::default()
         };
@@ -241,7 +232,7 @@ mod tests {
         let ctx_typed_weak = SafetyContext {
             known_contacts: vec![
                 contact("alice@example.com", 50, 50),
-                contact("alcie@example.com", 2, 0), // sum=2 → weak, warns
+                contact("alcie@example.com", 2, 0),
             ],
             ..Default::default()
         };
@@ -365,7 +356,6 @@ mod tests {
             warn_on_first_time_external: true,
             ..Default::default()
         };
-        // self goes to "me@x.com" which is on sensitive list — but is filtered.
         let issues = check(&d(vec![addr("me@x.com")]), &ctx, &cfg);
         assert!(issues.is_empty(), "self address should produce no issues");
     }

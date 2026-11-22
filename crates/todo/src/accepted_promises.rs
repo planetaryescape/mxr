@@ -23,7 +23,6 @@ where
     sync_selected(store, cfg, account, first_run, None).await
 }
 
-/// Acknowledging one explicit date does not scan unrelated account promises.
 pub async fn sync_commitment<Tz>(
     store: &Store,
     cfg: &PassConfig<Tz>,

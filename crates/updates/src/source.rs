@@ -22,7 +22,6 @@ pub fn email_domain(email: &str) -> Option<String> {
     registrable_domain(email.trim().rsplit_once('@')?.1.trim_end_matches('>'))
 }
 
-/// The stream a message belongs to.
 pub fn source_key(from_email: &str, list_id: Option<&str>, subject: &str) -> String {
     let domain = email_domain(from_email).unwrap_or_else(|| from_email.trim().to_ascii_lowercase());
     if let Some(repo) = REPO_TAG.captures(subject).and_then(|c| c.get(1)) {
@@ -67,7 +66,6 @@ pub fn source_name(from_name: Option<&str>, from_email: &str, key: &str) -> Stri
     }
 }
 
-/// "GitHub" from "GitHub Notifications", "Strava" from "Strava Alerts".
 fn strip_notification_suffix(name: &str) -> String {
     const SUFFIXES: &[&str] = &[
         " notifications",

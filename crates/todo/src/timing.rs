@@ -10,15 +10,12 @@
 use crate::TodoKind;
 use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, NaiveTime, TimeZone, Utc, Weekday};
 
-/// What the table needs to know about one item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimingInput<'a> {
     pub kind: TodoKind,
     pub doc_type: Option<&'a str>,
-    /// When the message arrived.
     pub arrived: DateTime<Utc>,
     pub due: Option<DateTime<Utc>>,
-    /// An event's start, for RSVPs without a reply-by date.
     pub event_start: Option<DateTime<Utc>>,
 }
 
@@ -26,9 +23,7 @@ pub struct TimingInput<'a> {
 pub struct Timing {
     pub act_by: Option<DateTime<Utc>>,
     pub surface_at: Option<DateTime<Utc>>,
-    /// How act-by was worked out, for provenance.
     pub act_by_rule: &'static str,
-    /// How the surface time was worked out, for provenance.
     pub surface_rule: &'static str,
 }
 
@@ -151,7 +146,6 @@ pub fn minus_working_days<Tz: TimeZone>(at: DateTime<Utc>, days: i64, tz: &Tz) -
     at_wall_time(day, local.time(), tz)
 }
 
-/// The start of working hours on `day` in `tz`.
 pub fn start_of_day<Tz: TimeZone>(day: NaiveDate, tz: &Tz, morning_hour: u8) -> DateTime<Utc> {
     let time =
         NaiveTime::from_hms_opt(u32::from(morning_hour.min(23)), 0, 0).unwrap_or(NaiveTime::MIN);
@@ -176,7 +170,6 @@ fn at_wall_time<Tz: TimeZone>(day: NaiveDate, time: NaiveTime, tz: &Tz) -> DateT
         )
 }
 
-/// Where a window's end came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowSource {
     Schema,
@@ -206,7 +199,6 @@ pub struct Window {
     pub rule: &'static str,
 }
 
-/// When an item stops mattering (blueprint 22, the relevancy table).
 pub fn window(input: &TimingInput<'_>) -> Window {
     let open_ended = Window {
         until: None,
@@ -269,11 +261,9 @@ pub fn window(input: &TimingInput<'_>) -> Window {
     }
 }
 
-/// Where a newly found item goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Placement {
     Open,
-    /// The first run's one-time batch.
     CatchUp,
     /// Already over when found: written expired, never surfaced.
     ExpiredAtBirth(&'static str),

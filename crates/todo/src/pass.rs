@@ -24,7 +24,6 @@ use mxr_store::{Store, TodoCatchup, TodoRecord, TodoScanRow, TodoState, TodoUpse
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 
-/// What a pass needs besides the store.
 #[derive(Debug, Clone)]
 pub struct PassConfig<Tz> {
     pub now: DateTime<Utc>,
@@ -32,7 +31,6 @@ pub struct PassConfig<Tz> {
     /// start of working hours here.
     pub tz: Tz,
     pub morning_hour: u8,
-    /// How far back undated items may join the first run's catch-up.
     pub catchup_days: u32,
     pub catchup_max: u32,
 }
@@ -42,14 +40,12 @@ pub struct PassConfig<Tz> {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct PassSummary {
     pub scanned: u64,
-    /// Messages whose subject or snippet earned a read of the body.
     pub bodies_read: u64,
     pub created: u64,
     pub updated: u64,
     pub reopened: u64,
     pub catchup: u64,
     pub catchup_overflow: u64,
-    /// Found already over, by kind.
     pub expired_at_birth: BTreeMap<String, u64>,
     pub looks_done: u64,
     /// Open promise rows dismissed because their commitment is not a
@@ -74,12 +70,10 @@ impl PassSummary {
     }
 }
 
-/// Where an account's first run has got to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FirstRunProgress {
     pub complete: bool,
     pub scanned: i64,
-    /// The date of the oldest message classified so far.
     pub reached: Option<DateTime<Utc>>,
     pub summary: PassSummary,
     /// Messages classified in this tick, for bounded reconciliation with
@@ -700,7 +694,6 @@ where
     (record, placement)
 }
 
-/// The state columns a new row starts with for its placement.
 fn placed_state(
     placement: Placement,
     now: DateTime<Utc>,
@@ -802,12 +795,10 @@ async fn offer_promises_kept<Tz>(
     Ok(offered)
 }
 
-/// What one sweep did.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct SweepSummary {
     pub rsvp_answered: u64,
     pub expired: u64,
-    /// Rows whose surface time came, claimed now and announced once.
     pub surfaced: Vec<String>,
 }
 

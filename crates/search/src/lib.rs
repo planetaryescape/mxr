@@ -6,13 +6,6 @@ mod service;
 #[cfg(test)]
 mod test_fixtures;
 
-// The parser and AST live in the public `mail-query` crate. The `ast`
-// module re-export preserves the existing `mxr_search::ast::QueryNode`
-// path used by daemon/rules/search_filter consumers, and the top-level
-// re-exports preserve `mxr_search::QueryNode`. Internal mxr-specific
-// filters (`is:owed-reply`, `is:reply-later`) parse through
-// `FilterKind::Custom(_)` — the parser entry point below registers
-// them.
 pub mod ast {
     pub use mail_query::{
         DateBound, DateValue, FilterKind, ParseError, ParserOptions, QueryField, QueryNode,
@@ -36,10 +29,8 @@ pub use service::{
     SearchUpdateBatch,
 };
 
-/// Canonical name for the mxr-specific `is:owed-reply` filter.
 pub const FILTER_OWED_REPLY: &str = "owed-reply";
 
-/// Canonical name for the mxr-specific `is:reply-later` filter.
 pub const FILTER_REPLY_LATER: &str = "reply-later";
 
 /// Parse an mxr query string, with mxr-specific custom filters
@@ -55,10 +46,6 @@ pub const FILTER_REPLY_LATER: &str = "reply-later";
 pub fn parse_query(input: &str) -> Result<QueryNode, ParseError> {
     let mut options = ParserOptions::new();
     options.register_custom_filters([FILTER_OWED_REPLY, FILTER_REPLY_LATER]);
-    // Dynamic keyword filter registration: mail-query lowercases
-    // filter names internally, so we register the lowercase form even
-    // if the user typed mixed case. The QueryBuilder branch still
-    // sees the lowercased atom on the FilterKind::Custom payload.
     let mut keyword_atoms: Vec<String> = Vec::new();
     let mut rest = input;
     while let Some(idx) = rest.find("is:$") {
@@ -163,7 +150,6 @@ mod tests {
             .search("deployment", 10, 0, SortOrder::Relevance)
             .unwrap();
         assert_eq!(results.results.len(), 2);
-        // Subject match should rank higher due to 3.0 boost vs 1.0 snippet
         assert_eq!(results.results[0].message_id, subject_id);
     }
 
@@ -177,11 +163,9 @@ mod tests {
         idx.index_envelope(&env).unwrap();
         idx.commit().unwrap();
 
-        // Search for body-only keyword should find nothing yet
         let results = idx.search("canary", 10, 0, SortOrder::Relevance).unwrap();
         assert_eq!(results.results.len(), 0);
 
-        // Now index with body
         let body = MessageBody {
             message_id: env.id.clone(),
             text_plain: Some("Deploy canary to 5% of traffic first".to_string()),
@@ -291,7 +275,6 @@ mod tests {
         assert_eq!(results.next_offset, None);
     }
 
-    // -- E2E: parse → build → search integration tests --
 
     fn build_e2e_index() -> (SearchIndex, Vec<Envelope>) {
         let mut idx = SearchIndex::in_memory().unwrap();
@@ -301,7 +284,7 @@ mod tests {
                 "Rolling out to prod",
                 "Alice",
                 "alice@example.com",
-                MessageFlags::empty(), // unread
+                MessageFlags::empty(),
                 false,
             ),
             make_envelope_full(
@@ -310,7 +293,7 @@ mod tests {
                 "Bob",
                 "bob@example.com",
                 MessageFlags::READ | MessageFlags::STARRED,
-                true, // has attachment
+                true,
             ),
             make_envelope_full(
                 "Team standup notes",
@@ -325,8 +308,8 @@ mod tests {
                 "Build broken on main",
                 "Alice",
                 "alice@example.com",
-                MessageFlags::empty(), // unread
-                true,                  // has attachment
+                MessageFlags::empty(),
+                true,
             ),
         ];
         for env in &envelopes {
@@ -391,7 +374,6 @@ mod tests {
     #[test]
     fn e2e_parse_build_search_compound() {
         let (idx, envelopes) = build_e2e_index();
-        // from:alice AND is:unread — both alice messages are unread
         let results = e2e_search(&idx, "from:alice@example.com is:unread");
         assert_eq!(results.len(), 2);
         let alice_ids: Vec<String> = vec![
@@ -406,7 +388,6 @@ mod tests {
     #[test]
     fn e2e_parse_build_search_negation() {
         let (idx, _envelopes) = build_e2e_index();
-        // -is:read = unread messages (alice's two)
         let results = e2e_search(&idx, "-is:read");
         assert_eq!(results.len(), 2);
     }

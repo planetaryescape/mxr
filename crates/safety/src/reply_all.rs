@@ -19,7 +19,6 @@ static GROUP_LANG: Lazy<Regex> = Lazy::new(|| {
         .expect("group language regex literal compiles")
 });
 static VOCATIVE: Lazy<Regex> = Lazy::new(|| {
-    // "Hi Alice,", "Hey Alice -", "Alice,", "Hello Alice"
     Regex::new(r"(?m)^\s*(?i:hi|hey|hello|dear)?\s*([A-Z][a-zA-Z'’\-]{1,30})\s*[,\-:!]")
         .expect("vocative regex literal compiles")
 });
@@ -34,9 +33,6 @@ pub fn check(draft: &Draft, ctx: &SafetyContext) -> Vec<DraftSafetyIssue> {
     }
 
     let cleaned = reader_clean(draft.content.analysis_text());
-    // Only the first non-empty paragraph influences the greeting check.
-    // Past the first blank line we are reading the body, where capitalized
-    // sentence starters like "Thanks," would create false positives.
     let head = first_paragraph(&cleaned);
 
     if GROUP_LANG.is_match(head) {
@@ -63,8 +59,6 @@ pub fn check(draft: &Draft, ctx: &SafetyContext) -> Vec<DraftSafetyIssue> {
     }
     let target = &named[0];
 
-    // Find the address that this name resolves to (best-effort), so the
-    // warning can name the singular addressee.
     let display_match = draft.to.iter().chain(draft.cc.iter()).find(|addr| {
         addr.name
             .as_deref()
@@ -87,7 +81,6 @@ pub fn check(draft: &Draft, ctx: &SafetyContext) -> Vec<DraftSafetyIssue> {
 }
 
 fn first_paragraph(text: &str) -> &str {
-    // Trim leading whitespace, then take through the first blank line.
     let trimmed_start = text.trim_start_matches(['\n', '\r', ' ', '\t']);
     let offset = text.len() - trimmed_start.len();
     let end = trimmed_start
@@ -221,9 +214,6 @@ mod tests {
 
     #[test]
     fn vocative_matching_thread_participant_is_filtered() {
-        // Same body, two contexts. With Sam in thread_display_names the
-        // vocative is treated as continuing thread context (ambiguous);
-        // without it, the warning fires.
         let to: Vec<_> = (0..6)
             .map(|i| addr(&format!("user{i}@x.com"), Some(&format!("User{i}"))))
             .collect();
@@ -244,9 +234,6 @@ mod tests {
 
     #[test]
     fn two_named_people_in_one_greeting_does_not_warn() {
-        // Documented contract: when greeting names more than one person
-        // ("Hi Alice and Bob,"), we are NOT confidently addressing one,
-        // so do not fire.
         let to = (0..6)
             .map(|i| addr(&format!("user{i}@x.com"), Some(&format!("User{i}"))))
             .collect();
@@ -260,7 +247,6 @@ mod tests {
 
     #[test]
     fn three_recipient_boundary() {
-        // visible == 3 should still be considered for warn (3 > 2).
         let to = vec![
             addr("alice@x.com", Some("Alice")),
             addr("bob@x.com", Some("Bob")),

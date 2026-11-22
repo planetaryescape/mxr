@@ -37,7 +37,6 @@ pub struct AskInput<'a> {
     pub bulk: bool,
     pub owner_names: &'a [String],
     pub owner_addresses: &'a [String],
-    /// Supplied by the canonical OwnedAddresses/self_matcher path.
     pub is_owner: &'a dyn Fn(&str) -> bool,
     pub sent: DateTime<Utc>,
     pub predecessor: Option<Predecessor<'a>>,

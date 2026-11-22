@@ -9,10 +9,8 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-/// A number as the message wrote it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Quoted {
-    /// Verbatim from the message: "21.3 km", "R 4,210.00".
     pub raw: String,
     pub value: f64,
     /// The comparable unit: "km", "run", "%", or an ISO currency code.
@@ -123,16 +121,11 @@ pub fn extract_numbers(text: &str, max: usize) -> Vec<Quoted> {
     out
 }
 
-/// A computed change against the previous message of the same template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Delta {
-    /// The number compared, as quoted now.
     pub raw: String,
-    /// As quoted in the previous message.
     pub previous_raw: String,
-    /// Percent change; for a percentage, the change in points.
     pub change: f64,
-    /// "up 12% on last week", "down 3 points on 26 Sep", "same as yesterday".
     pub text: String,
     pub against: DateTime<Utc>,
 }

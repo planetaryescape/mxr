@@ -48,9 +48,6 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
     let haystack = format!("{}\n{}", draft.subject, cleaned);
 
     if NEGATIVE.is_match(&haystack) {
-        // Conservative: any explicit negation suppresses the warning.
-        // Real-world wording like "I did not attach the deck" would
-        // otherwise produce a false positive.
         let positive_only = POSITIVE.is_match(&haystack)
             && !haystack
                 .lines()
@@ -157,10 +154,6 @@ mod tests {
 
     #[test]
     fn same_line_positive_and_negation_still_warns() {
-        // The override branch: when a positive AND negative co-exist on
-        // the same line, a follow-on positive ("see attached") still
-        // matters. Conservative behavior: warn unless every positive
-        // line is negated.
         let body = "Sorry I forgot to attach earlier — please see attached now.";
         let issues = check(&draft_with(body, vec![]));
         assert_eq!(

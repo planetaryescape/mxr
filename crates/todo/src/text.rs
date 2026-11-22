@@ -26,7 +26,6 @@ pub fn clip(value: &str, max: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
-/// "Spotify" from "spotify".
 pub fn capitalise(value: &str) -> String {
     let mut chars = value.chars();
     chars.next().map_or_else(String::new, |first| {

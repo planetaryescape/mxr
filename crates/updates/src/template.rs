@@ -6,7 +6,6 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// "Re:", "Fwd:" and notification prefixes, repeated.
 static PREFIX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^\s*(?:(?:re|fwd?|aw|sv|notification|alert|reminder)\s*:\s*)+")
         .expect("valid prefix regex")

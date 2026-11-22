@@ -10,18 +10,15 @@
 
 use mxr_reader::{new_text, EarlierMessage};
 
-/// The modes that have a recipe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RecipeMode {
     Messages,
 }
 
-/// One recipe and its version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndexRecipe {
     pub mode: RecipeMode,
     pub version: u32,
-    /// Words per window and overlap, for text longer than one window.
     pub window_words: usize,
     pub overlap_words: usize,
 }
@@ -36,7 +33,6 @@ pub const MESSAGES_RECIPE: IndexRecipe = IndexRecipe {
     overlap_words: 30,
 };
 
-/// Every recipe, one per mode.
 pub const RECIPES: &[IndexRecipe] = &[MESSAGES_RECIPE];
 
 pub fn recipe(mode: RecipeMode) -> &'static IndexRecipe {
@@ -46,15 +42,11 @@ pub fn recipe(mode: RecipeMode) -> &'static IndexRecipe {
         .unwrap_or(&MESSAGES_RECIPE)
 }
 
-/// What the Messages recipe needs about one message.
 pub struct MessagesRecipeInput<'a> {
-    /// "Samir Patel", or a group's first names.
     pub person: &'a str,
-    /// The topic: the subject without "Re:".
     pub topic: &'a str,
     pub text_plain: Option<&'a str>,
     pub text_html: Option<&'a str>,
-    /// Earlier messages of the thread, as plain text.
     pub earlier: &'a [EarlierMessage<'a>],
     /// The conversation's gist, when one is cached.
     pub gist: Option<&'a str>,

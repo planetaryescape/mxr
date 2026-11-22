@@ -130,7 +130,6 @@ fn pass_busy_error(active: PassRequest, requested: PassRequest) -> anyhow::Error
 /// each iteration short enough to stay responsive to commands.
 const INGEST_BATCH_MESSAGES: usize = 64;
 
-/// Messages an unbounded `BackfillActive` covers.
 const DEFAULT_BACKFILL_LIMIT: u32 = 10_000;
 
 /// Fans one pass outcome out to every caller waiting on it.

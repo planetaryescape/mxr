@@ -63,7 +63,6 @@ const INDEX_PAGE_MESSAGES: usize = 64;
 #[cfg(feature = "local")]
 const EMBED_TEXTS_PER_CALL: usize = 512;
 
-/// Message ids read per keyset page when collecting the full id list.
 #[cfg(feature = "local")]
 const MESSAGE_ID_PAGE: u32 = 5_000;
 
@@ -178,11 +177,9 @@ struct MessageChunkBatch {
     chunks_changed: bool,
 }
 
-/// Where an index job takes chunk text from.
 #[cfg(feature = "local")]
 #[derive(Clone, Copy)]
 enum ChunkSource {
-    /// Re-extract from the message and rewrite chunks that drifted.
     Message,
     /// Reuse stored chunks; only extract for messages that have none. Chunks
     /// are profile-independent, so switching or backfilling a profile does not
@@ -196,9 +193,7 @@ enum ChunkSource {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum IndexJobKind {
     Reindex,
-    /// `mxr semantic profile use` - stamps `activated_at` when it lands.
     Activate,
-    /// Idle/manual gap fill - logs an event when it lands.
     Backfill,
 }
 
@@ -266,7 +261,6 @@ struct ChunkPreparationInput {
     /// Archive's recipe: the fields of the record this message is a source
     /// of, as one line. Exact identifiers in it stay on BM25 too.
     record_fields: Option<String>,
-    /// Passages highlighted in Reading, each with its note.
     highlights: Vec<String>,
 }
 
@@ -295,7 +289,6 @@ pub struct SemanticEngine {
     /// The ANN rebuild currently running on a blocking thread, if any.
     #[cfg(feature = "local")]
     index_build: Option<IndexBuild>,
-    /// Consecutive build failures and the earliest retry time, per profile.
     #[cfg(feature = "local")]
     index_build_failures: HashMap<SemanticProfile, IndexBuildFailure>,
     /// Index passes that have finished per profile since this process
@@ -604,7 +597,6 @@ impl SemanticEngine {
         .await
     }
 
-    /// Starts the pass behind `mxr semantic profile use`.
     pub(crate) async fn begin_use_profile(
         &mut self,
         profile: SemanticProfile,
@@ -694,7 +686,6 @@ impl SemanticEngine {
         Ok(())
     }
 
-    /// Records a failed pass so status stops reporting `indexing` forever.
     pub(crate) async fn fail_index_job(&mut self, job: SemanticIndexJob, error: &anyhow::Error) {
         let mut record = job.inner.record;
         record.status = SemanticProfileStatus::Error;
@@ -742,7 +733,6 @@ impl SemanticEngine {
         })
     }
 
-    /// Processes one page. Returns `true` while work remains.
     pub(crate) async fn index_job_step(&mut self, job: &mut SemanticIndexJob) -> Result<bool> {
         let job = &mut job.inner;
         let end = (job.cursor + INDEX_PAGE_MESSAGES).min(job.message_ids.len());
@@ -937,7 +927,6 @@ impl SemanticEngine {
         }
     }
 
-    /// Index passes finished for `profile` since the process started.
     fn pass_epoch(&self, profile: SemanticProfile) -> u64 {
         self.completed_index_passes
             .get(&profile)
@@ -4011,7 +4000,6 @@ mod tests {
         worker.await.unwrap();
     }
 
-    /// Seeds two messages ("deployment" and "roadmap") and indexes both.
     async fn engine_with_two_indexed_messages(
         store: &Arc<Store>,
         data_dir: &StdPath,

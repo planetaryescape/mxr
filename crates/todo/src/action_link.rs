@@ -16,7 +16,6 @@ use regex::Regex;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkCandidate {
     pub url: String,
-    /// The link's text, or the words before a bare URL.
     pub anchor: String,
     pub host: String,
 }
@@ -32,7 +31,6 @@ pub fn registrable_domain(host: &str) -> Option<String> {
     Some(psl::domain_str(&host).map_or_else(|| host.clone(), str::to_string))
 }
 
-/// The registrable domain of an email address.
 pub fn email_domain(email: &str) -> Option<String> {
     registrable_domain(email.rsplit_once('@')?.1)
 }
@@ -90,7 +88,6 @@ fn verb_regex(kind: TodoKind) -> &'static Regex {
     }
 }
 
-/// How far before a bare URL its describing words may sit.
 const NEARBY: usize = 80;
 
 /// The link whose words best match what the to-do asks, if any. Links in

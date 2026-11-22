@@ -14,13 +14,10 @@ use regex::Regex;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LooksDone {
-    /// "payment received" plus the day: what the row shows.
     pub reason: String,
-    /// Same domain, same amount, and a receipt word.
     pub strong: bool,
 }
 
-/// What matching needs from the open row.
 #[derive(Debug, Clone, Copy)]
 pub struct OpenRow {
     pub kind: TodoKind,
@@ -59,7 +56,6 @@ static CONFIRMED: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b(booking|reservation) (is )?confirmed").expect("valid confirmed regex")
 });
 
-/// Whether `later` looks like the confirmation that `row` is done.
 pub fn looks_done(row: &OpenRow, later: &LaterMessage<'_>) -> Option<LooksDone> {
     if row.source_date.is_some_and(|source| later.date <= source) {
         return None;

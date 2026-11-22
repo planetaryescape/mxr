@@ -8,18 +8,14 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-/// The kinds of update that carry a window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowKind {
     /// A one-time code: its stated lifetime, else 10 minutes (NIST SP
     /// 800-63B's maximum).
     Code,
-    /// A verify or confirm link: its stated expiry, else 3 days.
     VerifyLink,
-    /// A sign-in or security alert: 2 days.
     SignIn,
-    /// A sale or offer: its stated end, else 7 days.
     Offer,
 }
 
@@ -43,7 +39,6 @@ impl WindowKind {
         })
     }
 
-    /// "one-time code", for the expired list.
     pub const fn label(self) -> &'static str {
         match self {
             Self::Code => "one-time code",
@@ -63,7 +58,6 @@ impl WindowKind {
     }
 }
 
-/// When an update stops mattering.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Window {
     pub kind: WindowKind,

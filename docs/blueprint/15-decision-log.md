@@ -1,6 +1,6 @@
 # mxr — Decision Log
 
-Every significant design decision, what alternatives were considered, and why we chose what we chose. This exists so that a coding agent (or future contributor) doesn't re-debate settled decisions.
+Every significant design decision, what alternatives were considered, and why we chose what we chose. This exists so that a coding agent (or future contributor) doesn't re-debate settled decisions. Smaller choices inside the code live in [`docs/code-decisions/`](../code-decisions/README.md).
 
 ---
 

@@ -2200,10 +2200,3 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod cache_tests {
-    #![expect(
-        clippy::field_reassign_with_default,
-        reason = "cache tests emphasize the specific state knobs under inspection"
-    )]
-}

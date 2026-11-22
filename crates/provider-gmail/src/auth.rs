@@ -384,6 +384,11 @@ mod tests {
         async fn installed_flow_hands_off_and_stores_a_rotated_refresh_token() {
             authorize_then_refresh(AuthFlow::Installed, Some("rotated-refresh")).await;
         }
+
+        #[tokio::test]
+        async fn device_flow_hands_off_and_keeps_an_omitted_refresh_token() {
+            authorize_then_refresh(AuthFlow::Device, None).await;
+        }
     }
 
     mod explicit_refresh_token_helper {
@@ -421,6 +426,60 @@ mod tests {
             assert!(matches!(error, AuthError::OAuth2(ref code) if code == "invalid_grant"));
             assert!(!error.to_string().contains("description-must-not-leak"));
         }
+    }
+
+    #[tokio::test]
+    async fn cached_refresh_bounds_response_body_not_just_headers() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let uri = format!("http://{}", listener.local_addr().unwrap());
+        let (headers_sent, headers_received) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut bytes = [0; 4096];
+            assert!(stream.read(&mut bytes).await.unwrap() > 0);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nContent-Type: application/json\r\n\r\n{")
+                .await
+                .unwrap();
+            headers_sent.send(()).unwrap();
+            std::future::pending::<()>().await;
+        });
+        let (auth, _) = cached_auth(&uri).await;
+        let refresh = tokio::spawn(async move { auth.access_token().await });
+        headers_received.await.unwrap();
+        tokio::time::pause();
+        tokio::time::advance(TOKEN_HTTP_TIMEOUT + std::time::Duration::from_secs(1)).await;
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(1), refresh).await;
+        server.abort();
+
+        let error = outcome
+            .expect(
+                "a stalled response body must time out within the HTTP bound, not the 60s guard",
+            )
+            .unwrap()
+            .unwrap_err();
+        assert!(error.to_string().contains("timed out"), "{error}");
+    }
+
+    #[test]
+    fn custom_storage_keeps_tokens_and_keychain_service_under_runtime_identity() {
+        let token_root = std::path::PathBuf::from("/tmp/mxr-dev/tokens");
+        let auth = GmailAuth::new(
+            "client".to_string(),
+            "secret".to_string(),
+            "mxr/work-gmail".to_string(),
+        )
+        .with_storage(token_root.clone(), "mxr-dev-gmail-oauth".to_string());
+
+        assert_eq!(
+            auth.storage_config_for_test().expect("valid token_ref"),
+            (
+                token_root.join("mxr/work-gmail.json"),
+                "mxr-dev-gmail-oauth".to_string()
+            )
+        );
     }
 }
 

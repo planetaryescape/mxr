@@ -2552,4 +2552,36 @@ mod tests {
             "APPEND must target the Sent folder with the \\Seen flag"
         );
     }
+
+    #[tokio::test]
+    async fn trash_uses_move_when_server_supports_it() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 2, 1),
+            vec![],
+            vec![folder_info("Trash", Some("\\Trash"))],
+        )
+        .with_capabilities(ImapCapabilities {
+            move_ext: true,
+            ..Default::default()
+        });
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        provider
+            .apply_mutation(
+                "mut-1",
+                &mxr_core::Mutation::Trash {
+                    provider_message_id: "INBOX:42".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"UID MOVE 42 Trash".to_string()));
+        assert!(!commands.contains(&"UID COPY 42 Trash".to_string()));
+        assert!(!commands.contains(&"EXPUNGE".to_string()));
+    }
 }

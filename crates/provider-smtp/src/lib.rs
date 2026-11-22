@@ -225,7 +225,6 @@ impl MailSendProvider for SmtpSendProvider {
 
 /// Transient (4xx) responses and timeouts are worth retrying; permanent (5xx)
 /// responses and everything else are hard failures.
-#[cfg(not(test))]
 fn is_retryable(is_transient: bool, is_timeout: bool) -> bool {
     is_transient || is_timeout
 }
@@ -233,7 +232,6 @@ fn is_retryable(is_transient: bool, is_timeout: bool) -> bool {
 /// Map a send failure onto the core error taxonomy. Split out from
 /// `classify_smtp_send_error` so the decision and message can be unit-tested
 /// without a `lettre` error (which has no public constructor).
-#[cfg(not(test))]
 fn map_send_error(retryable: bool, error: impl std::fmt::Display) -> MxrError {
     if retryable {
         // SMTP carries no Retry-After hint; 60s is a sane default backoff so the
@@ -464,5 +462,28 @@ mod tests {
         let message = &messages[0].formatted;
         assert!(message.contains("multipart/mixed"));
         assert!(message.contains("note.txt"));
+    }
+
+    #[test]
+    fn is_retryable_covers_transient_timeout_and_permanent() {
+        assert!(is_retryable(true, false));
+        assert!(is_retryable(false, true));
+        assert!(is_retryable(true, true));
+        assert!(!is_retryable(false, false));
+    }
+
+    #[test]
+    fn map_send_error_maps_transient_to_rate_limited_and_permanent_to_provider() {
+        assert!(matches!(
+            map_send_error(true, "transient boom"),
+            MxrError::RateLimited {
+                retry_after_secs: 60,
+                ..
+            }
+        ));
+        assert!(matches!(
+            map_send_error(false, "permanent boom"),
+            MxrError::Provider(msg) if msg == "SMTP send failed: permanent boom"
+        ));
     }
 }

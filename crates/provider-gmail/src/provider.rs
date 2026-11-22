@@ -2144,4 +2144,11 @@ END:VCALENDAR\r\n";
             "a miss never blocks the operation; it just goes out unthreaded"
         );
     }
+
+    #[tokio::test]
+    async fn gmail_provider_passes_sync_and_send_conformance() {
+        let provider = gmail_provider();
+        mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
+        mxr_provider_fake::conformance::run_send_conformance(&provider).await;
+    }
 }

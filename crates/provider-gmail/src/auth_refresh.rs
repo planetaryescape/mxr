@@ -499,4 +499,15 @@ mod tests {
         release_tx.send(()).unwrap();
         assert_eq!(refresh.await.unwrap().unwrap(), "new-access");
     }
+
+    #[tokio::test]
+    async fn text_that_is_not_an_oauth_code_stays_out_of_diagnostics() {
+        let (untrusted, _) = refresh_error(
+            ResponseTemplate::new(400)
+                .set_body_json(serde_json::json!({"error": format!("Bad {BODY_MARKER}")})),
+        )
+        .await;
+        assert!(matches!(untrusted, AuthError::RefreshUnavailable(_)));
+        assert!(!untrusted.to_string().contains(BODY_MARKER));
+    }
 }

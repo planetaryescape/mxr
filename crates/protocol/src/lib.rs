@@ -1200,4 +1200,18 @@ mod tests {
         }
         assert!(serde_json::from_value::<PreAssistRequest>(wire).is_err());
     }
+
+    #[test]
+    fn unsubscribe_preview_commit_requires_token_and_choice() {
+        for json in [
+            serde_json::json!({"cmd":"CommitUnsubscribePreview", "address":"news@example.com", "archive":false}),
+            serde_json::json!({"cmd":"CommitUnsubscribePreview", "address":"news@example.com", "preview_token":"tok"}),
+        ] {
+            assert!(serde_json::from_value::<Request>(json).is_err());
+        }
+        let request: Request = serde_json::from_value(serde_json::json!({"cmd":"CommitUnsubscribePreview", "address":"news@example.com", "archive":false, "preview_token":"tok"})).unwrap();
+        assert!(
+            matches!(request, Request::CommitUnsubscribePreview { archive:false, preview_token, .. } if preview_token == "tok")
+        );
+    }
 }

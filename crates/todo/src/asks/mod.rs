@@ -112,9 +112,6 @@ where
             });
         }
     }
-    // Adjacent cancellation or optional feedback wording changes the reply
-    // question's speech act. Keep their combined verbatim evidence together,
-    // without changing independent requests elsewhere in the email.
     let mut joined: Vec<AskUnit> = Vec::with_capacity(units.len());
     for unit in units {
         let previous = joined.last_mut().filter(|previous| {
@@ -176,8 +173,6 @@ where
     }
     let mut units = joined;
     inherit_subject_reference(&facts, &mut units);
-    // A subject may summarize the same body obligation. A different explicit
-    // reference remains a distinct action, including when one bill is closed.
     let body_tags: Vec<_> = units
         .iter()
         .filter(|u| facts.zones[u.zone].kind == ZoneKind::Authored)

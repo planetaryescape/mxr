@@ -70,8 +70,6 @@ fn symbol(currency: &str) -> Option<&'static str> {
 
 const CODES: &str = "GBP|USD|EUR|ZAR|CAD|AUD|NZD|CHF|SEK|NOK|DKK|INR|JPY";
 
-// A comma or full stop can be the decimal separator. Grouped forms
-// consume their entire numeric span, so a prefix cannot become a smaller price.
 const NUMBER: &str = r"[+-]?(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,3}(?:\.\d{3})+,\d{1,2}|\d{1,3}(?:[\x20\x{00a0}\x{202f}]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)";
 static NUMBER_FORMAT: Lazy<Regex> =
     Lazy::new(|| Regex::new(&format!("^(?:{NUMBER})$")).expect("amount number grammar"));
@@ -122,8 +120,6 @@ pub fn find_candidates(text: &str) -> Vec<(usize, Amount)> {
         .captures_iter(text)
         .filter_map(|caps| {
             let whole = caps.get(0)?;
-            // A shorter regex alternative must not turn malformed money
-            // such as £1.234 or £1,23 into a valid £1 candidate.
             let tail = text.get(whole.end()..)?;
             if tail.starts_with(['.', ','])
                 && tail.chars().nth(1).is_some_and(|c| c.is_ascii_digit())
@@ -229,8 +225,6 @@ pub fn pick_amount(text: &str) -> Option<Amount> {
         .into_iter()
         .filter_map(|(start, amount)| {
             let from = floor_char_boundary(text, start.saturating_sub(CONTEXT_WINDOW));
-            // The label closest to the amount decides: "Previous balance
-            // £100. Amount due £240" reads "amount due" before £240.
             let before = text[from..start].rsplit(['.', '\n']).next().unwrap_or("");
             let rank = if PAST.is_match(before) {
                 0
@@ -251,8 +245,6 @@ pub fn pick_amount(text: &str) -> Option<Amount> {
         .iter()
         .any(|(_, other)| other.minor != first.minor || other.currency != first.currency);
     if differs {
-        // Unlabelled amounts that disagree are noise; labelled ones that
-        // disagree are a guess to confirm.
         if best == 1 {
             return None;
         }

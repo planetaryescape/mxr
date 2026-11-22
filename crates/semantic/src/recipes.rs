@@ -60,7 +60,6 @@ pub fn messages_chunks(input: &MessagesRecipeInput<'_>) -> Vec<String> {
     let recipe = recipe(RecipeMode::Messages);
     let prefix = format!("{} · {}: ", input.person.trim(), input.topic.trim());
     let new = new_text(input.text_plain, input.text_html, input.earlier);
-    // A quote-only message adds nothing the earlier messages don't hold.
     let new_words = if new.only_quoted {
         ""
     } else {

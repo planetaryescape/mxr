@@ -208,7 +208,6 @@ pub(super) fn unit_spans(text: &str) -> Vec<AskSpan> {
             ) {
                 continue;
             }
-            // Signing and returning the same document is one obligation.
             if next.as_str().eq_ignore_ascii_case("send")
                 && text[span.start..span.start + whole.start()]
                     .to_ascii_lowercase()

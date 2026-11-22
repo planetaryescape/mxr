@@ -162,8 +162,6 @@ async fn reindex_throughput() {
     rss_mb("first reindex");
     let chunks = store.collect_record_counts().await.unwrap().semantic_chunks;
     if std::env::var_os("MXR_THROUGHPUT_HISTOGRAM").is_some() {
-        // Materialises every row, so it is off by default: it would dominate
-        // the peak RSS this harness is used to measure.
         print_chunk_word_histogram(&store, &record.id).await;
     }
     println!(
@@ -179,8 +177,6 @@ async fn reindex_throughput() {
     println!("second reindex (no changes): {:?}", rerun_started.elapsed());
     rss_mb("second reindex");
 
-    // Separates the index's live set from allocator high-water: whatever is
-    // still resident here was retained by the allocator, not held by us.
     drop(engine);
     rss_mb("dropping the engine");
 }

@@ -3,7 +3,6 @@ use chrono::NaiveDate;
 use chrono_tz::Europe::London;
 
 fn sent() -> DateTime<Utc> {
-    // Monday 28 September 2026, 08:00 London.
     London
         .with_ymd_and_hms(2026, 9, 28, 8, 0, 0)
         .single()

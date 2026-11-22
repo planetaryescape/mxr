@@ -54,7 +54,6 @@ fn bank_blocks(text: &str) -> Vec<(usize, usize)> {
         if blocks.last().is_some_and(|(_, end)| opening.start() < *end) {
             continue;
         }
-        // Mail may end lines with CRLF, and a "blank" line may hold spaces.
         let rest = &text[opening.end()..];
         let mut line_start = opening.end() + rest.find('\n').map_or(rest.len(), |at| at + 1);
         let mut end = text.len();
@@ -179,8 +178,6 @@ where
                 });
             }
         }
-        // Enumerate an alternative only inside the same unit as an existing
-        // deadline. It is evidence of ambiguity, not another independent ask.
         let units = super::facts::unit_spans(&source.text);
         for captures in ALTERNATIVE_DATE.captures_iter(&source.text) {
             let Some(matched) = captures.get(0) else {
@@ -281,8 +278,6 @@ where
             });
         }
     }
-    // R-prefixed reference values are not rand prices. Keep the single
-    // parser family, then use the explicit reference facts to disambiguate.
     let references = &facts.references;
     facts.amounts.retain(|amount| {
         !references

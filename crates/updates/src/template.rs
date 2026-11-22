@@ -37,7 +37,6 @@ pub fn clean_subject(subject: &str, source_name: &str) -> String {
         let lower = text.to_lowercase();
         if let Some(rest) = lower.strip_prefix(&brand) {
             if let Some(after) = rest.strip_prefix(':').or_else(|| rest.strip_prefix(" -")) {
-                // Lowercasing can change byte lengths; cut only when it didn't.
                 let start = text.len() - after.len();
                 if lower.len() == text.len() && text.is_char_boundary(start) {
                     text = text[start..].to_string();
@@ -89,11 +88,9 @@ static MASKS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
             "<time>",
         ),
         (r"\b\d{1,2}\s*[ap]\.?m\.?\b".into(), "<time>"),
-        // Ids: hashes, long numbers and tokens mixing letters and digits.
         (r"#\s?[\w-]*\d[\w-]*".into(), "<id>"),
         (r"\b(?:[a-z]+\d|\d+[a-z])[a-z0-9-]*\b".into(), "<id>"),
         (r"\b\d{5,}\b".into(), "<id>"),
-        // Money and plain numbers, with a sign.
         (r"[-+]?[£$€¥₹]\s?\d[\d,]*(?:\.\d+)?".into(), "<n>"),
         (r"[-+]?\b\d[\d,]*(?:\.\d+)?\b".into(), "<n>"),
     ];
@@ -151,9 +148,6 @@ mod tests {
         );
     }
 
-    // Fixtures shaped on the automated senders the research names: the
-    // same kind of update must share a template (merge), different kinds
-    // must not (split).
     #[test]
     fn same_kind_merges_across_numbers_ids_and_dates() {
         let merge = [

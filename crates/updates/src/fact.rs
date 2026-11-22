@@ -248,7 +248,6 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
     let (text, fact_source) = match (&body_line, generic) {
         (Some(line), true) => (line.clone(), FactSource::Body),
         _ if cleaned.is_empty() => ("(no subject)".to_string(), FactSource::Subject),
-        // A state only the tag carried leads the line: "Resolved: ...".
         _ => match &tracked {
             Some(t) if !cleaned.to_lowercase().contains(&t.state) => (
                 clip(&format!("{}: {cleaned}", capitalise(&t.state)), FACT_MAX),
@@ -269,7 +268,6 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         }
     }
 
-    // Rules read the subject and the first informative line together.
     let rule_text = match &body_line {
         Some(line) => format!("{cleaned}\n{line}"),
         None => cleaned.clone(),
@@ -281,16 +279,11 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         input.date,
         tz,
     );
-    // The code's own lifetime, from anywhere in the top of the message: the
-    // window above reads only the first informative line.
     let code_life = code.as_ref().map(|_| {
         let text = format!("{cleaned}\n{}", input.body.unwrap_or(input.snippet));
         code_window(&text, input.date)
     });
     let code_expires = code_life.as_ref().map(|life| life.until);
-    // A message that gives a code lasts as long as the code: a code window
-    // read from the first line alone gives way to the whole top's reading.
-    // One with another window (a sign-in alert, a verify link) keeps it.
     let window = match window {
         Some(w) if w.kind == WindowKind::Code => code_life.or(Some(w)),
         Some(w) => Some(w),
@@ -410,8 +403,6 @@ mod tests {
         assert_eq!(window.kind, WindowKind::Code);
         assert_eq!(window.source, "rule", "{}", window.evidence);
 
-        // A sign-in alert keeps its two days; its code lasts what it says,
-        // even when that is said below the first line.
         let alert = derive_utc(&input(
             "no-reply@accounts.example",
             Some("Accounts"),

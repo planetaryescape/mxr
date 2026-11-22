@@ -330,7 +330,6 @@ mod tests {
             oldest: None,
         };
         assert_eq!(held(&input), Held::ThinHistory);
-        // Two earlier messages are not three; three recent ones are not 30 days.
         input.history = History {
             messages: 2,
             oldest: Some(at("2026-01-02T00:00:00Z")),
@@ -384,9 +383,7 @@ mod tests {
                 Decision::Hold(held) => std::panic::resume_unwind(Box::new(held.code())),
             }
         };
-        // 23:50Z and 00:10Z are 01:50 and 02:10 on 7 November in UTC+2.
         assert_eq!(key("2026-11-06T23:50:00Z"), key("2026-11-07T00:10:00Z"));
-        // The next local day is a new claim.
         assert_ne!(key("2026-11-07T00:10:00Z"), key("2026-11-07T22:30:00Z"));
     }
 
@@ -406,15 +403,12 @@ mod tests {
             "rnail.stripe.com",
         ] {
             let found = lookalike_of(fake, 4, &established);
-            // Subdomain tricks keep their registrable domain: only the
-            // domain itself is compared.
             let expect = !matches!(fake, "rnail.stripe.com");
             assert_eq!(found.is_some(), expect, "{fake}: {found:?}");
         }
         assert_eq!(lookalike_of("github.com", 4, &established), None);
         assert!(lookalike_of("accounts.xn--ggle-55da.com", 4, &established).is_some());
         assert!(lookalike_of("gооgle.com", 4, &established).is_some());
-        // A host with more history than the imitated one is not held for it.
         assert_eq!(lookalike_of("stripe.co", 31, &established), None);
     }
 

@@ -355,10 +355,6 @@ impl SemanticEngine {
         profile: SemanticProfile,
     ) -> Result<SemanticProfileRecord> {
         let stored = self.store.get_semantic_profile(profile).await?;
-        // The warmup embed exists to load the model and learn its dimensions.
-        // Once the model is loaded in this process the stored dimensions are
-        // authoritative, and repeating it would cost a full inference on every
-        // ingest.
         let known_dimensions = stored.as_ref().and_then(|record| {
             (record.dimensions > 0
                 && record.model_revision == FASTEMBED_REVISION
@@ -446,7 +442,6 @@ impl SemanticEngine {
             .await?;
         if !stale.is_empty() {
             self.embed_and_store(&record, &stale, now).await?;
-            // Deferred: rebuilding per ingest makes a backlog drain quadratic.
             self.dirty_indexes.insert(profile);
         }
 
@@ -476,9 +471,6 @@ impl SemanticEngine {
         }
         self.dirty_indexes
             .iter()
-            // A profile that has burnt its attempts stays queued as the record
-            // that its index is stale, but its `retry_after` is already in the
-            // past and no retry is coming - waking the loop for it would spin.
             .filter(|profile| self.index_build_retries_left(**profile))
             .filter_map(|profile| self.index_build_failures.get(profile))
             .map(|failure| failure.retry_after)
@@ -524,10 +516,6 @@ impl SemanticEngine {
 
         let profile = self.config.active_profile;
         self.install_profile(profile).await?;
-        // An index older than the last finished pass cannot show what that
-        // pass indexed, so this query waits for its rebuild - or fails, rather
-        // than answer from it. An index that is merely behind on ingest keeps
-        // serving through its own rebuild.
         self.settle_index_for(profile).await?;
 
         let query_texts = vec![prefixed_query(profile, query)];
@@ -551,14 +539,6 @@ impl SemanticEngine {
             return Ok(Vec::new());
         }
 
-        // Over-fetch, because two stages shrink the candidate set after the
-        // ANN returns it: chunks of a source kind the query excludes are
-        // dropped, and the survivors collapse to one hit per message. Asking
-        // for exactly `limit` neighbours meant a `limit = 1` fielded query
-        // could retrieve one chunk of the wrong kind and answer nothing.
-        // One fixed round, not fetch-until-distinct: a corpus where the top
-        // candidates all belong to one message can still return fewer than
-        // `limit` hits.
         let candidate_limit = limit
             .saturating_mul(SOURCE_KIND_COUNT)
             .clamp(SEARCH_EF, MAX_SEARCH_CANDIDATES);
@@ -630,8 +610,6 @@ impl SemanticEngine {
                     .list_message_ids_missing_semantic_embeddings(&record.id, limit)
                     .await?
             }
-            // No profile row means no embeddings for it either, so every
-            // stored message is missing one.
             None => self.store.list_message_ids_after(None, limit).await?,
         };
         for message_id in self
@@ -644,8 +622,6 @@ impl SemanticEngine {
             }
         }
         if targets.is_empty() {
-            // With no row yet there is no status or error to preserve, and the
-            // caller still needs a record to answer with.
             let record = match stored {
                 Some(record) => record,
                 None => self.install_profile(profile).await?,
@@ -689,8 +665,6 @@ impl SemanticEngine {
     pub(crate) async fn fail_index_job(&mut self, job: SemanticIndexJob, error: &anyhow::Error) {
         let mut record = job.inner.record;
         record.status = SemanticProfileStatus::Error;
-        // `{:#}` keeps the anyhow cause chain; `last_error` is what the user
-        // sees in `mxr semantic status`.
         record.last_error = Some(format!("{error:#}"));
         if let Err(store_error) = self.store.upsert_semantic_profile(&record).await {
             tracing::warn!("failed to record semantic index failure: {store_error}");
@@ -706,11 +680,6 @@ impl SemanticEngine {
         force: bool,
     ) -> Result<SemanticIndexJob> {
         let stored = self.store.get_semantic_profile(profile).await?;
-        // A model revision change silently invalidates every stored vector for
-        // the profile, so nothing may be treated as already current. The new
-        // revision is only written when the pass finishes: stamping it here
-        // would make an interrupted pass look complete to the next one, which
-        // would then leave half the corpus on the old model's vectors.
         let reuse_existing =
             !force && stored.is_none_or(|stored| stored.model_revision == FASTEMBED_REVISION);
 
@@ -750,8 +719,6 @@ impl SemanticEngine {
 
         job.cursor = end;
         job.record.progress_completed = job.cursor as u32;
-        // One row upsert per page is what makes `GetSemanticStatus` show live
-        // progress instead of 0/N until the pass ends.
         self.store.upsert_semantic_profile(&job.record).await?;
         Ok(job.cursor < job.message_ids.len())
     }
@@ -767,7 +734,6 @@ impl SemanticEngine {
         let mut job = job.inner;
         let profile = job.record.profile;
         job.record.status = SemanticProfileStatus::Ready;
-        // Only a completed pass may claim the current model revision.
         job.record.model_revision = FASTEMBED_REVISION.to_string();
         job.record.last_indexed_at = Some(chrono::Utc::now());
         job.record.last_error = None;
@@ -779,10 +745,6 @@ impl SemanticEngine {
         self.store.upsert_semantic_profile(&job.record).await?;
         *self.completed_index_passes.entry(profile).or_default() += 1;
         self.dirty_indexes.insert(profile);
-        // A finished pass is the documented way out of a rebuild that burnt
-        // its attempts, so it hands the budget back. Ingest must not: under
-        // continuous mail a deterministic failure would then restart a
-        // full-corpus build on every batch and never reach the cap.
         self.index_build_failures.remove(&profile);
         if matches!(job.kind, IndexJobKind::Backfill) {
             self.store
@@ -820,9 +782,6 @@ impl SemanticEngine {
         }
         let now = Instant::now();
         let Some(profile) = self.dirty_indexes.iter().copied().find(|profile| {
-            // The attempt cap holds even for the callers that skip the
-            // backoff, so a deterministically failing build cannot be
-            // restarted forever.
             self.index_build_retries_left(*profile)
                 && (!respect_backoff
                     || self
@@ -857,8 +816,6 @@ impl SemanticEngine {
             .get_semantic_profile(profile)
             .await?
             .ok_or_else(|| anyhow!("semantic profile {} not installed", profile.as_str()))?;
-        // Rows are paged in and inserted as they arrive, so peak memory is the
-        // index itself plus one page - not the whole chunk corpus on top of it.
         let (tx, rx) = tokio::sync::mpsc::channel::<IndexRowBatch>(1);
         let store = self.store.clone();
         let profile_id = record.id.clone();
@@ -872,10 +829,6 @@ impl SemanticEngine {
         let pass_epoch = self.pass_epoch(profile);
         let handle = tokio::task::spawn_blocking(move || build_semantic_index(rx, pass_epoch));
         self.index_build = Some(IndexBuild { profile, handle });
-        // Dequeued only once the build is actually running. Clearing it on the
-        // way in loses the profile for good if anything above here fails: an
-        // ingest-driven rebuild has no pass epoch to make a later search
-        // notice the index never got refreshed.
         self.dirty_indexes.remove(&profile);
         Ok(())
     }
@@ -891,15 +844,11 @@ impl SemanticEngine {
         let profile = build.profile;
         let result = (&mut build.handle).await;
         self.index_build = None;
-        // Whatever happened to the build, the next one reads rows from after
-        // the delete, so this set is only ever owed to the build that just ended.
         let forgotten = std::mem::take(&mut self.forgotten_during_build);
         match result.map_err(anyhow::Error::new).and_then(|built| built) {
             Ok(mut index) => {
                 self.index_build_failures.remove(&profile);
                 if forget_in_index(&mut index, &forgotten.iter().collect()) {
-                    // The build picked up vectors of deleted mail; one more
-                    // rebuild drops them.
                     self.dirty_indexes.insert(profile);
                 }
                 self.indexes.insert(profile, index);
@@ -911,10 +860,6 @@ impl SemanticEngine {
                     attempts,
                     "semantic index build failed: {error:#}"
                 );
-                // Stays dirty either way: below the cap that queues the
-                // retry, and at the cap it is the only record that this index
-                // is stale - which is what makes a search degrade instead of
-                // quietly answering without the vectors it never picked up.
                 self.dirty_indexes.insert(profile);
                 if attempts >= MAX_INDEX_BUILD_ATTEMPTS {
                     tracing::error!(
@@ -982,8 +927,6 @@ impl SemanticEngine {
                         profile.as_str()
                     ));
                 }
-                // Ignores the retry backoff: the caller is waiting on this
-                // index now. The attempt cap still ends a failing build.
                 self.start_index_build(profile).await?;
             }
             self.index_build_ready().await;
@@ -1003,8 +946,6 @@ impl SemanticEngine {
     /// paths (`use_profile`, `backfill`, `reindex_active`), which must leave a
     /// searchable index behind; the worker loop uses the polled form instead.
     async fn settle_index_builds(&mut self) -> Result<()> {
-        // Ignores the retry backoff: the caller asked for a usable index now.
-        // The attempt cap still terminates a deterministically failing build.
         while self.start_next_index_build(false).await? || self.index_build.is_some() {
             self.index_build_ready().await;
         }
@@ -1138,8 +1079,6 @@ impl SemanticEngine {
     ) -> Result<()> {
         let mut start = 0;
         while start < batches.len() {
-            // Take whole messages until the next one would overflow the call,
-            // so a message's chunks never straddle two embedding calls.
             let mut end = start;
             let mut texts = 0;
             while end < batches.len()
@@ -1197,9 +1136,6 @@ impl SemanticEngine {
                 embeddings.len()
             ));
         }
-        // Width matters as much as count: a zero-length or wrong-width vector
-        // would be stored with a `dimensions` the index query filters on, so
-        // the chunk would vanish from search instead of failing loudly here.
         let width = record.dimensions as usize;
         for embedding in &embeddings {
             if embedding.len() != width {
@@ -1288,8 +1224,6 @@ impl SemanticEngine {
         }
 
         let model = self.ensure_model(profile, allow_download).await?;
-        // ONNX inference is CPU-bound for the length of a whole batch; running
-        // it inline would park an async runtime worker for seconds at a time.
         tokio::task::spawn_blocking(move || {
             let mut model = model
                 .lock()
@@ -1314,9 +1248,6 @@ impl SemanticEngine {
             ));
         }
 
-        // The first load reads ~130 MB off disk and may fetch it over the
-        // network first, all synchronously - the same reason inference runs on
-        // a blocking thread.
         let cache_dir = self.cache_dir.clone();
         let model = tokio::task::spawn_blocking(move || {
             std::fs::create_dir_all(&cache_dir)?;
@@ -1540,8 +1471,6 @@ fn build_chunk_records(
     now: chrono::DateTime<chrono::Utc>,
 ) -> Vec<SemanticChunkRecord> {
     let mut chunks = build_chunks(envelope, body, highlights);
-    // Archive's recipe adds one field chunk beside the header; the PDF text
-    // already comes in as attachment text once the PDF is on disk.
     if let Some(line) = record_fields
         .map(normalize_text)
         .filter(|line| !line.is_empty())
@@ -1776,8 +1705,6 @@ fn build_chunks(
         }
     }
 
-    // Each highlight is its own chunk, so search finds the passage the user
-    // kept, not a window it happens to fall in.
     for highlight in highlights {
         let text = normalize_text(highlight);
         if !text.is_empty() {
@@ -1797,8 +1724,6 @@ fn read_attachment_text(attachment: &AttachmentMeta) -> Option<String> {
         AttachmentKind::Pdf => read_pdf_attachment(path),
         AttachmentKind::OfficeDocument => read_office_attachment(path),
         AttachmentKind::Spreadsheet => read_spreadsheet_attachment(attachment, path),
-        // Active semantic indexing is real-text only. We keep filename/mime
-        // summaries for recall, but never OCR image attachments.
         AttachmentKind::Image => None,
         AttachmentKind::Unknown => None,
     }
@@ -1986,8 +1911,6 @@ fn attachment_kind(attachment: &AttachmentMeta, path: &StdPath) -> AttachmentKin
 
 #[cfg(feature = "local")]
 fn read_pdf_attachment(path: &StdPath) -> Option<String> {
-    // No OCR fallback here. PDFs contribute semantic text only when a real text
-    // extraction path succeeds.
     unpdf::to_markdown(path)
         .ok()
         .and_then(|markdown| normalized_nonempty(&markdown))
@@ -2664,8 +2587,6 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
 
-        // The header chunk mentions the query term and the body chunk does
-        // not, so the header is strictly the nearest neighbour.
         let mut envelope = test_envelope(&account.id);
         envelope.subject = "Deployment update".to_string();
         envelope.snippet = "deployment rollout".to_string();
@@ -2692,8 +2613,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Retrieving one candidate and filtering it afterwards answered
-        // nothing here: the only candidate was the header chunk.
         let hits = engine
             .search("deployment", 1, &[SemanticChunkSourceKind::Body])
             .await
@@ -3055,7 +2974,6 @@ mod tests {
             SemanticServiceHandle::start(engine, Arc::new(tokio::sync::Semaphore::new(4)));
         handle
             .set_test_embedder(|_profile, texts: &[String]| {
-                // Slow enough that the pass spans several status polls.
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 Ok(texts.iter().map(|text| fingerprint_vector(text)).collect())
             })
@@ -3104,8 +3022,6 @@ mod tests {
         let data_dir = tempdir().unwrap();
         let mut engine =
             SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
-        // Three dimensions for the warmup, then a truncated vector for the
-        // chunks - the shape a half-migrated model would produce.
         let warmed = Arc::new(std::sync::atomic::AtomicBool::new(false));
         engine.set_test_embedder(Arc::new(move |_profile, texts: &[String]| {
             let width = if warmed.swap(true, std::sync::atomic::Ordering::SeqCst) {
@@ -3169,7 +3085,6 @@ mod tests {
             if let Some(profile) = snapshot.profiles.first() {
                 if profile.status == SemanticProfileStatus::Indexing {
                     observed_total = observed_total.max(profile.progress_total);
-                    // The idle sync loop fires this while a reindex is live.
                     if handle.backfill_active_limited(200).await.is_err() {
                         refusals += 1;
                     }
@@ -3210,7 +3125,6 @@ mod tests {
             engine_with_recording_embedder(store.clone(), data_dir.path()).await;
         engine.reindex_active().await.unwrap();
 
-        // Pretend the stored vectors came from an older model build.
         let mut stale = store
             .get_semantic_profile(SemanticProfile::BgeSmallEnV15)
             .await
@@ -3219,7 +3133,6 @@ mod tests {
         stale.model_revision = "fastembed-0.0.0".into();
         store.upsert_semantic_profile(&stale).await.unwrap();
 
-        // Start the migration pass and abandon it after one page.
         let mut job = engine.begin_reindex(false).await.unwrap();
         assert!(engine.index_job_step(&mut job).await.unwrap());
         drop(job);
@@ -3503,8 +3416,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Arrives after the first profile's index was built, and its ANN
-        // rebuild is deferred.
         let second = Envelope {
             provider_id: "fake-2".into(),
             subject: "Roadmap notes".into(),
@@ -3525,8 +3436,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Away to another profile and back, both stepped the way the semantic
-        // worker steps them: neither pass waits for its ANN build.
         for profile in [
             SemanticProfile::MultilingualE5Small,
             SemanticProfile::BgeSmallEnV15,
@@ -3627,8 +3536,6 @@ mod tests {
         while engine.index_job_step(&mut job).await.unwrap() {}
         engine.finish_index_job(job).await.unwrap();
 
-        // Queued for a rebuild the search has no stake in - and one that could
-        // not succeed anyway, since the profile was never installed.
         engine
             .dirty_indexes
             .insert(SemanticProfile::MultilingualE5Small);
@@ -3679,15 +3586,10 @@ mod tests {
         let data_dir = tempdir().unwrap();
         let mut engine = SemanticEngine::new(store, data_dir.path(), SemanticConfig::default());
 
-        // The profile was never installed, so the row read inside
-        // `start_index_build` fails - the same shape as a transient store
-        // error between dequeue and spawn.
         engine
             .dirty_indexes
             .insert(SemanticProfile::MultilingualE5Small);
 
-        // A wake-up the worker loop has already booked and that is already
-        // due: the shape that spins if a failure to start books nothing.
         engine.index_build_failures.insert(
             SemanticProfile::MultilingualE5Small,
             IndexBuildFailure {
@@ -3718,8 +3620,6 @@ mod tests {
              on it and immediately fails to start it again"
         );
 
-        // And it stays queued across the retries, up to the same cap a build
-        // that fails while running answers to.
         for _ in 0..MAX_INDEX_BUILD_ATTEMPTS {
             if !engine.index_build_retries_left(SemanticProfile::MultilingualE5Small) {
                 break;
@@ -3793,8 +3693,6 @@ mod tests {
             .ingest_messages(std::slice::from_ref(&first.id))
             .await
             .unwrap();
-        // Settles the first build, so what follows is an index that exists and
-        // is merely behind on ingest.
         engine
             .search("deployment checklist", 5, &kinds)
             .await
@@ -3835,9 +3733,6 @@ mod tests {
             "unexpected error: {error:#}"
         );
 
-        // More mail arriving is not a way out: it would restart a
-        // deterministically failing full-corpus build on every batch, and the
-        // attempt count would never reach the cap.
         let third = Envelope {
             provider_id: "fake-3".into(),
             subject: "Launch notes".into(),
@@ -3934,8 +3829,6 @@ mod tests {
         assert_eq!(counts.semantic_chunks, message_count as u32);
         assert_eq!(counts.semantic_embeddings, message_count as u32);
 
-        // The ANN index is streamed in keyset pages, so this also covers the
-        // page boundaries: every chunk must land exactly once.
         assert!(message_count > INDEX_ROW_PAGE as usize);
         let indexed = engine
             .indexes
@@ -4108,8 +4001,6 @@ mod tests {
         let (mut engine, first, second) =
             engine_with_two_indexed_messages(&store, data_dir.path()).await;
 
-        // The rows stay in the store, standing in for a build that read them
-        // before the delete committed.
         assert!(engine.start_next_index_build(false).await.unwrap());
         engine.forget_messages(std::slice::from_ref(&first.id));
         engine.index_build_ready().await;

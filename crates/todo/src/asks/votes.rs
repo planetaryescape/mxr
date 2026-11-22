@@ -172,8 +172,6 @@ pub(super) fn label(
             .map(|(id, r)| (id, (r.kind.as_str(), r.value.as_str()))),
     )
     .or_else(|| {
-        // A reference header governs following units until another reference
-        // appears. Paragraph boundaries end that context.
         facts
             .references
             .iter()
@@ -187,7 +185,6 @@ pub(super) fn label(
             .map(|(id, _)| id)
     });
     let actor = actor(text, prefix, facts, input);
-    // Purpose clauses explain the sender's next step, not a second owner action.
     let action_text = PURPOSE.find(text).map_or(text, |m| &text[..m.start()]);
     let base = AskTags {
         act: Act::Information,
@@ -208,8 +205,6 @@ pub(super) fn label(
             ..base.clone()
         },
     };
-    // Structural gates apply to subjects too. A quoted request's subject
-    // cannot silently become its own delegation.
     if input.list_mail || input.bulk {
         return vec![vote(
             "genre",
@@ -460,9 +455,6 @@ pub(super) fn label(
         && (REPLY.is_match(text)
             || text.ends_with('?') && QUESTION.is_match(text) && !PLEASANTRY.is_match(text))
     {
-        // Attach the observed response to its own subject. Preserve requests
-        // with embedded futures, and reuse the same coordinated promise/offer
-        // attachment as non-reply actions without splitting review-and-reply.
         let speech = salutation(text).map_or(text, |(_, rest)| rest).trim_start();
         let statement = (!speech.ends_with('?') && !REQUEST.is_match(speech))
             .then(|| {
@@ -479,8 +471,6 @@ pub(super) fn label(
                 Some((act, subject, declined))
             })
             .flatten();
-        // A response mention alone does not establish a recipient question.
-        // Keep the existing request, interrogative, imperative and withdrawal evidence.
         let directed = speech.ends_with('?')
             || REQUEST.is_match(speech)
             || REPLY
@@ -542,14 +532,10 @@ fn actor(text: &str, prefix: &str, facts: &AskFacts, input: &AskInput<'_>) -> Ac
     if facts.owner_authored {
         return Actor::Correspondent;
     }
-    // A known name mismatch is evidence for a different actor. With no owner
-    // name observed, a greeting alone cannot contradict the sole To recipient.
     let addressed = salutation(text).map(|(name, _)| name).or_else(|| {
         let mut paragraphs = prefix.rsplitn(2, "\n\n");
         let current = paragraphs.next().unwrap_or_default();
         salutation_header(current).or_else(|| {
-            // A name-only salutation may introduce the next paragraph, but an
-            // addressed action in another paragraph cannot veto this unit.
             let previous = paragraphs.next()?.rsplit("\n\n").next()?;
             (previous
                 .lines()
@@ -655,8 +641,6 @@ fn salutation_header(part: &str) -> Option<&str> {
 fn salutation(text: &str) -> Option<(&str, &str)> {
     let captures = SALUTATION.captures(text.trim())?;
     let name = captures.name("name")?.as_str();
-    // A colon alone introduces a heading, not an observed person's name.
-    // Generic recipient roles likewise do not name a different actor.
     if captures.name("greeting").is_none() && captures.name("separator")?.as_str() == ":"
         || RECIPIENT_ROLE.is_match(name)
     {

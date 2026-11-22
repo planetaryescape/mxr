@@ -236,8 +236,6 @@ where
         Some(todo @ SchemaTodo::PaymentFailed { .. }) => {
             return Some(context.schema_todo(todo, tz, &anchor));
         }
-        // Markup never hides a failure the words report: a declined
-        // payment under a stale "due" or "paid" status is still a to-do.
         _ if text_says_failed => return Some(context.payment_failed(&anchor)),
         Some(todo) => return Some(context.schema_todo(todo, tz, &anchor)),
         None if schema.settled => return None,
@@ -553,7 +551,6 @@ impl Context<'_> {
                 detection.verb = "confirm".to_string();
                 detection.event_start = schema_due(starts, starts_text).map(|found| found.at);
                 if let Some(start) = detection.event_start {
-                    // Confirm before it starts: the start is the deadline.
                     self.set_due(
                         &mut detection,
                         Some(FoundDate {
@@ -594,7 +591,6 @@ impl Context<'_> {
         Self::set_amount(&mut detection, amount, FieldSource::Rule);
         let due = self.due(&[&BILL_DUE_SPECIFIC], anchor, currency.as_deref());
         self.set_due(&mut detection, due, FieldSource::Rule);
-        // Lead with the failure, not the date: that is why it's here.
         detection.reason = format!("\"{}\" (rule)", clip(evidence, 80));
         self.set_link(&mut detection, None);
         detection
@@ -717,7 +713,6 @@ impl Context<'_> {
         );
         detection.verb = verb;
         self.set_link(&mut detection, None);
-        // A verify request without its link is a notice, not a to-do.
         detection.link.as_ref()?;
         let due = find_lifetime(self.text, self.input.sent)
             .or_else(|| self.due(&[&VERIFY_DUE], anchor, None));
@@ -744,7 +739,6 @@ impl Context<'_> {
             evidence,
         );
         if let Some(event) = &event {
-            // The event's day, from its start: the window closes as it begins.
             let day = event.at.with_timezone(tz).date_naive();
             detection.event_start = Some(crate::timing::start_of_day(day, tz, 0));
             detection.fields.set(

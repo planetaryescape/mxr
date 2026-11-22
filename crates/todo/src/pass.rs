@@ -313,7 +313,6 @@ where
         catchup_days: cfg.catchup_days,
         catchup_max: cfg.catchup_max,
     };
-    // Rows written by the previous policy, so a changed identity keeps its row.
     let earlier: Vec<_> = if detections.is_empty() {
         Vec::new()
     } else {
@@ -386,7 +385,6 @@ where
             }
             None => None,
         };
-        // An accepted date moves the retained task's deadline, including its corrected lead time.
         if let Some(kind) = prior
             .as_ref()
             .filter(|_| user_date.is_some())
@@ -473,8 +471,6 @@ where
                 && unit.span.start < span.end
                 && kind.as_str() == record.kind
         });
-        // Several earlier items in one unit are a grouped obligation, which
-        // `adopt_asks_payment_identities` already reconciles above.
         if let (Some((_, _, _, old_key)), None) = (renamed.next(), renamed.next()) {
             if *old_key != record.dedup_key && !sibling_keys.contains(old_key) {
                 store

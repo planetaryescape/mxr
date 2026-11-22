@@ -65,7 +65,6 @@ pub fn looks_done(row: &OpenRow, later: &LaterMessage<'_>) -> Option<LooksDone> 
         TodoKind::Bill | TodoKind::PaymentFailed => &RECEIPT,
         TodoKind::Renewal | TodoKind::Document => &RENEWED,
         TodoKind::Verify => {
-            // A welcome weeks later is a newsletter, not the confirmation.
             if row
                 .source_date
                 .is_some_and(|source| later.date - source > Duration::days(1))

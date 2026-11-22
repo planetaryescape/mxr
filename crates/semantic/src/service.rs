@@ -191,10 +191,6 @@ impl SemanticServiceHandle {
                     }
                 }
 
-                // One page of an in-flight reindex, then back to the command
-                // drain: a full pass would otherwise hide status and search
-                // for its whole duration. Ingest waits until it finishes so
-                // the two paths never fight over the profile record.
                 let step = if let Some(active) = pass.as_mut() {
                     let _bg_permit = background_db.acquire().await;
                     let step = engine.index_job_step(&mut active.job).await;
@@ -245,9 +241,6 @@ impl SemanticServiceHandle {
                         metrics.last_queue_wait_ms = Some(queue_wait.as_millis() as u64);
                     }
                     let started_at = Instant::now();
-                    // Reserve background-DB headroom: hold a permit across
-                    // the ingest unit so concurrent background work can't
-                    // exhaust the reader pool and starve interactive queries.
                     let _bg_permit = background_db.acquire().await;
                     let result = engine.ingest_messages(&message_ids).await;
                     publish_runtime_metrics(&engine, &worker_metrics);
@@ -276,21 +269,14 @@ impl SemanticServiceHandle {
                     continue;
                 }
 
-                // Backlog drained: this is when the deferred ANN rebuild
-                // starts. It runs on a blocking thread, so the loop keeps
-                // answering status and search while a large index is built.
                 if let Err(error) = engine.poll_index_builds().await {
                     tracing::warn!("semantic index rebuild failed to start: {error}");
                 }
 
-                // A build waiting out its retry backoff needs the loop to
-                // wake itself; nothing else will.
                 let retry_at = engine.next_index_build_retry();
                 let command = tokio::select! {
                     biased;
                     command = rx.recv() => command,
-                    // Swapping a finished index in is the loop's own work, so
-                    // it has to be woken for it even with no command pending.
                     () = engine.index_build_ready() => continue,
                     () = sleep_until_opt(retry_at) => continue,
                 };
@@ -554,10 +540,6 @@ async fn handle_command(
             begin_backfill(engine, pass, limit, resp).await;
         }
         SemanticCommand::IngestMessages { message_ids, resp } => {
-            // A synchronous ingest would write its own Ready status over the
-            // running pass's Indexing/progress, so refuse instead of lying.
-            // Callers that can wait should enqueue: the queue drains once the
-            // reindex finishes.
             let result = if let Some(active) = pass.as_ref() {
                 Err(anyhow!(
                     "semantic {} in progress; enqueue the ingest or retry when it finishes",
@@ -586,7 +568,6 @@ async fn handle_command(
         }
         SemanticCommand::ForgetMessages { message_ids, resp } => {
             let forgotten = message_ids.iter().collect::<HashSet<_>>();
-            // A queued ingest of a deleted message would only find it gone.
             pending.retain(|item| !forgotten.contains(&item.message_id));
             pending_ids.retain(|message_id| !forgotten.contains(message_id));
             if let Ok(mut metrics) = runtime_metrics.lock() {

@@ -81,7 +81,6 @@ impl Cuts {
                 continue;
             };
             for time in &self.0 {
-                // A cut inside a DST gap moves to the next valid instant.
                 let local = day.and_time(*time);
                 let at = tz.from_local_datetime(&local).earliest().or_else(|| {
                     tz.from_local_datetime(&(local + Duration::hours(1)))
@@ -111,7 +110,6 @@ impl Cuts {
                     .copied()
                     .unwrap_or(instants[index] + Duration::days(1)),
             },
-            // Unreachable with at least one cut a day; a safe fallback.
             None => CutWindow {
                 at: now,
                 previous: now - Duration::days(1),
@@ -196,7 +194,6 @@ mod tests {
         let early = cuts.window(at(7, 6, 0), &utc());
         assert_eq!(early.at, at(6, 16, 30));
         assert_eq!(early.next, at(7, 8, 0));
-        // Exactly on a cut belongs to that cut.
         assert_eq!(cuts.window(at(7, 16, 30), &utc()).at, at(7, 16, 30));
         let one = Cuts::parse(&["09:00".into()])
             .unwrap()

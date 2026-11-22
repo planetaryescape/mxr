@@ -71,7 +71,6 @@ where
         .collect();
     let mut summary = PassSummary::default();
     for promise in promises {
-        // Closed tasks retain the user's decision; edited fields are protected by the date-only CAS.
         let prior = existing.get(&promise.commitment_id);
         if prior.is_some_and(|todo| matches!(todo.state, TodoState::Done | TodoState::Dismissed)) {
             continue;
@@ -171,7 +170,6 @@ where
         record.commitment_id = Some(promise.commitment_id.clone());
         record.dedup_key = format!("promise|{}", promise.commitment_id);
         record.rules_version = RULES_VERSION;
-        // A canonical asks promise already linked to this accepted record keeps its source quote and identity.
         if let Some(prior) = prior {
             record.dedup_key = prior.dedup_key.clone();
             if prior.has_stored_asks() {

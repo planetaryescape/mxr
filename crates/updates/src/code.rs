@@ -93,7 +93,6 @@ pub fn one_time_code(subject: &str, body: Option<&str>) -> Option<String> {
     if let Some(code) = in_text(subject) {
         return Some(code);
     }
-    // A subject about spending ("Your promo code") names no sign-in code.
     let subject_names_a_code = TRIGGER.is_match(subject) && !NOT_A_SIGN_IN.is_match(subject);
     if OTHER_SUBJECT.is_match(subject) && !subject_names_a_code {
         return None;
@@ -102,8 +101,6 @@ pub fn one_time_code(subject: &str, body: Option<&str>) -> Option<String> {
     let end = floor_char_boundary(body, BODY_MAX);
     let body = &body[..end];
     in_text(body).or_else(|| {
-        // The subject says what it is and the body is the code on a line of
-        // its own: "Your verification code" / "482913".
         subject_names_a_code
             .then(|| alone_on_a_line(&body[..floor_char_boundary(body, ALONE_MAX)]))
             .flatten()
@@ -113,7 +110,6 @@ pub fn one_time_code(subject: &str, body: Option<&str>) -> Option<String> {
 const ALONE_MAX: usize = 1_500;
 
 fn alone_on_a_line(text: &str) -> Option<String> {
-    // Each line with words, and where it starts.
     let mut lines = Vec::new();
     let mut offset = 0;
     for line in text.split_inclusive('\n') {
@@ -130,8 +126,6 @@ fn alone_on_a_line(text: &str) -> Option<String> {
         else {
             continue;
         };
-        // The lines around a value say what it is: "Order number:" over
-        // "55210", "Get 20% off" under "SAVE20NOW".
         let above = i.checked_sub(1).map_or("", |j| lines[j].1);
         let below = lines.get(i + 1).map_or("", |line| line.1);
         if !named_before(above)
@@ -147,8 +141,6 @@ fn alone_on_a_line(text: &str) -> Option<String> {
 
 fn in_text(text: &str) -> Option<String> {
     for trigger in TRIGGER.find_iter(text) {
-        // After the words, in their sentence ("…code is 482913. Order 5521…"),
-        // or the next one when they point there ("…the code below. 911110").
         let reach = text[trigger.end()..]
             .char_indices()
             .filter(|&(_, c)| !c.is_whitespace() && !('\u{2500}'..='\u{257F}').contains(&c))
@@ -159,12 +151,6 @@ fn in_text(text: &str) -> Option<String> {
             let next = ceil_char_boundary(text, end + 1);
             end = next + sentence_end(&text[next..reach.max(next)]);
         }
-        // The value after the last "is" or colon in the sentence is the code:
-        // that is where a sentence ends up naming it ("…for the card whose
-        // last four digits are 4242 is 958361", "…signing in: 2024"). A
-        // value named as something else ("Card ending: 4242") gives way to
-        // the marker before it. A trigger that ends in "is" or a colon is a
-        // marker itself ("Code: 2024").
         let ends_marked = trigger.as_str().trim_end().ends_with(':')
             || trigger
                 .as_str()
@@ -189,12 +175,10 @@ fn in_text(text: &str) -> Option<String> {
         });
         let found = marked.or_else(|| candidates(text, trigger.end(), end).next());
         if let Some(code) = found {
-            // The whole sentence: "Use this code SAVE2026 for a discount."
             if !spends(text, &trigger, end.max(code.end())) {
                 return Some(code.as_str().to_string());
             }
         }
-        // Right before them: "482913 is your verification code".
         let from = ceil_char_boundary(text, trigger.start().saturating_sub(BEFORE));
         if let Some(code) = candidates(text, from, trigger.start())
             .filter(|code| !text[code.end()..trigger.start()].contains(['.', '!', '?', '\n']))
@@ -225,9 +209,6 @@ enum Trust {
 fn looks_like_a_code(text: &str, start: usize, end: usize, trust: Trust) -> bool {
     let word = &text[start..end];
     let digits = word.chars().filter(char::is_ascii_digit).count();
-    // Letters only count from Steam Guard, where the place vouches for them
-    // and the code is a line of its own ("ABCDE"). Elsewhere a word in
-    // capitals is a word ("Your code is READY", "WELCOME").
     let lead = text[..start].trim_end_matches([' ', '\t']);
     let own_line = (lead.is_empty() || lead.ends_with('\n'))
         && text[end..]
@@ -247,7 +228,6 @@ fn looks_like_a_code(text: &str, start: usize, end: usize, trust: Trust) -> bool
     if plain.len() < 4 || plain.len() > 10 {
         return false;
     }
-    // A year in a footer or a date: "© 2026", "October 2026".
     if trust == Trust::Nearby
         && plain.len() == 4
         && digits == 4
@@ -255,21 +235,16 @@ fn looks_like_a_code(text: &str, start: usize, end: usize, trust: Trust) -> bool
     {
         return false;
     }
-    // A number the words before it name as something else: "card ending
-    // 4242", "order 55210", "GBP 5483".
     let lead = ceil_char_boundary(text, start.saturating_sub(32));
     if named_before(&text[lead..start]) {
         return false;
     }
-    // Part of a longer word or number, money or a percentage: "ITMS-90683",
-    // "$1234", "1234%", "1,234", "12.50".
     let before = text[..start].chars().next_back();
     let after = text[end..].chars().next();
     let after_next = text[end..].chars().nth(1);
     !(before.is_some_and(|c| {
         c.is_alphanumeric() || matches!(c, '-' | '$' | '£' | '€' | '#' | '.' | ',' | '/')
     }) || after.is_some_and(|c| c.is_alphanumeric() || matches!(c, '%' | '/' | '-'))
-        // "1,234" and "12.50" continue a number; "482913, valid for…" ends one.
         || matches!(after, Some(',' | '.')) && after_next.is_some_and(|c| c.is_ascii_digit()))
 }
 
@@ -420,7 +395,6 @@ mod tests {
 
     #[test]
     fn real_layouts_from_a_mailbox() {
-        // The code on the line after "below".
         assert_eq!(
             code(
                 "Your app verification code",
@@ -437,7 +411,6 @@ mod tests {
             .as_deref(),
             Some("405742")
         );
-        // A card check for a purchase is a sign-in code, whatever it buys.
         assert_eq!(
             code(
                 "Your SafeKey Verification Code",
@@ -576,9 +549,7 @@ mod tests {
             .as_deref(),
             Some("2024")
         );
-        // A bare label still names what follows it.
         assert_eq!(code("Your verification code", "Account:\n12345678"), None);
-        // The code first, a reference after: the reference gives way.
         assert_eq!(
             code("Hi", "Your code is 482913 (reference: 55210).").as_deref(),
             Some("482913")
@@ -614,12 +585,10 @@ mod tests {
             code("Your Steam Guard code", "Your Steam Guard code is:\nABCDE").as_deref(),
             Some("ABCDE")
         );
-        // A heading in capitals under a code subject is not one.
         assert_eq!(
             code("Your verification code", "WELCOME\n\nSee you soon."),
             None
         );
-        // Capitals elsewhere are words, not codes.
         assert_eq!(code("Hi", "Your code expires SOON so use it."), None);
         assert_eq!(code("Hi", "Your code is READY to use."), None);
     }
@@ -648,7 +617,6 @@ mod tests {
             code("Your verification code", "482913\n\nExpires in 5 minutes.").as_deref(),
             Some("482913")
         );
-        // Not without a subject saying so.
         assert_eq!(code("Hello", "482913\n\nSee you soon."), None);
     }
 

@@ -128,8 +128,6 @@ async fn main() -> anyhow::Result<()> {
     )
     .fetch_one(&pool)
     .await?;
-    // No column or path can make a link one click: every action opens the
-    // email with the link highlighted.
     println!(
         "\nrows with a link to highlight: {} open, {} in all; one-click links: none possible",
         linked.0, linked.1

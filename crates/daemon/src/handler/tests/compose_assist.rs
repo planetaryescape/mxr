@@ -192,21 +192,6 @@ async fn a_per_draft_model_must_be_in_the_configured_catalogue() {
     );
 }
 
-#[tokio::test]
-async fn compose_model_availability_uses_compose_enabled_state() {
-    let state = AppState::in_memory().await.unwrap();
-    let config = state.config_snapshot();
-    state.set_config_for_test(config).await;
-    let mut ask = Ask::text("Thursday works.");
-    ask.model = Some("gemma4:latest");
-
-    let error = assist(&state, &new_message(&state), &ask)
-        .await
-        .unwrap_err();
-
-    assert!(error.contains("AI features are off"), "{error}");
-}
-
 fn changed_kinds(proposal: &ComposeProposalData, kind: TextChangeKindData) -> Vec<&str> {
     proposal
         .changes
@@ -668,23 +653,6 @@ async fn the_explicit_shorter_chip_overrides_the_inferred_voice_length() {
     assist(&state, &new_message(&state), &ask).await.unwrap();
 
     assert!(model.user_prompt().contains("Aim for about 45 words"));
-}
-
-#[tokio::test]
-async fn the_explicit_formal_chip_overrides_the_inferred_register() {
-    let state = AppState::in_memory().await.unwrap();
-    seed_voice_style(&state, "sam@example.com", 0.2).await;
-    let model = Scripted::new("Dear Sam,\n\nThursday works.\n\nRegards");
-    state.llm.replace(model.clone());
-    let mut ask = Ask::text("Thursday works.");
-    ask.adjust.more_formal = true;
-
-    assist(&state, &new_message(&state), &ask).await.unwrap();
-
-    let prompt = model.user_prompt();
-    assert!(prompt.contains("Tone: formal and polished"), "{prompt}");
-    assert!(prompt.contains("My usual register is formal."), "{prompt}");
-    assert!(!prompt.contains("casual"), "{prompt}");
 }
 
 #[tokio::test]

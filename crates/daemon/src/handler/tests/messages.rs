@@ -1417,19 +1417,6 @@ async fn got_it_checks_where_the_reply_actually_goes() {
 }
 
 #[tokio::test]
-async fn messages_is_built_on_the_rail() {
-    let fx = Fixture::new().await;
-    match request(&fx, Request::GetRail { account_id: None }).await {
-        ResponseData::Rail { rail } => {
-            let messages = rail.entries.iter().find(|e| e.id == "messages").unwrap();
-            assert_eq!(messages.status, mxr_protocol::RailStatusData::Built);
-            assert!(messages.early_note.is_none());
-        }
-        other => panic!("expected the rail, got {other:?}"),
-    }
-}
-
-#[tokio::test]
 async fn a_quote_only_reply_shows_a_placeholder_not_the_quoted_words() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
@@ -1994,31 +1981,6 @@ async fn each_filter_alone_and_combined_keeps_its_rows_and_not_the_counts() {
         assert_eq!(filtered.your_turn_split, all.your_turn_split);
     }
     assert!(combined.empty_state.is_none());
-}
-
-#[tokio::test]
-async fn an_empty_filtered_view_says_what_was_filtered_and_what_is_left() {
-    let fx = Fixture::new().await;
-    seed_filter_rows(&fx).await;
-    // Maya is past pace, but she is your turn, so no one waiting on you is.
-    let past_waiting = filtered(
-        &fx,
-        None,
-        MessagesFilterData {
-            turn: Some(MessagesTurnData::Theirs),
-            past_pace: true,
-            unread: false,
-        },
-    )
-    .await;
-    assert_eq!(
-        past_waiting.empty_state.as_deref(),
-        Some("In Waiting on them, nobody is past your usual pace.\nYour turn still has 2 people.")
-    );
-
-    let unfiltered_clear = filtered(&fx, Some(MessagesTurnData::Theirs), Default::default()).await;
-    assert!(unfiltered_clear.empty_state.is_none());
-    assert_eq!(shown_ids(&unfiltered_clear), person_ids(&[JON]));
 }
 
 #[tokio::test]

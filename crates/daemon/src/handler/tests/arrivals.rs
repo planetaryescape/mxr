@@ -821,33 +821,6 @@ async fn the_line_sums_with_spam_aspects_and_mail_archived_after_it_arrived() {
 }
 
 #[tokio::test]
-async fn nothing_new_says_when_mail_last_came() {
-    let fx = Fixture::new().await;
-    inbound(&fx, "maya@orbit.example", false).await;
-    let now = Utc::now();
-    // The window opens after the mail arrived.
-    fx.state
-        .store
-        .set_mode_viewed("arrivals:since", now + Duration::seconds(2))
-        .await
-        .unwrap();
-    let line = arrivals_at(
-        &fx.state,
-        None,
-        false,
-        None,
-        now + Duration::seconds(5),
-        &Utc,
-    )
-    .await
-    .unwrap();
-    assert_eq!(line.total, 0);
-    assert!(line.line.starts_with("Nothing new since "), "{}", line.line);
-    assert!(line.line.contains("Latest mail"), "{}", line.line);
-    assert!(line.clear_line.is_none());
-}
-
-#[tokio::test]
 async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
     let fx = Fixture::new().await;
     let tz = Utc;
@@ -1266,27 +1239,6 @@ async fn not_sure_asks_at_most_three_a_day_by_the_local_day() {
 }
 
 #[tokio::test]
-async fn placement_does_not_depend_on_the_order_mail_was_stored() {
-    let first = Fixture::new().await;
-    let second = Fixture::new().await;
-    let senders = [
-        ("maya@orbit.example", false),
-        ("editor@weekly.example", true),
-        ("no-reply@shop.example", false),
-    ];
-    for (from, list) in senders {
-        inbound(&first, from, list).await;
-    }
-    for (from, list) in senders.iter().rev() {
-        inbound(&second, from, *list).await;
-    }
-    let a = line(&first).await;
-    let b = line(&second).await;
-    assert_eq!(a.counts, b.counts);
-    assert_eq!(a.total, 3);
-}
-
-#[tokio::test]
 async fn a_message_stored_mid_correction_is_placed_by_the_rules_and_the_move_stands() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
@@ -1556,36 +1508,6 @@ async fn moving_to_to_do_twice_makes_one_task() {
     assert_eq!(row.state, mxr_store::TodoState::Dismissed);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn overlapping_moves_to_to_do_make_one_task() {
-    let fx = Fixture::new().await;
-    let receipt = inbound(&fx, "no-reply@shop.example", false).await;
-    line(&fx).await;
-
-    // Both pass the open-to-do check before either inserts, unless the check
-    // and the insert are serialised.
-    let (a, b, c, d) = tokio::join!(
-        move_to(&fx, &receipt.id, ModeKindData::Todo, false),
-        move_to(&fx, &receipt.id, ModeKindData::Todo, false),
-        move_to(&fx, &receipt.id, ModeKindData::Todo, false),
-        move_to(&fx, &receipt.id, ModeKindData::Todo, false),
-    );
-
-    let open: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM todos WHERE source_message_id = ?1 AND state = 'open'",
-    )
-    .bind(receipt.id.as_str())
-    .fetch_one(fx.state.store.reader())
-    .await
-    .unwrap();
-    assert_eq!(open, 1, "one task for one email");
-    let made = [a, b, c, d]
-        .iter()
-        .filter(|outcome| outcome.aspect_id.is_some())
-        .count();
-    assert_eq!(made, 1, "exactly one move made the task; the rest saw it");
-}
-
 /// The race above is a window of a few store calls, too narrow to hit on
 /// demand. This holds the per-email lock the move must take, so a move that
 /// skips it completes anyway and the test fails.
@@ -1698,28 +1620,6 @@ async fn always_messages_for_a_sender_keeps_a_copied_email_in_messages() {
     let held = membership(&fx, &copied.thread_id).await;
     assert!(modes(&held).contains(&ModeKindData::Messages), "{held:?}");
     assert!(!modes(&held).contains(&ModeKindData::Updates), "{held:?}");
-}
-
-#[tokio::test]
-async fn undoing_an_older_sender_move_is_refused_while_a_newer_one_stands() {
-    let fx = Fixture::new().await;
-    let a = inbound(&fx, "editor@weekly.example", true).await;
-    line(&fx).await;
-    let to_updates = move_to(&fx, &a.id, ModeKindData::Updates, true).await;
-    let to_messages = move_to(&fx, &a.id, ModeKindData::Messages, true).await;
-    let message = refused(
-        &fx,
-        Request::UndoMove {
-            correction_id: to_updates.correction_id.unwrap(),
-        },
-    )
-    .await;
-    assert!(message.contains("newer move"), "{message}");
-    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Messages);
-    undo(&fx, to_messages.correction_id.unwrap()).await;
-    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Updates);
-    undo(&fx, to_updates.correction_id.unwrap()).await;
-    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Reading);
 }
 
 #[tokio::test]

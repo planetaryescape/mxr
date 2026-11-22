@@ -1,9 +1,3 @@
-//! Reading on a moved clock: the bands and each source's fade, expiry as
-//! done in Reading without touching the provider, ranking by what you
-//! finish, Later outliving the issue, let go of all previewing exactly
-//! what it does, the unsubscribe evidence, highlights and the article
-//! fetch's refusal of private links.
-
 use super::desk::{request, Fixture};
 use crate::handler::reading;
 use chrono::{DateTime, Duration, Utc};
@@ -34,7 +28,6 @@ fn essay(words: usize) -> String {
     format!("<html><body><p>{text}</p><p><a href=\"https://x.example/unsubscribe\">Unsubscribe</a></p></body></html>")
 }
 
-/// One newsletter issue in the inbox, `age` old at `now`.
 async fn issue(
     fx: &Fixture,
     from: (&str, &str),
@@ -45,7 +38,6 @@ async fn issue(
     issue_in(fx, &fx.account, from, subject, html, sent).await
 }
 
-/// One newsletter issue in `account`'s inbox.
 async fn issue_in(
     fx: &Fixture,
     account: &mxr_core::AccountId,
@@ -210,8 +202,6 @@ async fn externally_filed_reading_stays_in_the_edition_until_let_go() {
     assert!(plan(&fx, &visit, now).await.edition.bands.is_empty());
 }
 
-/// A weekly source: issues 0.5, 7.5, 13.5 and 21 days old, plus older
-/// ones that set its fourteen-day window.
 async fn weekly(fx: &Fixture, now: DateTime<Utc>) -> Vec<(MessageId, ThreadId)> {
     let mut out = Vec::new();
     for (i, age_hours) in [12, 180, 324, 504, 672, 840].into_iter().enumerate() {
@@ -254,7 +244,6 @@ async fn bands_follow_the_visit_and_each_sources_window() {
     let fading = band(edition, ReadingBandData::Fading)[0];
     assert!(fading.why.contains("unless you keep it"), "{}", fading.why);
     assert_eq!(fading.minutes, 2, "400 words at 230 a minute");
-    // Three issues past fourteen days are expired: done in Reading.
     assert_eq!(planned.expired.len(), 3);
     let ids: Vec<_> = issues.iter().map(|(id, _)| id.clone()).collect();
     let cached = fx
@@ -289,7 +278,6 @@ async fn expiry_is_done_in_reading_and_never_archives_at_the_provider() {
         .await
         .expect("expire");
     assert_eq!(marked, 3);
-    // The expired issue is out of Reading but still in the inbox.
     let old = &issues[3];
     let membership = request(
         &fx,
@@ -306,7 +294,6 @@ async fn expiry_is_done_in_reading_and_never_archives_at_the_provider() {
     };
     assert!(threads[0].done_in.contains(&ModeKindData::Reading));
     assert!(threads[0].in_inbox, "expiry is local");
-    // A second edition finds nothing more to expire.
     assert!(plan(&fx, &visit, now).await.expired.is_empty());
 }
 
@@ -337,7 +324,6 @@ async fn a_digest_is_its_links_and_a_link_on_later_outlives_its_issue() {
     );
     assert_eq!(item.links[0].url, "https://demo.example.com/local-first");
 
-    // Later on the second link, previewed first.
     let link = item.links[1].item_key.clone();
     let preview = request(
         &fx,
@@ -374,7 +360,6 @@ async fn a_digest_is_its_links_and_a_link_on_later_outlives_its_issue() {
     assert_eq!(later_count, 1);
     assert_eq!(copy, "Saved to Later. 1 thing saved.");
 
-    // Let go of the issue: the link stays on Later.
     request(
         &fx,
         Request::SetModeDone {
@@ -392,7 +377,6 @@ async fn a_digest_is_its_links_and_a_link_on_later_outlives_its_issue() {
     assert_eq!(edition.later[0].item_key, link);
     assert_eq!(edition.later[0].message_id, digest);
     assert!(edition.later[0].expires_at.is_none(), "Later never fades");
-    // Much later, it is still there and asks once.
     let edition = plan(&fx, &ReadingVisitRow::default(), now + Duration::days(40))
         .await
         .edition;
@@ -518,13 +502,11 @@ async fn the_sources_you_finish_lead_and_a_new_source_keeps_a_lead_slot() {
         .collect();
     assert_eq!(leads.len(), 3);
     assert!(leads.contains(&"Brand new 1"), "{leads:?}");
-    // Ten unopened dailies since you started: the offer, with evidence.
     let offer = since
         .iter()
         .find(|item| item.source == "Ignored Daily")
         .and_then(|item| item.unsubscribe_offer.clone());
     assert_eq!(offer.as_deref(), Some("You opened 0 of the last 10 issues"));
-    // Five finished essays measure the pace: about 300 words in 90 s.
     assert!(edition.pace_measured);
     assert!(
         (190..=215).contains(&edition.pace_wpm),
@@ -737,8 +719,6 @@ async fn opening_an_item_records_engagement_and_leaves_hints_to_their_elements()
     else {
         panic!("guide");
     };
-    // Hints are dismissed where they show, by Esc or acting on their
-    // element; reading an item says nothing about them.
     assert!(guides[0].hints.iter().all(|hint| !hint.seen));
 }
 
@@ -747,7 +727,6 @@ async fn the_later_count_covers_only_the_requests_accounts() {
     let fx = Fixture::new().await;
     let now = Utc::now();
     let (mine, _) = issue(&fx, WEEKLY, "Mine", &essay(200), now).await;
-    // Another account with its own item on Later.
     let other = mxr_core::Account {
         id: mxr_core::AccountId::new(),
         name: "Other".into(),
@@ -893,7 +872,6 @@ async fn a_digest_link_keeps_its_later_state_when_re_extraction_reorders_the_lin
     )
     .await;
 
-    // The same issue, its links in another order, extracted again.
     let reordered = DIGEST_HTML.replace(
         "<li><p><a href=\"https://sqlite.org/releaselog/3_51.html\">SQLite 3.51 release notes</a> — Faster JSON and a new WAL pragma.</p></li>\n",
         "",
@@ -931,7 +909,6 @@ async fn a_digest_link_keeps_its_later_state_when_re_extraction_reorders_the_lin
     assert!(links[0].on_later);
     assert!(links[1..].iter().all(|link| !link.on_later));
     assert_eq!(edition.later[0].title, "SQLite 3.51 release notes");
-    // A new extractor still rebuilds an expired issue if Later needs its link.
     fx.state
         .store
         .replace_reading_items(&id, &[])
@@ -945,8 +922,6 @@ async fn a_digest_link_keeps_its_later_state_when_re_extraction_reorders_the_lin
     assert_eq!(expired.later[0].title, "SQLite 3.51 release notes");
 }
 
-/// Send `req` as an MCP client whose profile allows only the fixture's
-/// account.
 async fn as_scoped_agent(fx: &Fixture, req: Request) -> Response {
     let msg = IpcMessage {
         expected_workspace: None,
@@ -999,8 +974,6 @@ async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_co
         now,
     )
     .await;
-    // Both accounts have a highlight and an item on Later, made by an
-    // unscoped client.
     for id in [&mine, &theirs] {
         request(
             &fx,
@@ -1037,7 +1010,6 @@ async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_co
     );
     fx.state.set_config_for_test(config).await;
 
-    // The edition with no account is the agent's accounts' edition.
     let Response::Ok {
         data: ResponseData::ReadingEdition { edition },
     } = as_scoped_agent(
@@ -1088,7 +1060,6 @@ async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_co
         .await,
     );
 
-    // Highlights with no account are the agent's highlights.
     let Response::Ok {
         data:
             ResponseData::ReadingHighlights {
@@ -1103,7 +1074,6 @@ async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_co
     assert_eq!(highlights[0].account_id, fx.account);
     assert!(!markdown.contains("Theirs"), "{markdown}");
 
-    // Another account's item, by key, is denied for every item request.
     let key = format!("{theirs}:0");
     for req in [
         Request::GetReadingItem {
@@ -1158,8 +1128,6 @@ async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_co
 mod highlights;
 
 mod marginalia {
-    //! Sending an item to Marginalia and reading its highlights back,
-    //! against a stand-in Marginalia, with config and secrets in a temp dir.
 
     use super::*;
     use crate::handler::handle_request;
@@ -1228,7 +1196,6 @@ mod marginalia {
         .await;
         let key = format!("{id}:0");
 
-        // Nothing goes anywhere before Marginalia is connected.
         let error = try_request(
             &fx,
             Request::SendReadingToMarginalia {
@@ -1253,7 +1220,6 @@ mod marginalia {
             .mount(&server)
             .await;
 
-        // A token Marginalia refuses is never saved.
         let refused = try_request(
             &fx,
             Request::SetMarginaliaConnection {
@@ -1305,7 +1271,6 @@ mod marginalia {
             .mount(&server)
             .await;
 
-        // The dry run names what would go where and sends nothing.
         let ResponseData::MarginaliaSend { send } = request(
             &fx,
             Request::SendReadingToMarginalia {
@@ -1354,7 +1319,6 @@ mod marginalia {
             .as_str()
             .is_some_and(|html| html.contains("A delete is the absence of a row")));
 
-        // Sending again opens what was sent: nothing new goes out.
         let ResponseData::MarginaliaSend { send } = request(
             &fx,
             Request::SendReadingToMarginalia {
@@ -1372,7 +1336,6 @@ mod marginalia {
             Some("k57".into())
         );
 
-        // Highlights made in Marginalia come back beside mxr's own.
         request(
             &fx,
             Request::SaveHighlight {
@@ -1404,7 +1367,6 @@ mod marginalia {
         assert_eq!(origins.len(), 3);
         assert!(origins.contains(&"mxr:A delete is the absence of a row".to_string()));
         assert!(origins.contains(&"marginalia:an absence does not travel on its own".to_string()));
-        // Marginalia's paragraphIndex is kept; the highlight made in mxr without one has none.
         let anchors: Vec<(String, Option<u32>)> = item(&fx, &key)
             .await
             .highlights
@@ -1414,7 +1376,6 @@ mod marginalia {
         assert!(anchors.contains(&("marginalia".to_string(), Some(0))));
         assert!(anchors.contains(&("mxr".to_string(), None)));
 
-        // Deleted there, deleted here; mxr's own highlight stays.
         Mock::given(method("GET"))
             .and(path("/api/v1/articles/k57/highlights"))
             .respond_with(ResponseTemplate::new(200).set_body_json(highlights_body(&[(
@@ -1485,7 +1446,6 @@ async fn an_archived_later_item_uses_its_stored_deciding_claim() {
         .await
         .unwrap();
     let key = format!("{id}:0");
-    // Loading the archived item initializes it without relying on an Inbox visit.
     let ResponseData::ReadingItem { item } = request(
         &fx,
         Request::GetReadingItem {

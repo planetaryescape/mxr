@@ -1,6 +1,3 @@
-//! IPC for the in-app assistant. Sending and deciding start a background
-//! turn and return at once; clients follow `AssistantUpdated` events.
-
 use super::{HandlerError, HandlerResult};
 use crate::assistant::{
     abandon_pending, compose_models, conversation_view, models, parse_pending, set_model,
@@ -19,9 +16,7 @@ use std::sync::Arc;
 const DEFAULT_LIST_LIMIT: u32 = 50;
 const MAX_LIST_LIMIT: u32 = 500;
 const TITLE_CHARS: usize = 60;
-/// Longest message a user can send, in characters.
 const MAX_MESSAGE_CHARS: usize = 20_000;
-/// Most rows a step's full list gives.
 const STEP_ROWS: usize = 500;
 
 pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResult {
@@ -64,8 +59,6 @@ pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResul
                 "This assistant conversation belongs to another installation".into(),
             ));
         }
-        // A local continuation must not put privileged tool output into a transcript
-        // that a remote registration is allowed to read later.
         let local_mutation = prefix.is_none()
             && id.starts_with("asst_remote_")
             && matches!(
@@ -135,8 +128,6 @@ fn remote_prefix() -> Option<String> {
     super::remote::captured_proof().map(|proof| format!("asst_remote_{}_", proof.owner_client_id))
 }
 
-/// Whether a turn can run. Checked before any conversation is written, so
-/// a missing model never leaves an unanswered message behind.
 fn availability(state: &AppState) -> AssistantAvailabilityData {
     let pinned = state.llm.for_feature(LlmFeature::Assistant).pin();
     let unavailable = |reason: String| AssistantAvailabilityData {
@@ -317,8 +308,6 @@ async fn conversation(state: &AppState, conversation_id: &str) -> Result<Respons
     })
 }
 
-/// Every row a step's stored result lists. Reads only; the rows are mail
-/// and model text, so they are never logged here.
 async fn step_rows_for(
     state: &AppState,
     conversation_id: &str,
@@ -336,7 +325,6 @@ async fn step_rows_for(
         .assistant_messages(conversation_id)
         .await
         .map_err(|error| error.to_string())?;
-    // "not found" is what the protocol's error classifier maps to a 404.
     let (rows, total) = step_rows(&messages, call_id, seq, STEP_ROWS).ok_or_else(|| {
         format!("step {call_id} at {seq} not found in assistant conversation {conversation_id}")
     })?;
@@ -399,7 +387,6 @@ fn to_decision(decision: &AssistantDecisionKindData) -> Decision {
     }
 }
 
-/// The first line of the first message, as the conversation's name.
 fn title(message: &str) -> String {
     let line = message.lines().next().unwrap_or_default().trim();
     if line.chars().count() <= TITLE_CHARS {

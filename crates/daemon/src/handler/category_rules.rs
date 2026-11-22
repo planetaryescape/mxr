@@ -1,4 +1,3 @@
-//! Local category rule preview, exact application and sync reconciliation.
 use super::{HandlerError, HandlerResult};
 use crate::{loops::RuleMessage, state::AppState};
 use mxr_core::{CategoryId, Envelope, MessageId};
@@ -140,7 +139,6 @@ async fn selection(state: &AppState, rule: &Rule, delete: bool) -> Result<Select
                     .filter(|l| ids.contains(&l.id))
                     .map(|l| l.provider_id.clone())
                     .collect();
-                // Bind every input, including nonmatches, so an edit cannot widen a reviewed selection.
                 mail.push(serde_json::json!([envelope, body, visible]));
                 let message = RuleMessage::from_parts(envelope.clone(), body, visible);
                 if !delete {
@@ -243,7 +241,6 @@ pub(super) async fn run(
 ) -> HandlerResult {
     let _gate = state.rule_mutation_gate.lock().await;
     let mut rule = super::build_rule_from_form(state, form).await?;
-    // None is the explicit All accounts choice, including edits from a previously scoped rule.
     rule.account_id = form.account_id.clone();
     validate(state, &rule).await?;
     super::rule_treatment::validate(state, &rule).await?;
@@ -349,7 +346,6 @@ pub(super) async fn run(
     );
     Ok(ResponseData::RuleCategoriesResult { preview: result })
 }
-/// Caller holds rule_mutation_gate; the store CAS rejects a persistence race after these reads.
 pub(crate) async fn classify_message(state: &AppState, id: &MessageId) -> Result<(), HandlerError> {
     let expected = state.store.category_rule_message_snapshot(id).await?;
     let Some(envelope) = state.store.get_envelope(id).await? else {

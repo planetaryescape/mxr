@@ -1,7 +1,3 @@
-//! Thread summarisation. Pulls the full thread + bodies from the store,
-//! includes explicit sender/recipient context for each message, and asks
-//! the configured LLM for a per-message conversation summary.
-
 use super::{relationship_profile, HandlerResult};
 use crate::state::{
     llm_endpoint_is_local, owned_addresses_for, owned_addresses_revision,
@@ -96,9 +92,6 @@ pub(super) async fn summarize_thread(state: &AppState, thread_id: &ThreadId) -> 
     })
 }
 
-/// Whether a summary written now may carry the stored relationship summaries
-/// of the thread's people. The cache check must ask the same question as the
-/// writer, or every summary written without them would miss.
 pub(crate) fn summary_shares_relationship(state: &AppState) -> bool {
     let llm = state.llm.for_feature(LlmFeature::Summarize).pin();
     relationship_data_allowed(&state.config_snapshot().llm, &llm)
@@ -110,8 +103,6 @@ pub(crate) async fn valid_cached_summary(
     envelopes: &[Envelope],
     share_relationship: bool,
 ) -> Option<ThreadSummaryData> {
-    // The writer summarizes for the thread's account, so the check must read the
-    // same one. A failed read is a miss, not an empty owner set.
     let account_id = store.get_thread(thread_id).await.ok().flatten()?.account_id;
     let owned_addresses = owned_addresses_for(store, &account_id).await.ok()?;
     let relationship_hash = relationship_context_for_summary(
@@ -124,9 +115,6 @@ pub(crate) async fn valid_cached_summary(
     .await
     .1;
     let owned_revision = owned_addresses_revision(&owned_addresses);
-    // The owner's addresses are in the prompt, so a new alias must miss. Rows
-    // written under the old key miss once and are replaced in place (one row per
-    // thread), so SUMMARY_PROMPT_VERSION stays: the wording did not change.
     let content_hash = format!(
         "{}:{relationship_hash}:{owned_revision}:{SUMMARY_PROMPT_VERSION}",
         thread_summary_content_hash(envelopes)
@@ -139,17 +127,12 @@ pub(crate) async fn valid_cached_summary(
     })
 }
 
-/// `allow_cloud_relationship_data` is `llm.allow_cloud_relationship_data`.
-/// Stored relationship summaries are other people's mail condensed, so they
-/// go only to a model on this machine unless that setting allows the cloud.
 pub(crate) async fn summarize_thread_cached(
     store: Arc<Store>,
     llm: Arc<LlmRuntime>,
     allow_cloud_relationship_data: bool,
     thread_id: &ThreadId,
 ) -> Result<ThreadSummaryData, String> {
-    // Pin once so the decision about what the prompt carries and the call
-    // itself use the same endpoint, even if a config reload lands meanwhile.
     let llm = llm.for_feature(LlmFeature::Summarize).pin();
     let share_relationship = allow_cloud_relationship_data || llm_endpoint_is_local(&llm);
     let context = load_summary_context(&store, thread_id, share_relationship).await?;
@@ -217,8 +200,6 @@ pub(crate) async fn summarize_thread_cached(
 
 struct SummaryContext {
     account_id: mxr_core::AccountId,
-    /// The messages the prompt was built from; the cache write is refused if
-    /// any was deleted while the model ran.
     source_ids: Vec<mxr_core::MessageId>,
     content_hash: String,
     message_count: u32,
@@ -266,8 +247,6 @@ async fn load_summary_context(
             prompt.push_str(&format!("- {address}{primary}\n"));
         }
     }
-    // Thread id and message count are internal metadata (trusted); the
-    // subject is attacker-controlled and goes inside the untrusted block.
     prompt.push_str(&format!(
         "\nThread id: {}\nMessage count: {}\n\n",
         thread.id,
@@ -282,11 +261,6 @@ async fn load_summary_context(
     )
     .await;
 
-    // Everything derived from mail — the subject, the relationship context
-    // (itself summarized from prior mail), and the message transcript — is
-    // attacker-controllable. Assemble it into one untrusted block wrapped in
-    // the delimiters the system-prompt guard points at. Only the trusted
-    // owner addresses and thread metadata above stay outside the markers.
     let mut untrusted = String::new();
     untrusted.push_str(&format!("Thread subject: {}\n\n", thread.subject));
     if !relationship_prompt.is_empty() {
@@ -348,8 +322,6 @@ async fn relationship_context_for_summary(
     share_relationship: bool,
 ) -> (String, String) {
     if !share_relationship {
-        // A hash of its own, so a summary written with the context misses
-        // once the context is withheld, and the other way round.
         return (String::new(), "withheld".to_string());
     }
     let owned = owned_addresses
@@ -453,7 +425,6 @@ mod tests {
     #[derive(Default)]
     struct CapturingLlm {
         requests: Mutex<Vec<CompletionRequest>>,
-        /// `None` answers on this machine; a remote URL makes it a cloud model.
         base_url: Option<String>,
     }
 
@@ -596,8 +567,6 @@ mod tests {
         assert!(prompt.contains("Message 2 of 2"));
         assert!(prompt.contains("Approved."));
 
-        // Injection hardening: the guard rides on the system message and
-        // the mail transcript lands INSIDE the untrusted-content markers.
         let system = &requests[0].messages[0].content;
         assert!(
             system.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
@@ -623,7 +592,6 @@ mod tests {
             begin < subject_pos && subject_pos < end,
             "attacker-controlled subject must sit inside the untrusted-content markers"
         );
-        // Trusted owner addresses stay outside the markers.
         let owner_pos = prompt
             .find("Account owner addresses:")
             .expect("owner header present");
@@ -714,8 +682,6 @@ mod tests {
             let requests = llm.requests.lock().expect("requests");
             assert_eq!(requests.len(), 1);
             let prompt = &requests[0].messages[1].content;
-            // The mail-derived relationship context must sit INSIDE the
-            // untrusted-content markers, not merely be present.
             let begin = prompt
                 .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
                 .expect("begin marker present");
@@ -864,7 +830,6 @@ mod tests {
             .await
             .unwrap();
         let thread_id = mxr_core::ThreadId::new();
-        // The older message is in A and the newer one in B.
         let older = TestEnvelopeBuilder::new()
             .account_id(account_a.clone())
             .thread_id(thread_id.clone())
@@ -937,8 +902,6 @@ mod tests {
                 .is_some()
         );
 
-        // The summary prompt names the owner's addresses, so a summary written
-        // before this alias existed may describe the wrong ownership.
         state
             .store
             .add_account_address(&account_id, "new-alias@example.com", false)

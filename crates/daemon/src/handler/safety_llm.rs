@@ -1,12 +1,3 @@
-//! LLM-backed safety checks. Currently only `answer_coverage`
-//! (Slice 1.4 of docs/reference/ai-email.md).
-//!
-//! Lives in the daemon — not the `mxr-safety` crate — so that
-//! `mxr-safety` stays purely deterministic and depends only on
-//! `mxr-core` / `mxr-reader` / `mxr-relationship`. The daemon owns
-//! the LLM runtime and calls these functions when a draft check
-//! requests `allow_llm` and a thread context is available.
-
 use crate::state::AppState;
 use mxr_core::types::{
     CitationRef, Draft, DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetySeverity,
@@ -34,12 +25,6 @@ struct LlmAnswerCoverage {
     asks: Vec<LlmAsk>,
 }
 
-/// Run the LLM-backed answer-coverage check against the parent thread.
-///
-/// Returns at most one issue. If the LLM is disabled, blocked, or
-/// errors, returns an Info-severity degradation note instead of
-/// surfacing nothing — so the caller can show the user that the check
-/// did not run.
 pub(crate) async fn check_answer_coverage(
     state: &AppState,
     draft: &Draft,
@@ -81,11 +66,9 @@ pub(crate) async fn check_answer_coverage(
         return Vec::new();
     }
 
-    // Allowed citation set: every inbound msg id loaded above.
     let allowed: std::collections::HashSet<String> =
         inbound.iter().map(|e| e.id.to_string()).collect();
 
-    // Build prompt. Use reader-cleaned snippets to keep token use sane.
     let mut transcript = String::new();
     for env in inbound {
         let body = match state.store.get_body(&env.id).await {
@@ -116,13 +99,6 @@ pub(crate) async fn check_answer_coverage(
     }
     .content;
 
-    // Both the inbound thread and the draft reply are mail-derived: the
-    // thread is attacker-controlled, and the draft may quote or echo
-    // inbound text. Wrap each in its own untrusted-content block so nothing
-    // mail-derived sits outside the markers (which the guard marks
-    // authoritative). The citation validator that rejects unknown evidence
-    // ids is the boundary, and this check only ever emits an advisory
-    // warning.
     let wrapped_thread = wrap_untrusted_mail(&transcript);
     let wrapped_draft = wrap_untrusted_mail(&cleaned_draft);
     let runtime = state.llm.for_feature(LlmFeature::AnswerCoverage);
@@ -170,8 +146,6 @@ pub(crate) async fn check_answer_coverage(
 
     let mut missing = Vec::new();
     for ask in parsed.asks {
-        // Critical: reject any ask whose evidence_msg_id is not in the
-        // retrieved set. The LLM must not invent message ids.
         if !allowed.contains(&ask.evidence_msg_id) {
             tracing::warn!(
                 msg_id = %ask.evidence_msg_id,
@@ -474,9 +448,6 @@ mod tests {
             "prompt missing msg_id markers, got:\n{user_text}"
         );
 
-        // Injection hardening: guard on the system message, and BOTH the
-        // inbound thread and the draft (which may quote inbound) each land
-        // inside their own untrusted-content wrapper.
         let request = stub.last_request.lock().unwrap().clone().unwrap();
         let system = &request.messages[0].content;
         assert!(

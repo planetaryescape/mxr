@@ -1,30 +1,12 @@
-//! Who a reply goes to, decided from the original message and the account's
-//! owned addresses. Pure, so the rules are tested without a store.
-//!
-//! Every reply client (CLI, TUI, web, MCP) takes its recipients from
-//! `PrepareReply`, so this is the one place the rules live.
-
 use mxr_core::types::Address;
 use std::collections::HashSet;
 
-/// The To and Cc of a reply, as bare email strings in first-seen order.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct ReplyRecipients {
     pub(super) to: Vec<String>,
     pub(super) cc: Vec<String>,
 }
 
-/// `original_from`, `original_to` and `original_cc` are the parent message's
-/// envelope. `reply_to_header` is its first Reply-To, if any. `owned` is the
-/// replying account's primary address plus its aliases.
-///
-/// When the user sent the parent message, the reply goes back to the people
-/// they wrote to, never to the user. Reply-To is ignored in that case. When
-/// the user was the only recipient, the reply is addressed to them, because a
-/// reply needs somebody in To.
-///
-/// Otherwise the reply goes to Reply-To (or From), and a reply-all copies the
-/// original To and Cc.
 pub(super) fn reply_recipients(
     original_from: &Address,
     original_to: &[Address],
@@ -54,9 +36,6 @@ pub(super) fn reply_recipients(
         return ReplyRecipients { to, cc };
     }
 
-    // Owned addresses are excluded from To first. Only when nothing else is
-    // left does the reply fall back to Cc, and then to the original To as
-    // written.
     let mut to = distinct(original_to, &mut owned_keys.clone());
     if to.is_empty() {
         to = distinct(original_cc, &mut owned_keys.clone());
@@ -82,8 +61,6 @@ fn canonical(email: &str) -> String {
     email.trim().to_ascii_lowercase()
 }
 
-/// Trimmed, non-empty emails in first-seen order. `seen` holds canonical keys
-/// already taken, and is updated as addresses are kept.
 fn distinct<'a>(
     addresses: impl IntoIterator<Item = &'a Address>,
     seen: &mut HashSet<String>,
@@ -140,7 +117,6 @@ mod tests {
 
     #[test]
     fn own_sent_single_recipient_reply_goes_to_that_recipient() {
-        // The reported bug: `mxr reply` on a message sent to dumisani.
         let got = run(ME, &["dumisani@nottoafrica.com"], &[], None, false);
         assert_eq!(got.to, strs(&["dumisani@nottoafrica.com"]));
         assert!(got.cc.is_empty());
@@ -148,7 +124,6 @@ mod tests {
 
     #[test]
     fn own_sent_reply_all_does_not_cc_the_original_to_or_the_user() {
-        // The reported bug: `mxr reply-all` put dumisani in Cc and the user in To.
         let got = run(ME, &["dumisani@nottoafrica.com"], &[], None, true);
         assert_eq!(got.to, strs(&["dumisani@nottoafrica.com"]));
         assert!(got.cc.is_empty());
@@ -177,7 +152,6 @@ mod tests {
             None,
             true,
         );
-        // Dumi appears once, in the form it was first written.
         assert_eq!(got.to, strs(&["Dumi@x.com"]));
         assert_eq!(got.cc, strs(&["other@x.com"]));
     }
@@ -211,8 +185,6 @@ mod tests {
 
     #[test]
     fn own_sent_with_no_to_or_cc_replies_to_yourself_not_nobody() {
-        // A message sent only Bcc has no visible recipient, so the reply
-        // must still have a To.
         let got = run(ME, &[], &[], None, true);
         assert_eq!(got.to, strs(&[ME]));
         assert!(got.cc.is_empty());
@@ -249,7 +221,6 @@ mod tests {
 
     #[test]
     fn not_own_sent_normal_reply_all_is_unchanged() {
-        // The common case must keep producing exactly what it produced before.
         let got = run(
             "author@x.com",
             &[ME, "other@x.com"],
@@ -263,8 +234,6 @@ mod tests {
 
     #[test]
     fn not_own_sent_reply_is_not_treated_as_own_sent_when_you_are_the_recipient() {
-        // Polarity check: a message from someone else addressed to you must
-        // not take the own-sent branch.
         let got = run("author@x.com", &[ME], &[], None, false);
         assert_eq!(got.to, strs(&["author@x.com"]));
     }

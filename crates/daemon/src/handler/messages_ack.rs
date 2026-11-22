@@ -1,31 +1,3 @@
-//! Got it (`.`): a short acknowledgement in your own words for that person,
-//! instead of a reaction, which degrades into extra email on every other
-//! client (messages.md §3). The text is a template filled with the greeting
-//! and sign-off you actually use with them (`mxr_relationship` habits), so
-//! no model is involved (model-fit review).
-//!
-//! Got it sends real mail on one key, so the send is guarded in the daemon,
-//! not only by the client's countdown:
-//!
-//! - A send needs the preview's token, issued by this daemon within the
-//!   last minute, and the previewed text. The token is keyed with a
-//!   per-process secret over the whole plan (account, sender, recipient,
-//!   target message, subject, text), so a send goes only when all of it
-//!   still matches what was previewed.
-//! - The final recipient is checked, not just the sender: no lists,
-//!   automated or no-reply addresses, and no Reply-To on another domain
-//!   you have never written to. It never replies to all.
-//! - Once anything of yours follows their message, it is answered: a
-//!   second Got it for it is refused, and the next preview has nothing to
-//!   acknowledge.
-//! - One acknowledgement per message, ever: a claim is stored before the
-//!   provider call and kept whatever happens after it, so a timeout or a
-//!   failed local ingest can never send a second copy.
-//! - Only a conversation in Messages can be acknowledged; one routed to
-//!   Updates (copied, or a crowd) can't.
-//! - The plain text and the HTML part come from one builder, with every
-//!   value escaped, and the preview shows both.
-
 use super::desk::{self_matcher, Senders};
 use super::desk_lanes::{current_messages, last_stored};
 use super::mail_kind::looks_automated;
@@ -42,14 +14,10 @@ use mxr_store::ScreenerDisposition;
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 
-/// Your own mail to them the habits are measured on.
 const HABIT_SAMPLES: u32 = 25;
-/// A greeting or sign-off is "yours" once you use it this often.
 const HABIT_MIN_RATE: f64 = 0.3;
 const BODY: &str = "Got it, thanks.";
 
-/// The acknowledgement for `first` (their first name) in your habits, and
-/// what it was built from.
 pub(super) fn ack_text(first: &str, habits: &WritingHabits) -> (String, String) {
     let greeting = habits
         .greeting
@@ -80,7 +48,6 @@ pub(super) fn ack_text(first: &str, habits: &WritingHabits) -> (String, String) 
     (text, built_from)
 }
 
-/// How you write to `email`: your replies and other mail to them.
 async fn habits_with(
     state: &AppState,
     account_id: &AccountId,
@@ -110,28 +77,20 @@ async fn habits_with(
     Ok(analyse_habits(&refs, &names))
 }
 
-/// Everything the send needs besides the plan the client sees.
 struct Prepared {
     plan: AckPlanData,
     from: Option<Address>,
     headers: ReplyHeaders,
 }
 
-/// Why a Got it was refused, in words a person can act on.
 fn refuse(reason: impl Into<String>) -> HandlerError {
     HandlerError::InvalidRequest(reason.into())
 }
 
-/// Whether the user wrote `message`, judged by its From against the
-/// addresses the account owns now. The stored direction alone is not enough:
-/// a message sent from an alias synced before the alias was registered stays
-/// stored as inbound.
 fn sent_by_you(direction: &str, from: &str, is_self: &dyn Fn(&str) -> bool) -> bool {
     direction == "outbound" || is_self(from)
 }
 
-/// Got it answers one person who wrote to you. It refuses to answer your own
-/// message, and a reply that would reach more than one address.
 fn ack_addressing_refusal(sent_by_you: bool, reply_to: &[String]) -> Option<String> {
     if sent_by_you {
         return Some(
@@ -174,8 +133,6 @@ async fn plan(
         .ok_or_else(|| {
             refuse("Nobody in this conversation has written to you, so there's nothing to acknowledge.")
         })?;
-    // Got it is a Messages verb: a thread routed to Updates (copied, or a
-    // crowd) isn't someone waiting on you.
     let in_messages =
         super::modes::place_threads(state, &account_id, std::slice::from_ref(thread_id), now)
             .await?
@@ -195,8 +152,6 @@ async fn plan(
     if let Some(claim) = state.store.got_it_for(&target.id).await? {
         return Err(refuse(already(&claim, &account_id)));
     }
-    // Anything of yours after their message answers it: a repeat Got it,
-    // or a reply you already sent.
     if current
         .iter()
         .any(|m| m.seq > target.seq && !m.trashed && super::desk_lanes::is_outbound(m, &is_self))
@@ -286,9 +241,6 @@ async fn plan(
     })
 }
 
-/// The final recipient must be a person you'd expect: not a list, not a
-/// machine, not screened out, and not a Reply-To that sends the answer to
-/// a different organisation you've never written to.
 async fn check_recipient(
     state: &AppState,
     account_id: &AccountId,
@@ -313,8 +265,6 @@ async fn check_recipient(
             "it looks like an automated or no-reply address",
         ));
     }
-    // The recipient's own record, whichever header named it: the thread's
-    // senders don't include a Reply-To address.
     let contact = state
         .store
         .desk_contacts(account_id, &[recipient.to_string()])
@@ -356,8 +306,6 @@ async fn check_recipient(
     Ok(())
 }
 
-/// A per-process secret: a token can't be made without a preview from this
-/// daemon. UUIDv7's random bits are enough for a key that lives a process.
 fn key() -> &'static [u8; 32] {
     static KEY: OnceLock<[u8; 32]> = OnceLock::new();
     KEY.get_or_init(|| {
@@ -371,7 +319,6 @@ fn key() -> &'static [u8; 32] {
     })
 }
 
-/// `{issued}.{mac}`: issued is unix seconds; mac covers the whole plan.
 fn token(plan: &AckPlanData, in_reply_to: &str, issued: i64) -> String {
     let mut hasher = Sha256::new();
     hasher.update(key());
@@ -401,7 +348,6 @@ fn token(plan: &AckPlanData, in_reply_to: &str, issued: i64) -> String {
     format!("{issued}.{mac}")
 }
 
-/// Why a message can't be acknowledged again.
 fn already(claim: &mxr_store::GotItRecord, account: &mxr_core::AccountId) -> String {
     if claim.sent_message_id.is_some() {
         "Already acknowledged: Got it went to that message.".to_string()
@@ -413,8 +359,6 @@ fn already(claim: &mxr_store::GotItRecord, account: &mxr_core::AccountId) -> Str
     }
 }
 
-/// The HTML part of the acknowledgement: `text`'s paragraphs and lines,
-/// every character escaped. The plain-text part is `text` itself.
 pub(super) fn ack_html(text: &str) -> String {
     let escape = |line: &str| {
         line.chars()
@@ -456,7 +400,6 @@ pub(super) async fn ack(
     .await
 }
 
-/// Got it at `now` (tests move the clock).
 pub(super) async fn ack_at(
     state: &AppState,
     thread_id: &ThreadId,
@@ -516,11 +459,7 @@ pub(super) async fn ack_at(
         updated_at: now,
         inline_calendar_reply: None,
     };
-    // Checks that can fail before the provider is involved run first, so
-    // their failure leaves no claim and a later Got it can still go.
     super::mutations::check_before_send(state, &draft).await?;
-    // The claim is stored before the provider call and never removed
-    // after it: one acknowledgement per message, whatever goes wrong.
     match state
         .store
         .claim_got_it(&draft.account_id, thread_id, &target, &draft.id, now)
@@ -548,7 +487,6 @@ pub(super) async fn ack_at(
         }
     };
     state.store.finish_got_it(&target, &sent).await?;
-    // Using Got it dismisses the hint that explains it, from any client.
     super::mode_guide::dismiss(state, "messages.got_it").await?;
     let mut plan = prepared.plan;
     plan.sent_message_id = Some(sent);
@@ -583,8 +521,6 @@ mod tests {
 
     #[test]
     fn your_message_stored_as_inbound_still_counts_as_sent_by_you() {
-        // Sent from an alias that was registered after the message synced:
-        // stored direction says inbound, but From is yours now.
         let is_self = |email: &str| email.eq_ignore_ascii_case("alias@x.com");
         assert!(sent_by_you("inbound", "Alias@x.com", &is_self));
         assert!(sent_by_you("outbound", "someone@y.com", &is_self));
@@ -621,7 +557,6 @@ mod tests {
 
     #[test]
     fn ack_leaves_an_empty_reply_to_for_the_recipient_check() {
-        // check_recipient owns the "no address" refusal, so nothing is added here.
         assert_eq!(ack_addressing_refusal(false, &[]), None);
     }
 

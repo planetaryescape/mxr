@@ -1,5 +1,3 @@
-//! A retained approval can retry only after positive non-submission evidence.
-//! Ambiguous attempts are reconciled, never dispatched a second time.
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Utc};
@@ -269,8 +267,6 @@ fn private_directory(path: &Path) -> Result<(), HandlerError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
-        // Work through a no-follow directory handle so a replaced path cannot
-        // make permission repair chmod a symlink target.
         let directory = std::fs::OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
@@ -285,8 +281,6 @@ fn private_directory(path: &Path) -> Result<(), HandlerError> {
             return Err("Approved-send cache has unsafe ownership".into());
         }
         if metadata.permissions().mode() & 0o077 != 0 {
-            // Older restore paths created owned resource directories using the
-            // process umask. Tighten those before publishing frozen send bytes.
             directory
                 .set_permissions(std::fs::Permissions::from_mode(0o700))
                 .and_then(|()| directory.sync_all())
@@ -371,8 +365,6 @@ pub(super) async fn prepare(
     let (workspace_id, recovery_generation) = state.store.archive_workspace().await?;
     let mut approved = draft.clone();
     let directory = approval_dir(state, identity);
-    // A failed preparation owns only its unique temporary snapshot. Retrying
-    // cannot overwrite a retained approval or get stuck on a partial file.
     let snapshot = if draft.attachments.is_empty() && draft.inline_assets.is_empty() {
         None
     } else {
@@ -400,9 +392,6 @@ pub(super) async fn prepare(
         asset.path = file.path.clone();
         files.push(file);
     }
-    // A resource may have been tampered with between resolution and copying.
-    // The immutable review's advertised hash, not the freshly copied bytes,
-    // remains authoritative.
     let managed: Vec<_> = draft
         .managed_attachments
         .iter()
@@ -550,8 +539,6 @@ pub(super) async fn notify_current(state: &AppState, identity: &SendIdentity) {
     }
 }
 
-/// Remove only the exact files created by this operation; never recursively
-/// delete a cache root or follow a client-supplied attachment path.
 pub(super) async fn discard_files(
     state: &AppState,
     identity: &SendIdentity,
@@ -621,8 +608,6 @@ pub(super) async fn failure(
         .await?
         .map_or(1, |(_, status)| status.attempts);
     if let Some(hint) = retry_after_secs.filter(|_| attempts < MAX_SEND_ATTEMPTS) {
-        // Never retry earlier than the provider's deadline. A stable per-job
-        // jitter avoids a restart or concurrent clients producing a stampede.
         let jitter = u64::from(Sha256::digest(identity.operation_id.as_bytes())[0] % 31);
         let backoff = 60_u64
             .saturating_mul(1 << attempts.saturating_sub(1).min(6))
@@ -654,8 +639,6 @@ pub(super) async fn failure(
                 outcome: Some(outcome),
             });
         }
-        // A malformed/unrepresentable hint cannot erase known non-submission
-        // or authorize an earlier retry. Retain the phase and require action.
     }
     let reason = if attempts >= MAX_SEND_ATTEMPTS {
         "retry_limit_reached"
@@ -688,8 +671,6 @@ pub(super) async fn failure(
     }
 }
 
-/// Caller holds the draft-operation lock. Provider evidence never authorizes
-/// a resend; positive evidence may finish the retained acceptance instead.
 pub(super) async fn reconcile_locked(
     state: &AppState,
     outcome: DraftSendOutcome,
@@ -709,7 +690,6 @@ pub(super) async fn reconcile_locked(
         .map_err(HandlerError::Message)?;
     let (workspace_id, generation) = state.store.archive_workspace().await?;
     if approval.workspace_id != workspace_id || approval.recovery_generation != generation {
-        // Evidence and local completion must not follow a restored/new owner.
         state
             .store
             .postpone_send_recovery(
@@ -735,8 +715,6 @@ pub(super) async fn reconcile_locked(
         if let Some(message_id) = outcome.rfc2822_message_id.as_deref() {
             let sender = state.send_provider_for_account(&outcome.account_id)?;
             if let Ok(Some(receipt)) = sender.reconcile_send(message_id, &approval.from).await {
-                // Acceptance is independent of local attachment availability.
-                // Persist it first; a missing cache blocks only local repair.
                 state
                     .store
                     .accept_draft_send(&outcome.identity, &receipt)

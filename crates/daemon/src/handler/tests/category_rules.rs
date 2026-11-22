@@ -118,7 +118,7 @@ async fn category_rules_overlap_manual_replay_lifecycle_and_undo() {
         .undo_category_membership(&undo)
         .await
         .unwrap();
-    assert!(!assigned(&fx, &a, &category.id).await); // Undo restores no manual decision; next negative source wins.
+    assert!(!assigned(&fx, &a, &category.id).await);
     second.enabled = false;
     save(&fx, &mut second).await;
     assert!(!assigned(&fx, &a, &category.id).await);

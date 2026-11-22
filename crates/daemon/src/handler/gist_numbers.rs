@@ -1,27 +1,7 @@
-//! The number check for model-written gists: every figure a gist states
-//! must be written in the mail it summarises.
-//!
-//! A model that reads "Your receipt from Perplexity" may write "$20.00" for
-//! "$24.00", and a row that shows it is worse than a row that shows the
-//! subject. So a gist is only kept when each number in it appears in the
-//! source text, however it is formatted there ("24" for "24.00", "1234.5"
-//! for "$1,234.50", "1.234,50" for "1,234.50"), and a currency the gist
-//! names is a currency the mail names. A claim that fails is dropped by the
-//! caller; the failure direction is always "show the rule's own line".
-//!
-//! Digits are the check; spelled-out counts ("three failed payments") are
-//! checked against the same figures. Anything the check cannot read as an
-//! ASCII figure (full-width digits, superscripts, fractions, Roman numerals)
-//! fails closed, because a number the check cannot see is a number it
-//! cannot verify.
-
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
 
-/// Currency markers as mail writes them. `$` is one currency for this check:
-/// mail rarely says which dollar it means, and a gist that says "USD" for
-/// "$" is not inventing anything.
 const SYMBOLS: &[(&str, &str)] = &[
     ("US$", "USD"),
     ("CA$", "CAD"),
@@ -43,14 +23,11 @@ const SYMBOLS: &[(&str, &str)] = &[
     ("฿", "THB"),
 ];
 
-/// ISO codes, uppercase only: "try" and "all" are words.
 const CODES: &[&str] = &[
     "USD", "EUR", "GBP", "JPY", "CNY", "INR", "ZAR", "CAD", "AUD", "NZD", "CHF", "SEK", "NOK",
     "DKK", "PLN", "BRL", "MXN", "KRW", "NGN", "RUB", "TRY", "ILS", "THB", "AED", "SGD", "HKD",
 ];
 
-/// Spelled-out numbers a gist might use for a count. "one" is left out on
-/// both sides: it is mostly a pronoun, so it can neither verify nor claim.
 const NUMBER_WORDS: &[(&str, &str)] = &[
     ("two", "2"),
     ("three", "3"),
@@ -77,8 +54,6 @@ const NUMBER_WORDS: &[(&str, &str)] = &[
     ("billion", "1000000000"),
 ];
 
-/// A figure with the currency written beside it, if any. Digits are ASCII
-/// only: anything else is handled before this matches.
 static FIGURE: Lazy<Regex> = Lazy::new(|| {
     let symbols = SYMBOLS
         .iter()
@@ -92,7 +67,6 @@ static FIGURE: Lazy<Regex> = Lazy::new(|| {
     .expect("valid figure regex")
 });
 
-/// The code a marker stands for ("£" and "GBP" are both "GBP").
 fn currency(marker: &str) -> &'static str {
     SYMBOLS
         .iter()
@@ -106,9 +80,6 @@ const fn is_separator(c: char) -> bool {
     matches!(c, '.' | ',' | '\'' | '’' | '\u{a0}' | '\u{202f}')
 }
 
-/// An integer or decimal string in one canonical spelling: no leading
-/// zeros, no trailing zeros after the point ("007" is "7", "24.00" is "24",
-/// "24.50" is "24.5").
 fn canonical(whole: &str, fraction: Option<&str>) -> String {
     let whole = whole.trim_start_matches('0');
     let whole = if whole.is_empty() { "0" } else { whole };
@@ -118,10 +89,6 @@ fn canonical(whole: &str, fraction: Option<&str>) -> String {
     }
 }
 
-/// What one matched run of digits and separators states, as numbers that
-/// must each be written in the source. A number with a separator can be
-/// read more than one way ("1,500" is fifteen hundred or one and a half),
-/// so each number lists the readings that would verify it.
 fn readings(raw: &str) -> Vec<Vec<String>> {
     let parts: Vec<&str> = raw.split(is_separator).collect();
     let separators: Vec<char> = raw.chars().filter(|c| is_separator(*c)).collect();
@@ -137,18 +104,13 @@ fn readings(raw: &str) -> Vec<Vec<String>> {
     let last = parts.len() - 1;
     let same = |seps: &[char]| seps.windows(2).all(|pair| pair[0] == pair[1]);
 
-    // Thousands groups all the way: "1,234,567", "1.234.567", "1 234".
     if grouped(&parts) && same(&separators) {
         let joined = canonical(&parts.concat(), None);
-        // "1.234" is also a decimal; "1,234" is thousands in every
-        // locale that writes it with a comma between digits.
         if parts.len() == 2 && separators[0] == '.' {
             return vec![vec![joined, canonical(parts[0], Some(parts[1]))]];
         }
         return vec![vec![joined]];
     }
-    // Groups, then a decimal part, with the other separator: "1,234.50",
-    // "1.234,50".
     if last >= 2
         && grouped(&parts[..last])
         && same(&separators[..last - 1])
@@ -157,24 +119,19 @@ fn readings(raw: &str) -> Vec<Vec<String>> {
     {
         return vec![vec![canonical(&parts[..last].concat(), Some(parts[last]))]];
     }
-    // One decimal point or comma: "24.50", "24,50".
     if parts.len() == 2 && matches!(separators[0], '.' | ',') {
         return vec![vec![canonical(parts[0], Some(parts[1]))]];
     }
-    // Anything else is a run of separate numbers: "14.11.2026", "1.2.3".
     parts
         .iter()
         .map(|part| vec![canonical(part, None)])
         .collect()
 }
 
-/// Every figure the source text writes, however it formats them.
 #[derive(Debug, Default)]
 pub(super) struct NumberSource {
     values: HashSet<String>,
-    /// Values written beside a currency, with its code.
     priced: HashSet<(String, &'static str)>,
-    /// Values written with no currency beside them.
     bare: HashSet<String>,
     currencies: HashSet<&'static str>,
 }
@@ -196,8 +153,6 @@ impl NumberSource {
                 .map(|m| currency(m.as_str()))
                 .filter(|code| !code.is_empty());
             let raw = &found["num"];
-            // The source is read as loosely as the gist is read strictly:
-            // every reading of a number.
             for value in readings(raw).into_iter().flatten() {
                 match marker {
                     Some(code) => {
@@ -216,7 +171,6 @@ impl NumberSource {
                 self.values.insert((*value).to_string());
             }
         }
-        // A currency named away from any amount ("Currency: USD").
         for (symbol, code) in SYMBOLS {
             if text.contains(symbol) {
                 self.currencies.insert(code);
@@ -229,11 +183,7 @@ impl NumberSource {
         }
     }
 
-    /// Whether every number `claim` states is written in the source.
-    /// Text with no numbers passes.
     pub(super) fn verifies(&self, claim: &str) -> bool {
-        // Digits the figure pattern does not read (full-width, superscript,
-        // fractions, Roman numerals) cannot be checked, so they do not pass.
         if claim.chars().any(|c| c.is_numeric() && !c.is_ascii_digit()) {
             return false;
         }
@@ -259,9 +209,6 @@ impl NumberSource {
     fn has_any(&self, alternatives: &[String], marker: Option<&'static str>) -> bool {
         alternatives.iter().any(|value| match marker {
             None => self.values.contains(value),
-            // A currency the gist names must be one the mail names: beside
-            // this very amount, or the amount written bare and the currency
-            // named elsewhere in the mail.
             Some(code) => {
                 self.priced.contains(&(value.clone(), code))
                     || (self.bare.contains(value) && self.currencies.contains(code))
@@ -270,7 +217,6 @@ impl NumberSource {
     }
 }
 
-/// Lowercase alphabetic words, so "Twenty-four" is "twenty" and "four".
 fn words(text: &str) -> impl Iterator<Item = String> + '_ {
     text.split(|c: char| !c.is_alphabetic())
         .filter(|word| !word.is_empty())
@@ -298,7 +244,6 @@ mod tests {
     fn an_invented_amount_is_rejected_even_beside_verified_ones() {
         let source = source("Total $24.00 charged on 14 November");
         assert!(!source.verifies("Receipt: $20.00 for Pro"));
-        // One verified figure does not vouch for the rest.
         assert!(!source.verifies("$24.00 charged on 14 Nov, 3 attempts"));
         assert!(source.verifies("$24.00 charged on 14 Nov"));
     }
@@ -317,7 +262,6 @@ mod tests {
         ] {
             assert!(source.verifies(claim), "{claim}");
         }
-        // European spelling of the same amount, in the gist or the mail.
         let european = super::NumberSource::new(["Gesamt: 1.234,50 EUR"]);
         assert!(european.verifies("1,234.50 EUR"));
         assert!(european.verifies("1234.5 EUR"));
@@ -341,7 +285,6 @@ mod tests {
         let source = source("Your payment failed. Update your card.");
         assert!(source.verifies("Payment failed; the card needs updating"));
         assert!(source.verifies(""));
-        // An empty source verifies only number-free claims.
         assert!(NumberSource::default().verifies("Payment failed"));
         assert!(!NumberSource::default().verifies("Payment of $5 failed"));
     }
@@ -353,11 +296,9 @@ mod tests {
         assert!(pounds.verifies("24.00 GBP charged"));
         assert!(!pounds.verifies("$24 charged"));
         assert!(!pounds.verifies("24 EUR charged"));
-        // The currency named elsewhere in the mail covers a bare amount.
         let table = source("Amount: 24.00\nCurrency: USD");
         assert!(table.verifies("$24.00"));
         assert!(!table.verifies("£24.00"));
-        // But it does not cover a different currency's amount.
         let mixed = source("Total £24.00, or $30.00");
         assert!(!mixed.verifies("$24.00"));
         assert!(mixed.verifies("$30.00"));
@@ -375,7 +316,6 @@ mod tests {
         ] {
             assert!(!source(mail).verifies(claim), "{mail} / {claim}");
         }
-        // A year-month-day written as one number still verifies its parts.
         assert!(source("Invoice 2026-0042").verifies("Invoice 42 of 2026"));
     }
 
@@ -394,7 +334,6 @@ mod tests {
         assert!(!source.verifies("Five failed payments"));
         let spelled = super::NumberSource::new(["Three payments failed"]);
         assert!(spelled.verifies("3 payments failed"));
-        // "one" is a pronoun, not a count.
         assert!(spelled.verifies("No one needs to act"));
     }
 

@@ -1,18 +1,3 @@
-//! `GetThreadGists`: gists for list rows, many conversations at once.
-//!
-//! The request itself never calls a model. It returns the cached gists that
-//! still match each conversation, and with `generate` it queues the people's
-//! conversations that have none. A small pool of background writers (one by
-//! default: a local model answers one request at a time well) takes them in
-//! order, writes each through the same path as the reader's gist (same
-//! prompt, privacy policy, quote check and cache), and announces each one
-//! with `DaemonEvent::ThreadGistReady`.
-//!
-//! The queue holds conversation ids only. The newest request goes to the
-//! front, since it is what the user is looking at now; asking again for a
-//! queued or in-flight conversation never queues it twice; and the queue is
-//! capped, so requests for rows scrolled past long ago fall off the back.
-
 use super::diagnostics_impl::emit_operation_event;
 use super::gist_kind::{thread_kinds, GistStyle};
 use super::mail_kind::SenderKind;
@@ -33,32 +18,20 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Most conversations waiting for a writer. At one gist every few seconds,
-/// more than this is minutes of work for rows the user has left behind.
 const PENDING_CAP: usize = 64;
-/// A conversation the model just failed on waits this long before it is
-/// queued again (unless a new message changes it).
 const FAILED_BACKOFF: Duration = Duration::from_secs(10 * 60);
-/// Upper bound on `llm.gist_concurrency`.
 const MAX_WRITERS: usize = 8;
-/// Most backoffs remembered; the soonest to expire go first.
 const FAILED_CAP: usize = 1024;
-/// A conversation whose gist goes stale mid-call (someone keeps writing)
-/// is tried again at the back of the queue this many times, then waits
-/// `STALE_BACKOFF`, so it can't hold the writer.
 const STALE_RETRIES: u32 = 2;
 const STALE_BACKOFF: Duration = Duration::from_secs(60);
 
-/// What happened to one conversation a request asked to queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Enqueued {
     Queued,
     InFlight,
-    /// Past the cap: older requests are ahead of it.
     Dropped,
 }
 
-/// Conversations waiting for a list gist, and the writers draining them.
 #[derive(Default)]
 pub(crate) struct GistQueue {
     inner: Mutex<QueueState>,
@@ -68,21 +41,12 @@ pub(crate) struct GistQueue {
 struct QueueState {
     pending: VecDeque<ThreadId>,
     in_flight: HashSet<ThreadId>,
-    /// Writers running now; each exits when the queue is empty.
     writers: usize,
-    /// Conversations backing off, until when: the model failed on this
-    /// content (`Some(hash)`), or its gists kept going stale (`None`, any
-    /// content).
     failed: HashMap<ThreadId, (Option<String>, Instant)>,
-    /// Times each conversation's gist went stale mid-call in a row.
     stale_attempts: HashMap<ThreadId, u32>,
 }
 
 impl GistQueue {
-    /// Put `ids` at the front of the queue, first id first, skipping any
-    /// already being written; drop the oldest requests past the cap. Says
-    /// what happened to each id, and how many writers to start so that up
-    /// to `writers` run.
     fn enqueue(&self, ids: &[ThreadId], writers: usize) -> (Vec<Enqueued>, usize) {
         let mut state = self.inner.lock();
         let fresh: Vec<ThreadId> = ids
@@ -114,9 +78,6 @@ impl GistQueue {
         (outcomes, start)
     }
 
-    /// Its gist went stale while the model was writing: back of the queue
-    /// for another go, or, after `STALE_RETRIES`, a backoff. Never the
-    /// front, so a busy conversation can't starve the rest.
     fn went_stale(&self, id: &ThreadId, now: Instant) {
         let mut state = self.inner.lock();
         state.in_flight.remove(id);
@@ -135,8 +96,6 @@ impl GistQueue {
         }
     }
 
-    /// The next conversation to write, now marked in flight. `None` retires
-    /// the calling writer.
     fn next(&self) -> Option<ThreadId> {
         let mut state = self.inner.lock();
         match state.pending.pop_front() {
@@ -151,8 +110,6 @@ impl GistQueue {
         }
     }
 
-    /// A writer is done with `id`; `failed_at` is the content hash the
-    /// model failed on, if it did.
     fn finish(&self, id: &ThreadId, failed_at: Option<String>) {
         self.finish_at(id, failed_at, Instant::now());
     }
@@ -169,12 +126,10 @@ impl GistQueue {
         }
     }
 
-    /// Nothing more can be written (no model, privacy block, shutdown).
     fn clear_pending(&self) {
         self.inner.lock().pending.clear();
     }
 
-    /// Forget backoffs that have run out; once per request.
     fn prune_failed(&self) {
         let now = Instant::now();
         self.inner
@@ -183,8 +138,6 @@ impl GistQueue {
             .retain(|_, (_, until)| *until > now);
     }
 
-    /// Backing off: the model failed on this content a moment ago, or the
-    /// conversation's gists kept going stale.
     fn recently_failed(&self, id: &ThreadId, content_hash: &str) -> bool {
         let now = Instant::now();
         self.inner
@@ -212,8 +165,6 @@ impl GistQueue {
     }
 }
 
-/// Remember a backoff, bounded: expired entries go on every insert, then
-/// the soonest to expire while the map is full.
 fn back_off(state: &mut QueueState, id: &ThreadId, hash: Option<String>, until: Instant) {
     let now = Instant::now();
     state.failed.retain(|_, (_, at)| *at > now);
@@ -258,7 +209,6 @@ pub(super) async fn get_thread_gists(
         in_flight: Vec::new(),
         skipped: Vec::new(),
     };
-    // No model: nothing is cached for it and nothing can be written.
     if model == GistModelData::Disabled {
         return Ok(ResponseData::ThreadGists { batch });
     }
@@ -282,8 +232,6 @@ pub(super) async fn get_thread_gists(
             });
         }
     }
-    // The prompt style is part of a gist's cache key, so kinds are read
-    // before the cache is.
     let kinds = thread_kinds(
         state,
         &found
@@ -294,7 +242,6 @@ pub(super) async fn get_thread_gists(
     .await?;
     let mut missing: Vec<(Candidate, SenderKind)> = Vec::new();
     for candidate in found {
-        // Absent from the map: the message is gone (trashed since).
         let Some(kind) = kinds.get(&candidate.thread_id).copied() else {
             batch.skipped.push(skip(
                 &candidate.thread_id,
@@ -333,9 +280,6 @@ pub(super) async fn get_thread_gists(
     if !missing.is_empty() {
         let mut wanted = Vec::new();
         for (candidate, kind) in missing {
-            // People's conversations; Updates' notifications too when the
-            // client is showing Updates. Lists, screened-out senders and
-            // the rest stay as they are.
             if kind == SenderKind::Person || (automated && kind == SenderKind::Automated) {
                 wanted.push(candidate.thread_id);
             } else {
@@ -380,7 +324,6 @@ fn skip(thread_id: &ThreadId, reason: ThreadGistSkipReasonData) -> ThreadGistSki
     }
 }
 
-/// Drain the queue one conversation at a time, then exit.
 async fn run_writer(state: Arc<AppState>) {
     let shutdown = state.shutdown_receiver();
     while let Some(thread_id) = state.gist_queue.next() {
@@ -403,10 +346,6 @@ async fn run_writer(state: Arc<AppState>) {
                 );
                 match gist.status {
                     ThreadGistStatusData::Ready => {
-                        // Announce only a gist for the conversation as it
-                        // is now: a message that landed during the call
-                        // makes it stale, and the conversation goes back
-                        // to the front for another go.
                         let now = newest_message_id(&state, &thread_id).await.ok().flatten();
                         if now.is_some() && now == gist.newest_message_id {
                             state.gist_queue.finish(&thread_id, None);
@@ -419,8 +358,6 @@ async fn run_writer(state: Arc<AppState>) {
                     ThreadGistStatusData::Failed => {
                         state.gist_queue.finish(&thread_id, Some(content_hash));
                     }
-                    // The model went away or privacy now blocks it: the
-                    // rest of the queue would fail the same way.
                     ThreadGistStatusData::Disabled | ThreadGistStatusData::Blocked => {
                         state.gist_queue.finish(&thread_id, None);
                         state.gist_queue.clear_pending();
@@ -435,8 +372,6 @@ async fn run_writer(state: Arc<AppState>) {
     }
 }
 
-/// One conversation's gist through the reader's path, with the background
-/// budget, plus the content hash it was written for.
 async fn write_one(
     state: &AppState,
     thread_id: &ThreadId,
@@ -469,7 +404,6 @@ mod tests {
         );
         assert!(queue.recently_failed(ids.last().unwrap(), "hash"));
 
-        // Once they run out, the next insert clears everything expired.
         queue
             .inner
             .lock()

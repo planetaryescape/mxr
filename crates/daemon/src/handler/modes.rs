@@ -1,18 +1,3 @@
-//! Mode membership and the rail (blueprint 22, phase 2).
-//!
-//! Which modes hold a thread is computed, never stored (D097):
-//!
-//! - Messages: the desk's thread lanes (You owe, New from people, Waiting
-//!   on), so Messages, Now's People and the desk share one owed rule.
-//! - To do: the thread's open to-do rows.
-//! - Updates and Reading: inbox mail the sender classifier puts in Paper
-//!   trail or Reading, read through `places::placed_inbox`, so each mode
-//!   and its early view never disagree.
-//! - Archive: threads a record was filed from (`records`). Archive never
-//!   keeps a thread in the provider's inbox.
-//!
-//! minus each mode's done mark (`mode_done`, the desk's watermark).
-
 use super::desk::{self_matcher, Senders};
 use super::desk_lanes::{
     clean_subject, is_outbound, thread_lanes, AccountInputs, DESK_WINDOW_DAYS,
@@ -37,10 +22,8 @@ use mxr_protocol::{
 use mxr_store::{ArchiveRecord, DeskDismissal, DeskMessage, ScreenerDisposition, TodoRecord};
 use std::collections::{HashMap, HashSet};
 
-/// The most threads one membership request may name.
 pub(crate) const MEMBERSHIP_MAX_THREADS: usize = 100;
 
-/// The mode names `mode_done` stores.
 pub(super) const fn mark_name(mode: ModeKindData) -> Option<&'static str> {
     match mode {
         ModeKindData::Messages => Some("messages"),
@@ -50,8 +33,6 @@ pub(super) const fn mark_name(mode: ModeKindData) -> Option<&'static str> {
     }
 }
 
-/// Built in its researched shape (To do, Messages, Updates, Archive) or an
-/// early version on an existing view (the rest, for now).
 pub(super) const fn is_early(mode: ModeKindData) -> bool {
     !matches!(
         mode,
@@ -63,8 +44,6 @@ pub(super) const fn is_early(mode: ModeKindData) -> bool {
     )
 }
 
-/// The threads the desk's Done or done-in-Messages put away, as one map
-/// the lane rules read.
 pub(super) async fn messages_dismissals(
     state: &AppState,
     account_id: &AccountId,
@@ -76,20 +55,14 @@ pub(super) async fn messages_dismissals(
     ))
 }
 
-/// One thread placed in its modes, with what done needs to act on it.
 pub(super) struct Placement {
     pub data: ThreadModesData,
-    /// In Messages as quiet: person mail in the inbox no lane holds.
     pub quiet: bool,
-    /// Every message of the thread, in storage order within date order.
     pub messages: Vec<DeskMessage>,
-    /// Open to-do rows on the thread.
     pub todos: Vec<TodoRecord>,
     pub provider: Option<mxr_core::types::ProviderKind>,
 }
 
-/// The kind signals for one desk message, as the desk and places build
-/// them.
 pub(super) fn signals<'a>(
     message: &'a DeskMessage,
     senders: &'a Senders,
@@ -98,8 +71,6 @@ pub(super) fn signals<'a>(
     senders.signals(message, is_self)
 }
 
-/// Place `thread_ids` of one account in their modes at `now`. Threads
-/// with no stored message are skipped.
 pub(super) async fn place_threads(
     state: &AppState,
     account_id: &AccountId,
@@ -109,10 +80,6 @@ pub(super) async fn place_threads(
     place_threads_with_evidence(state, account_id, thread_ids, now, true, None).await
 }
 
-/// The same placements, with per-message evidence kept only for the newest
-/// `evidence_limit` messages. The reader's mode line needs the thread-level
-/// modes and done state; carrying every message's asks and assessments made
-/// one long thread's membership a megabyte.
 pub(super) async fn place_threads_windowed(
     state: &AppState,
     account_id: &AccountId,
@@ -147,16 +114,10 @@ async fn place_threads_with_evidence(
         return Ok(Vec::new());
     }
     let message_ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
-    // An archive another client made keeps the thread in its modes; the
-    // server location is evidence, not a mode decision. Without this, mail
-    // filed in Gmail would silently vanish from Updates and Reading.
     let externally_filed = store
         .externally_filed_messages(Some(account_id), &message_ids)
         .await?;
     let mut senders = Senders::load(state, account_id, &messages).await?;
-    // Membership exposes bounded evidence quotes as well as verdicts. Keep
-    // full source loading here, on the requested threads, never on the mode
-    // list's whole history. Do not mix evidence from another generation.
     let mut detailed_asks = HashMap::new();
     if include_evidence {
         detailed_asks = store.asks_for_messages(account_id, &message_ids).await?;
@@ -191,8 +152,6 @@ async fn place_threads_with_evidence(
         store.desk_reminders(account_id, window_start).await?,
     );
 
-    // The desk reads threads active in its window, plus any a time you set
-    // brought back; the same here, so Messages agrees with the desk.
     let back: HashSet<&ThreadId> = timers.maybe_back(now).collect();
     let future_cutoff = now + Duration::days(1);
     let lane_messages: Vec<DeskMessage> = messages
@@ -240,8 +199,6 @@ async fn place_threads_with_evidence(
     for (thread, record) in store.archive_records_for_threads(thread_ids).await? {
         records.entry(thread).or_insert(record);
     }
-    // Who you have ever written to, among the senders a new-sender
-    // question could be about: the lanes above only saw these threads.
     let mut maybe_new: Vec<String> = messages
         .iter()
         .filter(|m| {
@@ -305,20 +262,14 @@ struct PlaceInputs<'a> {
     account_id: &'a AccountId,
     thread: &'a [DeskMessage],
     row: Option<&'a DeskRowData>,
-    /// Messages' own put-away mark: the desk's Done or done in Messages.
     put_away: Option<&'a DeskDismissal>,
     todos: &'a [TodoRecord],
-    /// The record filed from this thread, if any.
     record: Option<&'a ArchiveRecord>,
     marks: &'a HashMap<(ThreadId, String), DeskDismissal>,
     senders: &'a Senders,
     detailed_asks: &'a HashMap<mxr_core::MessageId, mxr_core::asks::AskAssessment>,
-    /// `Some(n)`: carry evidence only for the newest n messages.
     evidence_limit: Option<usize>,
-    /// Senders you have ever written to, anywhere in the account.
     written_to: &'a HashSet<String>,
-    /// Messages whose source left the inbox through a provider sync and stayed
-    /// out, so Updates and Reading keep holding them with a filed marker.
     externally_filed: &'a HashMap<mxr_core::MessageId, DateTime<Utc>>,
     is_self: &'a dyn Fn(&str) -> bool,
     now: DateTime<Utc>,
@@ -333,8 +284,6 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     let mut modes = Vec::new();
     let mut done_in = Vec::new();
 
-    // Purpose comes from the assessment; explicit return timers can add
-    // Messages attention without changing an Updates/Reading home.
     if let Some(row) = inputs.row {
         modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
     } else if let Some(message) = quiet(inputs) {
@@ -362,7 +311,6 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         modes.push(entry);
     }
 
-    // Updates and Reading read inbox mail, as their early views do.
     let inbound = |m: &&DeskMessage| !is_outbound(m, inputs.is_self) && !m.trashed;
     let mut by_kind: HashMap<SenderKindData, Vec<&DeskMessage>> = HashMap::new();
     for message in thread.iter().filter(inbound) {
@@ -415,8 +363,6 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         ));
     }
 
-    // Archive: a record filed from the thread stays whatever happens in
-    // the inbox.
     if let Some(record) = inputs.record {
         let what = [record.issuer.as_deref(), record.title.as_deref()]
             .into_iter()
@@ -472,9 +418,6 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         .filter(|mode| mode.holds_inbox())
         .collect();
     let latest = thread.iter().max_by_key(|m| (m.date, m.seq));
-    // Thread-level mode lines stay whole-thread; only the per-message
-    // evidence is windowed. A reader that names the loaded page gets asks
-    // and assessments for the messages it actually renders.
     let evidence: &[DeskMessage] = match inputs.evidence_limit {
         Some(limit) => &thread[thread.len().saturating_sub(limit)..],
         None => thread,
@@ -518,10 +461,6 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     }
 }
 
-/// Person mail still in the inbox that no lane holds: nobody's turn, but
-/// nobody let it go either. Messages keeps it as Quiet until it is done
-/// there, so inbox mail never vanishes from every mode and a to-do ticked
-/// off on it never archives it by default.
 fn quiet<'a>(inputs: &PlaceInputs<'a>) -> Option<&'a DeskMessage> {
     let thread = inputs.thread;
     if inputs.put_away.is_some_and(|mark| mark.covers(thread)) {
@@ -538,9 +477,6 @@ fn quiet<'a>(inputs: &PlaceInputs<'a>) -> Option<&'a DeskMessage> {
         .max_by_key(|m| (m.date, m.seq))
 }
 
-/// A first-time person wrote the thread's latest inbound message: no
-/// decision about them, first seen in the last two weeks, and you have
-/// never written to them (D104, D117).
 fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestionData> {
     let thread = inputs.thread;
     let latest = thread
@@ -565,8 +501,6 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
     if wrote_to || contact.is_some_and(|c| c.first_seen_at < since) || latest.date < since {
         return None;
     }
-    // Only a person is asked about. A machine's mail goes to its mode
-    // silently, and its row's why line says which rule put it there.
     let person = assessment.who == "person";
     if !person {
         return None;
@@ -574,7 +508,6 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
     screener_question(inputs.account_id, &key, SenderKindData::People)
 }
 
-/// Group threads by the account that owns them, in request order.
 pub(super) async fn threads_by_account(
     state: &AppState,
     thread_ids: &[ThreadId],
@@ -649,8 +582,6 @@ pub(super) async fn get_membership(
     })
 }
 
-/// What Updates and Reading hold across the inbox, after their done
-/// marks: the early views' mail, for Now's card and pick and the rail.
 pub(super) struct InboxModes {
     pub updates: Vec<Placed>,
     pub reading: Vec<Placed>,
@@ -692,10 +623,6 @@ pub(super) async fn inbox_modes(
     Ok(out)
 }
 
-/// Placed inbox mail minus what `modes` (Updates, Reading or both) marked
-/// done: a thread stays out of a mode until a message of that mode arrives
-/// after its mark. Each thread's messages of one mode are checked
-/// together, as membership does. Order is not kept.
 pub(super) async fn without_done(
     state: &AppState,
     accounts: &[AccountId],
@@ -751,8 +678,6 @@ pub(super) async fn without_done(
     Ok(kept)
 }
 
-/// What an early mode's view is built on, for the clients' "early version"
-/// note.
 const fn early_note(mode: ModeKindData) -> Option<&'static str> {
     match mode {
         ModeKindData::Todo
@@ -782,8 +707,6 @@ fn mode_entry(mode: ModeKindData, count: Option<u32>) -> RailEntryData {
     }
 }
 
-/// How many threads Messages keeps as quiet: person mail in the inbox no
-/// lane holds and nobody marked done there.
 pub(super) async fn quiet_count(
     state: &AppState,
     people: HashMap<AccountId, Vec<ThreadId>>,
@@ -817,9 +740,6 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
     let (snapshot, quiet) =
         super::now::rail_snapshot(state, account_id, &accounts, now, &Local).await?;
     let count = |n: usize| Some(super::now::count(n));
-    // Badges count work only: Now's people and due soon. To do earns its
-    // own badge only once `mxr modes eval` shows under one false to-do a
-    // week (D117).
     let work = Some(snapshot.badge());
     let mut entries = vec![RailEntryData {
         id: "now".to_string(),
@@ -843,8 +763,6 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
             ModeKindData::Updates,
             Some(snapshot.digest.message_count + snapshot.digest.since.message_count),
         ),
-        // Reading shows no count: nothing in it is owed (only Later counts,
-        // inside the mode).
         mode_entry(ModeKindData::Reading, None),
         mode_entry(ModeKindData::Archive, None),
     ]);

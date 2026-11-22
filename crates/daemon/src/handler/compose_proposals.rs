@@ -1,7 +1,3 @@
-//! Writing-help proposals waiting to be accepted (blueprint 34, "One shared
-//! model"). They live in memory for 30 minutes and are lost on a restart: a
-//! proposal is a preview, and applying one can only write what was previewed.
-
 use mxr_core::id::{AccountId, DraftId};
 use mxr_protocol::ComposeProposalData;
 use parking_lot::Mutex;
@@ -9,17 +5,12 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 const TTL: Duration = Duration::from_secs(30 * 60);
-/// Proposals are a few kilobytes each; this bounds a runaway client, not a user.
 const MAX_PROPOSALS: usize = 64;
 
-/// A proposal and what it was made for.
 #[derive(Debug, Clone)]
 pub(crate) struct StoredProposal {
     pub account_id: AccountId,
-    /// The stored draft the request named, when it named one: the proposal
-    /// can only be applied to that draft.
     pub draft_id: Option<DraftId>,
-    /// Figures in the proposal backed by its inputs, never model-only guesses.
     pub grounded_figures: Vec<String>,
     pub proposal: ComposeProposalData,
 }

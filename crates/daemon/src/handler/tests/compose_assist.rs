@@ -1,6 +1,3 @@
-//! Writing help end to end in the daemon, with a scripted model: what reaches
-//! the model, what the proposal says, and what applying one may write.
-
 use super::*;
 use crate::handler::compose_assist::{apply, compose_assist, AssistRequest, PROGRESS_OPERATION};
 use mxr_composer::check::text_hash;
@@ -13,7 +10,6 @@ use mxr_protocol::{
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-/// Answers every request with one scripted reply and keeps what it was asked.
 struct Scripted {
     replies: Mutex<VecDeque<String>>,
     base_url: Option<&'static str>,
@@ -224,7 +220,6 @@ async fn finishing_keeps_what_was_typed_and_sends_it_inside_the_markers() {
         changed_kinds(&proposal, TextChangeKindData::Added),
         ["Hi Sam,\n\n", "\n\nAlex"]
     );
-    // The hash ignores the trailing newline the typed text ended with.
     assert_eq!(proposal.base, text_hash("Thursday works.\nNumbers by wed."));
     assert_eq!(proposal.provenance.model, "scripted");
 
@@ -465,7 +460,6 @@ async fn a_signature_the_model_writes_never_reaches_the_proposal() {
 #[tokio::test]
 async fn an_edit_outside_the_selection_is_put_back() {
     let state = AppState::in_memory().await.unwrap();
-    // The model rewrote the first sentence too.
     state.llm.replace(Scripted::new(
         "Thursday is fine. numbers by Wednesday. Thanks.",
     ));
@@ -536,8 +530,6 @@ async fn a_cloud_model_without_the_opt_in_refuses_text_an_earlier_suggestion_wro
     assert!(error.contains("written from your history"), "{error}");
     assert_eq!(model.calls(), 0, "nothing reached the cloud model");
 
-    // Text the user wrote themselves goes, and the proposal says no history
-    // was used.
     let proposal = assist(&state, &new_message(&state), &Ask::text("Thursday works."))
         .await
         .unwrap();
@@ -750,12 +742,10 @@ async fn applying_writes_only_the_text_region_and_keeps_the_signature() {
         draft_id: draft.id.clone(),
     };
 
-    // The client sends the text region; the signature is not part of it.
     let proposal = assist(&state, &target, &Ask::text("Thursday works."))
         .await
         .unwrap();
     assert_eq!(state.compose_proposals.len(), 1);
-    // Nothing changed yet.
     assert_eq!(
         stored_body(&state, &draft.id).await,
         format!("Thursday works.\n\n{SIGNATURE}")
@@ -794,7 +784,6 @@ async fn applying_refuses_when_the_draft_text_changed_since() {
         .await
         .unwrap();
 
-    // The user kept typing: the text region is no longer what was proposed on.
     let mut edited = state.store.get_draft(&draft.id).await.unwrap().unwrap();
     edited.content = DraftContent::markdown(format!("Thursday works, honestly.\n\n{SIGNATURE}"));
     assert!(state.store.update_draft(&edited).await.unwrap());
@@ -809,7 +798,6 @@ async fn applying_refuses_when_the_draft_text_changed_since() {
         format!("Thursday works, honestly.\n\n{SIGNATURE}"),
         "nothing was written"
     );
-    // The proposal is still there to explain the refusal, until it expires.
     assert_eq!(state.compose_proposals.len(), 1);
 }
 
@@ -956,7 +944,6 @@ async fn parallel_applies_write_the_text_once_and_never_lose_an_update() {
         apply(&state, &proposal.proposal_id, &draft.id),
         apply(&state, &proposal.proposal_id, &draft.id),
     );
-    // At least one wins; whatever the other did, the body is the proposal once.
     assert!(a.is_ok() || b.is_ok(), "{a:?} {b:?}");
     assert_eq!(
         stored_body(&state, &draft.id).await,
@@ -979,7 +966,6 @@ async fn an_unfilled_gap_blocks_a_stored_send_and_a_scheduled_send() {
     }];
     state.store.insert_draft(&draft).await.unwrap();
 
-    // The safety check names every gap, and offers no way round them.
     let ResponseData::DraftSafetyReportResponse { report } =
         crate::handler::mutations::check_draft_safety_request(
             &state,
@@ -1004,7 +990,6 @@ async fn an_unfilled_gap_blocks_a_stored_send_and_a_scheduled_send() {
     assert!(gap.override_token.is_none(), "no override for a gap");
     assert!(!report.allowed);
 
-    // A scheduled send that is due keeps the draft and clears the schedule.
     state
         .store
         .schedule_send(&draft.id, chrono::Utc::now() - chrono::Duration::hours(1))
@@ -1026,7 +1011,6 @@ async fn an_unfilled_gap_blocks_a_stored_send_and_a_scheduled_send() {
         .unwrap()
         .is_none());
 
-    // Filling the gaps lets the same draft go.
     let mut filled = state.store.get_draft(&draft.id).await.unwrap().unwrap();
     filled.content = DraftContent::markdown("Meet on the 14th for £40.");
     assert!(state.store.update_draft(&filled).await.unwrap());
@@ -1057,7 +1041,6 @@ async fn the_activity_log_learns_the_counts_and_never_the_text() {
     };
     assist(&state, &new_message(&state), &ask).await.unwrap();
 
-    // A pause edge is an ordered barrier behind the write.
     state.activity.pause(None);
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         while !state.activity.pause_status().0 {
@@ -1111,7 +1094,6 @@ async fn a_subject_reaches_the_prompt_as_data_in_its_own_block() {
     let task = &prompt[prompt.find("[TASK]").unwrap()..];
     assert!(!task.contains("Decline"), "{task}");
 
-    // A stored draft's own subject counts the same way.
     let mut stored = stored_draft(&state, "");
     stored.subject = "Quarterly numbers".into();
     state.store.insert_draft(&stored).await.unwrap();
@@ -1182,7 +1164,6 @@ async fn text_the_web_trimmed_still_applies_to_a_body_with_blank_lines_before_it
     let target = DraftTargetData::Stored {
         draft_id: draft.id.clone(),
     };
-    // The web sends the text region without the blank lines before it.
     let proposal = assist(&state, &target, &Ask::text("Hi")).await.unwrap();
     apply(&state, &proposal.proposal_id, &draft.id)
         .await
@@ -1219,7 +1200,6 @@ async fn no_subject_reaches_the_task_whoever_wrote_it() {
     let state = AppState::in_memory().await.unwrap();
     let model = Scripted::new("Hi.");
     state.llm.replace(model.clone());
-    // A reopened forward arrives as a `New` target carrying the incoming subject.
     let target = DraftTargetData::New {
         account_id: state.default_account_id(),
         to: vec![sam()],
@@ -1270,7 +1250,6 @@ async fn revising_shows_the_model_the_proposal_and_still_checks_against_the_user
         "{task}"
     );
     assert!(task.contains("revising the proposal"), "{task}");
-    // The user's own text is what the base hash and the diff are about.
     assert_eq!(second.base, first.base);
     assert!(second.yours_changed.is_empty());
     assert_eq!(second.text, "Thursday works.\n\nAlex");
@@ -1325,7 +1304,6 @@ async fn revising_a_proposal_that_is_gone_or_not_yours_is_a_clear_error() {
     let error = assist(&state, &target, &ask).await.unwrap_err();
     assert!(error.contains("another account"), "{error}");
 
-    // Made for one draft, revised for another.
     other.account_id = state.default_account_id();
     other.draft_id = Some(mxr_core::DraftId::new());
     other.proposal.proposal_id = "bound".into();
@@ -1427,8 +1405,6 @@ async fn revisions_keep_history_provenance_for_the_next_cloud_request() {
     let first = assist(&state, &target, &Ask::text("")).await.unwrap();
     assert!(!first.provenance.history_used);
 
-    // A retained proposal can carry history even when this request has no
-    // fresh examples or relationship material to gather.
     let mut retained = state.compose_proposals.get(&first.proposal_id).unwrap();
     retained.proposal.provenance.history_used = true;
     state.compose_proposals.insert(retained);

@@ -1,5 +1,3 @@
-//! Attention belongs to an exact row revision, never to the email's read flag.
-//! Apply this after cache reads too, so another client's peek is visible at once.
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::AccountId;
@@ -17,7 +15,6 @@ fn revision(value: &impl serde::Serialize) -> Result<String, HandlerError> {
 }
 
 fn todo_revision(todo: &TodoData) -> Result<String, HandlerError> {
-    // Not labels that change with the clock, completion, or provider flags.
     let evidence = todo
         .resolution
         .as_ref()
@@ -46,8 +43,6 @@ fn update_revision(line: &UpdateLineData) -> Result<String, HandlerError> {
         .map(mxr_core::MessageId::as_str)
         .collect::<Vec<_>>();
     messages.sort_unstable();
-    // Cut/section/delta/why can change without new content. New folded mail,
-    // a corrected fact, or a tracker transition is new information.
     revision(&(
         messages,
         &line.fact,
@@ -141,10 +136,6 @@ pub(super) async fn decorate(state: &AppState, result: HandlerResult) -> Handler
     }
     let mut revisions: HashMap<_, Vec<(String, String)>> = HashMap::new();
     for todo in &mut todos {
-        // Mutation replies and list reads must describe the same revision;
-        // some mutation paths build the task before attaching its evidence.
-        // List responses already attached evidence, including the absence of
-        // an offer. Do not repeat those queries on every cached list read.
         if attach_resolution && todo.resolution.is_none() {
             todo.resolution = state
                 .store
@@ -167,8 +158,6 @@ pub(super) async fn decorate(state: &AppState, result: HandlerResult) -> Handler
             .push((line.id.clone(), revision.clone()));
         line.seen_revision = Some(revision);
     }
-    // One indexed lookup per account/mode, bounded by this response's rows,
-    // not by the lifetime history of acknowledged revisions.
     let mut seen = HashMap::new();
     for ((account, mode), rows) in revisions {
         seen.insert(

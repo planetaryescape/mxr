@@ -1,17 +1,8 @@
-//! Background jobs a previous daemon died with.
-//!
-//! A job runs in a task of the daemon process, so a restart ends it. Its row
-//! stays `running` forever unless someone marks it. At startup this marks
-//! every such job failed, with the counts the job had persisted after its
-//! last finished chunk. Re-running the same search finishes what is left.
-
 use super::mutations::persist_job;
 use super::selection_jobs::{record_job_finished, JobActivity};
 use crate::state::AppState;
 use mxr_protocol::{ClientKind, JobData, JobStatusData};
 
-/// Marks every queued or running mutation job failed ("interrupted"). Returns
-/// how many it marked.
 pub(crate) async fn mark_interrupted_mutation_jobs(state: &AppState) -> usize {
     let rows = match state.store.list_unfinished_mutation_jobs().await {
         Ok(rows) => rows,

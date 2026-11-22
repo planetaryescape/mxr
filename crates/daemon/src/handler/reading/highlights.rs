@@ -1,11 +1,3 @@
-//! Changing a saved highlight: its note, or removing it.
-//!
-//! A highlight read back from Marginalia is mirrored, not owned: the next
-//! read-back would add a removed one again and overwrite an edited one's
-//! text, so only mxr's own can change (`LOCAL_HIGHLIGHT_ORIGIN`). The dry
-//! run and the real run both start from `own_highlight`, so a preview names
-//! exactly the row the mutation will touch.
-
 use super::item::{clean_note, highlight_data};
 use super::{ensure_items, Issue};
 use crate::handler::mutations::UNDO_WINDOW_SECS;
@@ -95,8 +87,6 @@ pub(in crate::handler) async fn remove_highlight(
     .await
 }
 
-/// Search finds highlights through the message's semantic chunks, so a
-/// change (or its undo) queues the message again.
 async fn reindex(state: &AppState, row: &ReadingHighlightRow) {
     if let Err(error) = state
         .semantic
@@ -107,8 +97,6 @@ async fn reindex(state: &AppState, row: &ReadingHighlightRow) {
     }
 }
 
-/// Undo: puts back what `update_highlight` and `remove_highlight` changed.
-/// Returns how many are back; one whose message was deleted since can't be.
 pub(in crate::handler) async fn restore_highlights(
     state: &AppState,
     priors: &[HighlightPrior],
@@ -120,8 +108,6 @@ pub(in crate::handler) async fn restore_highlights(
     Ok(back)
 }
 
-/// The highlight a change would touch, or why none may be touched. Shared
-/// by the dry run and the real run.
 async fn own_highlight(state: &AppState, id: &str) -> Result<ReadingHighlightRow, HandlerError> {
     let row = state
         .store
@@ -152,8 +138,6 @@ fn read_only(origin: &str) -> HandlerError {
     HandlerError::InvalidRequest(format!("made in {place}; change it there"))
 }
 
-/// Writes the undo entry. A failure leaves the change in place, flagged so
-/// the client can say it can't be undone.
 async fn record_undo(state: &AppState, prior: HighlightPrior) -> (Option<String>, bool) {
     let mutation_id = uuid::Uuid::now_v7().to_string();
     let now = Utc::now().timestamp();
@@ -198,7 +182,6 @@ async fn changed(
     })
 }
 
-/// The highlight with its item's title, source and link.
 async fn describe(
     state: &AppState,
     row: &ReadingHighlightRow,

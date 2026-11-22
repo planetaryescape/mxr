@@ -1,23 +1,3 @@
-//! `Request::ResolveDeskItems`: the desk's Done. "Nothing for me to do
-//! here, put it away", per lane:
-//!
-//! - You owe, New from people: archive and mark read, and keep the
-//!   conversation off the desk (any lane, a watched contact's row too)
-//!   until a message is stored in it after this.
-//! - Waiting on: mark read and done waiting (the same dismissal).
-//! - Due: resolve the promise, mark its conversation read and dismiss it
-//!   like the others. Nothing is archived. Other open promises on the
-//!   conversation stay under Due: due rows never read dismissals.
-//!
-//! Every lane also takes the conversation out of the reply-later queue,
-//! timed or not, and cancels a pending "bring it back if no reply"
-//! reminder, so nothing Done put away comes back on a timer.
-//!
-//! One plan serves the preview and the run, so a dry run lists exactly
-//! what the run changes. Messages go through the shared mutation path; the
-//! run saves one undo entry holding the messages' prior labels and read
-//! state plus the dismissals and promises as they were.
-
 use super::desk::self_matcher;
 use super::desk_lanes::{current_messages, is_outbound, last_stored};
 use super::mutations::{apply_mutation_batch, UNDO_WINDOW_SECS};
@@ -36,26 +16,16 @@ use mxr_store::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// What Done will do to one item.
 struct Plan {
     thread_id: ThreadId,
     account_id: Option<AccountId>,
     lane: DeskLaneKind,
-    /// In the inbox: archived (and marked read). Owed and people-new only.
     archive: Vec<MessageId>,
-    /// Unread: marked read.
     unread: Vec<MessageId>,
-    /// The dismissal, through the messages this plan read.
     mark: Option<DeskDismissalMark>,
-    /// The open promise to resolve (Due).
     commitment: Option<ContactCommitmentRecord>,
-    /// Flagged for reply later, as stored: cleared.
     reply_later: Vec<(MessageId, ReplyLaterState)>,
-    /// Pending "bring it back if no reply" reminders, as stored: cancelled.
     reminders: Vec<(MessageId, ReminderState)>,
-    /// Every message of the conversation: the run takes the timers off all
-    /// of them as they are then, not as the plan read them, so a reminder
-    /// that fires between plan and run can't outlive Done.
     thread_messages: Vec<MessageId>,
     error: Option<String>,
 }
@@ -77,13 +47,10 @@ impl Plan {
         }
     }
 
-    /// Archived and read, rather than only read: a lane that archives,
-    /// when no other mode keeps the thread in the inbox.
     fn archives(&self) -> bool {
         lane_archives(self.lane) && !self.archive.is_empty()
     }
 
-    /// Every message the run changes, each once.
     fn messages(&self) -> Vec<MessageId> {
         let mut seen = HashSet::new();
         self.archive
@@ -140,8 +107,6 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
         .map(|thread| (thread.id, thread.account_id))
         .collect();
 
-    // Each account's threads in one read, so every plan's messages and its
-    // dismissal watermark come from the same snapshot.
     let mut by_account: HashMap<AccountId, Vec<ThreadId>> = HashMap::new();
     for thread_id in &thread_ids {
         if let Some(account) = owners.get(thread_id) {
@@ -178,9 +143,6 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
             .collect(),
     };
 
-    // The last-mode rule SetModeDone follows: the provider archive happens
-    // only when no other mode (To do, Updates, Reading) still holds the
-    // thread and `modes.archive_on_last_done` is on.
     let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
     let mut held_elsewhere: HashSet<ThreadId> = HashSet::new();
     for (account, ids) in &by_account_ids {
@@ -202,8 +164,6 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
         let found = owners
             .get(&item.thread_id)
             .zip(threads.get(&item.thread_id));
-        // One plan per conversation, so each message is changed and
-        // snapshotted for undo once.
         let plan = if !seen.insert(&item.thread_id) {
             Err("this conversation is already in the request".to_string())
         } else {
@@ -234,15 +194,11 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
     Ok(plans)
 }
 
-/// What would bring a conversation back on its own, per message.
 struct Timers {
     reply_later: HashMap<MessageId, ReplyLaterState>,
-    /// Pending only.
     reminders: HashMap<MessageId, ReminderState>,
 }
 
-/// One item's plan, or why it cannot be done (the outer error is the
-/// store's).
 async fn plan_item(
     state: &AppState,
     item: &DeskDoneItemData,
@@ -259,7 +215,6 @@ async fn plan_item(
             return Ok(Err("a commitment id only goes with the Due lane".into()));
         }
         (Some(lane), None) => lane,
-        // Only here is who wrote last needed, so only here is it looked up.
         (None, None) => {
             let is_self = self_matcher(state, account_id).await?;
             inferred_lane(thread, &is_self)
@@ -275,7 +230,6 @@ async fn plan_item(
             {
                 return Ok(Err("that promise belongs to another conversation".into()));
             }
-            // Already kept: the rest of Done still applies.
             Some(record) => (record.status == CommitmentStatus::Open).then_some(record),
         },
     };
@@ -293,9 +247,6 @@ async fn plan_item(
         .filter(|message| !message.flags.contains(MessageFlags::READ))
         .map(|message| message.id.clone())
         .collect();
-    // The watermark `DeskDismissal::covers` reads: anything stored after
-    // this plan brings the conversation back. Due too, or keeping the
-    // promise would uncover the conversation's Waiting on row.
     let mark = DeskDismissal::through(thread).map(|through| DeskDismissalMark {
         account_id: account_id.clone(),
         thread_id: item.thread_id.clone(),
@@ -334,13 +285,10 @@ async fn plan_item(
     }))
 }
 
-/// You owe and New from people are archived; the other lanes never are.
 fn lane_archives(lane: DeskLaneKind) -> bool {
     matches!(lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
 }
 
-/// The desk's own rule when the caller names no lane: waiting when you
-/// wrote last, otherwise owed.
 fn inferred_lane(thread: &[DeskMessage], is_self: &dyn Fn(&str) -> bool) -> DeskLaneKind {
     match last_stored(current_messages(thread, Utc::now()), |_| true) {
         Some(message) if is_outbound(message, is_self) => DeskLaneKind::Waiting,
@@ -357,8 +305,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     let archive_ids: Vec<MessageId> = archiving.into_iter().flat_map(Plan::messages).collect();
     let read_ids: Vec<MessageId> = reading.into_iter().flat_map(Plan::messages).collect();
 
-    // Both commands share the id: their dedup keys never collide, and one
-    // undo entry covers them.
     let mut snapshots: Vec<UndoEntrySnapshot> = Vec::new();
     let mut failed: Vec<UndoEntrySnapshot> = Vec::new();
     let mut account_errors: HashMap<AccountId, String> = HashMap::new();
@@ -375,8 +321,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     .into_iter()
     .flatten()
     {
-        // A batch that fails outright must not lose the undo of one that
-        // already ran: note the error and carry on to the undo entry.
         let batch = match apply_mutation_batch(state, &cmd, &mutation_id, None).await {
             Ok(batch) => batch,
             Err(error) => {
@@ -397,8 +341,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         }
     }
 
-    // An item is done only when all of its messages changed; the rest keep
-    // their row, so running Done again retries them.
     let changed: HashSet<&MessageId> = snapshots.iter().map(|s| &s.message_id).collect();
     for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
         if plan.messages().iter().all(|id| changed.contains(id)) {
@@ -413,11 +355,8 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         plan.error = Some(format!("{why}; run Done again to retry"));
     }
 
-    // A message that failed half way (read, not archived) is undone too.
     snapshots.extend(failed);
 
-    // The messages changed already: whatever happens here, their undo is
-    // saved below.
     let mut desk = DeskUndo::default();
     let mut put_away_failed = false;
     if let Err(error) = put_away(state, &mut plans, &mut desk).await {
@@ -428,8 +367,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         }
     }
 
-    // Every account whose messages, dismissal or promise actually changed.
-    // Captured before the undo entry takes the snapshots.
     let mut changed_accounts: HashSet<AccountId> = snapshots
         .iter()
         .map(|snapshot| snapshot.account_id.clone())
@@ -456,10 +393,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         }
     };
 
-    // A row that was put away leaves the desk on every client; without this
-    // the second client keeps showing it. A dry run never reaches `run`, a
-    // plan whose every write failed changed nothing, and a failed put_away
-    // may have written some, so it notifies every plan account.
     changed_accounts.extend(
         plans
             .iter()
@@ -478,8 +411,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     })
 }
 
-/// Dismiss the done conversations and resolve their promises, noting in
-/// `desk` how each was before.
 async fn put_away(
     state: &AppState,
     plans: &mut [Plan],
@@ -516,8 +447,6 @@ async fn put_away(
     }
     let now = Utc::now();
     for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
-        // One transaction reads and clears, so the undo holds exactly what
-        // this took, including a flag a reminder set since the plan.
         let taken = state.store.take_timers(&plan.thread_messages, now).await?;
         for (message_id, flag) in &taken.reply_later {
             desk.reply_later_priors
@@ -536,8 +465,6 @@ async fn put_away(
     Ok(())
 }
 
-/// Undo's half for what Done (the desk's, or a mode's) changed beyond
-/// messages.
 pub(super) async fn restore_desk_state(
     state: &AppState,
     desk: &DeskUndo,
@@ -580,8 +507,6 @@ pub(super) async fn restore_desk_state(
     super::deferral::restore_timers(state, desk, applied_at).await
 }
 
-/// `run` over hand-built plans (each conversation's messages, archived or
-/// marked read by its lane), for tests that need a batch to fail.
 #[cfg(test)]
 pub(super) async fn run_messages_for_test(
     state: &AppState,
@@ -610,8 +535,6 @@ pub(super) async fn run_messages_for_test(
     run(state, plans).await
 }
 
-/// Done with `between` run after the plan and before the run, for tests of
-/// what happens in that gap (a reminder firing).
 #[cfg(test)]
 pub(super) async fn resolve_with_gap_for_test(
     state: &AppState,

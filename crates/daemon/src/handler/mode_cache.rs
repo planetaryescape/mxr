@@ -1,23 +1,3 @@
-//! Ready-made Now, rail and mode views. Building one reads and classifies
-//! every inbox message (about a second on a large mailbox), which is too
-//! slow for a launcher. A background pass rebuilds views someone read
-//! recently whenever mail changes, so a read usually finds one ready. It
-//! refreshes active views before they age out. Otherwise the clients' 60s
-//! polling interval meets the cache's 60s expiry and every poll is a cold
-//! rebuild. Views nobody reads are dropped instead of refreshed.
-//!
-//! A view is only served when nothing it could show has changed since it
-//! was built:
-//! - no request that is not read-only has finished since (any mutation
-//!   through the daemon, so your own changes always show);
-//! - the store's change feed has not moved since (sync, background loops),
-//!   and the build read the count with no write in flight, so it saw every
-//!   commit counted (see `Store::changes_landed`);
-//! - it is younger than `MAX_AGE` and was built in the current local hour,
-//!   because the views word time ("due soon", the evening switch, today).
-//!
-//! Otherwise the read builds it, as it would without the cache.
-
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -31,30 +11,14 @@ use tokio::sync::watch;
 use super::{messages, modes, now, reading, updates, HandlerResult};
 use crate::state::AppState;
 
-/// Longest a view is served without rebuilding first, so what the views
-/// word by the clock (an Updates cut, a to-do coming back, "due soon")
-/// is never more than this late.
 const MAX_AGE: Duration = Duration::from_secs(60);
 const REFRESH_AHEAD: Duration = Duration::from_secs(10);
-/// How long a build waits for a write in flight to finish before building
-/// anyway. A build that could not wait it out may have missed a commit, so
-/// it answers only the read that asked for it and is never served again.
 const LAND_WAIT: Duration = Duration::from_millis(50);
-/// The refresher rebuilds a view for a change at most this often, which
-/// bounds the work if some table is written continuously.
 const MIN_REBUILD: Duration = Duration::from_secs(5);
-/// Views nobody read for this long are dropped instead of rebuilt. Keeping
-/// a view fresh costs a rebuild (about a second on a large mailbox) at every
-/// change, so this is the burst a client is in use, not the gap between
-/// visits; a client keeps its own last copy for those.
 const ACTIVE: Duration = Duration::from_secs(5 * 60);
-/// Most views kept. Messages' `limit` and Updates' `cut` come from the
-/// client, so the set of keys is otherwise unbounded; the least recently
-/// read view goes first.
 const MAX_ENTRIES: usize = 16;
 const TICK: Duration = Duration::from_millis(500);
 
-/// A cacheable read: one of the mode requests without side effects asked.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ModeView {
     Now {
@@ -65,9 +29,6 @@ pub(crate) enum ModeView {
     },
     Messages {
         account_id: Option<AccountId>,
-        /// The whole filter, the legacy top-level turn merged in: each
-        /// filter is its own key. Complete, fresh attention snapshots can
-        /// also answer narrower attention filters without rebuilding.
         filter: MessagesFilterData,
         limit: u32,
     },
@@ -82,9 +43,6 @@ pub(crate) enum ModeView {
 }
 
 impl ModeView {
-    /// The view a request reads, when it can be answered from the cache.
-    /// Requests that mark something seen or visited write, so they always
-    /// run.
     pub(crate) fn of(req: &Request) -> Option<Self> {
         Some(match req {
             Request::GetNow { account_id } => Self::Now {
@@ -164,35 +122,22 @@ struct Entry {
     data: Option<ResponseData>,
     started: Instant,
     built: Instant,
-    /// `ModeCache::mutations` when the build started.
     mutations: u64,
-    /// The change feed's sequence when the build started.
     changes: u64,
-    /// `changes` was read with no write in flight, so the build saw every
-    /// commit it counts; see `Store::changes_landed`.
     settled: bool,
-    /// The local hour the build started in; see `local_hour`.
     hour: i64,
     last_read: Instant,
-    /// Held while this view builds, so concurrent readers wait for one build.
     building: Arc<tokio::sync::Mutex<()>>,
 }
 
-/// The NowSnapshot a view build just made, for the other view built in the
-/// same tick. See `now::snapshot_inner`.
 struct SharedSnapshot {
     account_id: Option<AccountId>,
     accounts: Vec<AccountId>,
     offset: String,
-    /// The viewer's clock at the build, to the second: a test or a clock
-    /// change must never be served a snapshot worded for another moment.
     now_sec: i64,
     snapshot: Arc<now::NowSnapshot>,
-    /// When it was built, for the one-second reuse window.
     built: Instant,
-    /// The change feed's sequence at that moment.
     changes: u64,
-    /// `ModeCache::mutations` at that moment.
     mutations: u64,
     hour: i64,
 }
@@ -202,17 +147,11 @@ pub(crate) struct ModeCache {
     entries: Mutex<Vec<Entry>>,
     shared_snapshot: Mutex<Option<SharedSnapshot>>,
     mutations: AtomicU64,
-    /// Tests: pretend a write stays in flight.
     #[cfg(test)]
     write_in_flight: std::sync::atomic::AtomicBool,
 }
 
 impl ModeCache {
-    /// The NowSnapshot built for this scope within the last tick, when nothing
-    /// it reads has changed since. Now and the rail share one snapshot instead
-    /// of each reading and classifying the inbox; a client that reads both
-    /// back to back, and the refresher that rebuilds both after a change, were
-    /// doing that work twice.
     pub(super) fn shared_snapshot(
         &self,
         account_id: Option<&AccountId>,
@@ -234,7 +173,6 @@ impl ModeCache {
         .then(|| Arc::clone(&shared.snapshot))
     }
 
-    /// Keep the snapshot just built for the other view in this tick.
     pub(super) fn remember_snapshot(
         &self,
         account_id: Option<&AccountId>,
@@ -257,14 +195,10 @@ impl ModeCache {
         });
     }
 
-    /// A request that may have changed mail finished: nothing built before
-    /// it may answer a read.
     pub(crate) fn note_mutation(&self) {
         self.mutations.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// The view, from the cache when nothing it shows can have changed,
-    /// otherwise built now.
     pub(crate) async fn read(&self, state: &AppState, view: ModeView) -> HandlerResult {
         let arrived = Instant::now();
         let feed = state.store.change_feed();
@@ -321,10 +255,6 @@ impl ModeCache {
             Arc::clone(&entry.building)
         };
         let _building = lock.lock().await;
-        // Another reader or the refresher may have built it meanwhile. A
-        // build that started after this read arrived is as fresh as one this
-        // read would start, even one that could not wait out a write, so
-        // readers queued behind it take it instead of each building again.
         let fresh = {
             let entries = self.entries.lock();
             entries.iter().find(|e| e.view == view).and_then(|entry| {
@@ -343,7 +273,6 @@ impl ModeCache {
         self.build(state, &view).await
     }
 
-    /// Make every cached view look `by` older.
     #[cfg(test)]
     pub(super) fn age(&self, by: Duration) {
         for entry in self.entries.lock().iter_mut() {
@@ -352,13 +281,11 @@ impl ModeCache {
         }
     }
 
-    /// How many views are kept.
     #[cfg(test)]
     pub(super) fn len(&self) -> usize {
         self.entries.lock().len()
     }
 
-    /// Make every cached view look built in the previous local hour.
     #[cfg(test)]
     pub(super) fn previous_hour(&self) {
         for entry in self.entries.lock().iter_mut() {
@@ -366,13 +293,11 @@ impl ModeCache {
         }
     }
 
-    /// Pretend a write is in flight, as if a slow commit were still landing.
     #[cfg(test)]
     pub(super) fn hold_write(&self, held: bool) {
         self.write_in_flight.store(held, Ordering::Release);
     }
 
-    /// A view as a read would get it now, without building one.
     #[cfg(test)]
     pub(super) fn cached(&self, state: &AppState, view: &ModeView) -> Option<ResponseData> {
         let changes = state.store.change_feed().seq();
@@ -398,16 +323,11 @@ impl ModeCache {
         good.then(|| entry.data.clone()).flatten()
     }
 
-    /// Build `view` and keep the result unless a later build already
-    /// replaced it. The caller holds the view's build lock.
     async fn build(&self, state: &AppState, view: &ModeView) -> HandlerResult {
         let feed = state.store.change_feed();
         let started = Instant::now();
         let mutations = self.mutations.load(Ordering::Acquire);
         let hour = local_hour();
-        // The count first: a commit whose hook runs after this read is not
-        // counted, so the next read rebuilds. Read with no write in flight,
-        // every commit it counts is visible to the build.
         let (changes, settled) = match self.changes_landed(state).await {
             Some(changes) => (changes, true),
             None => (feed.seq(), false),
@@ -430,8 +350,6 @@ impl ModeCache {
         result
     }
 
-    /// One refresher pass: drop idle views and rebuild the active ones a
-    /// change, a mutation or a new hour has made stale.
     pub(super) async fn refresh(&self, state: &AppState) {
         let feed = state.store.change_feed();
         let seq = feed.seq();
@@ -443,9 +361,6 @@ impl ModeCache {
                 .iter()
                 .filter(|e| e.data.is_some())
                 .filter(|e| {
-                    // A view that may have missed a commit is never served, so
-                    // it is rebuilt like a changed one, at most every
-                    // `MIN_REBUILD` while a long write keeps the writer.
                     let changed =
                         (!e.settled || e.changes != seq) && e.built.elapsed() >= MIN_REBUILD;
                     changed
@@ -457,7 +372,6 @@ impl ModeCache {
                 .collect()
         };
         for (view, lock) in due {
-            // A reader is already building it.
             let Ok(_building) = lock.try_lock() else {
                 continue;
             };
@@ -474,8 +388,6 @@ impl ModeCache {
     }
 }
 
-/// Hours since the epoch in local time: changes at every local hour, so at
-/// the evening switch and at midnight.
 fn local_hour() -> i64 {
     Local::now()
         .naive_local()
@@ -502,7 +414,6 @@ impl Entry {
     }
 }
 
-/// Keep recently read views fresh until shutdown.
 pub(crate) async fn refresher_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
     let mut ticker = tokio::time::interval(TICK);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);

@@ -404,7 +404,6 @@ async fn recurring_unknown_and_failed_tasks_pause_without_mutations() {
         serde_json::json!({"sync_state": "unknown"}),
         serde_json::json!({"sync_state": "failed"}),
     ] {
-        // The CLI shape, not the normalized merge DTO.
         fake.set_remote(&fake.fields());
         let mut task: serde_json::Value =
             serde_json::from_slice(&std::fs::read(fake.path().join("remote.json")).unwrap())
@@ -674,7 +673,6 @@ async fn reopening_a_linked_task_restores_the_runway_not_its_old_expired_bucket(
         .bind(&id).execute(state.store.writer()).await.unwrap();
     let mut completed = fake.fields();
     completed.completed = true;
-    // Establish agreement on the terminal state before Microsoft reopens it.
     state
         .store
         .note_todo_microsoft_sync(&id, Some(&serde_json::to_string(&completed).unwrap()), None)

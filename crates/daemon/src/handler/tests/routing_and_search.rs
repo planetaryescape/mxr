@@ -26,11 +26,6 @@ fn request_lane_keeps_microsoft_subprocesses_off_the_hot_lane() {
 
 #[test]
 fn request_lane_routes_llm_and_network_requests_to_bulk() {
-    // Sample of the slow lane: at least one LLM call, one network
-    // round-trip, and one heavy rebuild. Locks the classifier so a
-    // refactor that drops a slow request back to Hot will trip the
-    // test instead of silently re-introducing head-of-line blocking
-    // on fast user-initiated commands.
     let llm = Request::SummarizeThread {
         thread_id: mxr_core::ThreadId::new(),
     };
@@ -132,10 +127,6 @@ fn sanitized_attachment_filename_uses_stable_fallback_for_windows_reserved_names
     assert_eq!(sanitized, format!("attachment-{}", attachment_id.as_str()));
 }
 
-// An oversized DraftCompose instruction, driven through the REAL dispatch
-// path, must surface as an explicit InvalidRequest wire kind — not fall back to
-// Internal via string-sniffing. This pins the wire contract end to end, so
-// reverting the boundary to `Response::error` would trip here.
 #[tokio::test]
 async fn dispatch_draft_compose_rejects_oversized_instruction_as_invalid_request() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -178,7 +169,6 @@ async fn dispatch_list_envelopes_by_label() {
         .await
         .unwrap();
 
-    // Get labels first
     let labels_msg = IpcMessage {
         expected_workspace: None,
         id: 10,
@@ -196,13 +186,11 @@ async fn dispatch_list_envelopes_by_label() {
         other => panic!("Expected Labels, got {other:?}"),
     };
 
-    // Find Inbox label
     let inbox = labels
         .iter()
         .find(|l| l.name == "Inbox")
         .expect("Inbox label missing");
 
-    // Fetch envelopes by Inbox label
     let msg = IpcMessage {
         expected_workspace: None,
         id: 11,
@@ -978,11 +966,6 @@ async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let _starved_reader = state.store.reader().acquire().await.unwrap();
 
-    // A snapshot that never resolves, so the budget always wins. Racing a real
-    // store against a zero budget does not settle it: `timeout` polls the
-    // future before enforcing the deadline, so an in-memory snapshot that
-    // finishes on the first poll makes the assertion below fail — which is how
-    // this test passed 15 times locally and failed on CI.
     let response = crate::handler::diagnostics_impl::get_status_within_budget(
         &state,
         std::time::Duration::from_millis(10),
@@ -1004,12 +987,9 @@ async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
             ..
         } => {
             assert!(degraded, "a snapshot that missed its budget must say so");
-            // The three fields the flag is about: empty because nothing was
-            // read, not because the store is empty.
             assert!(accounts.is_empty());
             assert_eq!(total_messages, 0);
             assert!(sync_statuses.is_empty());
-            // The DB-free fields stay a real reading.
             assert!(daemon_pid.is_some());
             assert!(daemon_version.is_some());
             assert!(recovery_supported);
@@ -1023,9 +1003,6 @@ async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
 async fn status_is_not_degraded_when_the_db_snapshot_completes() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
-    // The mirror of the degraded test, and deterministic for the same reason:
-    // a snapshot that is already resolved cannot miss any budget, so this can
-    // never flip the other way under load.
     let response = crate::handler::diagnostics_impl::get_status_within_budget(
         &state,
         std::time::Duration::from_millis(10),
@@ -1098,9 +1075,6 @@ async fn status_and_doctor_report_a_stopped_search_worker() {
                 .find(|finding| finding.message.contains("Search index worker stopped"))
                 .expect("doctor must surface a stopped search worker");
             assert_eq!(finding.remediation, vec!["mxr restart".to_string()]);
-            // `mxr doctor --check` exits non-zero on exactly this flag, and
-            // that exit code is what agents and CI read. A pretty-printed
-            // error nobody can act on is not surfacing the failure.
             assert!(
                 !report.healthy,
                 "an error-severity finding must make the report unhealthy"
@@ -1125,9 +1099,6 @@ async fn a_doctor_report_cannot_disagree_with_itself_about_search() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::DoctorReport { report },
         }) => {
-            // The finding and the feature-health block are built from one
-            // reading of the worker, so a report can never raise "search index
-            // worker stopped" beside "search: healthy".
             let raises_finding = report
                 .findings
                 .iter()
@@ -1169,7 +1140,6 @@ async fn dispatch_shutdown_acknowledges_without_exiting() {
 
 #[tokio::test]
 async fn a_doctor_report_carries_the_daemon_address_cache_flag() {
-    // `mxr doctor` (local path) reads this flag from the daemon's report.
     let state = Arc::new(AppState::in_memory().await.unwrap());
     state.account_addresses.mark_stale();
     let msg = IpcMessage {
@@ -1270,8 +1240,6 @@ async fn dispatch_structured_search_in_semantic_mode_falls_back_to_lexical() {
     }
 }
 
-// Requires the local semantic embedder to populate fallback explanation details;
-// gate to the semantic-local lane so the fast lane stays green.
 #[cfg(feature = "semantic-local")]
 #[tokio::test]
 async fn dispatch_structured_search_in_semantic_mode_explains_fallback() {
@@ -1317,8 +1285,6 @@ async fn dispatch_structured_search_in_semantic_mode_explains_fallback() {
     }
 }
 
-// Requires the local semantic embedder to populate explain.semantic_query;
-// gate to the semantic-local lane so the fast lane stays green.
 #[cfg(feature = "semantic-local")]
 #[tokio::test]
 async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
@@ -1410,7 +1376,6 @@ async fn dispatch_get_body_after_sync() {
         .await
         .unwrap();
 
-    // Get first envelope
     let envelopes_msg = IpcMessage {
         expected_workspace: None,
         id: 11,
@@ -1434,7 +1399,6 @@ async fn dispatch_get_body_after_sync() {
         other => panic!("Expected Envelopes, got {other:?}"),
     };
 
-    // Get body for that envelope
     let body_msg = IpcMessage {
         expected_workspace: None,
         id: 12,
@@ -1722,7 +1686,6 @@ async fn dispatch_list_bodies_preserves_attachments() {
 async fn status_recovery_metadata_does_not_escape_starved_reader_budget() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let held_reader = state.store.reader().acquire().await.unwrap();
-    // Both the DB and semantic snapshots can exhaust their two-second budgets.
     let response = tokio::time::timeout(
         std::time::Duration::from_secs(6),
         crate::handler::diagnostics_impl::get_status(&state),
@@ -1745,8 +1708,6 @@ async fn status_recovery_metadata_does_not_escape_starved_reader_budget() {
         .await;
 }
 
-/// A daemon whose `[search]` defaults are the test's own config, with the
-/// fake account synced so the index has messages to page through.
 async fn search_defaults_state(
     max_results: usize,
     default_sort: mxr_config::SortOrder,
@@ -1764,7 +1725,6 @@ async fn search_defaults_state(
     state
 }
 
-/// Dates of the hits, in result order, read back from the store.
 async fn hit_dates(
     state: &Arc<AppState>,
     results: &[mxr_protocol::SearchResultItem],
@@ -1872,7 +1832,6 @@ fn search_page_size_from_config_clamps_to_u32_and_never_returns_zero() {
 #[test]
 fn only_pure_reads_are_cancelled_when_their_client_leaves() {
     assert!(request_is_abandonable(&Request::GetKeymap));
-    // Read-class, but a turn drives tools that mutate once approved.
     assert!(!request_is_abandonable(&Request::AssistantDecide {
         conversation_id: "c".into(),
         decisions: Vec::new(),

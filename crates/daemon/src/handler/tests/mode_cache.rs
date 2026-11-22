@@ -1,13 +1,9 @@
-//! The ready-made Now and mode views: served from the cache only while
-//! nothing they show can have changed.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use crate::handler::mode_cache::ModeView;
 use chrono::Duration;
 use mxr_core::id::ThreadId;
 
-/// When the daemon built the Now it answered with.
 async fn now_built_at(fx: &Fixture) -> chrono::DateTime<chrono::Utc> {
     built_at(request(fx, Request::GetNow { account_id: None }).await)
 }
@@ -19,7 +15,6 @@ fn built_at(data: ResponseData) -> chrono::DateTime<chrono::Utc> {
     }
 }
 
-/// When the cached Now a read would get was built, without building one.
 fn cached_now_built_at(fx: &Fixture) -> Option<chrono::DateTime<chrono::Utc>> {
     fx.state
         .mode_cache
@@ -139,9 +134,6 @@ async fn store_new_mail(fx: &Fixture) {
     .await;
 }
 
-/// A build that could not wait out a write in flight may have missed a
-/// commit, so no later read gets it: each builds afresh until a build
-/// reads the count with the writer free, and that one is served.
 #[tokio::test]
 async fn a_view_built_during_a_write_in_flight_is_never_served_again() {
     let fx = Fixture::new().await;
@@ -161,9 +153,6 @@ async fn a_view_built_during_a_write_in_flight_is_never_served_again() {
     );
 }
 
-/// Readers that arrive together during a long write share builds instead
-/// of each building again in turn: at most the build already running, and
-/// one that starts after they all arrived.
 #[tokio::test]
 async fn readers_queued_during_a_write_in_flight_share_a_build() {
     let fx = Fixture::new().await;

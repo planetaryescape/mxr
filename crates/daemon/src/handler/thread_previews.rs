@@ -1,6 +1,3 @@
-//! `GetThreadPreviews`: a thread's headline facts with no bodies, for
-//! hover cards and `mxr thread-preview`. One store read for the batch.
-
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::ThreadId;

@@ -1,9 +1,3 @@
-//! LLM provider keys and routes: storing and removing keys, applying `[llm]`
-//! edits made outside the daemon, and reporting each feature's model, route
-//! order and route health.
-//!
-//! Key values never leave this module in a response, a log line or an error.
-
 use super::HandlerResult;
 use crate::llm_keys::{clean_key, provider_data, provider_from_data, status_of, LlmKeys};
 use crate::state::{
@@ -33,7 +27,6 @@ pub(super) async fn set_llm_key(
         let after = status_of(provider, Some(keys.path()));
         return Ok(change(provider, true, true, after));
     }
-    // fsync-ing the secrets file blocks.
     let after = tokio::task::spawn_blocking(move || {
         let keys = LlmKeys::at_default_path();
         keys.store(provider, &key)
@@ -42,7 +35,6 @@ pub(super) async fn set_llm_key(
     })
     .await
     .map_err(|error| error.to_string())??;
-    // A verdict reached with the old key says nothing about the new one.
     state.llm.route_health().forget_provider(provider);
     tracing::info!(provider = provider.key(), "LLM provider key stored");
     Ok(change(provider, false, true, after))
@@ -95,12 +87,10 @@ fn change(
     }
 }
 
-/// Whether the base `[llm]` model is one mxr routes itself.
 pub(crate) fn base_model_routed(config: &mxr_config::LlmConfig) -> bool {
     llm_model_routes(&crate::state::base_llm_config(config)).is_some()
 }
 
-/// Key presence for each provider, never the key.
 pub(crate) fn key_statuses() -> Vec<LlmKeyStatusData> {
     let keys = LlmKeys::at_default_path();
     RouteProvider::ALL
@@ -109,9 +99,6 @@ pub(crate) fn key_statuses() -> Vec<LlmKeyStatusData> {
         .collect()
 }
 
-/// One row per feature: its model and, for a routed model, each route's
-/// standing, in the order requests try them. With `[llm.fallback]`, a model
-/// `base_url` serves shows the endpoint's standing and the fallback's routes.
 pub(crate) fn feature_statuses(state: &AppState) -> Vec<LlmFeatureStatusData> {
     let config = state.config_snapshot().llm;
     let keys = LlmKeys::at_default_path();
@@ -211,7 +198,6 @@ fn route_state_data(state: RouteState) -> LlmRouteStateData {
     }
 }
 
-/// When a cooling or broken route may be tried again.
 fn retry_at(
     view: &RouteView,
     now: chrono::DateTime<chrono::Utc>,

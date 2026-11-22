@@ -1,17 +1,3 @@
-//! Reading (blueprint 22, phase 5): the edition, the reader and Later.
-//!
-//! Reading holds inbox mail the sender classifier puts in Reading, read
-//! through `places::placed_inbox` minus Reading's done marks, so the
-//! edition, mode membership and Now never disagree. Each message is cut
-//! into readable items by `mxr_reading::extract` (cached in
-//! `reading_items`), each source gets its fade window, and the edition
-//! bands and ranks them.
-//!
-//! Expiry is done in Reading: an issue past its source's window gets
-//! Reading's done mark, written here and by the post-sync sweep through
-//! the same plan. It never archives at the provider (blueprint 22, "Expiry
-//! lets go in its mode"); Later never expires.
-
 mod article;
 mod highlights;
 mod item;
@@ -43,12 +29,9 @@ use mxr_store::{DeskDismissal, ModeDoneMark, ReadingItemRow, ReadingStateRow, Re
 use sources::{SourceInfo, Sources};
 use std::collections::{HashMap, HashSet};
 
-/// Later items older than this are asked about once.
 const STILL_WANT_IT_AFTER: Duration = Duration::days(30);
-/// Finished items read for the reader's pace.
 const PACE_SAMPLES: u32 = 50;
 
-/// `<message id>:<index>`.
 pub(super) fn item_key(message_id: &MessageId, idx: i64) -> String {
     format!("{message_id}:{idx}")
 }
@@ -68,23 +51,18 @@ pub(super) fn parse_item_key(key: &str) -> Result<(MessageId, i64), HandlerError
     Ok((message_id, idx))
 }
 
-/// The message facts Reading needs, from an inbox row or an envelope.
 #[derive(Debug, Clone)]
 pub(super) struct Issue {
     pub id: MessageId,
     pub account_id: AccountId,
     pub thread_id: ThreadId,
-    /// Lowercase.
     pub sender: String,
-    /// As stored, for queries by address.
     pub raw_sender: String,
     pub source_name: String,
     pub subject: String,
-    /// Shown when no body is stored.
     pub snippet: String,
     pub date: DateTime<Utc>,
     pub unsubscribe: UnsubscribeMethod,
-    /// Why the classifier put it in Reading, when it is in the inbox.
     pub kind: Option<MailKindData>,
 }
 
@@ -124,7 +102,6 @@ impl Issue {
 }
 
 impl Issue {
-    /// What extraction reads from this issue and its stored body.
     pub(super) fn input<'a>(
         &'a self,
         body: Option<&'a mxr_core::types::MessageBody>,
@@ -139,7 +116,6 @@ impl Issue {
     }
 }
 
-/// The demo mailbox, in `mxr demo` or the web app's end-to-end daemon.
 pub(super) fn demo_mailbox() -> bool {
     mxr_config::is_demo_instance() || mxr_provider_fake::fixtures::demo_dataset_active()
 }
@@ -150,8 +126,6 @@ fn source_name(name: Option<&str>, email: &str) -> String {
         .map_or_else(|| email.to_ascii_lowercase(), str::to_string)
 }
 
-/// The cached items of `issues`, extracting the ones missing or built by
-/// an older extractor. Extraction runs off the async threads.
 pub(super) async fn ensure_items(
     state: &AppState,
     issues: &[&Issue],
@@ -222,8 +196,6 @@ fn item_rows(issue: &Issue, extraction: &mxr_reading::Extraction) -> Vec<Reading
         extractor_version: EXTRACTOR_VERSION,
     }];
     for (i, link) in extraction.links.iter().enumerate() {
-        // Keyed by the link's URL, not its place, so what you did with it
-        // follows it if a later extraction orders the issue differently.
         let mut idx = mxr_reading::urls::link_idx(&link.url);
         while rows.iter().any(|row| row.idx == idx) {
             idx += 1;
@@ -264,7 +236,6 @@ fn band_data(band: Band) -> ReadingBandData {
     }
 }
 
-/// "Fades Sunday unless you keep it." in the daemon's time zone.
 fn fades_line(expires_at: DateTime<Utc>, now: DateTime<Utc>) -> String {
     let local = expires_at.with_timezone(&Local);
     let today = now.with_timezone(&Local).date_naive();
@@ -277,7 +248,6 @@ fn fades_line(expires_at: DateTime<Utc>, now: DateTime<Utc>) -> String {
     format!("Fades {when} unless you keep it.")
 }
 
-/// Everything item data is built from, read once per request.
 pub(super) struct Context {
     pub filed: HashMap<MessageId, DateTime<Utc>>,
     pub states: HashMap<(MessageId, i64), ReadingStateRow>,
@@ -326,7 +296,6 @@ impl Context {
     }
 }
 
-/// One item as the edition and Later show it.
 pub(super) fn item_data(
     issue: &Issue,
     rows: &[ReadingItemRow],
@@ -420,7 +389,6 @@ pub(super) fn item_data(
     })
 }
 
-/// Each account's visit, which bands its own mail.
 pub(super) type Visits = HashMap<AccountId, ReadingVisitRow>;
 
 pub(super) async fn load_visits(
@@ -434,13 +402,11 @@ pub(super) async fn load_visits(
     Ok(visits)
 }
 
-/// The edition as planned at `now`, with the threads it found expired.
 pub(super) struct Plan {
     pub edition: ReadingEditionData,
     pub expired: Vec<(AccountId, ThreadId)>,
 }
 
-/// Reading's current inbox mail, after its done marks.
 async fn current_issues(
     state: &AppState,
     accounts: &[AccountId],
@@ -480,8 +446,6 @@ pub(super) async fn plan(
         .map(Issue::from_envelope)
         .collect();
     let all: Vec<&Issue> = issues.iter().chain(later_issues.iter()).collect();
-    // Expiry depends on source dates, not extracted text. Keep every source's
-    // history, but only rebuild displayed items and finished pace samples.
     let sources = Sources::load(state, &all, visits, now).await?;
     let scheduled: Vec<_> = issues
         .iter()
@@ -525,7 +489,6 @@ pub(super) async fn plan(
             expired_threads.entry(key).or_insert(true);
             continue;
         };
-        // A thread with a current issue is not expired.
         expired_threads.insert(key, false);
         let Some(rows) = items.get(&issue.id) else {
             continue;
@@ -591,7 +554,6 @@ pub(super) async fn plan(
         })
         .collect();
 
-    // The latest visit across the accounts shown.
     let last_visit_at = visits.values().filter_map(|visit| visit.boundary).max();
     let left_off_here = last_visit_at.is_some()
         && groups
@@ -639,7 +601,6 @@ pub(super) async fn plan(
     })
 }
 
-/// "Nothing new since Tuesday. Later has 4 things saved."
 fn clear_line(boundary: Option<DateTime<Utc>>, later: u32, now: DateTime<Utc>) -> String {
     let since = boundary.map_or_else(
         || "Nothing new.".to_string(),
@@ -662,8 +623,6 @@ fn clear_line(boundary: Option<DateTime<Utc>>, later: u32, now: DateTime<Utc>) -
     }
 }
 
-/// Mark expired threads done in Reading, without touching the provider.
-/// Returns how many were marked.
 pub(super) async fn expire(
     state: &AppState,
     expired: &[(AccountId, ThreadId)],
@@ -701,14 +660,9 @@ pub(super) async fn get_edition(
     let started = std::time::Instant::now();
     let now = Utc::now();
     let mut visits = load_visits(state, accounts).await?;
-    // Opening Reading is a visit, unless activity is off or paused: one
-    // privacy switch for everything Reading learns about you.
     let tracking = state.activity.is_enabled() && !state.activity.pause_status().0;
     for (account, stored) in &mut visits {
         if *stored == ReadingVisitRow::default() && demo_mailbox() {
-            // The demo mailbox comes with a history: Reading was last opened
-            // yesterday and has been watching for months, so every band and
-            // the unsubscribe evidence show on the first look.
             *stored = ReadingVisitRow {
                 first_seen: Some(now - Duration::days(120)),
                 boundary: Some(now - Duration::days(1)),
@@ -746,8 +700,6 @@ pub(super) async fn get_edition(
     Ok(ResponseData::ReadingEdition { edition })
 }
 
-/// Serve a Reading request. `dispatch` calls this boxed, once, for every
-/// Reading variant.
 pub(super) async fn handle(
     state: &AppState,
     scoped_profile: Option<&AgentProfileConfig>,
@@ -849,15 +801,12 @@ pub(super) async fn handle(
     }
 }
 
-/// The accounts a Reading request covers: the one it names, else every
-/// enabled account, cut to a scoped profile's allowed accounts.
 async fn accounts(
     state: &AppState,
     scoped_profile: Option<&AgentProfileConfig>,
     account_id: Option<&AccountId>,
 ) -> Result<Vec<AccountId>, HandlerError> {
     match (account_id, scoped_profile) {
-        // A named account already passed the allowlist.
         (Some(account_id), _) => Ok(vec![account_id.clone()]),
         (None, Some(profile)) => super::account_scope::allowed_cached_accounts(state, profile)
             .await
@@ -866,8 +815,6 @@ async fn accounts(
     }
 }
 
-/// After a sync: extract the new Reading mail and expire what faded as of
-/// `now`, so Now and the rail agree with the edition without it being opened.
 pub(crate) async fn after_sync(state: &AppState, account_id: &AccountId, now: DateTime<Utc>) {
     let accounts = [account_id.clone()];
     let result = async {

@@ -1,7 +1,3 @@
-//! Editing and removing highlights: the preview names what the run
-//! changes, undo puts it back, Marginalia's stay read-only, and a scoped
-//! agent can't reach another account's.
-
 use super::*;
 use crate::handler::handle_request;
 use mxr_protocol::ReadingHighlightChangeData;
@@ -67,7 +63,6 @@ async fn undo(fx: &Fixture, mutation_id: &str) -> Result<(), String> {
     }
 }
 
-/// A highlight as Marginalia's read-back leaves it.
 async fn marginalia_highlight(fx: &Fixture, message: &MessageId) -> String {
     let row = ReadingHighlightRow {
         id: "from-marginalia".into(),
@@ -128,10 +123,8 @@ async fn a_removal_previews_what_it_removes_and_undo_brings_it_back() {
     );
     assert_eq!(stored(&fx, &id).await, None);
 
-    // Gone is gone: removing again says so instead of quietly succeeding.
     assert!(failure(&fx, remove(false)).await.contains("No highlight"));
 
-    // Letting go of the item doesn't stop the undo.
     let thread = fx
         .state
         .store
@@ -201,7 +194,6 @@ async fn a_note_edit_previews_clears_on_empty_and_undoes() {
         Some("first")
     );
 
-    // An empty note clears; it is never stored as "".
     let cleared = changed(request(&fx, edit("   ", false)).await).await;
     assert_eq!(cleared.highlight.note, None);
     assert_eq!(stored(&fx, &id).await.expect("kept").note, None);
@@ -284,7 +276,6 @@ async fn a_scoped_agent_cannot_change_or_undo_another_accounts_highlight() {
     let (mine, _) = issue(&fx, WEEKLY, "Mine", &essay(200), Utc::now()).await;
     let their_id = save(&fx, &format!("{theirs}:0"), None).await;
     let my_id = save(&fx, &format!("{mine}:0"), None).await;
-    // Someone else removed theirs, leaving an undo the agent mustn't use.
     let their_undo = changed(
         request(
             &fx,

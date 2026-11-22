@@ -1,25 +1,12 @@
-//! Internal error type for IPC request handlers.
-//!
-//! Store and provider failures keep their existing display messages. Draft
-//! revision conflicts additionally carry a machine-readable code and the
-//! expected/current revision so every client can preserve unsent edits.
-
 use mxr_core::error::MxrError;
 use mxr_protocol::{IpcErrorKind, Response};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum HandlerError {
-    /// An explicit, handler-authored message (validation, "not found", etc.).
     #[error("{0}")]
     Message(String),
-    /// An explicit invalid-request validation failure. Carries the wire kind
-    /// so it is classified as `IpcErrorKind::InvalidRequest` instead of being
-    /// string-sniffed into `Internal`.
     #[error("{0}")]
     InvalidRequest(String),
-    /// The lexical index is down and the request has no limited form, or its
-    /// query uses parts the limited search cannot honour. The message already
-    /// says what to do.
     #[error("{0}")]
     SearchIndexUnavailable(String),
     #[error("Classification pending: this email is still sorting")]
@@ -44,16 +31,10 @@ pub(crate) enum HandlerError {
     #[error("Send outcome requires recovery; query the original operation before another attempt")]
     SendOutcome {
         outcome: Box<mxr_core::DraftSendOutcome>,
-        /// Immediate local repair guidance; never retained or exposed remotely.
         diagnostic: Option<String>,
     },
-    /// Already sanitized at authenticated remote admission.
     #[error("Remote operation was refused")]
     RemoteResponse(Box<Response>),
-    /// A failed unsubscribe attempt. `retryable` is set here, not inferred from
-    /// the message: a retry of an unsent attempt may go out, while a retry of
-    /// an attempt whose outcome is unknown or already recorded as sent would be
-    /// acknowledged without sending.
     #[error("{message}")]
     UnsubscribeAttempt {
         message: String,
@@ -61,21 +42,15 @@ pub(crate) enum HandlerError {
         kind: IpcErrorKind,
         retryable: bool,
     },
-    /// A storage-layer failure. `sqlx::Error` is what the store returns today.
     #[error(transparent)]
     Store(#[from] sqlx::Error),
-    /// A provider/sync/core failure carried as the shared `MxrError`.
     #[error(transparent)]
     Core(#[from] MxrError),
-    /// JSON (de)serialisation failure from a handler that builds/parses JSON.
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 }
 
 impl HandlerError {
-    /// Convert to a wire `Response`, preserving the explicit `IpcErrorKind` for
-    /// variants that carry one so kinded errors don't fall back to the
-    /// substring classifier in `Response::error`.
     pub(crate) fn into_response(self) -> Response {
         match self {
             Self::ClassificationPending => Response::Error {
@@ -126,8 +101,6 @@ impl HandlerError {
             Self::InvalidRequest(message) => {
                 Response::error_kinded(message, IpcErrorKind::InvalidRequest)
             }
-            // A rejected account credential is an auth failure whatever its
-            // text says, so it never falls back to the substring classifier.
             Self::Core(error @ MxrError::ProviderAuth(_)) => {
                 Response::error_kinded(error.to_string(), IpcErrorKind::Auth)
             }
@@ -172,9 +145,6 @@ mod tests {
 
     #[test]
     fn display_is_wire_identical_to_the_source_string() {
-        // The migration rests on this: a HandlerError must stringify to exactly
-        // what `.map_err(|e| e.to_string())` produced before. If a variant's
-        // Display drifts from its source, the IPC error wire changes.
         assert_eq!(
             HandlerError::Message("boom".to_string()).to_string(),
             "boom"

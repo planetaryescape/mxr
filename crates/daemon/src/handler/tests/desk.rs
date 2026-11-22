@@ -9,7 +9,6 @@ pub(super) const ME: &str = "user@example.com";
 
 pub(super) struct Fixture {
     pub(super) state: Arc<AppState>,
-    /// The account's provider, for making its mutations fail.
     pub(super) fake: Arc<mxr_provider_fake::FakeProvider>,
     pub(super) account: mxr_core::AccountId,
     pub(super) inbox: LabelId,
@@ -64,7 +63,6 @@ impl Fixture {
         }
     }
 
-    /// Store one message; inbound mail lands in the inbox.
     pub(super) async fn message(
         &self,
         thread: &ThreadId,
@@ -115,7 +113,6 @@ impl Fixture {
             MessageDirection::Inbound
         };
         self.store_envelope(&envelope, direction).await;
-        // Attention fixtures contain a real directed ask, not merely history.
         if !outbound {
             self.state
                 .store
@@ -152,7 +149,6 @@ impl Fixture {
         store.try_create_reply_pair(envelope).await.unwrap();
     }
 
-    /// Reply-only received mail or an authored owner request, for attention journeys.
     pub(super) async fn attention_message(
         &self,
         thread: &ThreadId,
@@ -229,8 +225,6 @@ pub(super) fn thread_ids(lane: &DeskLaneData) -> Vec<ThreadId> {
 async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
     let fx = Fixture::new().await;
 
-    // Two old exchanges (outside the desk window) where you answered Maya
-    // within an hour: that is your usual pace with her.
     for days in [40, 45] {
         let old = ThreadId::new();
         let asked = fx
@@ -246,8 +240,6 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
         .await;
     }
 
-    // Owed: Maya replied two days ago. A promise in the same thread must
-    // not show it twice.
     let owed = ThreadId::new();
     let mine = fx
         .attention_message(&owed, ME, "maya@example.com", Duration::days(3), None)
@@ -263,19 +255,16 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
         .await;
     fx.promise(&owed, &mine.id, Duration::days(1)).await;
 
-    // Waiting: you wrote Jon three days ago and he has not answered.
     let waiting = ThreadId::new();
     fx.attention_message(&waiting, ME, "jon@example.com", Duration::days(3), None)
         .await;
 
-    // Due beats waiting: you wrote Nora and promised notes in two days.
     let due = ThreadId::new();
     let to_nora = fx
         .attention_message(&due, ME, "nora@example.com", Duration::days(5), None)
         .await;
     let due_id = fx.promise(&due, &to_nora.id, Duration::days(2)).await;
 
-    // New from people, newest first.
     let older_new = ThreadId::new();
     fx.attention_message(
         &older_new,
@@ -289,7 +278,6 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
     fx.attention_message(&newer_new, "iris@example.com", ME, Duration::hours(2), None)
         .await;
 
-    // Snoozed mail is out of sight.
     let snoozed = ThreadId::new();
     let napping = fx
         .attention_message(&snoozed, "ari@example.com", ME, Duration::hours(1), None)
@@ -306,7 +294,6 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
         .await
         .unwrap();
 
-    // A newsletter is reading, not work.
     let newsletter_thread = ThreadId::new();
     let mut newsletter = fx
         .attention_message(
@@ -360,12 +347,10 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
     assert!(people_new.rows[0].unread);
 
     assert_eq!(elsewhere.reading, 1);
-    // New senders await a decision; the link knows which account has them.
     assert!(elsewhere.screener > 0);
     assert_eq!(elsewhere.screener_account.as_ref(), Some(&fx.account));
     assert!(last_from_people_at.is_some());
 
-    // The lane limit trims rows, never totals.
     let ResponseData::Desk {
         people_new: trimmed,
         ..
@@ -441,7 +426,6 @@ async fn done_waiting_lasts_until_a_new_message_arrives() {
     };
     assert_eq!(waiting(fx.desk(25).await), vec![thread.clone()]);
 
-    // A dry run previews the same selection and changes nothing.
     let preview = request(
         &fx,
         Request::DismissDeskThreads {
@@ -467,7 +451,6 @@ async fn done_waiting_lasts_until_a_new_message_arrives() {
     .await;
     assert!(waiting(fx.desk(25).await).is_empty());
 
-    // Undo puts it back; dismissing again takes it off.
     let restored = request(
         &fx,
         Request::RestoreDeskThreads {
@@ -489,7 +472,6 @@ async fn done_waiting_lasts_until_a_new_message_arrives() {
     )
     .await;
 
-    // A follow-up you send later is new: the thread waits again.
     fx.attention_message(
         &thread,
         ME,
@@ -534,13 +516,10 @@ async fn a_reply_to_a_dismissed_thread_lands_as_owed() {
 #[tokio::test]
 async fn a_watched_contacts_thread_obeys_done_waiting_and_covers_the_thread() {
     let fx = Fixture::new().await;
-    // You last wrote Nora six weeks ago, outside the desk window, and you
-    // watch her at a weekly cadence: she drifts onto Waiting on.
     let thread = ThreadId::new();
     let first = fx
         .attention_message(&thread, ME, "nora@example.com", Duration::days(45), None)
         .await;
-    // Her answer long ago, archived: a person's row ignores archive.
     let answer = fx
         .attention_message(&thread, "nora@example.com", ME, Duration::days(44), None)
         .await;
@@ -601,7 +580,6 @@ async fn a_watched_contacts_thread_obeys_done_waiting_and_covers_the_thread() {
         "the whole thread, not one message"
     );
 
-    // Done waiting holds for drift rows too, with nothing new since.
     request(
         &fx,
         Request::DismissDeskThreads {
@@ -661,7 +639,6 @@ async fn a_delayed_message_with_an_old_date_ends_done_waiting() {
         },
     )
     .await;
-    // Delivered now, dated a week ago: still news to the thread.
     fx.attention_message(
         &thread,
         ME,

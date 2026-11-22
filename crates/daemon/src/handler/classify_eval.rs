@@ -1,23 +1,3 @@
-//! `mxr classify eval`: today's classifier measured against labelled
-//! scenarios (blueprint 32, build order 1). Stored mail that a scenario
-//! labels is read back the way the product reads it, and each of four
-//! answers is compared with the label. The quick set is the hand-written
-//! demo mail and the near-miss twins, named by provider id and sender; the
-//! full set is every labelled email in the store, which on a demo adds the
-//! generated bulk, labelled by where the generator put each email.
-//!
-//! * who: the stored assessment's sender judgement, including mail in Spam;
-//! * home: the persisted assessment used by the modes, arrivals and chips.
-//!   Missing or stale answers remain pending; evaluation never repairs them.
-//! * record: a record row includes this email.
-//!
-//! What an email asks of you (its to-do rows, and whether a reply is owed) is
-//! not a yes or no. It is graded per kind of ask and per field in
-//! `classify_eval_asks`, against the items each label expects.
-//!
-//! Read-only and local. It changes no classification and writes nothing,
-//! including no activity row.
-
 use super::classify_eval_asks::{AskGrader, AskInput, Row, ASK_QUESTIONS};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -30,29 +10,21 @@ use mxr_provider_fake::fixtures::scenarios::{self, Labelled, LABEL_SCHEMA_VERSIO
 use mxr_store::EvalCandidate;
 use std::collections::HashMap;
 
-/// What `home` reads, for the output.
 const HOME_PROJECTION: &str =
     "stored assessment; missing or stale answers are pending, never created by evaluation";
 const NO_LABELLED_MAIL: &str = "No labelled mail here; run mxr demo";
-/// An email to place live: its id, thread and whether it is in Spam.
-/// Stored emails with the labels that grade them.
 type Present = Vec<(EvalCandidate, Labelled)>;
 
-/// The questions graded as accuracy. What an email asks of you is not one.
 const QUESTIONS: [&str; 3] = ["who", "home", "record"];
 
-/// What today's code answers for one email.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Actual {
     who: Option<&'static str>,
     who_reason: String,
-    /// `None`: no current stored assessment is available to compare.
     home: Option<Home>,
     record: bool,
 }
 
-/// What the shared `describe` path says about one email, and whether the desk
-/// reads it as asking for a reply.
 #[derive(Debug, Clone)]
 struct MailRead {
     kind: SenderKindData,
@@ -60,7 +32,6 @@ struct MailRead {
     home: Option<Home>,
     reason: String,
     reply_owed: bool,
-    /// The email's own date.
     sent: chrono::DateTime<chrono::Utc>,
 }
 
@@ -68,7 +39,6 @@ struct MailRead {
 struct Home {
     mode: String,
     reason: String,
-    /// Worked out live: the email has no arrivals row.
     live: bool,
 }
 
@@ -76,7 +46,6 @@ struct Home {
 struct Tally {
     evaluated: [u32; 3],
     correct: [u32; 3],
-    /// The same counts over the emails worded in a held-out phrasing.
     held_out_evaluated: [u32; 3],
     held_out_correct: [u32; 3],
     held_out_present: u32,
@@ -101,9 +70,6 @@ const fn yes_no(value: bool) -> &'static str {
     }
 }
 
-/// Compare one email's answers with its label. Pending `who` and `home`
-/// answers are skipped; a missing home counts as not placed. Mail you sent is not graded
-/// here: who, home and record are about mail that arrives.
 fn grade(
     label: &Labelled,
     actual: &Actual,
@@ -150,9 +116,6 @@ fn grade(
     check(2, yes_no(label.expect.record), yes_no(actual.record), "");
 }
 
-/// Stable order whatever order the store returned rows in: scenario, then
-/// provider id in numeric order, then question (the accuracy questions, then
-/// the asks), then what was expected and got.
 fn sort_mismatches(mismatches: &mut [ClassifyEvalMismatchData]) {
     mismatches.sort_by(|a, b| {
         let question = |m: &ClassifyEvalMismatchData| {
@@ -239,7 +202,6 @@ fn summarise(
     }
 }
 
-/// The stored emails a set labels, with their labels.
 async fn labelled_mail(
     state: &AppState,
     accounts: &[AccountId],
@@ -249,10 +211,6 @@ async fn labelled_mail(
         ClassifyEvalSetData::Quick => {
             let labels: Vec<&Labelled> = scenarios::quick_set().collect();
             let provider_ids: Vec<&str> = labels.iter().map(|l| l.provider_id.as_str()).collect();
-            // Both demo accounts number their mail from 1 and reuse some of
-            // the same people, and a smaller demo numbers its fillers
-            // differently, so only the scenario account's email from the
-            // scenario's sender is the email the label means.
             let scenario_account = scenarios::account_id();
             let present = state
                 .store
@@ -271,9 +229,6 @@ async fn labelled_mail(
             Ok((present, u32::try_from(labels.len()).unwrap_or(u32::MAX)))
         }
         ClassifyEvalSetData::Full => {
-            // Every stored email of a demo account that the generator or the
-            // quick set labels. The set is whatever the store holds, so its
-            // size is the number found.
             let present: Present = state
                 .store
                 .classify_eval_all_candidates(accounts)
@@ -454,8 +409,6 @@ pub(super) async fn classify_eval(
                     },
                 ),
                 label,
-                // The store returns rows in key order; the grader does not
-                // rely on it.
                 rows: rows.remove(&candidate.message_id).unwrap_or_default(),
                 reply_found: (!label.outbound
                     && stored_answers.contains_key(&candidate.message_id))
@@ -538,7 +491,6 @@ mod tests {
 
     #[test]
     fn a_record_is_wrong_in_both_directions() {
-        // Expected a record, got none.
         let actual = Actual {
             record: false,
             ..right()
@@ -550,7 +502,6 @@ mod tests {
             .collect();
         assert_eq!(wrong, [("record", "yes", "no")]);
         assert_eq!(tally.correct, [1, 1, 0]);
-        // And the opposite polarity.
         let expects_none = Expect::new(Who::Machine, ExpectedHome::Updates, false);
         let (_, mismatches) = graded(expects_none, &right());
         assert_eq!(mismatches.len(), 1);
@@ -638,7 +589,6 @@ mod tests {
         assert_eq!(mismatches[0].label_review.as_deref(), Some("a policy call"));
         let (_, plain) = graded(EXPECT, &actual);
         assert_eq!(plain[0].label_review, None);
-        // The doubt covers its own question only: a wrong who is not it.
         let wrong_who = Actual {
             who: Some("person"),
             ..right()
@@ -648,7 +598,6 @@ mod tests {
         assert_eq!(mismatches.len(), 1);
         assert_eq!(mismatches[0].question, "who");
         assert_eq!(mismatches[0].label_review, None);
-        // And a to-do doubt does not reach the accuracy questions.
         let wrong_record = Actual {
             record: false,
             ..right()
@@ -738,7 +687,6 @@ mod tests {
         };
         let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
         grade(&held_out, &wrong_record, &mut tally, &mut mismatches);
-        // An ordinary email beside it, answered right.
         grade(&label(EXPECT), &right(), &mut tally, &mut mismatches);
 
         assert_eq!(tally.held_out_present, 1);

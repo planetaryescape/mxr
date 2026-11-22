@@ -1,41 +1,9 @@
-//! Resolve user-typed label names in a parsed query AST to the
-//! provider IDs that are actually indexed in Tantivy.
-//!
-//! Tantivy's `labels` field stores `Envelope::label_provider_ids`
-//! (Gmail-style IDs like `Label_101`, `INBOX`). The mail-query parser
-//! preserves whatever the user typed verbatim in `QueryNode::Label`,
-//! so `label:Notto` produces `Label("Notto")`, the QueryBuilder
-//! lowercases that to `notto`, and no document matches — even though
-//! the user has 8 messages tagged with the label whose display name
-//! is "Notto" and whose provider_id is `Label_101`.
-//!
-//! This module bridges that gap. We fetch the user's labels from the
-//! store and rewrite every `QueryNode::Label(name_or_id)` into a
-//! provider-ID-shaped node (or an `Or` over multiple provider IDs
-//! when the same display name exists across accounts). When no label
-//! has a matching display name we leave the original value in place
-//! so raw provider IDs like `label:Label_101` and `label:INBOX` keep
-//! working.
-//!
-//! The resolved AST is reused for the QueryBuilder, the
-//! semantic-search post-filter, and the rules executor view that
-//! flows through `execute_search`. Keeping resolution at the daemon
-//! layer (not in `mxr-search`) means the search crate stays free of
-//! store dependencies and the resolution rules can evolve with how
-//! we sync labels.
-
 use mxr_core::types::Label;
 use mxr_search::ast::QueryNode;
 use std::collections::HashMap;
 
-/// Case-insensitive label-name → provider-id lookup. Multiple
-/// provider IDs per name are possible across accounts.
 pub(super) type LabelNameIndex = HashMap<String, Vec<String>>;
 
-/// Build the lookup from a flat list of labels. Names are lowercased
-/// so resolution matches Gmail-style case-insensitive label search.
-/// Provider IDs are deduplicated per name to keep the rewritten AST
-/// minimal when the same label exists on several accounts.
 pub(super) fn build_label_name_index(labels: &[Label]) -> LabelNameIndex {
     let mut index: LabelNameIndex = HashMap::new();
     for label in labels {
@@ -48,9 +16,6 @@ pub(super) fn build_label_name_index(labels: &[Label]) -> LabelNameIndex {
     index
 }
 
-/// Walk the AST and rewrite `Label(name)` nodes whose value matches a
-/// known display name. Unknown values are left alone so literal
-/// provider IDs (e.g. `INBOX`, `Label_101`) still hit the index.
 pub(super) fn resolve_label_names(ast: QueryNode, index: &LabelNameIndex) -> QueryNode {
     match ast {
         QueryNode::Label(value) => resolve_one(value, index),
@@ -189,8 +154,6 @@ mod tests {
 
         let resolved = resolve_label_names(ast, &index);
 
-        // Outer And, left side resolved to Label_101, right side
-        // (negated unknown) passes through unchanged.
         let QueryNode::And(left, right) = resolved else {
             panic!("expected And node, got {resolved:?}");
         };

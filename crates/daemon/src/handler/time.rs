@@ -1,5 +1,3 @@
-//! `ResolveTime`: preview a natural-language time phrase.
-
 use chrono::{DateTime, Local, Utc};
 use mxr_core::natural_time::{due_words, resolve_time, DueWords, TimeResolution, TimeResolveError};
 use mxr_protocol::ResponseData;
@@ -7,8 +5,6 @@ use mxr_protocol::ResponseData;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 
-/// Resolve in the caller's IANA zone when it sends one (a remote browser),
-/// otherwise in the daemon's local zone.
 pub(super) fn resolve(
     state: &AppState,
     input: &str,
@@ -19,8 +15,6 @@ pub(super) fn resolve(
     Ok(ResponseData::resolved_time(input, result))
 }
 
-/// The one resolution every daemon-side phrase goes through. The outer error
-/// is an unknown zone; the inner result is the parser's answer.
 pub(super) fn resolve_in_zone(
     state: &AppState,
     input: &str,
@@ -35,9 +29,6 @@ pub(super) fn resolve_in_zone(
     })
 }
 
-/// Due words a model copied from `source`, checked against it and resolved
-/// in the same zone and with the same preferences as every other phrase.
-/// `None` means the source doesn't say them.
 pub(super) fn due_words_in_zone(
     state: &AppState,
     source: &str,
@@ -53,7 +44,6 @@ pub(super) fn due_words_in_zone(
     })
 }
 
-/// The caller's IANA zone; `None` means the daemon's local zone.
 pub(super) fn parse_zone(time_zone: Option<&str>) -> Result<Option<chrono_tz::Tz>, HandlerError> {
     time_zone
         .map(|name| {

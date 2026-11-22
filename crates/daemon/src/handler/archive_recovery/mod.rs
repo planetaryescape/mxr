@@ -1,4 +1,3 @@
-//! Reviewed Archive receipts in the existing mutation job store.
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::{Envelope, Mutation, MutationFailure};
@@ -231,8 +230,6 @@ pub(super) async fn preview(
 
 pub(super) async fn get(state: &AppState, identity: &ArchiveIdentityData) -> HandlerResult {
     validate_identity(state, identity).await?;
-    // The runner persists outcomes before removing its claim. Sample the claim
-    // first so a stopped runner cannot be paired with an older Pending receipt.
     let running = state.archive_runners.lock().contains(&job_key(identity));
     let (_, mut operation) = load(state, identity).await?;
     operation.running = running;
@@ -276,7 +273,6 @@ pub(super) async fn submit(
             )
             .await?
         {
-            // Acceptance records user intent once; item receipts describe provider outcomes.
             state.activity.record(crate::activity::OwnedEntry {
                 ts: crate::activity::current_unix_ms(),
                 account_id: None,

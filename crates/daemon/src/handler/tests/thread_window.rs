@@ -1,7 +1,3 @@
-//! Bounded conversation reads: the reader's newest page, walking older and
-//! newer pages without losing a message, and membership evidence capped to
-//! the page the reader actually shows.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::Duration;
@@ -101,7 +97,6 @@ async fn newest_page_and_cursors_leave_no_message_unreachable() {
     walked.extend(newest);
     assert_eq!(walked, ids, "walking the cursors covers every message once");
 
-    // Omitted window stays the whole thread for CLI, TUI and MCP.
     assert_eq!(page(&fx, &thread, None).await, ids);
 }
 
@@ -167,7 +162,6 @@ async fn focus_and_after_open_a_middle_page_without_loading_the_rest() {
 async fn list_bodies_returns_every_body_and_a_per_id_failure() {
     let fx = Fixture::new().await;
     let (thread, ids) = thread_of(&fx, 2).await;
-    // Outbound mail has an envelope but no stored body in this fixture.
     let without_body = fx
         .message(&thread, ME, "sam@example.com", Duration::minutes(1), None)
         .await
@@ -203,7 +197,6 @@ async fn membership_evidence_is_capped_but_thread_level_modes_stay_whole() {
         )
         .await;
     }
-    // Sent mail carries no ask; it is the evidence a reader page can drop.
     for index in 0..3 {
         fx.message(
             &thread,
@@ -256,7 +249,6 @@ async fn membership_evidence_is_capped_but_thread_level_modes_stay_whole() {
     assert_eq!(capped.done_in, full.done_in);
     assert_eq!(capped.in_inbox, full.in_inbox);
     assert!(capped.asks_more, "the reader is told evidence was left out");
-    // A thread-level mode line still names the whole thread.
     assert!(capped
         .modes
         .iter()

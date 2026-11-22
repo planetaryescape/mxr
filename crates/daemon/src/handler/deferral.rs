@@ -1,20 +1,3 @@
-//! `Request::DeferThreads`: reply later, or wait, until a time you chose.
-//!
-//! Who wrote last decides, by the desk's own rule:
-//!
-//! - They did: reply later until the time. Their latest message is flagged
-//!   with the time, and so are the conversation's other flagged messages,
-//!   so the whole conversation leaves the desk and the reply queue and
-//!   comes back to both then.
-//! - You did: bring it back if nobody replies. A reminder goes on your
-//!   latest message (`auto_reminders`, which already cancels when someone
-//!   answers), other pending reminders on the conversation are cancelled
-//!   and its reply-later flags cleared, so this one time is what brings it
-//!   back. When it fires, your message joins the reply queue.
-//!
-//! One plan serves the preview and the run. The run saves one undo entry
-//! holding every flag and reminder it replaced, as it was.
-
 use super::desk::{self_matcher, Senders};
 use super::desk_lanes::{current_messages, is_outbound, last_stored};
 use super::mutations::UNDO_WINDOW_SECS;
@@ -26,17 +9,12 @@ use mxr_protocol::{DeferKindData, DeferredThreadData, ResponseData};
 use mxr_store::{DeskMessage, DeskUndo, UndoEntry, UndoableMutationKind};
 use std::collections::{HashMap, HashSet};
 
-/// What deferring one conversation will do.
 struct Plan {
     thread_id: ThreadId,
     account_id: Option<AccountId>,
     kind: Option<DeferKindData>,
-    /// The message the time goes on.
     target: Option<MessageId>,
-    /// The conversation's reply-later flags: the others moved to the same
-    /// time (reply later), or all cleared (waiting).
     flags: Vec<MessageId>,
-    /// The conversation's other pending reminders: cancelled (waiting).
     reminders: Vec<MessageId>,
     error: Option<String>,
 }
@@ -74,7 +52,6 @@ pub(super) async fn defer_threads(
     defer_threads_at(state, thread_ids, until, dry_run, Utc::now()).await
 }
 
-/// `defer_threads` with the clock given (tests move it).
 pub(super) async fn defer_threads_at(
     state: &AppState,
     thread_ids: &[ThreadId],
@@ -99,8 +76,6 @@ pub(super) async fn defer_threads_at(
         });
     }
 
-    // Every change is noted before it is made, so a failure part way still
-    // leaves an undo for what already changed.
     let mut undo = DeskUndo::default();
     for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
         if let Err(error) = apply(state, plan, until, now, &mut undo).await {
@@ -227,12 +202,6 @@ fn plan_thread(
     now: DateTime<Utc>,
 ) -> Plan {
     let thread_id = &thread[0].thread_id;
-    // Who wrote last, by storage order (a skewed Date header can't reorder
-    // it), among you and people: an auto-responder or notification after
-    // your message doesn't make it theirs. With neither (a newsletter
-    // thread), their latest message: reply later still works on it.
-    // The desk's own rule (`last_stored`), so what this sets is what the
-    // desk shows when it comes back.
     let current = current_messages(thread, now);
     let Some(latest) = last_stored(current, |m| {
         !m.trashed && (is_outbound(m, is_self) || answers(m))
@@ -259,8 +228,6 @@ fn plan_thread(
     };
     let (flags, reminders) = match kind {
         DeferKindData::ReplyLater => (in_thread(flagged, true), Vec::new()),
-        // Your own message too: a reminder that fired put it in the queue,
-        // and the new time is what brings it back now.
         DeferKindData::Waiting => (in_thread(flagged, false), in_thread(pending, true)),
     };
     Plan {
@@ -292,15 +259,12 @@ async fn apply(
             let ids: Vec<MessageId> = std::iter::once(target.clone())
                 .chain(plan.flags.iter().cloned())
                 .collect();
-            // Read again here rather than from the plan, so the undo holds
-            // what this write replaces.
             let mut priors = store.reply_later_states(&ids).await?;
             for id in &ids {
                 let prior = priors.remove(id);
                 let newly_flagged = prior.is_none();
                 undo.reply_later_priors.push((id.clone(), prior));
                 store.defer_reply_later(id, now, until).await?;
-                // The search marker only changes for a message not flagged yet.
                 if newly_flagged {
                     super::reply_later::refresh_reply_later_search_marker(state, id, true).await?;
                 }
@@ -331,11 +295,6 @@ async fn apply(
     Ok(())
 }
 
-/// Undo's half for flags and reminders: each back exactly as it was.
-/// Reminders go first: one that fired after the change being undone
-/// (`applied_at`, unix seconds) put its message in the reply queue, and
-/// that flag goes too, even if the reminder had also fired once before.
-/// Flags recorded in `undo` are then put back over it as they were.
 pub(super) async fn restore_timers(
     state: &AppState,
     undo: &DeskUndo,
@@ -368,17 +327,10 @@ pub(super) async fn restore_timers(
     Ok(())
 }
 
-/// Cancel due "bring it back if nobody replies" reminders that a person
-/// answered: someone other than you (the shared classifier: not an
-/// auto-responder, list or notification) wrote a message stored after
-/// yours in the thread, or answering yours by In-Reply-To (`reply_pairs`)
-/// in any thread. Returns the message rowid the check covered, for the claim's
-/// guard against a reply stored after it.
 pub(crate) async fn settle_answered_reminders(
     state: &AppState,
     now: DateTime<Utc>,
 ) -> Result<i64, HandlerError> {
-    // Read first: every reply at or below it is among the candidates below.
     let checked_through = state.store.max_message_rowid().await?;
     let due = state.store.get_due_auto_reminders(now).await?;
     if due.is_empty() {

@@ -236,11 +236,6 @@ pub(super) async fn upsert_account_config(
     }
 }
 
-/// Runs one config write as a synchronous section: the file lock is taken,
-/// the file is read as written, `apply` changes it, and the result is saved
-/// atomically. Nothing awaits while the file lock is held, so the blocking lock
-/// never parks a runtime worker on a task that cannot resume to release it.
-/// Callers hold `AppState::config_write` around it for in-process ordering.
 fn write_config_as_written<T>(
     apply: impl FnOnce(&mut mxr_config::MxrConfig) -> Result<T, String>,
 ) -> Result<T, String> {
@@ -251,14 +246,6 @@ fn write_config_as_written<T>(
     Ok(out)
 }
 
-/// Changes `general.default_account` only when a request turns an account on
-/// as the default, or when no default exists at all. `effective_default` is
-/// the default the daemon runs with, including any `MXR_DEFAULT_ACCOUNT`
-/// override. Forms fill `is_default` from that same state, so an untouched
-/// toggle never writes the override into the file. Turning the default off
-/// does not clear it: another account is made default by turning it on, as
-/// before. CLI upserts send `false` for accounts they do not change, and those
-/// must not clear the default.
 fn apply_default_toggle(
     config: &mut mxr_config::MxrConfig,
     key: &str,
@@ -278,13 +265,9 @@ async fn save_account_config(
     account: &AccountConfigData,
     reveal_holder: bool,
 ) -> Result<String, String> {
-    // In-process writers queue on this lock. The clash check reads the store
-    // while it is held; the file write after it is synchronous.
     let _writing = state.config_write.lock().await;
     let snapshot = mxr_config::load_config_as_written().map_err(|e| e.to_string())?;
 
-    // A tag is refused when another account already shows it or stores it.
-    // The account's own tag is not a clash.
     if let Some(raw_tag) = account.tag.as_deref() {
         let tag = mxr_core::parse_account_tag(raw_tag).map_err(|e| e.to_string())?;
         let existing_id = snapshot
@@ -309,8 +292,6 @@ async fn save_account_config(
     }
 
     write_config_as_written(|config| {
-        // The effective default comes from the copy read under the file lock,
-        // so a default another process wrote a moment ago is seen.
         let effective_default = {
             let mut effective = config.clone();
             mxr_config::apply_env_overrides(&mut effective);
@@ -318,8 +299,6 @@ async fn save_account_config(
         };
         persist_account_passwords(account).map_err(|e| e.to_string())?;
 
-        // Omitted identity fields keep what config already has. The TUI and
-        // web account forms do not send them.
         let existing = config.accounts.get(&account.key).cloned();
         let color = account
             .color
@@ -355,10 +334,6 @@ async fn save_account_config(
     })
 }
 
-/// Sets one account's colour and tag override in config. Unlike the full
-/// upsert, it writes only those two keys, so `default_account` and the
-/// account's other fields are never touched. A dry run computes the same plan
-/// and writes nothing.
 pub(super) async fn set_account_identity(
     state: &Arc<AppState>,
     key: &str,
@@ -401,9 +376,6 @@ pub(super) async fn set_account_identity(
         );
     }
 
-    // The plan above was made before the lock. It is made again under the
-    // lock, against the file as it is now and the store as it is now, so a tag
-    // another account claimed in between is refused rather than saved.
     let save_result = async {
         let _writing = state.config_write.lock().await;
         let snapshot = mxr_config::load_config_as_written().map_err(|e| e.to_string())?;
@@ -438,9 +410,6 @@ pub(super) async fn set_account_identity(
     }
 }
 
-/// Checks a colour and tag change for one account against `config` (the file
-/// as written) and the store. Returns a description of the change, or the
-/// reason it is refused.
 async fn plan_identity(
     state: &Arc<AppState>,
     config: &mxr_config::MxrConfig,
@@ -481,8 +450,6 @@ async fn plan_identity(
     ))
 }
 
-/// Writes `general.default_account`. The caller reloads the runtime, so a
-/// reload failure can be reported as saved but not applied.
 pub(super) async fn set_default_account(state: &Arc<AppState>, key: &str) -> Result<(), String> {
     let _writing = state.config_write.lock().await;
     write_config_as_written(|config| {
@@ -554,8 +521,6 @@ pub(super) async fn remove_account_config(
         );
     }
 
-    // The database work is done; the config change is one locked update that
-    // loads the file inside the lock, not the copy read before those awaits.
     let save_result = {
         let _writing = state.config_write.lock().await;
         mxr_config::update_config(|config| {
@@ -588,8 +553,6 @@ pub(super) async fn remove_account_config(
         {
             Ok(()) => match state.store.delete_account(&account_id).await {
                 Ok(_) => {
-                    // The account cascade cleared every row; the semantic
-                    // index and attachment files sit outside SQLite.
                     crate::message_deletion::drain_pending_forgets(state).await;
                     Ok(())
                 }
@@ -749,7 +712,6 @@ pub(super) async fn authorize_account_config(
     account: AccountConfigData,
     reauthorize: bool,
 ) -> AccountOperationResult {
-    // Outlook device-code flow — check sync first, fall back to send for send-only accounts
     let outlook_tenant = match &account.sync {
         Some(AccountSyncConfigData::OutlookPersonal { .. }) => {
             Some(mxr_provider_outlook::OutlookTenant::Personal)
@@ -1074,9 +1036,6 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                             mxr_core::AccountId::from_provider_id("imap", &account.email),
                             config,
                         );
-                        // Read the certificate first so a self-signed bridge's
-                        // fingerprint is reported even when sync then fails
-                        // verification. Credentials are never sent on this probe.
                         match provider.server_certificate_sha256().await {
                             Ok(fingerprint) => tls_fingerprint = fingerprint,
                             Err(error) => {
@@ -1184,10 +1143,6 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
 
     match account.send {
         Some(AccountSendConfigData::Gmail) => {
-            // Gmail send uses the same OAuth token as Gmail sync. Only claim
-            // send is reachable if Gmail sync auth actually succeeded — the
-            // old behavior reported "configured" unconditionally and masked
-            // real auth failures.
             let gmail_sync_auth_ok = matches!(
                 (&account.sync, auth.as_ref()),
                 (Some(AccountSyncConfigData::Gmail { .. }), Some(step)) if step.ok
@@ -1373,8 +1328,6 @@ pub(super) fn account_step(ok: bool, detail: String) -> AccountOperationStep {
     AccountOperationStep { ok, detail }
 }
 
-/// A result for a change that reached the config file before a later phase
-/// failed. `saved` tells clients the change is on disk, though not applied.
 pub(super) fn saved_but_not_applied(
     summary: String,
     step: AccountOperationStep,
@@ -1441,9 +1394,6 @@ pub(super) fn resolve_gmail_credentials(
     }
 }
 
-/// Rewrite raw Gmail OAuth errors into actionable guidance for onboarding UI.
-/// Google's response strings are precise but cryptic; users need to know what
-/// to change in Google Cloud Console.
 pub(super) fn friendly_gmail_auth_error(raw: &str) -> String {
     let lower = raw.to_lowercase();
     if lower.contains("invalid_client") {
@@ -1518,10 +1468,6 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
     }
 }
 
-///
-/// An account with no provider gets "account" as its kind, which is the id
-/// startup has always created for it. Rows already stored use that id, so
-/// it must not change.
 pub(crate) fn config_account_id(
     _key: &str,
     account: &mxr_config::AccountConfig,
@@ -1900,10 +1846,6 @@ fn persist_account_password(
         "persisting credential to disk"
     );
     let scoped_ref = crate::provider_credentials::scoped_password_ref(password_ref);
-    // The keychain mirror is best-effort. `MXR_KEYCHAIN=off` skips it entirely
-    // (mirrors `MXR_ACTIVITY=off`): useful on headless/disk-only hosts and to
-    // keep tests from touching the real OS keychain / Secret Service. Disk
-    // remains authoritative either way.
     let skip_keychain = crate::provider_credentials::keychain_disabled();
     persist_credential(
         service,
@@ -1928,12 +1870,6 @@ fn persist_account_password(
     Ok(())
 }
 
-/// Persist a credential disk-first with a best-effort keychain mirror.
-///
-/// The keychain setter is injected so tests can prove a keychain-write failure
-/// does NOT fail the operation (the disk write is authoritative). Disk is
-/// authoritative: a 0600 file survives binary upgrades, so this can never be
-/// blocked by a lost keychain ACL again.
 fn persist_credential<F, E>(
     service: &str,
     store: &mxr_config::SecretStore,
@@ -1950,8 +1886,6 @@ where
         anyhow::anyhow!("failed to persist {service} credential to disk: {error}")
     })?;
 
-    // Best-effort keychain mirror: keep the keychain in sync for users who rely
-    // on it, but a keychain failure must never fail the operation.
     if let Err(error) = keychain_set(scoped_ref, username, password) {
         tracing::warn!(
             credential_service = service,
@@ -1975,7 +1909,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = mxr_config::SecretStore::new(dir.path().join("secrets.toml"));
 
-        // Keychain setter always fails; persist must still succeed.
         let result = persist_credential(
             "IMAP",
             &store,
@@ -1986,7 +1919,6 @@ mod tests {
         );
         assert!(result.is_ok(), "keychain failure must not fail persist");
 
-        // Disk is authoritative — the secret is on disk.
         assert_eq!(
             store
                 .get("mxr/work-imap", "me@corp.com")

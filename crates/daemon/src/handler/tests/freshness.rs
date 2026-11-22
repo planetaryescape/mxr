@@ -1,6 +1,3 @@
-//! Freshness: the newest arrival across accounts, where each arrival went,
-//! and sync failures surfaced with their kind and retry time.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::{DateTime, Duration, Utc};
@@ -56,7 +53,6 @@ async fn newest_mail_is_the_freshest_arrival_across_accounts_in_any_mailbox() {
             None,
         )
         .await;
-    // Your own mail never arrives, however recent.
     fx.message(
         &ThreadId::new(),
         ME,
@@ -65,11 +61,7 @@ async fn newest_mail_is_the_freshest_arrival_across_accounts_in_any_mailbox() {
         None,
     )
     .await;
-    // A newer message on another account, archived on arrival: no inbox
-    // label, still the newest mail.
     let other = second_account(&fx, "home", ProviderKind::Gmail).await;
-    // Built from a copy, not through the fixture, which stores into the
-    // default account.
     let mut newer = older.clone();
     newer.from.email = "bo@example.com".into();
     newer.date = Utc::now() - Duration::minutes(10);
@@ -98,7 +90,6 @@ async fn newest_mail_is_the_freshest_arrival_across_accounts_in_any_mailbox() {
         "sent mail is not an arrival"
     );
 
-    // One account's scope sees only its own newest.
     let mine = freshness(&fx, Some(fx.account.clone())).await;
     assert!(close(mine.newest_message_at, older.date), "{mine:?}");
     assert_eq!(mine.accounts.len(), 1);
@@ -133,8 +124,6 @@ async fn sync_failures_surface_with_their_kind_and_the_worst_speaks_for_all() {
     let fx = Fixture::new().await;
     let now = Utc::now();
     let store = &fx.state.store;
-    // Rate limited: paused, with the retry the sync loop scheduled. The Gmail
-    // endpoint and reason ride in the message; the kind is still a rate limit.
     let retry = now + Duration::minutes(8);
     store
         .upsert_sync_runtime_status(
@@ -153,7 +142,6 @@ async fn sync_failures_surface_with_their_kind_and_the_worst_speaks_for_all() {
         )
         .await
         .unwrap();
-    // Signed out, and offline: both failing.
     let gmail = second_account(&fx, "work", ProviderKind::Gmail).await;
     let imap = second_account(&fx, "home", ProviderKind::Imap).await;
     for (account, error, class) in [
@@ -222,8 +210,6 @@ async fn your_own_recent_mail_never_hides_the_last_arrival() {
             None,
         )
         .await;
-    // Thirty newer messages from your own address with no stored
-    // direction: sent mail synced before the address table knew it.
     for minutes in 0..30 {
         let mut own = arrival.clone();
         own.id = mxr_core::id::MessageId::new();

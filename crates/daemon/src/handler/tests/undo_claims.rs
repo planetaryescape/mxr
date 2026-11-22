@@ -1,6 +1,3 @@
-//! One undo id applies at most once, even when two clients send it in the same
-//! moment, and a partly failed undo stays retryable with the same id.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::Duration;
@@ -113,8 +110,6 @@ async fn a_partly_failed_undo_stays_retryable_with_the_same_id() {
     assert_eq!(result.succeeded, 2);
     let mutation_id = result.mutation_id.expect("Archive is undoable");
 
-    // The second message's provider call fails, so the undo restores one and
-    // keeps the other under the same id.
     fx.fake.fail_mutations_of(Some(&two.provider_id));
     let partial = handle_request(&fx.state, &undo_message(&mutation_id))
         .await

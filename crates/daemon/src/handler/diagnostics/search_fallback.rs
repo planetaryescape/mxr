@@ -1,10 +1,3 @@
-//! Answering a search from SQLite when the lexical index is unavailable.
-//!
-//! The fallback reads `messages_fts`, which holds subject, sender and snippet
-//! only. It runs a query only when every part of it is something that table
-//! can answer the same way the index would; anything else is refused by name,
-//! because a quietly loosened query returns wrong mail without saying so.
-
 use super::search_execute::SearchExecutionOptions;
 use super::search_filter::{default_exclusion_of, exclude_trash_and_spam_by_default, Hidden};
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
@@ -18,12 +11,8 @@ use mxr_search::{parse_query, SearchResult};
 use mxr_store::{AddressOrWords, FtsClause, FtsColumns, FtsFallbackQuery};
 use unicode_normalization::UnicodeNormalization;
 
-/// Why a search failed, split so a client can tell "the index is down and this
-/// cannot be served" from every other failure.
 #[derive(Debug)]
 pub(crate) enum SearchError {
-    /// The lexical index is unavailable and the request has no limited form.
-    /// The message already says what to do.
     IndexUnavailable(String),
     Other(String),
 }
@@ -57,29 +46,15 @@ impl From<SearchError> for HandlerError {
     }
 }
 
-/// What a query asks of `messages_fts`, once every part of it is known to be
-/// one the table can answer.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct FallbackPlan {
     pub(super) clauses: Vec<FtsClause>,
-    /// Whole addresses from `from:`, matched exactly as the index does.
     pub(super) sender_addresses: Vec<String>,
-    /// Bare terms that are whole addresses: the index matches them as an
-    /// address or as their words, so the fallback does the same.
     pub(super) address_words: Vec<AddressOrWords>,
     pub(super) hide_trash: bool,
     pub(super) hide_spam: bool,
 }
 
-/// Translates a query into a [`FallbackPlan`], or names every part of it the
-/// fallback cannot honour.
-///
-/// Supported: words (each word of a compound term ANDed, as the index does),
-/// `+words`, "phrases", `subject:`, `from:` (the whole address), AND of those,
-/// `in:anywhere`, and the Trash/Spam exclusion `execute_search` adds by
-/// default. Everything else is refused, including every kind of NOT and OR:
-/// FTS5 can express them, but not with the index's meaning of a missing field
-/// or a stemmed word, and a wrong answer is worse than an explicit refusal.
 pub(super) fn plan_fallback(ast: &QueryNode) -> Result<FallbackPlan, Vec<String>> {
     let mut plan = FallbackPlan {
         clauses: Vec::new(),
@@ -118,8 +93,6 @@ fn collect(node: &QueryNode, plan: &mut FallbackPlan, unsupported: &mut Vec<Stri
             collect(left, plan, unsupported);
             collect(right, plan, unsupported);
         }
-        // A bare address is the whole term as one sender address, or its words
-        // (`alice@example.com` also cuts into `alice`, `example`, `com`).
         QueryNode::Text(text) if text.contains('@') => {
             let words = words_of(text, node, unsupported);
             if !words.is_empty() {
@@ -135,9 +108,6 @@ fn collect(node: &QueryNode, plan: &mut FallbackPlan, unsupported: &mut Vec<Stri
                 });
             }
         }
-        // The index cuts a bare word into tokens and requires every one of
-        // them, each in any searched field: `alpha-beta` is `alpha` AND
-        // `beta`, not the phrase.
         QueryNode::Text(text) | QueryNode::Exact(text) => {
             let words = words_of(text, node, unsupported);
             plan.clauses.extend(words.into_iter().map(|word| FtsClause {
@@ -166,26 +136,16 @@ fn collect(node: &QueryNode, plan: &mut FallbackPlan, unsupported: &mut Vec<Stri
                 });
             }
         }
-        // The index holds the sender address as one whole lowercase term, so
-        // `from:` is an exact address match; a bare name matches nothing.
         QueryNode::Field {
             field: QueryField::From,
             value,
         } => plan.sender_addresses.push(value.clone()),
-        // `in:anywhere` only lifts the Trash/Spam exclusion, which is not
-        // added when it is present; there is nothing left for it to do here.
         QueryNode::Filter(FilterKind::Anywhere) => {}
         QueryNode::Or(..) => unsupported.push("OR".to_string()),
         other => unsupported.push(other.to_string()),
     }
 }
 
-/// The words of `text` as the index cuts them. The text is composed (NFC)
-/// first: a decomposed accent (`i` + U+0308) is not a letter to the cutter,
-/// so it would split `naïve` into `nai` and `ve`, where the index keeps
-/// `naïve`. A term with no letters or digits has none, so the table has
-/// nothing to match it against and the index would not either: it is refused,
-/// by name.
 fn words_of(text: &str, node: &QueryNode, unsupported: &mut Vec<String>) -> Vec<String> {
     let composed: String = text.nfc().collect();
     let words = tokenize_text_value(&composed);
@@ -195,13 +155,10 @@ fn words_of(text: &str, node: &QueryNode, unsupported: &mut Vec<String>) -> Vec<
     words
 }
 
-/// The error for a request that has no limited form (counts, grouping).
 pub(super) fn needs_full_index(reason: SearchDegradedReason, what: &str) -> SearchError {
     SearchError::IndexUnavailable(SearchDegraded::needs_full_index(reason, what))
 }
 
-/// Answers `query` from `messages_fts`, or refuses it with the parts of the
-/// query the fallback cannot run.
 pub(super) async fn limited_search(
     state: &AppState,
     query: &str,
@@ -210,8 +167,6 @@ pub(super) async fn limited_search(
 ) -> Result<SearchExecution, SearchError> {
     let ast = match parse_query(query) {
         Ok(ast) => ast,
-        // Free text the structured parser rejects is searched as raw text by
-        // the index; the fallback has no equivalent.
         Err(error) if should_fallback_to_tantivy(query, &error) => {
             return Err(SearchError::IndexUnavailable(SearchDegraded::refusal(
                 reason,
@@ -220,9 +175,6 @@ pub(super) async fn limited_search(
         }
         Err(error) => return Err(SearchError::Other(format!("Invalid search query: {error}"))),
     };
-    // Plan the query as typed plus the default exclusion, not the label-
-    // resolved one the index gets: a refusal should name `label:Work`, not an
-    // internal provider id.
     let plan = plan_fallback(&exclude_trash_and_spam_by_default(ast)).map_err(|unsupported| {
         SearchError::IndexUnavailable(SearchDegraded::refusal(reason, &unsupported))
     })?;
@@ -261,7 +213,6 @@ pub(super) async fn limited_search(
             message_id: hit.message_id.as_str(),
             account_id: hit.account_id.as_str(),
             thread_id: hit.thread_id.as_str(),
-            // SQLite ranks nothing; results are by date.
             score: 0.0,
         })
         .collect::<Vec<_>>();

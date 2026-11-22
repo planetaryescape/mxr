@@ -1,13 +1,3 @@
-//! Marginalia: send a Reading item to the reading app, open it there, and
-//! read the highlights made on it back into mxr.
-//!
-//! Only explicit requests send anything: a send names the item, and its
-//! dry run contacts nothing. The site lives in config
-//! (`reading.marginalia_url`), the personal token in the secrets file.
-//! Highlights are read back for items already sent, on request and after
-//! a sync at most every half hour; that reads the user's own highlights
-//! and sends no mail.
-
 use super::item::load_item;
 use super::{item_key, parse_item_key, Issue};
 use crate::handler::{HandlerError, HandlerResult};
@@ -27,15 +17,9 @@ use std::sync::{Mutex, OnceLock};
 
 const SECRET_SERVICE: &str = "mxr/marginalia";
 const SECRET_ACCOUNT: &str = "api-token";
-/// After a sync, highlights are read back for items sent in this window,
-/// each at most this often, a few at a time.
 const BACKGROUND_WINDOW: Duration = Duration::days(60);
 const BACKGROUND_EVERY: Duration = Duration::minutes(30);
 const BACKGROUND_BATCH: u32 = 20;
-/// Items whose background read-back failed, and when. A failure never
-/// sets `highlights_synced_at`, so without this the same failing items
-/// would sort first and fill every batch. Kept in memory: after a restart
-/// each is tried once more before it waits again.
 type FailedAt = HashMap<(MessageId, i64), DateTime<Utc>>;
 
 fn background_failures() -> &'static Mutex<FailedAt> {
@@ -43,8 +27,6 @@ fn background_failures() -> &'static Mutex<FailedAt> {
     FAILED.get_or_init(Mutex::default)
 }
 
-/// The next background batch: due rows, minus those that failed within
-/// the last `BACKGROUND_EVERY`, in the store's order.
 fn background_batch(
     due: Vec<ReadingMarginaliaRow>,
     failed: &FailedAt,
@@ -60,8 +42,6 @@ fn background_batch(
         .collect()
 }
 
-/// Remembers which of `batch` failed and forgets the rest, dropping
-/// entries old enough to be retried anyway.
 fn note_background_failures(
     failed: &mut FailedAt,
     batch: &[ReadingMarginaliaRow],
@@ -80,7 +60,6 @@ fn note_background_failures(
     }
 }
 
-/// Reading back every sent item, on request.
 const SYNC_ALL_LIMIT: u32 = 500;
 
 fn secrets() -> mxr_config::SecretStore {
@@ -107,7 +86,6 @@ fn save_token(token: &str) -> Result<(), HandlerError> {
         .map_err(|error| HandlerError::from(format!("couldn't save the Marginalia token: {error}")))
 }
 
-/// The site and a client, when Marginalia is connected.
 fn connected(state: &AppState) -> Option<(String, MarginaliaClient)> {
     let url = state.config_snapshot().reading.marginalia_url?;
     let token = saved_token()?;
@@ -147,7 +125,6 @@ fn marginalia_data(row: &ReadingMarginaliaRow) -> ReadingMarginaliaData {
     }
 }
 
-/// The Marginalia article an item became, for the reader.
 pub(super) async fn item_marginalia(
     state: &AppState,
     message_id: &MessageId,
@@ -191,7 +168,6 @@ pub(in crate::handler) async fn status(state: &AppState) -> HandlerResult {
     })
 }
 
-/// Connect (the token is checked with Marginalia first) or disconnect.
 pub(in crate::handler) async fn set_connection(
     state: &AppState,
     connection: Option<&MarginaliaConnectionData>,
@@ -226,8 +202,6 @@ pub(in crate::handler) async fn set_connection(
     status(state).await
 }
 
-/// The issue as HTML: its own, cleaned, when the cleaner kept most of it,
-/// else the reader text.
 async fn issue_html(state: &AppState, issue: &Issue, words: u32) -> Result<String, HandlerError> {
     let body = state.store.get_body(&issue.id).await?;
     let issue = issue.clone();
@@ -275,7 +249,6 @@ pub(in crate::handler) async fn send(state: &AppState, key: &str, dry_run: bool)
     }
 
     let mut article = saved_article(state.store.reading_article(&issue.id, idx).await?);
-    // A digest link is its article: fetch it first when it isn't saved.
     let fetch_first =
         (article.is_none() && idx > 0).then(|| row.domain.clone().unwrap_or_default());
     if dry_run {
@@ -373,8 +346,6 @@ pub(in crate::handler) async fn send(state: &AppState, key: &str, dry_run: bool)
     })
 }
 
-/// Reads back each row's highlights, stopping early when Marginalia
-/// refuses the token or asks to slow down.
 async fn read_back(
     state: &AppState,
     client: &MarginaliaClient,
@@ -429,7 +400,6 @@ async fn read_back(
             }
         }
     }
-    // Search finds highlights through their message's chunks.
     if !changed.is_empty() {
         if let Err(error) = state.semantic.enqueue_ingest_messages(&changed).await {
             tracing::warn!(%error, "couldn't queue Marginalia highlights for search");
@@ -470,8 +440,6 @@ pub(in crate::handler) async fn sync(state: &AppState, key: Option<&str>) -> Han
     Ok(ResponseData::MarginaliaSync { sync })
 }
 
-/// After a sync: read back highlights on this account's recently sent
-/// items, each at most every half hour. Quiet when not connected.
 pub(super) async fn after_sync(state: &AppState, account_id: &AccountId) {
     let Some((_, client)) = connected(state) else {
         return;
@@ -557,7 +525,6 @@ mod background_tests {
     #[test]
     fn failing_items_dont_starve_the_ones_behind_them() {
         let now = Utc::now();
-        // 20 items that keep failing sort ahead of one healthy item.
         let due: Vec<_> = (0..21)
             .map(|n| row(n, now - Duration::days(30) + Duration::minutes(n)))
             .collect();
@@ -576,7 +543,6 @@ mod background_tests {
             ["a20"]
         );
 
-        // Half an hour on, the failing items get another try.
         let later = background_batch(due, &failed, now + BACKGROUND_EVERY);
         assert_eq!(later.len(), 20);
     }

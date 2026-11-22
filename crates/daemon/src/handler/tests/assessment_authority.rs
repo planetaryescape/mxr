@@ -1,4 +1,3 @@
-//! Config authority is ordered against publication and survives real daemon startup.
 use super::*;
 use crate::handler::assessments;
 use crate::test_fixtures::{test_account, write_migrated_database, TestEnvelopeBuilder};
@@ -22,7 +21,6 @@ impl Reconciler {
             assessments::AFTER_RECONCILE_TICK
                 .scope(hook, async move {
                     if let Some(token) = token {
-                        // Exercise the context boundary without changing process-wide TZ.
                         let resolve: Arc<dyn Fn() -> Option<String> + Send + Sync> =
                             Arc::new(move || Some(token.lock().unwrap().clone()));
                         assessments::RECONCILER_CONTEXT_TOKEN
@@ -436,7 +434,6 @@ fn assert_previous_policy_activates_once(old_policy: &str) {
                 let mail = seed(&state).await;
                 let shape = state.config_snapshot().messages.large_thread_recipients;
                 let token = mxr_store::asks_context_token().unwrap();
-                // Persist the previous daemon's actual policy-aware startup marker.
                 let old_marker = format!("{}:{old_policy}:{shape}:{:?}", mxr_core::assessment::CLASSIFIER_POLICY_VERSION, Some(token.as_str()));
                 state.store.sync_assessment_context(&old_marker).await.unwrap();
                 assessments::reconcile_account(&state, &mail.account_id).await.unwrap();

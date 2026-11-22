@@ -1,18 +1,3 @@
-//! The classifier's floor, per kind of ask (blueprint 37, R1c).
-//!
-//! `classify_eval_floor.json` holds the precision and recall each kind of ask
-//! reached when the floor was last raised, for the quick and the full set. A
-//! run that falls below any of them fails, so a change that makes the
-//! classifier worse at one kind cannot hide behind a gain at another. The
-//! quick set is checked by the quick-set test and the full set by the full
-//! test that CI's "Classifier Eval" job runs.
-//!
-//! The floor only goes up. After a change that improves a kind, raise it with
-//! `MXR_RAISE_CLASSIFY_FLOOR=1`, which rewrites the file with the better of
-//! the old and the measured value and never lowers one; review the diff. To
-//! lower a floor on purpose (a label was wrong, a kind was retired), edit the
-//! file by hand and say why in the commit.
-
 use mxr_protocol::{ClassifyEvalAsksData, ClassifyEvalCountsData};
 use std::collections::BTreeMap;
 
@@ -22,16 +7,12 @@ const FLOOR_PATH: &str = concat!(
 );
 const RAISE_ENV: &str = "MXR_RAISE_CLASSIFY_FLOOR";
 
-/// A kind's precision and recall, in percent. Absent when it was undefined
-/// (nothing found, or nothing expected) when the floor was set.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Floor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     precision: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recall: Option<f64>,
-    /// The raw count behind a measurement, never stored: the percentages are
-    /// rounded, and one false positive in two thousand rounds to 100.0%.
     #[serde(skip)]
     false_positives: Option<u32>,
 }
@@ -43,7 +24,6 @@ fn read() -> Floors {
     serde_json::from_str(&text).expect("the floor file is valid")
 }
 
-/// `all`, then `kind` for what you were asked and `you_promised/kind`.
 fn measured(asks: &ClassifyEvalAsksData) -> BTreeMap<String, Floor> {
     let floor = |counts: &ClassifyEvalCountsData| Floor {
         precision: counts.precision_percent,
@@ -63,16 +43,10 @@ fn measured(asks: &ClassifyEvalAsksData) -> BTreeMap<String, Floor> {
     out
 }
 
-/// What is below the floor, one line each.
 fn shortfalls(floor: &BTreeMap<String, Floor>, now: &BTreeMap<String, Floor>) -> Vec<String> {
     let mut out = Vec::new();
-    // A kind that found nothing when the floor was set has no precision to
-    // fall below, so a false positive in it would pass. Once it finds
-    // anything, its precision must be perfect: true positives may appear, a
-    // wrong row may not.
     for (kind, got) in now {
         let baseline = floor.get(kind).and_then(|f| f.precision);
-        // Counted, not read from the rounded percentage.
         if baseline.is_none() && got.false_positives.is_some_and(|n| n > 0) {
             out.push(format!(
                 "{kind} precision: {} false positive(s) where the floor had nothing found; a new kind may add true positives but no false ones",
@@ -87,8 +61,6 @@ fn shortfalls(floor: &BTreeMap<String, Floor>, now: &BTreeMap<String, Floor>) ->
             ("recall", wanted.recall, got.recall),
         ] {
             let Some(want) = want else { continue };
-            // Undefined now (nothing found or expected) is below any floor
-            // that was defined: the kind stopped being found.
             if have.is_none_or(|have| have + 1e-9 < want) {
                 out.push(format!(
                     "{kind} {name}: {} is below the floor {want}",
@@ -107,8 +79,6 @@ fn better(old: Option<f64>, new: Option<f64>) -> Option<f64> {
     }
 }
 
-/// Fail when any kind of the `set` ("quick" or "full") is below its floor, or
-/// raise the floor when asked to.
 pub(super) fn check(set: &str, asks: &ClassifyEvalAsksData) {
     let now = measured(asks);
     let mut floors = read();
@@ -141,9 +111,6 @@ pub(super) fn check(set: &str, asks: &ClassifyEvalAsksData) {
     );
 }
 
-/// The ask results as the text a snapshot holds: counts per kind, fields,
-/// duplicates and merges, twins, slices and the reply question. Percentages
-/// are the floor's inputs, so they are in it too.
 pub(super) fn report(asks: &ClassifyEvalAsksData) -> String {
     let percent =
         |value: Option<f64>| value.map_or_else(|| "-".to_string(), |v| format!("{v:.1}%"));
@@ -246,10 +213,8 @@ fn a_kind_below_its_floor_is_reported_and_one_at_it_is_not() {
     assert!(shortfalls(&floor, &at(Some(80.0), Some(90.0))).is_empty());
     assert_eq!(shortfalls(&floor, &at(Some(49.9), Some(40.0))).len(), 1);
     assert_eq!(shortfalls(&floor, &at(Some(50.0), Some(10.0))).len(), 1);
-    // A kind that stopped being found is below its floor, not undefined.
     assert_eq!(shortfalls(&floor, &at(None, Some(0.0))).len(), 2);
     assert_eq!(shortfalls(&floor, &BTreeMap::new()).len(), 2);
-    // A floor that was undefined constrains nothing.
     assert!(shortfalls(
         &BTreeMap::from([("x".into(), Floor::default())]),
         &at(None, None)
@@ -257,9 +222,6 @@ fn a_kind_below_its_floor_is_reported_and_one_at_it_is_not() {
     .is_empty());
 }
 
-/// One pay false positive fewer and one new verify false positive leaves the
-/// total unchanged. The kind with no baseline precision must still fail, also
-/// when the false positive is too rare to move the rounded percentage.
 #[test]
 fn a_false_positive_in_a_kind_with_no_baseline_is_a_shortfall() {
     let at_floor = Floor {
@@ -272,7 +234,6 @@ fn a_false_positive_in_a_kind_with_no_baseline_is_a_shortfall() {
         ("pay".to_string(), at_floor),
         ("verify".to_string(), Floor::default()),
     ]);
-    // `verify` is its precision and false-positive count.
     let at = |all: f64, pay: f64, verify: Option<(f64, u32)>| {
         let measured = |precision: f64| Floor {
             precision: Some(precision),
@@ -292,14 +253,11 @@ fn a_false_positive_in_a_kind_with_no_baseline_is_a_shortfall() {
             ),
         ])
     };
-    // pay improved, verify gained a false positive, the total did not move.
     let swapped = shortfalls(&floor, &at(50.0, 100.0, Some((0.0, 1))));
     assert_eq!(swapped.len(), 1, "{swapped:?}");
     assert!(swapped[0].starts_with("verify precision"));
-    // 2,001 true positives and one false positive round to 100.0%; it fails.
     let rare = shortfalls(&floor, &at(50.0, 50.0, Some((100.0, 1))));
     assert_eq!(rare.len(), 1, "{rare:?}");
-    // A true positive with no false one is fine, and so is staying silent.
     assert!(shortfalls(&floor, &at(50.0, 50.0, Some((100.0, 0)))).is_empty());
     assert!(shortfalls(&floor, &at(50.0, 50.0, None)).is_empty());
 }

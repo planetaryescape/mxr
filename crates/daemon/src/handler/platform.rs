@@ -9,10 +9,6 @@ pub(super) async fn list_saved_searches(state: &AppState) -> HandlerResult {
     diagnostics_impl::list_saved_searches(state).await
 }
 
-/// Run each saved search's query intersected with `is:unread` and
-/// return a map of saved-search id to match count. Queries that fail
-/// to parse return 0 — the tab strip surface MUST not silently
-/// disappear because one saved search has a malformed expression.
 pub(super) async fn list_saved_search_unread_counts(state: &AppState) -> HandlerResult {
     use std::collections::HashMap;
 
@@ -36,8 +32,6 @@ pub(super) async fn list_saved_search_unread_counts(state: &AppState) -> Handler
                 counts.insert(entry.id, count);
             }
             Err(error) => {
-                // Don't poison the whole response — record a zero
-                // for this saved search and log the failure.
                 tracing::debug!(
                     saved_search_id = %entry.id,
                     %error,

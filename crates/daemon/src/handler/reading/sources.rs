@@ -1,12 +1,3 @@
-//! Each source's window and how you read it.
-//!
-//! The window comes from the source's last 20 stored issues. The counts
-//! come from local engagement only, and only for issues that arrived after
-//! you first opened Reading: before that mxr saw nothing, so it claims
-//! nothing ("You opened 0 of the last 11 issues" is always true of what it
-//! watched). The provider's read flag is not used: letting go marks mail
-//! read at the provider, so it would count a skipped issue as opened.
-
 use super::Issue;
 use crate::handler::HandlerError;
 use crate::state::AppState;
@@ -17,9 +8,7 @@ use mxr_reading::edition::SourceStats;
 use mxr_reading::fade::{self, SourceWindow};
 use std::collections::HashMap;
 
-/// Issues read per source for its window and counts.
 const ISSUES_PER_SOURCE: u32 = 20;
-/// Counts cover issues from the last 90 days.
 const COUNT_WINDOW: Duration = Duration::days(90);
 
 pub(in crate::handler) struct SourceInfo {
@@ -29,8 +18,6 @@ pub(in crate::handler) struct SourceInfo {
 }
 
 impl SourceInfo {
-    /// "you read 9 of 10", "you opened 3 of 8", "new"; nothing before
-    /// there is anything to say.
     pub fn engagement_line(&self) -> Option<String> {
         let s = &self.stats;
         if s.is_new() {
@@ -51,7 +38,6 @@ fn days(duration: Duration) -> f64 {
     duration.num_minutes() as f64 / (24.0 * 60.0)
 }
 
-/// Every source of a set of issues, by account and lowercase sender.
 pub(in crate::handler) struct Sources(HashMap<(AccountId, String), SourceInfo>);
 
 impl Sources {
@@ -61,7 +47,6 @@ impl Sources {
         visits: &super::Visits,
         now: DateTime<Utc>,
     ) -> Result<Self, HandlerError> {
-        // The newest issue of each source names it and says how to leave.
         let mut newest: HashMap<(AccountId, String), &Issue> = HashMap::new();
         for issue in issues {
             let key = (issue.account_id.clone(), issue.sender.clone());
@@ -82,9 +67,7 @@ impl Sources {
         let tracking = state.activity.is_enabled();
         let mut out = HashMap::new();
         for (account, senders) in by_account {
-            // Counts start from the first visit in this account.
             let tracking_since = visits.get(&account).and_then(|visit| visit.first_seen);
-            // Stored addresses keep their case; ask for every spelling seen.
             let mut spellings: Vec<String> = issues
                 .iter()
                 .filter(|issue| issue.account_id == account)
@@ -168,7 +151,6 @@ impl Sources {
         self.0.get(&(account.clone(), sender.to_string()))
     }
 
-    /// Best read first, then by name.
     pub fn ranked(&self) -> Vec<ReadingSourceData> {
         let mut sources: Vec<ReadingSourceData> =
             self.0.values().map(|info| info.data.clone()).collect();

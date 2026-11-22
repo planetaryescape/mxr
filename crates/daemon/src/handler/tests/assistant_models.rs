@@ -1,6 +1,3 @@
-//! The assistant's model picker over IPC: what it lists, what it refuses,
-//! what a pick changes, and that no key ever shows.
-
 use super::llm_routes::{isolated, send, LOCAL};
 use super::*;
 use mxr_protocol::{
@@ -8,8 +5,6 @@ use mxr_protocol::{
     LlmProviderData,
 };
 
-/// A daemon rereads `[llm]` from the file before it changes config, so a
-/// test's setup has to be on disk as well as in memory.
 async fn save(state: &Arc<AppState>, config: mxr_config::MxrConfig) {
     mxr_config::save_config(&config).unwrap();
     state.set_config_for_test(config).await;
@@ -82,7 +77,6 @@ async fn store_key(state: &Arc<AppState>, provider: LlmProviderData) {
     .await;
 }
 
-/// What `[llm.overrides.assistant]` says on disk.
 fn assistant_model_on_disk() -> Option<String> {
     mxr_config::load_config()
         .unwrap()
@@ -115,7 +109,6 @@ fn the_list_has_the_five_defaults_and_says_what_each_needs() {
                 "claude-sonnet-5-5"
             ]
         );
-        // `gemma4` in config and `gemma4:latest` in the list are one model.
         assert_eq!(listed.current.as_deref(), Some("gemma4:latest"));
         let by_id = |id: &str| listed.choices.iter().find(|c| c.id == id).unwrap();
         assert!(by_id("gemma4:latest").available && !by_id("gemma4:latest").cloud);
@@ -168,10 +161,8 @@ fn a_cloud_pick_with_the_cloud_setting_off_is_refused_naming_the_setting() {
             message.contains("mxr config set llm.allow_cloud_relationship_data true"),
             "{message}"
         );
-        // Not flipped silently: the setting and the model are as they were.
         assert!(!state.config_snapshot().llm.allow_cloud_relationship_data);
         assert_eq!(assistant_model_on_disk(), None);
-        // The list says the same, so a client shows it disabled.
         let listed = models(&state).await;
         let haiku = listed
             .choices
@@ -179,7 +170,6 @@ fn a_cloud_pick_with_the_cloud_setting_off_is_refused_naming_the_setting() {
             .find(|c| c.id == "claude-haiku-5-5")
             .unwrap();
         assert!(!haiku.available);
-        // Local stays pickable.
         assert!(listed.choices[0].available);
     });
 }
@@ -196,11 +186,9 @@ fn a_pick_applies_to_the_next_turn_persists_and_can_be_undone() {
         assert_eq!(change.previous.as_deref(), Some("gemma4:latest"));
         assert_eq!(change.models.current.as_deref(), Some("gpt-6-luna"));
 
-        // The running provider is the new one, and says it leaves the machine.
         let now = availability(&state).await;
         assert_eq!(now.model.as_deref(), Some("gpt-6-luna"));
         assert!(now.leaves_machine);
-        // On disk as the assistant's own override; the base model is untouched.
         assert_eq!(assistant_model_on_disk().as_deref(), Some("gpt-6-luna"));
         assert_eq!(mxr_config::load_config().unwrap().llm.model, "gemma4");
 
@@ -209,7 +197,6 @@ fn a_pick_applies_to_the_next_turn_persists_and_can_be_undone() {
         let local = availability(&state).await;
         assert_eq!(local.model.as_deref(), Some("gemma4:latest"));
         assert!(!local.leaves_machine);
-        // Picking what is already in use changes nothing.
         assert!(!picked(&state, "gemma4:latest").await.changed);
     });
 }
@@ -231,7 +218,6 @@ fn a_dry_run_says_what_would_change_and_writes_nothing() {
         assert_eq!(change.models.current.as_deref(), Some("claude-sonnet-5-5"));
         assert_eq!(assistant_model_on_disk(), None);
         assert_eq!(availability(&state).await.model.as_deref(), Some("gemma4"));
-        // A refused pick is refused as a preview too.
         refusal(pick(&state, "gpt-6-luna", true).await);
     });
 }
@@ -265,7 +251,6 @@ fn a_key_never_appears_in_a_response_a_status_or_a_log_line() {
                 "a key reached a response: {response}"
             );
         }
-        // The wire form too, not only Debug.
         seen.clear();
         let wire = serde_json::to_string(&send(&state, Request::GetLlmStatus).await).unwrap();
         assert!(!wire.contains(SECRET));
@@ -279,15 +264,12 @@ fn a_key_never_appears_in_a_response_a_status_or_a_log_line() {
     });
 }
 
-/// The state a person has with cloud data allowed and an Anthropic key, on
-/// disk as well as in the daemon.
 async fn cloud_allowed_on_disk(state: &Arc<AppState>) {
     use_model(state, "gemma4", LOCAL).await;
     allow_cloud(state).await;
     store_key(state, LlmProviderData::Anthropic).await;
 }
 
-/// What `mxr config set llm.allow_cloud_relationship_data false` writes.
 fn revoke_cloud_on_disk() {
     let mut on_disk = mxr_config::load_config().unwrap();
     on_disk.llm.allow_cloud_relationship_data = false;
@@ -298,7 +280,6 @@ fn revoke_cloud_on_disk() {
 fn a_revoke_that_reached_the_file_first_stops_the_pick_and_survives_it() {
     isolated(|state| async move {
         cloud_allowed_on_disk(&state).await;
-        // The CLI has written the file; its reload request has not arrived.
         revoke_cloud_on_disk();
 
         let message = refusal(pick(&state, "claude-haiku-5-5", false).await);
@@ -320,8 +301,6 @@ fn a_revoke_that_reached_the_file_first_stops_the_pick_and_survives_it() {
 #[test]
 fn a_revoke_racing_a_pick_is_never_overwritten_by_the_picks_old_snapshot() {
     isolated(|state| async move {
-        // Both orders matter, and the interleaving inside a pick (it awaits
-        // while applying config) can differ from run to run.
         for round in 0..20 {
             cloud_allowed_on_disk(&state).await;
             let mut config = state.config_snapshot();
@@ -348,7 +327,6 @@ fn a_revoke_racing_a_pick_is_never_overwritten_by_the_picks_old_snapshot() {
                     .allow_cloud_relationship_data,
                 "round {round}: the file allows cloud again"
             );
-            // With the setting off, a cloud model for the assistant is blocked.
             assert!(
                 state
                     .llm
@@ -369,9 +347,6 @@ fn a_config_set_in_another_process_is_never_restored_by_a_pick_in_flight() {
             let mut config = state.config_snapshot();
             config.llm.overrides.assistant = None;
             save(&state, config).await;
-            // What `mxr config set llm.allow_cloud_relationship_data false`
-            // does in its own process: one locked read-modify-write of the
-            // file, then a reload request.
             let cli = tokio::task::spawn_blocking(|| {
                 mxr_config::update_config(|config| {
                     config.llm.allow_cloud_relationship_data = false;
@@ -403,8 +378,6 @@ fn a_config_set_in_another_process_is_never_restored_by_a_pick_in_flight() {
 fn a_config_set_of_another_key_made_while_the_daemon_runs_survives_a_pick() {
     isolated(|state| async move {
         cloud_allowed_on_disk(&state).await;
-        // `mxr config set search.max_results 200`: the file changes, the
-        // daemon's copy is older and doesn't know.
         mxr_config::update_config(|config| {
             config.search.max_results = 200;
             Ok::<_, mxr_config::ConfigError>(())
@@ -415,13 +388,11 @@ fn a_config_set_of_another_key_made_while_the_daemon_runs_survives_a_pick() {
         let change = picked(&state, "claude-haiku-5-5").await;
         assert!(change.changed);
 
-        // The pick is on disk and the other key was not reverted by it.
         assert_eq!(
             assistant_model_on_disk().as_deref(),
             Some("claude-haiku-5-5")
         );
         assert_eq!(mxr_config::load_config().unwrap().search.max_results, 200);
-        // And the daemon now runs with both.
         assert_eq!(state.config_snapshot().search.max_results, 200);
         assert_eq!(
             state
@@ -450,7 +421,6 @@ fn saving_llm_settings_without_overrides_keeps_a_pick_made_at_the_same_time() {
             else {
                 panic!("expected the config");
             };
-            // A client that doesn't send overrides.
             config.overrides = None;
 
             let (pick, update) = tokio::join!(
@@ -497,8 +467,6 @@ fn a_settings_form_loaded_after_a_pick_saves_its_full_overrides_without_undoing_
         cloud_allowed_on_disk(&state).await;
         picked(&state, "claude-haiku-5-5").await;
 
-        // What the web form does: load the whole config (overrides included,
-        // the assistant's among them), edit something else, send it all back.
         let Response::Ok {
             data: ResponseData::LlmConfig { mut config },
         } = send(&state, Request::GetLlmConfig).await
@@ -542,9 +510,6 @@ fn a_form_that_loaded_before_a_pick_saves_over_it_which_is_why_the_web_refreshes
         };
         picked(&state, "claude-haiku-5-5").await;
 
-        // The form submits the whole overrides map it loaded. The daemon
-        // can't tell an old value left alone from one the person typed, so
-        // the form's map wins; the web invalidates its copy on every pick.
         let saved = send(
             &state,
             Request::UpdateLlmConfig {
@@ -563,8 +528,6 @@ fn a_form_that_loaded_before_a_pick_saves_over_it_which_is_why_the_web_refreshes
 #[test]
 fn a_pick_during_a_pending_restore_does_not_turn_ai_back_on() {
     isolated(|state| async move {
-        // The file says AI is on; a restored workspace keeps it off until it
-        // is activated, in memory and in what the daemon applies.
         use_model(&state, "gemma4", LOCAL).await;
         state
             .restore_pending
@@ -572,14 +535,11 @@ fn a_pick_during_a_pending_restore_does_not_turn_ai_back_on() {
         state.reload_llm_config_from_disk().await.unwrap();
         assert!(!state.config_snapshot().llm.enabled);
 
-        // The handler stops changes while the workspace is paused...
         let message = refusal(pick(&state, "gpt-6-luna", false).await);
         assert!(
             message.contains("Restored workspace is paused"),
             "{message}"
         );
-        // ...and the model change itself would refuse too: choosing a model
-        // doesn't switch AI on, even a local one.
         for model in ["gemma4:latest", "gpt-6-luna"] {
             let error = crate::assistant::set_model(&state, model, false)
                 .await
@@ -697,7 +657,6 @@ fn agents_cannot_change_the_assistants_model() {
     });
 }
 
-/// A `tracing` writer that keeps what it is given.
 #[derive(Clone, Default)]
 struct LogCapture(Arc<std::sync::Mutex<Vec<u8>>>);
 

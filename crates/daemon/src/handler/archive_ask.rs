@@ -1,16 +1,3 @@
-//! Slice 3.1 of docs/reference/ai-email.md
-//!
-//! `mxr ask "<question>"` runs a citation-validated retrieval against
-//! the local archive. Flow:
-//!   1. Apply explicit filters (from/to/after/before) up-front so the
-//!      LLM only ever sees in-scope messages.
-//!   2. Lexical search via SearchService (semantic fallback deferred —
-//!      `executed_mode` reports what actually ran).
-//!   3. Fetch top-N envelopes + reader-cleaned bodies and stamp every
-//!      one with a `[msg_id=...]` marker the LLM can cite back.
-//!   4. LLM `ArchiveAsk` feature → strict JSON.
-//!   5. Reject citations whose msg id is not in the retrieved set.
-
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::SortOrder;
@@ -88,7 +75,6 @@ pub(crate) async fn ask(
             Ok(Some(env)) => env,
             _ => continue,
         };
-        // (continue with envelope filtering + transcript build)
         if !pass_filter(&envelope, filters) {
             continue;
         }
@@ -129,9 +115,6 @@ pub(crate) async fn ask(
         allowed.push(msg_id);
     }
 
-    // The retrieved messages are attacker-controllable; wrap them in
-    // untrusted-content delimiters. The user's question stays outside.
-    // (Defense-in-depth; the citation validator below is the boundary.)
     let wrapped_messages = wrap_untrusted_mail(&transcript);
     let runtime = state.llm.for_feature(LlmFeature::ArchiveAsk);
     let req = CompletionRequest {
@@ -235,15 +218,6 @@ fn excerpt(text: &str, max_chars: usize) -> String {
     out
 }
 
-/// Hybrid candidate retrieval. Returns the merged candidate list AND
-/// the mode that actually executed (which may differ from the
-/// requested mode — e.g. Hybrid downgrades to Lexical when semantic
-/// is disabled or returns nothing).
-///
-/// Fusion strategy: reciprocal rank fusion over (lexical_rank,
-/// semantic_rank). RRF is order-stable, doesn't require score
-/// normalization across the two engines, and gracefully handles a
-/// candidate appearing in only one source.
 async fn retrieve_candidates(
     state: &AppState,
     question: &str,
@@ -263,10 +237,6 @@ async fn retrieve_candidates(
         matches!(requested, ArchiveAskMode::Semantic | ArchiveAskMode::Hybrid) && semantic_enabled;
 
     let lexical_ids: Vec<mxr_core::MessageId> = if want_lexical {
-        // The question is prose, searched as plain words; only the
-        // structured filters go through the query parser. Narrowed by a
-        // filter, every word must match, so mail with one stray word
-        // cannot fill the candidate pool.
         let builder = mxr_search::QueryBuilder::new(&mxr_search::MxrSchema::build());
         let query = match structured_filter_query(filters) {
             Some(filter) => {
@@ -302,8 +272,6 @@ async fn retrieve_candidates(
             .await
             .map_err(|e| e.to_string())
             .unwrap_or_default();
-        // Deduplicate by message id while preserving rank order
-        // (semantic hits can have multiple chunks per message).
         let mut seen = std::collections::HashSet::new();
         hits.into_iter()
             .filter_map(|h| {
@@ -318,15 +286,10 @@ async fn retrieve_candidates(
         Vec::new()
     };
 
-    // Pick executed_mode honestly: if both sources contributed, that's
-    // Hybrid; if only one did, name it.
     let executed_mode = match (lexical_ids.is_empty(), semantic_ids.is_empty()) {
         (false, false) => ArchiveAskMode::Hybrid,
         (false, true) => ArchiveAskMode::Lexical,
         (true, false) => ArchiveAskMode::Semantic,
-        // Both empty: report what the caller asked for, just with no
-        // candidates. The doc spec requires Lexical when semantic
-        // returns empty, so default to Lexical here.
         (true, true) => ArchiveAskMode::Lexical,
     };
 
@@ -334,8 +297,6 @@ async fn retrieve_candidates(
     Ok((merged, executed_mode))
 }
 
-/// The sender, recipient and date filters as query syntax, or `None`
-/// when there are none.
 fn structured_filter_query(filters: &ArchiveAskFiltersData) -> Option<String> {
     let mut parts = Vec::new();
     if let Some(from) = filters.from.as_deref().filter(|v| !v.trim().is_empty()) {
@@ -362,7 +323,6 @@ fn quote_query_value(value: &str) -> String {
     }
 }
 
-/// Reciprocal Rank Fusion (k=60 per the standard RRF paper).
 fn reciprocal_rank_fuse(
     lexical: &[mxr_core::MessageId],
     semantic: &[mxr_core::MessageId],
@@ -381,14 +341,12 @@ fn reciprocal_rank_fuse(
     ranked.sort_by(|a, b| {
         b.1.partial_cmp(&a.1)
             .unwrap_or(std::cmp::Ordering::Equal)
-            // Stable secondary: lexical rank first, then semantic.
             .then(a.0.to_string().cmp(&b.0.to_string()))
     });
     ranked.into_iter().take(limit).map(|(id, _)| id).collect()
 }
 
 fn pass_filter(env: &mxr_core::types::Envelope, f: &ArchiveAskFiltersData) -> bool {
-    // Trash and Spam never go to the model as evidence for an answer.
     if env.is_trash_or_spam() {
         return false;
     }
@@ -420,8 +378,6 @@ fn pass_filter(env: &mxr_core::types::Envelope, f: &ArchiveAskFiltersData) -> bo
     true
 }
 
-// `account_id` is informational on the filter struct; the dispatch
-// layer fills it in. We accept it here but don't require it.
 #[allow(dead_code)]
 fn _silence_unused() -> Option<AccountId> {
     None
@@ -629,12 +585,10 @@ mod tests {
             last_user: Mutex::new(String::new()),
         });
         let (state, account_id, ids) = fixture(stub.clone()).await;
-        // Replace canned body with valid citations referencing real ids.
         let body = format!(
             r#"{{"answer":"They confirmed the price.","citations":[{{"msg_id":"{}","quote":"price"}}]}}"#,
             ids[0]
         );
-        // Re-replace with new stub holding the real-id body.
         let stub2 = Arc::new(CannedLlm {
             body,
             last_user: Mutex::new(String::new()),
@@ -663,8 +617,6 @@ mod tests {
         }
     }
 
-    /// A question is prose, not query syntax: "status:" or "(...)" must
-    /// not parse as a field, with or without structured filters.
     #[tokio::test]
     async fn question_with_colons_is_searched_as_words() {
         for from in [None, Some("alice@example.com".to_string())] {
@@ -701,9 +653,6 @@ mod tests {
         }
     }
 
-    /// Narrowed to one sender, a question keeps every word: mail from that
-    /// sender that only says "terms" a lot must not crowd the answer out
-    /// of the bounded candidate pool.
     #[tokio::test]
     async fn filtered_question_requires_every_word() {
         let (state, _) = crate::state::AppState::in_memory_with_fake().await.unwrap();
@@ -722,9 +671,6 @@ mod tests {
             };
             entries.push((env, body));
         };
-        // Each competitor leans hard on one of the words, in the subject
-        // where it scores most; the answer has all three once, in a long
-        // body. Ranked by any one word, the competitors fill the pool.
         let words = ["acme", "acquisition", "terms"];
         for i in 0..12 {
             let word = words[i % words.len()];
@@ -908,10 +854,6 @@ mod tests {
         assert!(err.to_string().contains("question cannot be empty"));
     }
 
-    /// Slice 3.1 wiring contract (C2.3): semantic disabled, lexical
-    /// returns hits → executed_mode = Lexical. The default fixture
-    /// has semantic disabled (in_memory_with_fake doesn't activate
-    /// any profile), so this is the baseline path.
     #[tokio::test]
     async fn semantic_disabled_reports_executed_mode_lexical() {
         let stub = Arc::new(CannedLlm {
@@ -938,8 +880,6 @@ mod tests {
                     ArchiveAskMode::Hybrid,
                     "requested_mode preserved verbatim"
                 );
-                // Semantic is disabled in the fixture, so the only
-                // contributor is lexical.
                 assert_eq!(
                     answer.retrieval.executed_mode,
                     ArchiveAskMode::Lexical,
@@ -950,10 +890,6 @@ mod tests {
         }
     }
 
-    /// Slice 3.1 wiring contract (C2.3): when caller explicitly asks
-    /// for ArchiveAskMode::Lexical, executed_mode is Lexical and the
-    /// semantic engine is not consulted (so semantic-disabled doesn't
-    /// matter and no time is wasted on it).
     #[tokio::test]
     async fn explicit_lexical_mode_reports_lexical() {
         let stub = Arc::new(CannedLlm {
@@ -981,15 +917,9 @@ mod tests {
 
     #[tokio::test]
     async fn rrf_is_order_stable_and_dedupes_message_ids() {
-        // Pure unit on the fusion helper -- exercises the RRF math
-        // without spinning up a fixture. Rank-1 in lexical AND rank-1
-        // in semantic should beat rank-1 in only one source.
         let id_a = mxr_core::MessageId::new();
         let id_b = mxr_core::MessageId::new();
         let id_c = mxr_core::MessageId::new();
-        // a: lexical rank 0 + semantic rank 0
-        // b: lexical rank 1 (only)
-        // c: semantic rank 1 (only)
         let lex = vec![id_a.clone(), id_b.clone()];
         let sem = vec![id_a.clone(), id_c.clone()];
         let merged = reciprocal_rank_fuse(&lex, &sem, 10);
@@ -997,9 +927,6 @@ mod tests {
         assert_eq!(merged[0], id_a, "double-source candidate ranks first");
     }
 
-    /// Build an envelope addressed to a specific recipient. Mirrors
-    /// `envelope()` but lets the test set the To: list, which the
-    /// default fixture hard-codes to user@example.com.
     fn envelope_to_recipient(
         account_id: &AccountId,
         from: &str,
@@ -1030,21 +957,12 @@ mod tests {
         assert!(!pass_filter(&labelled, &filters));
     }
 
-    /// `pass_filter` must honor `filters.to` -- a CLI user running
-    /// `mxr ask "..." --to alice@example.com` is asking for messages
-    /// addressed to alice, not messages from her. The filter struct
-    /// has had this field for a while (`ArchiveAskFiltersData::to`)
-    /// but the handler was ignoring it, so junk messages addressed
-    /// to other recipients were leaking into the LLM prompt and
-    /// poisoning the answer.
     #[tokio::test]
     async fn to_filter_drops_envelopes_not_addressed_to_recipient() {
         let (state, _) = crate::state::AppState::in_memory_with_fake().await.unwrap();
         let state = Arc::new(state);
         let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
 
-        // Three messages, all mentioning "status update" so search
-        // retrieves all three, but only one is addressed to alice.
         let env_alice = envelope_to_recipient(
             &account_id,
             "team@example.com",
@@ -1130,7 +1048,6 @@ mod tests {
             last_user: Mutex::new(String::new()),
         });
         let (state, account_id, ids) = fixture(stub.clone()).await;
-        // Re-stub the same way to keep the prompt-capture mutex stable.
         let stub2 = Arc::new(CannedLlm {
             body: format!(
                 r#"{{"answer":"The old message had the status.","citations":[{{"msg_id":"{}","quote":"status"}}]}}"#,
@@ -1140,9 +1057,6 @@ mod tests {
         });
         state.llm.replace(stub2.clone());
 
-        // Only ids[2] is 2 days old; ids[0] is 0 days, ids[1] is 1 day.
-        // Filter `after` = 1.5 days ago in the past should keep ids[0]
-        // and ids[1] but drop ids[2].
         let after = chrono::Utc::now() - chrono::Duration::hours(36);
         let err = ask(
             &state,

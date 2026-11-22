@@ -1,8 +1,3 @@
-//! New text for Messages: each message without the quoted history and
-//! signature its thread already holds (`mxr_reader::new_text`), and the
-//! ask from a cached gist. Every client reads these words from here, so
-//! the CLI, TUI, web and MCP show the same text and the same "trimmed".
-
 use super::gist_kind::style_of;
 use super::thread_gist::{cached_gist, thread_envelopes, GistPolicy, GistSetup};
 use super::HandlerError;
@@ -14,15 +9,11 @@ use mxr_reader::{new_text, plain_text, EarlierMessage};
 use mxr_store::DeskMessage;
 use std::collections::{HashMap, HashSet};
 
-/// Earlier messages a message is matched against. Quotes almost always
-/// come from the last few; a cap keeps long threads cheap.
 const EARLIER_MAX: usize = 8;
-/// Width a message is wrapped at to count its lines.
 const WRAP_COLUMNS: usize = 72;
 
 pub(super) struct TextRequest<'a> {
     pub wanted: &'a [MessageId],
-    /// Messages you sent: they never count as the author's earlier mail.
     pub outbound: &'a HashSet<MessageId>,
 }
 
@@ -42,8 +33,6 @@ struct Loaded {
     attachments: Vec<AttachmentMeta>,
 }
 
-/// The new text of each wanted message of `thread` (any order in, date
-/// order assumed by position).
 pub(super) async fn new_texts(
     state: &AppState,
     thread: &[DeskMessage],
@@ -167,7 +156,6 @@ async fn texts(
     Ok(out)
 }
 
-/// A message whose body isn't stored yet reads as its snippet.
 async fn snippet_text(state: &AppState, id: &MessageId) -> Result<MessageText, HandlerError> {
     let snippet = state
         .store
@@ -185,8 +173,6 @@ async fn snippet_text(state: &AppState, id: &MessageId) -> Result<MessageText, H
     })
 }
 
-/// Lines the text takes wrapped at `WRAP_COLUMNS`: what "three lines or
-/// fewer" is measured in.
 pub(super) fn wrapped_lines(text: &str) -> usize {
     text.lines()
         .filter(|line| !line.trim().is_empty())
@@ -194,15 +180,12 @@ pub(super) fn wrapped_lines(text: &str) -> usize {
         .sum()
 }
 
-/// The ask in a conversation's cached gist, quoted verbatim.
 pub(super) struct CachedAsk {
     pub message_id: MessageId,
     pub quote: String,
     pub model: String,
 }
 
-/// The ask from the gist cache, when the gist still matches the thread.
-/// Never calls a model.
 pub(super) async fn cached_ask(
     state: &AppState,
     thread_id: &ThreadId,

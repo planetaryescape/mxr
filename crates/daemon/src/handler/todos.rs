@@ -1,11 +1,3 @@
-//! To do: IPC handlers, the post-sync scan and the background tick.
-//!
-//! Detection, lead times, windows and the first run live in `mxr-todo`;
-//! this module runs them against the daemon's store and clock and serves
-//! the runway. Every mutation takes `dry_run`, and the preview selects
-//! rows with the same predicate the write uses, so what was previewed is
-//! what changes.
-
 use super::time::resolve_in_zone;
 use super::todo_view::{already_over_label, bands, empty_state, headline, start_of_week, to_data};
 use super::{HandlerError, HandlerResult};
@@ -27,13 +19,8 @@ use mxr_todo::timing::{lead_time, window, TimingInput};
 use mxr_todo::TodoKind;
 use std::collections::HashMap;
 
-/// The mode name `mode_views` records To do's last look under.
 const MODE: &str = "todo";
-/// The catch-up shows at most this many rows (blueprint 22: half the ~50
-/// overdue tasks at which people stop opening a task app).
 pub(crate) const CATCHUP_MAX: u32 = 25;
-/// First-run pages classified per background tick, so a big mailbox is
-/// sorted in steps rather than one long hold on the writer.
 const FIRST_RUN_PAGES_PER_TICK: u32 = 1;
 const FIRST_RUN_PAGE_SIZE: u32 = 100;
 
@@ -48,20 +35,11 @@ pub(crate) fn pass_config(state: &AppState, now: DateTime<Utc>) -> PassConfig<Lo
     }
 }
 
-// ---------------------------------------------------------------------------
-// Background work
-// ---------------------------------------------------------------------------
-
-/// The to-do scan as of now, for tests.
 #[cfg(test)]
 pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
     scan_messages_at(state, message_ids, Utc::now()).await;
 }
 
-/// Classify newly synced mail as of `now`. Never errors the caller; failures
-/// are logged, like the delivery scan. A due date in mail is a day that ends
-/// at midnight, so the full classifier eval pins `now` to grade the same mail
-/// the same way at any hour.
 pub(crate) async fn scan_messages_at(
     state: &AppState,
     message_ids: &[MessageId],
@@ -106,9 +84,6 @@ pub(crate) async fn scan_messages_at(
     }
 }
 
-/// One background tick: advance each account's first run, mirror changed
-/// promises, then sweep. Returns whether a first run is still going, so
-/// the loop can come back sooner.
 pub(crate) async fn tick(
     state: &AppState,
     now: DateTime<Utc>,
@@ -147,7 +122,6 @@ pub(crate) async fn tick(
                 continue;
             }
         }
-        // One account's failure never stops the others or the sweep.
         let progress = match pass::run_first_run(
             &state.store,
             &cfg,
@@ -202,10 +176,6 @@ pub(crate) async fn tick(
     Ok(running)
 }
 
-// ---------------------------------------------------------------------------
-// Reads
-// ---------------------------------------------------------------------------
-
 pub(super) async fn get_runway(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -227,7 +197,6 @@ pub(super) async fn runway_at(
         .list_runway_todos(account_id, start_of_week(now, &Local))
         .await?;
     let catchup_count = state.store.count_catchup_todos(account_id).await?;
-    // Seen per scope: opening one account's To do leaves the others' counts.
     let seen_key =
         account_id.map_or_else(|| MODE.to_string(), |account| format!("{MODE}:{account}"));
     let last_seen = state.store.mode_last_viewed(&seen_key).await?;
@@ -417,10 +386,6 @@ pub(super) async fn get_catchup(state: &AppState, account_id: Option<&AccountId>
     })
 }
 
-// ---------------------------------------------------------------------------
-// Mutations
-// ---------------------------------------------------------------------------
-
 pub(super) async fn set_state(
     state: &AppState,
     raw_ids: &[String],
@@ -463,8 +428,6 @@ pub(super) async fn set_state(
             mirror_promise(state, record, to, now).await?;
         }
         let changed = state.store.get_todos(&changed_ids).await?;
-        // A ticked-off bill is a record in Archive; reopening it unfiles
-        // what the tick-off filed.
         match to {
             TodoState::Done => {
                 super::records::file_ticked_todos(state, &changed).await;
@@ -935,8 +898,6 @@ async fn resolution_quote_is_current(
     }
 }
 
-/// A promise row's state goes back to its commitment, so the desk and
-/// `mxr commitments` agree and the mirror doesn't undo the user's choice.
 async fn mirror_promise(
     state: &AppState,
     record: &TodoRecord,
@@ -1147,8 +1108,6 @@ pub(super) fn apply_edits(
     Ok(record)
 }
 
-/// Act-by, surface time and window again from the table, after the user
-/// changed the due date or the kind.
 pub(super) fn retime_record(record: &mut TodoRecord, fields: &mut FieldSources, morning_hour: u8) {
     let kind = TodoKind::parse(&record.kind).unwrap_or(TodoKind::Other);
     let input = TimingInput {
@@ -1309,7 +1268,6 @@ pub(super) async fn create(
     ))
 }
 
-/// What a catch-up decision does to the rows it selects.
 #[derive(Clone, Copy)]
 enum Choice {
     Keep,
@@ -1324,7 +1282,6 @@ pub(super) async fn set_catchup(
     dry_run: bool,
 ) -> HandlerResult {
     let now = Utc::now();
-    // The account the request is scoped to bounds the ids it may touch.
     let pending = |record: &TodoRecord| {
         record.state == TodoState::Open
             && record.catchup == Some(TodoCatchup::Pending)
@@ -1398,12 +1355,6 @@ pub(super) async fn set_catchup(
     Ok(change(dry_run, verb, word, &changed, unchanged, now))
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// The rows among `ids` that `applies` to, and the ids it doesn't. One
-/// predicate for the preview and the write, so they select the same rows.
 async fn select(
     state: &AppState,
     ids: &[String],
@@ -1453,7 +1404,6 @@ fn change(
     }
 }
 
-/// A full id, or a prefix of one that matches exactly one row.
 pub(super) async fn resolve_todo_id(state: &AppState, raw: &str) -> Result<String, HandlerError> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -1512,7 +1462,6 @@ pub(super) fn resolve_phrase(
     }
 }
 
-/// A due date means the whole named day.
 fn end_of_named_day(at: DateTime<Utc>) -> DateTime<Utc> {
     mxr_todo::dates::end_of_day(at.with_timezone(&Local).date_naive(), &Local)
 }
@@ -1549,7 +1498,6 @@ fn store_state(state: TodoStateData) -> TodoState {
     }
 }
 
-/// The accounts the given to-dos belong to, for the account allowlist.
 pub(super) async fn todo_accounts(
     state: &AppState,
     raw_ids: &[String],

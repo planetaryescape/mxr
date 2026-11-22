@@ -1,24 +1,8 @@
-//! A thread's shape for Messages (blueprint 22, phase 3; messages.md §4).
-//!
-//! - One-to-one: exactly one other person took part. It is a topic inside
-//!   that person's row.
-//! - Group: two or more other people took part (wrote in it, or you wrote
-//!   to them). It is its own row, keyed by the thread, never by who is on
-//!   it, because CC lists change on almost every reply.
-//! - Copied: you never wrote in it, and you were only copied or it went to
-//!   a crowd. It belongs in Updates, not Messages.
-//!
-//! Pure, so every rule is tested directly; the lanes, Messages and mode
-//! membership all call it, so they never disagree about a thread.
-
 use super::desk_lanes::is_outbound;
 use mxr_store::DeskMessage;
 
-/// The thresholds, from `[messages]` in config.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ShapeConfig {
-    /// A thread with more recipients than this on one message, that you
-    /// never wrote in, is copied.
     pub large_thread_recipients: usize,
 }
 
@@ -38,29 +22,23 @@ impl ShapeConfig {
     }
 }
 
-/// The thresholds as configured now.
 pub(crate) fn shape_config(state: &crate::state::AppState) -> ShapeConfig {
     ShapeConfig::from_config(&state.config_snapshot().messages)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Shape {
-    /// The other person's address, lowercased.
     OneToOne(String),
-    /// The other people, lowercased, in the order they joined.
     Group(Vec<String>),
     Copied,
-    /// No person took part: automated or list mail.
     NotConversation,
 }
 
 impl Shape {
-    /// In Messages: a one-to-one or group conversation.
     pub(crate) fn in_messages(&self) -> bool {
         matches!(self, Self::OneToOne(_) | Self::Group(_))
     }
 
-    /// The other people, lowercased.
     pub(crate) fn people(&self) -> &[String] {
         match self {
             Self::OneToOne(person) => std::slice::from_ref(person),
@@ -70,8 +48,6 @@ impl Shape {
     }
 }
 
-/// Someone the owner wrote to can be a human billing/support desk. A
-/// sender's list history is not the identity of every correspondence.
 pub(crate) fn human_address(
     email: &str,
     screener: &std::collections::HashMap<String, mxr_store::ScreenerDisposition>,
@@ -81,16 +57,10 @@ pub(crate) fn human_address(
         && screener.get(&key) != Some(&mxr_store::ScreenerDisposition::Deny)
 }
 
-/// What the shape rule needs to know about addresses and senders.
 pub(crate) struct ShapeInputs<'a> {
     pub is_self: &'a dyn Fn(&str) -> bool,
-    /// The message's sender is a person (the shared classifier).
     pub person_sender: &'a dyn Fn(&DeskMessage) -> bool,
-    /// An address you wrote to could be a person: not automated, not a
-    /// list, not screened out.
     pub human_address: &'a dyn Fn(&str) -> bool,
-    /// The user moved this email to Messages (`X`): its thread is a
-    /// conversation whatever the copied and crowd rules say.
     pub kept_in_messages: &'a dyn Fn(&DeskMessage) -> bool,
     pub config: ShapeConfig,
 }
@@ -99,8 +69,6 @@ pub(crate) fn conversation_shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_
     shape(thread, inputs, false)
 }
 
-/// Stored homes already decided membership. Only participant geometry is
-/// needed by a list, not another parse of every historical message body.
 pub(crate) fn conversation_geometry(thread: &[DeskMessage], inputs: &ShapeInputs<'_>) -> Shape {
     shape(thread, inputs, true)
 }
@@ -131,9 +99,6 @@ fn shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_>, known_member: bool) -
             add(&message.from.email);
             let in_to = message.to.iter().any(|a| is_self(&a.email));
             let in_cc = message.cc.iter().any(|a| is_self(&a.email));
-            // Copied needs positive evidence: you in CC and not in To. In
-            // neither (Bcc, or an alias mxr doesn't know) counts as
-            // addressed, so mail to an unknown alias never vanishes.
             if in_cc && !in_to {
                 copied = true;
             } else {
@@ -171,9 +136,6 @@ fn shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_>, known_member: bool) -
     }
 }
 
-/// A crowd thread stays a conversation only while it is your turn in it:
-/// you wrote in it, and a person's reply after your last message has you
-/// in To. Otherwise the crowd rule sends it to Updates (blueprint 22).
 fn answered_you(thread: &[DeskMessage], inputs: &ShapeInputs<'_>) -> bool {
     let is_self = inputs.is_self;
     let live = || thread.iter().filter(|m| !m.trashed);
@@ -300,7 +262,6 @@ mod tests {
                 &[],
                 2,
             ),
-            // Someone added, someone dropped: still the same group thread.
             message(
                 &t,
                 ME,
@@ -406,8 +367,6 @@ mod tests {
 
     #[test]
     fn a_crowd_thread_stays_while_someone_answered_you_directly() {
-        // You wrote in it and a person replied to you, with you in To:
-        // your turn, so it stays in Messages until you answer.
         let t = ThreadId::new();
         let crowd: Vec<String> = (0..12).map(|i| format!("p{i}@team.example")).collect();
         let crowd: Vec<&str> = crowd.iter().map(String::as_str).collect();
@@ -419,7 +378,6 @@ mod tests {
             message(&t, "p3@team.example", &with_me, &[], 3),
         ];
         assert!(matches!(shape(&thread), Shape::Group(_)));
-        // Once you answer, the crowd rule applies again.
         let mut answered = thread.to_vec();
         answered.push(message(&t, ME, &crowd, &[], 4));
         assert_eq!(shape(&answered), Shape::Copied);
@@ -427,7 +385,6 @@ mod tests {
 
     #[test]
     fn neither_to_nor_cc_counts_as_addressed() {
-        // Bcc, or an alias mxr doesn't know: never silently copied.
         let t = ThreadId::new();
         let thread = [message(
             &t,

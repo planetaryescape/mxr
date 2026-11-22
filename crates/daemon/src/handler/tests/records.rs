@@ -1,7 +1,3 @@
-//! Archive over the daemon: the answer box, the ledger, corrections that
-//! win forever, previews that equal the change, the export preview, and
-//! the record a ticked-off to-do leaves.
-
 use super::desk::{request, Fixture};
 use super::*;
 use chrono::{DateTime, Duration, Utc};
@@ -23,7 +19,6 @@ pub(super) async fn put(
     put_in(fx, &fx.account, from, subject, text, html, sent).await
 }
 
-/// [`put`] into `account`, for tests that need a second mailbox.
 pub(super) async fn put_in(
     fx: &Fixture,
     account: &mxr_core::AccountId,
@@ -108,7 +103,6 @@ async fn ask(fx: &Fixture, query: &str) -> RecordAnswerData {
     ask_page(fx, query, false, 0, 200).await
 }
 
-/// The answer box with "Show all" (`list`) and a list page.
 async fn ask_page(
     fx: &Fixture,
     query: &str,
@@ -142,7 +136,6 @@ fn change(data: ResponseData) -> RecordChangeData {
     }
 }
 
-/// The Dell order's three emails and a Lisbon flight and hotel.
 async fn seed(fx: &Fixture) -> Vec<MessageId> {
     let now = Utc::now();
     let ordered = now - Duration::days(40);
@@ -256,7 +249,6 @@ async fn the_dell_orders_emails_are_one_row_and_the_ledger_totals_its_month() {
     assert_eq!(orders.months.len(), 1);
     assert_eq!(orders.months[0].count, 1);
     assert_eq!(orders.months[0].totals[0].display, "£1,249.00");
-    // The trip three days out is coming up.
     assert!(all.coming_up.iter().any(|moment| moment.kind == "trip"));
 }
 
@@ -403,7 +395,6 @@ async fn the_export_preview_counts_what_the_export_writes() {
         (real.rows, real.unchecked, real.missing_pdfs, &real.totals)
     );
     assert_eq!(preview.rows, 3);
-    // The summary states the unchecked rows before anything is written.
     assert!(preview.summary.contains("unchecked"));
     let csv = real.csv.expect("csv");
     assert_eq!(csv.lines().count(), 1 + real.rows as usize);
@@ -572,7 +563,6 @@ async fn a_sender_wide_edit_that_is_not_an_issuer_changes_nothing() {
 async fn renaming_a_senders_issuer_changes_every_record_from_them_at_once() {
     let fx = Fixture::new().await;
     let ids = seed(&fx).await;
-    // A second Dell email that files its own record.
     let other = put(
         &fx,
         ("Dell", "orders@dell.co.uk"),
@@ -604,7 +594,6 @@ async fn renaming_a_senders_issuer_changes_every_record_from_them_at_once() {
         .records
         .iter()
         .all(|record| record.issuer.as_deref() == Some("Dell UK")));
-    // Later mail from the sender is filed under the new name.
     crate::handler::records::scan_messages(&fx.state, &ids).await;
     let again = ask(&fx, "402-118").await.answer.expect("dell").record;
     assert_eq!(again.issuer.as_deref(), Some("Dell UK"));
@@ -663,7 +652,6 @@ async fn the_prefetch_writes_no_more_than_the_budget_whatever_a_pdf_declares() {
     )
     .await;
     let mut body = fx.state.store.get_body(&message).await.unwrap().unwrap();
-    // The fake provider returns 23 bytes for any attachment; this one says 10.
     body.attachments.push(mxr_core::types::AttachmentMeta {
         id: mxr_core::id::AttachmentId::new(),
         message_id: message.clone(),
@@ -694,7 +682,6 @@ async fn the_prefetch_writes_no_more_than_the_budget_whatever_a_pdf_declares() {
         }
     };
 
-    // A 20-byte budget fits what the PDF declared, not what it is.
     let fetched = crate::handler::records::prefetch_pdfs_within(&fx.state, 20, 1024).await;
     assert_eq!(fetched, 0);
     assert!(
@@ -703,7 +690,6 @@ async fn the_prefetch_writes_no_more_than_the_budget_whatever_a_pdf_declares() {
     );
     let (_, on_disk) = fx.state.store.record_pdfs_on_disk().await.unwrap();
     assert_eq!(on_disk, 0);
-    // Its real size is recorded, so the next tick skips it.
     let size = fx
         .state
         .store
@@ -715,7 +701,6 @@ async fn the_prefetch_writes_no_more_than_the_budget_whatever_a_pdf_declares() {
         .size_bytes;
     assert_eq!(size, 23);
 
-    // With room for it, it is written and its real bytes count.
     let fetched = crate::handler::records::prefetch_pdfs_within(&fx.state, 1024, 1024).await;
     assert_eq!(fetched, 1);
     assert!(pdf_on_disk(&fx).await.is_some());
@@ -723,7 +708,6 @@ async fn the_prefetch_writes_no_more_than_the_budget_whatever_a_pdf_declares() {
     assert_eq!((bytes, count), (23, 1));
 }
 
-/// Three Anthropic orders in two currencies, a month apart.
 async fn seed_anthropic(fx: &Fixture) {
     let now = Utc::now();
     let mut ids = Vec::new();
@@ -767,7 +751,6 @@ async fn an_issuer_alone_lists_every_match_with_totals_per_currency() {
     assert_eq!(list.count, 3);
     assert_eq!(list.records.len(), 3);
     assert_eq!(list.issuer.as_deref(), Some("Anthropic"));
-    // Never converted: one total per currency, largest first.
     let totals: Vec<(&str, i64)> = list
         .totals
         .iter()
@@ -780,7 +763,6 @@ async fn an_issuer_alone_lists_every_match_with_totals_per_currency() {
         "{}",
         list.header
     );
-    // Newest first, like the ledger, with the best match highlighted.
     let dates: Vec<_> = list.records.iter().map(|r| r.date).collect();
     let mut sorted = dates.clone();
     sorted.sort_by(|a, b| b.cmp(a));
@@ -789,7 +771,6 @@ async fn an_issuer_alone_lists_every_match_with_totals_per_currency() {
     assert!(list.first < list.last);
     let in_months: u32 = list.months.iter().map(|m| m.count).sum();
     assert_eq!(in_months, 3);
-    // The card is still there for clients that only draw answers.
     assert_eq!(
         answer.answer.expect("the top match").record.id,
         list.top_record_id
@@ -842,7 +823,6 @@ async fn a_field_query_is_an_answer_and_show_all_lists_its_matches() {
     let list = all.list.expect("a list");
     assert_eq!(list.count, 2);
     assert_eq!(list.top_record_id, answer.answer.expect("card").record.id);
-    // Two issuers: no issuer page, and the header names the query.
     assert!(list.issuer.is_none());
     assert!(
         list.header

@@ -1,4 +1,3 @@
-//! Bills keep their own row, amount and deadline across reminders and upgrades.
 use super::desk::{request, Fixture, ME};
 use super::promise_projection::{replace, settle};
 use super::*;
@@ -36,7 +35,6 @@ async fn open_rows(fx: &Fixture) -> Vec<TodoRecord> {
         .unwrap()
 }
 
-/// A new mail makes earlier answers stale until the normal reconciler runs.
 async fn reconcile(fx: &Fixture) {
     super::super::assessments::reconcile_account(&fx.state, &fx.account)
         .await
@@ -64,7 +62,6 @@ fn bank_body(reference: &str, amount: &str, due: chrono::NaiveDate) -> String {
     )
 }
 
-/// Rewrites a judged mail and its row to what the previous policy stored.
 async fn store_under_previous_policy(
     fx: &Fixture,
     envelope: &Envelope,
@@ -98,7 +95,6 @@ async fn store_under_previous_policy(
     key
 }
 
-/// Policy 17 did not read a reference out of the subject.
 fn without_subject_reference(old: &mut AskAssessment) {
     for unit in &mut old.units {
         if let Some(tags) = &mut unit.tags {
@@ -110,7 +106,6 @@ fn without_subject_reference(old: &mut AskAssessment) {
     }
 }
 
-/// Policy 17 keyed the bill on the biller's bank account.
 fn on_bank_account(old: &mut AskAssessment) {
     let zone = old.units.iter().find(|u| u.tags.is_some()).unwrap().zone;
     let text = &old.facts.zones[zone].text;
@@ -441,7 +436,6 @@ async fn one_merged_row_splits_into_each_accounts_own_bill_on_upgrade() {
         .await;
         settle(&fx, &first).await;
         settle(&fx, &second).await;
-        // Policy 17 held both accounts on the one row the later mail wrote.
         sqlx::query("DELETE FROM todos WHERE source_message_id=?")
             .bind(first.id.as_str())
             .execute(fx.state.store.writer())

@@ -1,7 +1,3 @@
-//! Which commitment dates mxr acts on. A date counts only when its source is
-//! the email's words or the user (`by_when_source`); a model-written date
-//! stays on the row but the desk, the promise to-do mirror and Now ignore it.
-
 use super::desk::{Fixture, ME};
 use super::*;
 use crate::handler::{commitments_extract, now, todos};
@@ -27,7 +23,6 @@ const STATUSES: [CommitmentStatus; 3] = [
     CommitmentStatus::Expired,
 ];
 
-/// What every acting surface must agree on for one row.
 fn acts(
     source: Option<ByWhenSource>,
     direction: CommitmentDirection,
@@ -51,7 +46,6 @@ fn case_id(
     )
 }
 
-/// One commitment on its own thread, evidenced by a message you sent.
 async fn seed(
     fx: &Fixture,
     id: &str,
@@ -128,7 +122,6 @@ async fn run_todo_pass(fx: &Fixture, at: DateTime<Utc>) {
 async fn every_acting_surface_agrees_on_which_commitment_dates_count() {
     let fx = Fixture::new().await;
     let at = Utc::now();
-    // Two days overdue: inside the desk's window, so only the source decides.
     let due = at - Duration::days(2);
     let mut cases = Vec::new();
     for source in SOURCES {
@@ -143,7 +136,6 @@ async fn every_acting_surface_agrees_on_which_commitment_dates_count() {
     assert_eq!(cases.len(), 24);
 
     super::projection_diagnostics::trace(&fx.state, &fx.account, "24 seeded commitments").await;
-    // The desk's Due lane.
     let ResponseData::Desk { due: lane, .. } = fx.desk(100).await else {
         panic!("expected a desk");
     };
@@ -160,7 +152,6 @@ async fn every_acting_surface_agrees_on_which_commitment_dates_count() {
     assert_eq!(on_desk, expected, "desk due rows");
     assert_eq!(expected.len(), 2, "words and user, yours and open");
 
-    // The promise to-do mirror: the date a to-do carries.
     run_todo_pass(&fx, at).await;
     let mirrored: HashMap<String, Option<DateTime<Utc>>> = fx
         .state
@@ -173,7 +164,6 @@ async fn every_acting_surface_agrees_on_which_commitment_dates_count() {
         .collect();
     for (id, stored_id, acts) in &cases {
         match mirrored.get(stored_id) {
-            // Only open promises of yours are mirrored at all.
             None => assert!(
                 !id.contains("-yours-open"),
                 "{id}: an open promise of yours is mirrored"
@@ -192,7 +182,6 @@ async fn every_acting_surface_agrees_on_which_commitment_dates_count() {
 async fn now_shows_a_promise_due_soon_only_when_its_date_is_not_a_models() {
     let fx = Fixture::new().await;
     let at = Utc::now();
-    // The same date on every source: due in the Now band.
     let soon = at + Duration::hours(2);
     for source in SOURCES {
         seed(
@@ -209,8 +198,6 @@ async fn now_shows_a_promise_due_soon_only_when_its_date_is_not_a_models() {
 
     let utc = FixedOffset::east_opt(0).unwrap();
     let data = now::now_at(&fx.state, None, at, &utc).await.unwrap();
-    // A promise's to-do is titled by what was promised, which `seed` makes
-    // from the commitment id.
     let in_now: BTreeSet<String> = data
         .due_soon
         .todos
@@ -233,8 +220,6 @@ async fn now_shows_a_promise_due_soon_only_when_its_date_is_not_a_models() {
     assert_eq!(in_now, expected);
 }
 
-/// BK's upgrade path: promises mirrored while their dates counted, then the
-/// dates turn out to be a model's and a restarted daemon reruns the mirror.
 #[tokio::test]
 async fn a_mirrored_promise_loses_its_due_date_when_the_date_turns_out_to_be_a_models() {
     let fx = Fixture::new().await;
@@ -276,19 +261,16 @@ async fn a_mirrored_promise_loses_its_due_date_when_the_date_turns_out_to_be_a_m
         assert_eq!(todo.state, TodoState::Open);
     }
 
-    // The user edited one of them, so the mirror must leave it alone.
     sqlx::query("UPDATE todos SET user_edited = 1 WHERE commitment_id = ?")
         .bind(touched)
         .execute(fx.state.store.writer())
         .await
         .unwrap();
-    // The dates were really a model's, as on a database from before R0.
     sqlx::query("UPDATE contact_commitments SET by_when_source = 'model_date'")
         .execute(fx.state.store.writer())
         .await
         .unwrap();
 
-    // A fresh fingerprints map, as after a daemon restart.
     run_todo_pass(&fx, at).await;
     let after = promise_todos().await;
 
@@ -312,8 +294,6 @@ async fn a_mirrored_promise_loses_its_due_date_when_the_date_turns_out_to_be_a_m
     assert_eq!(kept.state, TodoState::Open);
 }
 
-/// A draft candidate saved before due words existed can hold a date a model
-/// wrote and has no source. Sending its draft must not make that date count.
 #[tokio::test]
 async fn a_legacy_draft_candidates_date_stays_unverified_after_send() {
     let fx = Fixture::new().await;
@@ -346,8 +326,6 @@ async fn a_legacy_draft_candidates_date_stays_unverified_after_send() {
         created_at: at,
         updated_at: at,
     };
-    // Same date, one with no source (a row from before provenance) and one
-    // dated from the draft's words.
     let mut ids = Vec::new();
     for (what, source) in [("legacy", None), ("fresh", Some(ByWhenSource::Words))] {
         let candidate = DraftCommitmentCandidate {

@@ -1,6 +1,3 @@
-//! Isolated subprocess fixture. No environment changes, real credentials or
-//! Microsoft calls; each test has its own executable and response files.
-
 use super::MicrosoftTodoCli;
 use mxr_todo::linked::LinkedTodoFields;
 use std::os::unix::fs::PermissionsExt;

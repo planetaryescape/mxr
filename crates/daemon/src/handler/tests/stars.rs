@@ -1,7 +1,3 @@
-//! Star and unstar undo: each message's own star goes back as it was, at
-//! the provider too, including stars outside the list a conversation's
-//! unstar reached (clients name those from the row's `starred_message_ids`).
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::Duration;
@@ -46,7 +42,6 @@ async fn set_starred(fx: &Fixture, envelope: &mut Envelope, direction: MessageDi
     fx.store_envelope(envelope, direction).await;
 }
 
-/// The provider's star calls since `from`, as (provider id, starred).
 fn star_calls(fx: &Fixture, from: usize) -> Vec<(String, bool)> {
     fx.fake.mutations()[from..]
         .iter()
@@ -60,8 +55,6 @@ fn star_calls(fx: &Fixture, from: usize) -> Vec<(String, bool)> {
         .collect()
 }
 
-/// Maya wrote (in the inbox, starred); you replied (in Sent, starred); she
-/// wrote again (in the inbox, not starred).
 async fn starred_conversation(fx: &Fixture) -> (Envelope, Envelope, Envelope) {
     let thread = ThreadId::new();
     let mut first = fx
@@ -96,8 +89,6 @@ async fn unstarring_a_conversation_clears_stars_outside_the_list_and_undo_puts_t
     let (first, reply, last) = starred_conversation(&fx).await;
     let before = fx.fake.mutations().len();
 
-    // The inbox row lists Maya's two messages and names the starred reply in
-    // Sent among its starred messages; the unstar covers all three.
     let result = star(&fx, &[&first, &last, &reply], false).await;
     assert_eq!(result.succeeded, 3);
     for id in [&first.id, &reply.id, &last.id] {
@@ -133,7 +124,6 @@ async fn undo_of_a_star_restores_each_message_as_it_was() {
     let fx = Fixture::new().await;
     let (first, reply, last) = starred_conversation(&fx).await;
 
-    // Starring the conversation: two of three were starred already.
     let result = star(&fx, &[&first, &reply, &last], true).await;
     assert!(starred(&fx, &last.id).await);
 
@@ -190,7 +180,6 @@ async fn a_star_that_fails_part_way_is_undone_at_the_provider_too() {
     calls.sort();
     let mut want = vec![
         (one.provider_id.clone(), false),
-        // The local copy shows no star, but the provider may have one.
         (two.provider_id.clone(), false),
     ];
     want.sort();

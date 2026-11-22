@@ -1,4 +1,3 @@
-//! Independently authored statements and requests share response verbs, not debt.
 use super::*;
 use mxr_core::asks::{Act, ActionKind, Actor, AskState};
 

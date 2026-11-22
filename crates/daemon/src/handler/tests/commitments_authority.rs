@@ -1,4 +1,3 @@
-//! Accepted draft promises retain authority independently of date confidence.
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::{Duration, Utc};

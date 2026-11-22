@@ -1,7 +1,3 @@
-//! Refine a saved draft: shorter, warmer, more formal, fewer emoji, or with
-//! added context, keeping the user's own voice. The model sees who the
-//! user is and real emails they sent this person, like a fresh draft does.
-
 use super::draft_provenance::DraftPolicy;
 use super::draft_voice::{self, Counterparty};
 use super::{draft_context, draft_output, HandlerResult};
@@ -22,8 +18,6 @@ emails. Keep any [[?: ...]] placeholders. Return only the revised email body as 
     )
 }
 
-/// Why a cloud model without opt-in won't refine or rewrite a body that
-/// carries text an earlier draft wrote from the user's history.
 pub(crate) const HISTORY_BODY_REFUSAL: &str = "This draft includes text written from your \
 history, and your model is a cloud one; refine it with a local model, or allow cloud history \
 with llm.allow_cloud_relationship_data = true.";
@@ -44,7 +38,6 @@ pub(super) async fn draft_refine(
         .to
         .first()
         .ok_or_else(|| "Draft has no recipient to refine against".to_string())?;
-    // The user's other mail only reaches a cloud model with their opt-in.
     let policy = DraftPolicy::pin(state, LlmFeature::DraftRefine);
     let share = policy.share_history;
     let me = draft_voice::me(state, &draft.account_id).await;
@@ -56,7 +49,6 @@ pub(super) async fn draft_refine(
     let text = live_body
         .filter(|body| !body.trim().is_empty())
         .unwrap_or_else(|| draft.content.analysis_text());
-    // The body itself may carry an earlier suggestion written from history.
     let body_from_history =
         !crate::history_text::source_accounts(&state.store, Some(&draft.account_id), text)
             .await?
@@ -116,7 +108,6 @@ pub(super) async fn draft_refine(
         ));
     }
     if let Some(text) = background.as_deref() {
-        // Derived from stored mail: delimit it as untrusted content.
         prompt.push_str("[BACKGROUND, for understanding only]\n");
         prompt.push_str(&wrap_untrusted_mail(text));
         prompt.push_str("\n\n");
@@ -156,8 +147,6 @@ pub(super) async fn draft_refine(
             "- Make it clearer and closer to how I write, without changing what it says.\n",
         );
     }
-    // The draft can be AI-drafted from a poisoned thread, so it is wrapped as
-    // untrusted data too; the system prompt names the [DRAFT] block.
     prompt.push_str("\n[DRAFT]\n");
     prompt.push_str(&wrap_untrusted_mail(text));
 
@@ -238,8 +227,6 @@ mod tests {
 
     #[derive(Default)]
     struct CaptureLlm {
-        // Every completion the runtime makes (refine, and any humanizer
-        // rewrite pass) so the assertion is robust to config.
         calls: Mutex<Vec<Vec<ChatMessage>>>,
     }
 
@@ -271,8 +258,6 @@ mod tests {
         let cap = Arc::new(CaptureLlm::default());
         state.llm.replace(cap.clone());
 
-        // Seed a relationship summary so the voice-context block is
-        // populated with mail-derived text.
         state
             .store
             .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
@@ -315,7 +300,6 @@ mod tests {
         let response = draft_refine(&state, &draft.id, DraftRefineKnobsData::default(), None)
             .await
             .unwrap();
-        // The relationship summary reached the model, and the draft says so.
         let mxr_protocol::ResponseData::DraftSuggestion {
             provenance: Some(provenance),
             ..
@@ -328,17 +312,12 @@ mod tests {
         assert!(provenance.history_used);
         assert!(provenance.conversation.is_empty());
 
-        // Find the refine call (its system message carries the guard).
         let calls = cap.calls.lock().unwrap();
         let refine = calls
             .iter()
             .find(|m| m[0].content.contains(mxr_llm::UNTRUSTED_MAIL_GUARD))
             .expect("a call whose system prompt carries the guard");
         let user = &refine[1].content;
-        // The user message carries no guard (that rides on the system prompt),
-        // so every marker here is a real wrapper. Voice context and the draft
-        // each sit inside their OWN wrapper; only the task (in the system
-        // prompt) is authoritative.
         let v_pos = user
             .find("VOICE-CONTEXT-MARKER")
             .expect("voice context present");

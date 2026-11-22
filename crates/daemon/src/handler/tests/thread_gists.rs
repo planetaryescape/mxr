@@ -1,7 +1,3 @@
-//! List-row gists (`GetThreadGists`): the cache answers at once, and the
-//! background writer takes people's conversations in the order asked,
-//! once each, a bounded number at a time, and says when each is ready.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::Duration;
@@ -22,8 +18,6 @@ use tokio::sync::Semaphore;
 const MAYA: &str = "maya@example.com";
 const ASK: &str = "Can you confirm who owns the rollout check before Monday?";
 
-/// A model that answers only when the test lets it, and records how many
-/// calls ran at once and which prompts it saw, in order.
 struct GatedLlm {
     gate: Semaphore,
     active: AtomicUsize,
@@ -31,9 +25,7 @@ struct GatedLlm {
     calls: AtomicUsize,
     prompts: StdMutex<Vec<String>>,
     base_url: Option<String>,
-    /// Answer with something that isn't a gist.
     junk: std::sync::atomic::AtomicBool,
-    /// Answer with this exact completion instead of the canned gist.
     answer: StdMutex<Option<String>>,
 }
 
@@ -55,7 +47,6 @@ impl GatedLlm {
         self.gate.add_permits(calls);
     }
 
-    /// Which of `threads` each prompt was about, in call order.
     fn order(&self, threads: &[(ThreadId, String)]) -> Vec<ThreadId> {
         self.prompts
             .lock()
@@ -125,8 +116,6 @@ impl LlmProvider for GatedLlm {
     }
 }
 
-/// A conversation from `from` with a body carrying the ask; returns the
-/// thread and its message id (which the prompt names).
 async fn conversation(fx: &Fixture, from: &str) -> (ThreadId, String) {
     let thread = ThreadId::new();
     let envelope = fx
@@ -174,7 +163,6 @@ async fn gists_for(
     }
 }
 
-/// The next `count` gist events, in arrival order.
 async fn ready_events(
     events: &mut tokio::sync::broadcast::Receiver<IpcMessage>,
     count: usize,
@@ -214,7 +202,6 @@ async fn cached_gists_come_back_at_once_without_a_model_call() {
     let (thread, _) = conversation(&fx, MAYA).await;
     let llm = GatedLlm::new(true, None);
     fx.state.llm.replace(llm.clone());
-    // The reader's request writes the gist once.
     request(
         &fx,
         Request::GetThreadGist {
@@ -225,7 +212,6 @@ async fn cached_gists_come_back_at_once_without_a_model_call() {
     .await;
     assert_eq!(llm.calls.load(Ordering::SeqCst), 1);
 
-    // Close the gate: a model call now would hang the request.
     let closed = GatedLlm::new(false, None);
     fx.state.llm.replace(closed.clone());
     let batch = tokio::time::timeout(
@@ -344,8 +330,6 @@ async fn automated_mail_is_queued_only_when_the_client_is_showing_updates() {
     let ready = ready_events(&mut events, 2).await;
     assert_eq!(ready.len(), 2);
 
-    // Which prompt wrote which: a conversation's for the person, the
-    // notification's for the receipt.
     let prompts = llm.prompts.lock().unwrap().clone();
     assert_eq!(prompts.len(), 2);
     let conversation_prompts = prompts
@@ -357,7 +341,6 @@ async fn automated_mail_is_queued_only_when_the_client_is_showing_updates() {
         .filter(|prompt| prompt.contains("one automated email"))
         .count();
     assert_eq!((conversation_prompts, notification_prompts), (1, 1));
-    // Both prompts carry the untrusted-mail guard and wrap the mail.
     for prompt in &prompts {
         assert!(prompt.contains(mxr_llm::UNTRUSTED_MAIL_GUARD));
         let user = &prompt[prompt.find("Account owner addresses").unwrap()..];
@@ -367,7 +350,6 @@ async fn automated_mail_is_queued_only_when_the_client_is_showing_updates() {
         assert!(begin < body && body < end);
     }
 
-    // The cache answers whoever asks next, Updates or not.
     let again = gists(&fx, std::slice::from_ref(&receipts), false).await;
     assert_eq!(again.gists.len(), 1);
     assert!(again.gists[0].from_cache);
@@ -389,7 +371,6 @@ async fn a_gist_with_a_number_the_mail_does_not_write_is_dropped_not_cached() {
     let fx = Fixture::new().await;
     let (thread, _) = conversation(&fx, MAYA).await;
     let llm = GatedLlm::new(true, None);
-    // The mail says 5%; the model says 7%.
     *llm.answer.lock().unwrap() =
         Some(r#"{"gist": "Canary stays at 7% until the dashboard is quiet.", "ask": null}"#.into());
     fx.state.llm.replace(llm.clone());
@@ -410,8 +391,6 @@ async fn a_gist_with_a_number_the_mail_does_not_write_is_dropped_not_cached() {
     let first = read().await;
     assert_eq!(first.status, ThreadGistStatusData::Failed);
     assert!(first.gist.is_none());
-    // Nothing was cached, so the next read asks the model again, and a
-    // faithful answer is kept.
     *llm.answer.lock().unwrap() = None;
     let second = read().await;
     assert_eq!(second.status, ThreadGistStatusData::Ready);
@@ -430,13 +409,10 @@ async fn gists_are_written_in_the_order_asked_newest_request_first_each_once() {
     fx.state.llm.replace(llm.clone());
     let mut events = fx.state.event_tx.subscribe();
 
-    // The first request's first row goes straight to the one writer.
     let first = gists(&fx, &ids[0..2], true).await;
     assert_eq!(first.queued, ids[0..2].to_vec());
     wait_for("the first call", || llm.calls.load(Ordering::SeqCst) == 1).await;
 
-    // The user scrolled: the new rows jump the queue, and asking again for
-    // one already queued or being written never adds it twice.
     let second = gists(&fx, &[ids[3].clone(), ids[1].clone(), ids[0].clone()], true).await;
     assert_eq!(second.queued, vec![ids[3].clone(), ids[1].clone()]);
     assert_eq!(
@@ -504,7 +480,6 @@ async fn writers_are_bounded_by_gist_concurrency() {
             llm.active.load(Ordering::SeqCst) == writers
         })
         .await;
-        // More requests while they are busy start no extra writers.
         gists(&fx, &ids, true).await;
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         assert_eq!(llm.active.load(Ordering::SeqCst), writers);
@@ -605,7 +580,6 @@ async fn a_conversation_the_model_failed_on_waits_before_it_is_tried_again() {
         ThreadGistSkipReasonData::RecentlyFailed
     );
 
-    // A new message changes the conversation: it is worth another try.
     fx.message(&thread, MAYA, ME, Duration::minutes(1), None)
         .await;
     let changed = gists(&fx, std::slice::from_ref(&thread), true).await;
@@ -622,7 +596,6 @@ async fn a_gist_that_went_stale_during_the_call_is_not_announced_and_is_written_
 
     gists(&fx, std::slice::from_ref(&thread), true).await;
     wait_for("the first call", || llm.calls.load(Ordering::SeqCst) == 1).await;
-    // A reply lands while the model is writing.
     let reply = fx
         .message(&thread, MAYA, ME, Duration::minutes(-1), None)
         .await;
@@ -646,7 +619,6 @@ async fn a_gist_that_went_stale_during_the_call_is_not_announced_and_is_written_
             "the stale gist never follows"
         );
     }
-    // The cache holds the current gist, not the stale one.
     let cached = gists(&fx, std::slice::from_ref(&thread), false).await;
     assert_eq!(cached.gists[0].newest_message_id.as_ref(), Some(&reply.id));
 }
@@ -685,9 +657,6 @@ async fn a_hundred_conversation_request_reports_what_was_queued_and_what_was_not
     llm.release(64);
 }
 
-/// A model that, each time it is asked about one conversation, waits for
-/// the test to add a message to it first: that conversation's gist always
-/// goes stale mid-call.
 struct BusyThreadLlm {
     marker: String,
     calls_on_busy: AtomicUsize,
@@ -739,7 +708,6 @@ async fn a_conversation_that_keeps_changing_never_starves_the_others() {
     fx.state.llm.replace(llm.clone());
     let mut events = fx.state.event_tx.subscribe();
 
-    // Someone writes in `busy` during every call about it.
     let writer_fx = fx.state.clone();
     let busy_thread = busy.clone();
     let account = fx.account.clone();

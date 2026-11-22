@@ -269,7 +269,6 @@ async fn changed_pair_enqueued_during_call_survives_old_result_and_becomes_offer
     let worker =
         tokio::spawn(async move { crate::handler::todo_resolution::drain(&state, now).await });
     wait_for_call(&model).await;
-    // An unchanged rescan must not clear the reservation.
     todos::scan_messages(&fx.state, &ids).await;
     assert_eq!(
         fx.state

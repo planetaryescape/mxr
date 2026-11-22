@@ -1,8 +1,3 @@
-//! Timed deferral (`DeferThreads`): reply later until a time, and "bring it
-//! back if nobody replies", on a moved clock. Each comes back at its time,
-//! exactly once across a restart, a reply cancels the wait, and Done puts
-//! both away for good.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::{DateTime, Duration, Utc};
@@ -46,7 +41,6 @@ async fn defer(
     }
 }
 
-/// The desk's four lanes at `now`.
 async fn lanes_at(fx: &Fixture, now: DateTime<Utc>) -> [Vec<DeskRowData>; 4] {
     match super::super::desk::get_desk_at(&fx.state, None, 25, now)
         .await
@@ -63,7 +57,6 @@ async fn lanes_at(fx: &Fixture, now: DateTime<Utc>) -> [Vec<DeskRowData>; 4] {
     }
 }
 
-/// Times are stored to the second.
 fn whole_seconds(at: DateTime<Utc>) -> DateTime<Utc> {
     DateTime::from_timestamp(at.timestamp(), 0).unwrap()
 }
@@ -72,8 +65,6 @@ fn threads_of(rows: &[DeskRowData]) -> Vec<ThreadId> {
     rows.iter().map(|row| row.thread_id.clone()).collect()
 }
 
-/// The messages named by the return events sent so far (reply later
-/// returned, reminder fired), then nothing more.
 fn drain(events: &mut tokio::sync::broadcast::Receiver<IpcMessage>) -> Vec<MessageId> {
     let mut seen = Vec::new();
     while let Ok(message) = events.try_recv() {
@@ -90,7 +81,6 @@ fn drain(events: &mut tokio::sync::broadcast::Receiver<IpcMessage>) -> Vec<Messa
     seen
 }
 
-/// You wrote to Maya and she answered: you owe her a reply.
 async fn owed(fx: &Fixture, age: Duration) -> (ThreadId, Envelope) {
     let thread = ThreadId::new();
     let mine = fx
@@ -114,7 +104,6 @@ async fn owed(fx: &Fixture, age: Duration) -> (ThreadId, Envelope) {
     (thread, answer)
 }
 
-/// Jon asked, you answered: waiting on Jon.
 async fn waiting(fx: &Fixture, age: Duration) -> (ThreadId, Envelope, Envelope) {
     let thread = ThreadId::new();
     let question = fx
@@ -149,7 +138,6 @@ async fn reply_later_at_a_time_leaves_the_desk_and_comes_back_once_across_a_rest
     );
     let until = now + Duration::days(2);
 
-    // The preview names what the run does and changes nothing.
     let preview = defer(&fx, std::slice::from_ref(&thread), until, true).await;
     assert!(preview.mutation_id.is_none());
     assert_eq!(preview.items[0].kind, Some(DeferKindData::ReplyLater));
@@ -163,7 +151,6 @@ async fn reply_later_at_a_time_leaves_the_desk_and_comes_back_once_across_a_rest
     assert_eq!(run.items, preview.items, "the run matches its preview");
     assert!(run.mutation_id.is_some());
 
-    // Away: off the desk and out of the queue until the time.
     let just_before = until - Duration::minutes(1);
     assert!(lanes_at(&fx, just_before).await.iter().all(Vec::is_empty));
     let store = &fx.state.store;
@@ -177,7 +164,6 @@ async fn reply_later_at_a_time_leaves_the_desk_and_comes_back_once_across_a_rest
     };
     assert!(messages.is_empty());
 
-    // Back at the time, in You owe and the queue, before the loop has run.
     let after = until + Duration::minutes(1);
     let [owed, ..] = lanes_at(&fx, after).await;
     assert_eq!(threads_of(&owed), vec![thread.clone()]);
@@ -189,8 +175,6 @@ async fn reply_later_at_a_time_leaves_the_desk_and_comes_back_once_across_a_rest
         vec![answer.id.clone()]
     );
 
-    // Announced once. A second tick, or a restarted daemon's first tick
-    // over the same store, announces nothing.
     let mut events = fx.state.event_tx.subscribe();
     assert_eq!(
         crate::loops::process_due_timers(&fx.state, after).await,
@@ -263,7 +247,6 @@ async fn waiting_with_a_time_leaves_waiting_and_comes_back_once_if_nobody_replie
 #[tokio::test]
 async fn a_short_wait_on_a_fresh_message_still_comes_back() {
     let fx = Fixture::new().await;
-    // Sent an hour ago: too fresh for Waiting on by itself.
     let (thread, _, _) = waiting(&fx, Duration::hours(1)).await;
     let now = Utc::now();
     let until = now + Duration::hours(2);
@@ -278,7 +261,6 @@ async fn a_reply_cancels_the_wait() {
     let until = Utc::now() + Duration::days(3);
     defer(&fx, std::slice::from_ref(&thread), until, false).await;
 
-    // Jon answers before the time: owed at once, never brought back.
     fx.attention_message(
         &thread,
         "jon@example.com",
@@ -343,8 +325,6 @@ async fn missing_plaintext_preserves_response_occurrence_and_explicit_later_not_
                 .await
                 .unwrap();
         } else {
-            // Remove this one cache intentionally; the shared fixture's text
-            // must not mask the missing-cache contract.
             sqlx::query("DELETE FROM bodies WHERE message_id = ?")
                 .bind(reply.id.as_str())
                 .execute(fx.state.store.writer())
@@ -540,7 +520,6 @@ async fn done_cancels_a_pending_wait_and_undo_puts_it_back() {
     let after = until + Duration::minutes(1);
     assert!(lanes_at(&fx, after).await.iter().all(Vec::is_empty));
 
-    // Undo: the wait is pending again and fires at its time.
     request(
         &fx,
         Request::UndoMutation {
@@ -693,8 +672,6 @@ async fn undo(fx: &Fixture, mutation_id: String) {
     ));
 }
 
-/// A reminder already due, set straight in the store (`DeferThreads`
-/// refuses past times).
 async fn due_reminder(fx: &Fixture, sent: &Envelope, remind_at: DateTime<Utc>) {
     fx.state
         .store
@@ -726,7 +703,6 @@ async fn done_takes_a_flag_a_reminder_set_between_its_plan_and_its_run() {
     assert_eq!(items[0].reply_later_cleared, 1, "the flag set in the gap");
     assert!(!fx.state.store.is_reply_later(&mine.id).await.unwrap());
 
-    // Undo puts back what Done took: the fired reminder's flag.
     undo(&fx, mutation_id.unwrap()).await;
     assert!(fx.state.store.is_reply_later(&mine.id).await.unwrap());
 }
@@ -756,7 +732,6 @@ async fn undo_after_the_wait_fired_takes_its_flag_too() {
         .await
         .unwrap()
         .is_none());
-    // An ordinary Waiting row again, not one a time brought back.
     let [_, _, waiting, _] = lanes_at(&fx, after).await;
     assert_eq!(threads_of(&waiting), vec![thread]);
     assert_eq!(waiting[0].back_at, None);
@@ -765,7 +740,6 @@ async fn undo_after_the_wait_fired_takes_its_flag_too() {
 #[tokio::test]
 async fn a_wait_that_fires_weeks_late_still_comes_back() {
     let fx = Fixture::new().await;
-    // Sent two months ago, due six weeks ago: the daemon was off.
     let (thread, _, mine) = waiting(&fx, Duration::days(60)).await;
     due_reminder(&fx, &mine, Utc::now() - Duration::days(42)).await;
 
@@ -784,7 +758,6 @@ async fn storage_order_decides_who_wrote_last_and_whether_they_replied() {
     let fx = Fixture::new().await;
     let (thread, _, mine) = waiting(&fx, Duration::days(1)).await;
     due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
-    // Their reply arrives after yours, but its clock says two days ago.
     fx.attention_message(
         &thread,
         "jon@example.com",
@@ -906,7 +879,6 @@ async fn a_reply_stored_between_the_check_and_the_claim_stops_the_firing() {
     );
     assert!(!fx.state.store.is_reply_later(&mine.id).await.unwrap());
 
-    // The next pass classifies it: a person, so the wait is over.
     assert_eq!(
         crate::loops::process_due_timers(&fx.state, Utc::now()).await,
         Ok(0)
@@ -926,7 +898,6 @@ async fn a_reply_filed_under_another_thread_still_answers_by_its_headers() {
     let fx = Fixture::new().await;
     let (_, _, mine) = waiting(&fx, Duration::days(2)).await;
     due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
-    // IMAP threading put the answer in a thread of its own.
     fx.attention_message(
         &ThreadId::new(),
         "jon@example.com",
@@ -975,7 +946,6 @@ async fn an_auto_responder_filed_under_another_thread_does_not_answer() {
 async fn a_backdated_reply_brings_reply_later_back_to_you_owe() {
     let fx = Fixture::new().await;
     let (thread, _, mine) = waiting(&fx, Duration::days(1)).await;
-    // Stored after yours, dated before it.
     fx.attention_message(
         &thread,
         "jon@example.com",
@@ -1004,7 +974,6 @@ async fn a_backdated_reply_brings_reply_later_back_to_you_owe() {
 async fn undo_takes_the_flag_of_a_second_firing() {
     let fx = Fixture::new().await;
     let (thread, _, mine) = waiting(&fx, Duration::days(3)).await;
-    // It fired once before, and you cleared the queue entry since.
     due_reminder(&fx, &mine, Utc::now() - Duration::hours(1)).await;
     assert_eq!(
         crate::loops::process_due_timers(&fx.state, Utc::now()).await,

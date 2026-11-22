@@ -7,8 +7,6 @@ use mxr_protocol::{AccountSyncStatus, FeatureHealth, FeatureHealthReport};
 use mxr_store::SyncRuntimeStatus;
 use std::collections::HashMap;
 
-/// The DB-backed part of a status reply: account names, the store-wide message
-/// count, and one sync status per account.
 pub(super) type StatusSnapshotFields = (Vec<String>, u32, Vec<AccountSyncStatus>);
 
 pub(super) async fn collect_status_snapshot(
@@ -97,11 +95,6 @@ pub(super) async fn build_account_sync_status(
     ))
 }
 
-/// Fallback cursor summary for status reports built from the store alone
-/// (no live provider in scope). When a richer description exists from the
-/// last sync cycle, it's cached on `SyncRuntimeStatus.current_cursor_summary`
-/// and used in preference — see `loops.rs::describe_sync_cursor` for the
-/// provider-aware version.
 pub(super) fn describe_cursor_for_status(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
     match cursor {
         None => "initial".to_string(),
@@ -118,8 +111,6 @@ pub(super) async fn collect_doctor_report(
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
     let log_path = data_dir.join("logs").join("mxr.log");
-    // Single-source resolution (honors MXR_DAEMON_ADDR) so the doctor report's
-    // socket reachability agrees with where the daemon binds.
     let socket_path = crate::server::resolve_daemon_socket().map_err(|error| error.to_string())?;
 
     let data_dir_exists = data_dir.exists();
@@ -157,8 +148,6 @@ pub(super) async fn collect_doctor_report(
         semantic_config.enabled,
         semantic_config.active_profile.as_str(),
     );
-    // The doctor report waits for its snapshot rather than budgeting it, so
-    // there is no degraded reading to account for here.
     let health_class =
         crate::server::classify_health(&sync_statuses, repair_required, restart_required, false);
     let recent_sync_events = state
@@ -189,13 +178,7 @@ pub(super) async fn collect_doctor_report(
             "mxr daemon --foreground".to_string(),
         ]
     };
-    // One reading of the search worker for the whole report (see
-    // `feature_health_report`).
     let search_worker_failed = search_worker_failed(state);
-    // Structured findings: classify the existing signals into
-    // categorised entries with shell-runnable remediation. Clients (TUI,
-    // future agents) can reason about individual issues without parsing
-    // free text.
     let findings = build_doctor_findings(DoctorFindingInputs {
         sync_statuses: &sync_statuses,
         recent_errors: &recent_error_logs,
@@ -279,10 +262,6 @@ pub(super) async fn collect_doctor_report(
     Ok(report)
 }
 
-/// `search_worker_failed` is passed in rather than read here so that a report
-/// which also raises a search finding cannot disagree with itself: the worker
-/// can die between two reads, and a report saying "search healthy" beside
-/// "search index worker stopped" is worse than either answer alone.
 pub(super) fn feature_health_report(
     state: &AppState,
     search_worker_failed: bool,
@@ -318,7 +297,6 @@ pub(super) fn feature_health_report(
             }
         },
     );
-    // Voice match is local stylometry; no model call stands behind it.
     let voice_match_health = FeatureHealth::Healthy;
 
     let draft_assist_health =
@@ -350,12 +328,6 @@ pub(super) fn feature_health_report(
     }
 }
 
-/// Whether the search index worker has stopped in a way anyone should hear
-/// about.
-///
-/// It also stops on the way out of a clean shutdown, and reporting that as a
-/// failure would have every shutting-down daemon claim search is broken in its
-/// last status reply.
 pub(super) fn search_worker_failed(state: &AppState) -> bool {
     state.search.worker_stopped() && !state.shutdown_requested()
 }
@@ -408,11 +380,6 @@ fn failure_label(kind: mxr_llm::LlmFailureKind) -> &'static str {
     }
 }
 
-/// Classify the doctor's raw signals into structured findings with
-/// remediation. Pattern-matches recent error log lines for common
-/// failure modes — OAuth refresh failed, rate-limited, network
-/// unreachable — so the user gets a copy-pasteable next step instead
-/// of a free-text dump.
 pub(crate) struct DoctorFindingInputs<'a> {
     pub(crate) sync_statuses: &'a [mxr_protocol::AccountSyncStatus],
     pub(crate) recent_errors: &'a [String],
@@ -424,19 +391,10 @@ pub(crate) struct DoctorFindingInputs<'a> {
     pub(crate) restart_required: bool,
     pub(crate) semantic_enabled: bool,
     pub(crate) search_worker_stopped: bool,
-    /// The daemon's address registry failed its last rebuild, so sync reads
-    /// direction as Unknown until the next sync pass retries it.
     pub(crate) address_cache_stale: bool,
     pub(crate) data_stats: &'a mxr_protocol::DoctorDataStats,
 }
 
-/// A report is only healthy when nothing in it is an error.
-///
-/// `mxr doctor --check` exits non-zero on `healthy == false`, and that exit
-/// code is what agents and CI read — a finding severe enough to print as an
-/// error has to reach them, not just the pretty printer. Tying the two
-/// together means a new Error-severity finding can never again be invisible to
-/// a scripted caller.
 pub(crate) fn no_error_findings(findings: &[mxr_protocol::DoctorFinding]) -> bool {
     findings
         .iter()
@@ -540,9 +498,6 @@ pub(crate) fn build_doctor_findings(
     }
 
     for line in inputs.recent_errors {
-        // The sync loop logs each failure it also records in sync status, so a
-        // line that is that account's status error is the same failure, already
-        // reported above with its account and a more precise severity.
         let mirrors_sync_status = inputs
             .sync_statuses
             .iter()
@@ -551,7 +506,6 @@ pub(crate) fn build_doctor_findings(
             continue;
         }
         if let Some(finding) = classify_log_line(line) {
-            // Repeated retries log the same failure repeatedly.
             if !findings.contains(&finding) {
                 findings.push(finding);
             }
@@ -561,12 +515,6 @@ pub(crate) fn build_doctor_findings(
     findings
 }
 
-/// Whether a logged line is the failure this account's sync status reports.
-///
-/// The account and the whole message must match. Two accounts can hit the same
-/// error text, and one account's status must not hide the other's log line.
-/// The daemon writes JSON logs with the account in `fields.account` and the
-/// message in `fields.message` (`crates/daemon/src/loops.rs`, "Sync error:").
 fn log_line_mirrors_sync_status(line: &str, status: &mxr_protocol::AccountSyncStatus) -> bool {
     let Some(err) = status.last_error.as_deref().filter(|err| !err.is_empty()) else {
         return false;
@@ -597,9 +545,6 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
             ],
         };
     }
-    // The provider's Auth/OAuth wrappers do not mean the grant was rejected:
-    // token-endpoint transport failures are retryable network failures too,
-    // and a refreshed token that could not be saved is a local storage problem.
     let (category, remediation) = if lower.contains("local token cache write failed") {
         (
             DoctorFindingCategory::Storage,
@@ -626,12 +571,8 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
         || lower.contains("invalid_grant")
         || lower.contains("token")
         || lower.contains("unauthorized")
-        // Sync health already says "sign in again" for every auth-class failure
-        // (a Gmail 401, an IMAP login the server rejected); doctor must agree.
         || crate::loops::classify_sync_error(err) == "auth"
     {
-        // Re-adding the account cannot fix a rejected OAuth client or scope, so
-        // name the real cause first and keep re-authorization as the last step.
         let mut steps = Vec::new();
         if lower.contains("invalid_client") || lower.contains("unauthorized_client") {
             steps.push("The provider rejected the OAuth client, not the sign-in: check the client ID and secret in the account config. For Gmail, a custom client must be a \"Desktop app\" client; for Outlook, check the app registration.".to_string());
@@ -752,10 +693,6 @@ fn account_sync_status(
         .map(|dt| dt.to_rfc3339());
     let sync_in_progress = runtime.as_ref().is_some_and(|row| row.sync_in_progress);
     let consecutive_failures = runtime.as_ref().map_or(0, |row| row.consecutive_failures);
-    // A sync in flight is not a health problem: a multi-page backfill keeps
-    // `sync_in_progress` true from its first page to its last, and an
-    // account that is progressing through it is healthy. Health is about
-    // errors and backoff.
     let healthy = last_error.is_none() && backoff_until.is_none() && last_success_at.is_some();
 
     AccountSyncStatus {
@@ -935,23 +872,17 @@ mod tests {
         );
     }
 
-    /// Provider failures as the sync loop records them (`MxrError` display of
-    /// each provider's error), across Gmail, IMAP and SMTP. Sync health and
-    /// doctor must agree on every row, and only a rejected grant or rejected
-    /// credentials may prescribe signing in again.
     #[test]
     fn provider_failures_classify_the_same_in_sync_health_and_doctor() {
         use mxr_protocol::SyncErrorKindData as Kind;
         const TOKEN_UNAVAILABLE: &str =
             "Provider error: Auth error: Token refresh temporarily unavailable";
         let rows: &[(&str, &str, Kind, DoctorFindingCategory, bool)] = &[
-            // Gmail: a genuinely rejected grant, and an expired API session.
             ("gmail invalid_grant", "Provider error: Auth error: OAuth2 error: invalid_grant", Kind::Auth, DoctorFindingCategory::OAuth, true),
             ("gmail invalid_client", "Provider error: Auth error: OAuth2 error: invalid_client", Kind::Auth, DoctorFindingCategory::OAuth, true),
             ("gmail invalid_request", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned invalid_request (HTTP 400 Bad Request)"), Kind::Offline, DoctorFindingCategory::Network, false),
             ("gmail unknown code", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned upstream_failure (HTTP 400 Bad Request)"), Kind::Offline, DoctorFindingCategory::Network, false),
             ("gmail 401", "Provider error: Authentication expired — re-auth required", Kind::Auth, DoctorFindingCategory::OAuth, true),
-            // Gmail: everything that is not a rejected grant.
             ("gmail token connection", &format!("{TOKEN_UNAVAILABLE}: token endpoint connection failed"), Kind::Offline, DoctorFindingCategory::Network, false),
             ("gmail token tls", &format!("{TOKEN_UNAVAILABLE}: token endpoint TLS handshake failed"), Kind::Offline, DoctorFindingCategory::Network, false),
             ("gmail token timeout", &format!("{TOKEN_UNAVAILABLE}: token endpoint request timed out"), Kind::Offline, DoctorFindingCategory::Network, false),
@@ -961,8 +892,6 @@ mod tests {
             ("gmail token 429", "Rate limited — retry after 120s", Kind::RateLimited, DoctorFindingCategory::Sync, false),
             ("gmail 403 usage limit with reason", "Rate limited by Gmail messages.get (rateLimitExceeded: Rate Limit Exceeded; 412 requests in the last hour) — retry after 1234s", Kind::RateLimited, DoctorFindingCategory::Sync, false),
             ("gmail cache write", "Provider error: Local token cache write failed: Permission denied (os error 13)", Kind::Store, DoctorFindingCategory::Storage, false),
-            // IMAP: rejected credentials, transport failure inside the login
-            // wrapper, and an XOAUTH2 token fetch wrapped as an auth error.
             ("imap rejected credentials", "Provider error: Authentication failed: No Response: [AUTHENTICATIONFAILED] Invalid credentials (Failure)", Kind::Auth, DoctorFindingCategory::OAuth, true),
             ("imap login connection reset", "Provider error: Authentication failed: Connection reset by peer (os error 54)", Kind::Offline, DoctorFindingCategory::Network, false),
             ("imap login tls", "Provider error: Authentication failed: TLS handshake failed", Kind::Offline, DoctorFindingCategory::Network, false),
@@ -970,7 +899,6 @@ mod tests {
             ("imap timeout", "Provider error: Timeout: LOGIN timed out after 30s", Kind::Offline, DoctorFindingCategory::Network, false),
             ("imap xoauth2 transport", &format!("Provider error: Authentication failed: token fetch failed: {TOKEN_UNAVAILABLE}: token endpoint connection failed"), Kind::Offline, DoctorFindingCategory::Network, false),
             ("imap xoauth2 invalid_grant", "Provider error: Authentication failed: token fetch failed: Auth error: OAuth2 error: invalid_grant", Kind::Auth, DoctorFindingCategory::OAuth, true),
-            // SMTP.
             ("smtp rejected credentials", "Provider error: SMTP send failed: permanent error (535): 5.7.8 Authentication credentials invalid", Kind::Auth, DoctorFindingCategory::OAuth, true),
             ("smtp connection", "Provider error: SMTP send failed: connection error: connection refused", Kind::Offline, DoctorFindingCategory::Network, false),
         ];
@@ -1111,7 +1039,6 @@ mod tests {
             .collect();
         assert_eq!(network.len(), 1, "{findings:?}");
         assert_eq!(network[0].severity, DoctorFindingSeverity::Error);
-        // A different failure in the log still surfaces, once.
         assert_eq!(
             findings
                 .iter()
@@ -1250,8 +1177,6 @@ mod tests {
         assert!(finding.remediation.is_empty());
     }
 
-    /// A sync failure line as the daemon writes it: the account rides in
-    /// its own field, the error in the message.
     fn sync_error_log_line(account: &mxr_core::id::AccountId, error: &str) -> String {
         serde_json::json!({
             "timestamp": "2026-10-21T10:00:00Z",
@@ -1282,8 +1207,6 @@ mod tests {
             healthy: false,
             progress: None,
         };
-        // Another account hit the same failure text and has no status of its
-        // own, so its log line is the only report it gets.
         let other_account = mxr_core::id::AccountId::new();
         let other_line = sync_error_log_line(&other_account, error);
 

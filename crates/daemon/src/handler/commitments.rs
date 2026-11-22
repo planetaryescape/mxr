@@ -27,7 +27,6 @@ pub(super) async fn list_commitments(
     Ok(ResponseData::CommitmentList { commitments })
 }
 
-/// Shared by the direct command and Desk Done, including Archive filing.
 pub(super) async fn resolve_promise(
     state: &AppState,
     account: &AccountId,

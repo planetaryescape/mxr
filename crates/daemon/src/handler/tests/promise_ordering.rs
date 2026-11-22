@@ -1,4 +1,3 @@
-//! Explicit acceptance and normal assessment share one source identity in either order.
 use super::desk::{request, Fixture, ME};
 use super::promise_projection::{chosen, settle, source};
 use super::*;

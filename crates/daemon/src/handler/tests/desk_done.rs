@@ -1,6 +1,3 @@
-//! The desk's Done (`ResolveDeskItems`) per lane, its preview, its undo,
-//! and what brings a conversation back.
-
 use super::desk::{request, thread_ids, Fixture, ME};
 use super::*;
 use chrono::Duration;
@@ -74,7 +71,6 @@ async fn lanes(fx: &Fixture) -> [Vec<ThreadId>; 4] {
     }
 }
 
-/// You wrote Maya; she answered twice, the first already read.
 async fn owed_thread(fx: &Fixture) -> (ThreadId, Envelope, Envelope) {
     let thread = ThreadId::new();
     let mine = fx
@@ -109,7 +105,6 @@ async fn done_on_an_owed_thread_archives_marks_read_and_undo_restores_each_messa
     let (thread, seen, fresh) = owed_thread(&fx).await;
     assert_eq!(lanes(&fx).await[0], vec![thread.clone()]);
 
-    // The preview says exactly what the run does and changes nothing.
     let (preview, no_undo) = done(&fx, vec![item(&thread, Some(DeskLaneKind::Owed))], true).await;
     assert!(no_undo.is_none());
     assert_eq!(preview.len(), 1);
@@ -133,8 +128,6 @@ async fn done_on_an_owed_thread_archives_marks_read_and_undo_restores_each_messa
     }
     assert!(lanes(&fx).await.iter().all(Vec::is_empty), "off the desk");
 
-    // Put back in the inbox by hand, it still stays off the desk: nobody
-    // wrote since it was put away.
     fx.state
         .store
         .set_message_labels(
@@ -151,8 +144,6 @@ async fn done_on_an_owed_thread_archives_marks_read_and_undo_restores_each_messa
         .await
         .unwrap();
 
-    // Undo brings it back exactly as it was: both in the inbox, the read
-    // one read and the unread one unread, and owed again.
     undo(&fx, mutation_id).await;
     let seen_after = envelope(&fx, &seen.id).await;
     let fresh_after = envelope(&fx, &fresh.id).await;
@@ -162,7 +153,6 @@ async fn done_on_an_owed_thread_archives_marks_read_and_undo_restores_each_messa
     assert_eq!(lanes(&fx).await[0], vec![thread]);
 }
 
-/// How many `ModesChanged` events the daemon sent since the last drain.
 fn modes_changed_events(
     events: &mut tokio::sync::broadcast::Receiver<mxr_protocol::IpcMessage>,
 ) -> usize {
@@ -184,7 +174,6 @@ async fn done_on_the_desk_tells_every_client_the_row_is_gone() {
     let (thread, _, _) = owed_thread(&fx).await;
     let mut events = fx.state.event_tx.subscribe();
 
-    // The preview changes nothing, so it says nothing.
     done(&fx, vec![item(&thread, Some(DeskLaneKind::Owed))], true).await;
     assert_eq!(modes_changed_events(&mut events), 0, "a dry run is silent");
 
@@ -196,7 +185,6 @@ async fn done_on_the_desk_tells_every_client_the_row_is_gone() {
         "the committed Done reaches every client once"
     );
 
-    // A conversation that doesn't exist changes nothing and is silent.
     let missing = ThreadId::new();
     let (outcome, _) = done(&fx, vec![item(&missing, Some(DeskLaneKind::Owed))], false).await;
     assert!(outcome[0].error.is_some());
@@ -262,7 +250,6 @@ async fn done_on_waiting_marks_read_without_archiving_and_undo_restores_the_prio
             question.message_id_header.as_deref(),
         )
         .await;
-    // Done waiting once, then a follow-up of yours made it wait again.
     request(
         &fx,
         Request::DismissDeskThreads {
@@ -284,7 +271,6 @@ async fn done_on_waiting_marks_read_without_archiving_and_undo_restores_the_prio
     let before = fx.state.store.desk_dismissal_priors(&pair).await.unwrap();
     assert!(before[0].prior.is_some());
 
-    // No lane named: you wrote last, so it is Waiting on.
     let (outcome, mutation_id) = done(&fx, vec![item(&thread, None)], false).await;
     assert_eq!(outcome[0].lane, DeskLaneKind::Waiting);
     assert_eq!((outcome[0].archived, outcome[0].marked_read), (0, 1));
@@ -323,7 +309,6 @@ async fn done_on_a_promise_resolves_it_marks_its_thread_read_and_undo_reopens_it
     let commitment = fx.promise(&thread, &promise.id, Duration::days(1)).await;
     assert_eq!(lanes(&fx).await[1], vec![thread.clone()]);
 
-    // Due without its promise is refused, item by item.
     let (refused, none) = done(&fx, vec![item(&thread, Some(DeskLaneKind::Due))], false).await;
     assert!(refused[0]
         .error
@@ -360,8 +345,6 @@ async fn done_on_a_promise_resolves_it_marks_its_thread_read_and_undo_reopens_it
     let after = envelope(&fx, &ask.id).await;
     assert!(read(&after));
     assert!(in_inbox(&after), "a promise's thread is not archived");
-    // You wrote last, so without the dismissal it would show under
-    // Waiting on the moment the promise was kept.
     assert!(lanes(&fx).await.iter().all(Vec::is_empty), "off the desk");
 
     undo(&fx, mutation_id.unwrap()).await;
@@ -375,7 +358,6 @@ async fn an_item_that_cannot_change_stays_on_the_desk_for_a_retry() {
     let fx = Fixture::new().await;
     let (thread, template, _) = owed_thread(&fx).await;
 
-    // A conversation in an account with no provider right now.
     let offline = mxr_core::Account {
         id: mxr_core::AccountId::new(),
         name: "Offline".into(),
@@ -503,7 +485,6 @@ async fn a_promise_from_another_account_is_refused() {
         enabled: true,
     };
     fx.state.store.insert_account(&other).await.unwrap();
-    // Same conversation id, recorded against the other account.
     fx.state
         .store
         .upsert_contact_commitment(&promise_record("theirs", &other.id, &thread, &mine.id))
@@ -528,7 +509,6 @@ async fn a_promise_from_another_account_is_refused() {
         .unwrap()
         .unwrap();
     assert_eq!(record.status, CommitmentStatus::Open);
-    // Nor can a status change reach across accounts.
     assert!(!fx
         .state
         .store
@@ -591,7 +571,6 @@ async fn a_half_done_archive_is_undone_to_the_original_state() {
         .await;
     assert!(!read(&envelope(&fx, &fresh.id).await));
 
-    // Marking read works, taking it out of the inbox fails.
     fx.fake.fail_label_changes(true);
     let (outcome, mutation_id) =
         done(&fx, vec![item(&thread, Some(DeskLaneKind::Owed))], false).await;
@@ -604,14 +583,12 @@ async fn a_half_done_archive_is_undone_to_the_original_state() {
         "still on the desk"
     );
 
-    // What it did change has its own undo, back to the original.
     fx.fake.fail_label_changes(false);
     undo(&fx, mutation_id.expect("the half-done change is undoable")).await;
     let back = envelope(&fx, &fresh.id).await;
     assert!(in_inbox(&back));
     assert!(!read(&back), "unread, as it was");
 
-    // A retry is a new Done with its own snapshot.
     let (outcome, _) = done(&fx, vec![item(&thread, Some(DeskLaneKind::Owed))], false).await;
     assert!(outcome[0].error.is_none());
 }
@@ -650,7 +627,6 @@ async fn done_takes_the_conversation_out_of_reply_later_and_undo_puts_it_back() 
 async fn a_failed_second_batch_keeps_the_undo_of_the_first() {
     let fx = Fixture::new().await;
     let (thread, seen, fresh) = owed_thread(&fx).await;
-    // The read batch names a message that is gone by the time it runs.
     let vanished = (
         ThreadId::new(),
         fx.account.clone(),
@@ -702,7 +678,6 @@ async fn undo_of_a_failed_archive_reverses_it_at_the_provider_too() {
         other => panic!("expected MutationResult, got {other:?}"),
     };
     assert_eq!(result.succeeded, 0);
-    // The local copy shows no change, but the provider may have archived it.
     assert!(in_inbox(&envelope(&fx, &fresh.id).await));
     fx.fake.fail_label_changes(false);
     let before = fx.fake.mutations().len();

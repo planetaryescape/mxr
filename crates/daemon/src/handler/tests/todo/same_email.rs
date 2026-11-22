@@ -1,5 +1,3 @@
-//! Same email, same to-do: a rescan that moves a bill's due date into
-//! another month keeps the row, while a new email makes a new one.
 use super::*;
 
 fn month_end() -> DateTime<Utc> {
@@ -26,14 +24,12 @@ async fn rewrite(fx: &Fixture, id: &MessageId, text: &str) {
     scan(fx, std::slice::from_ref(id), month_end()).await;
 }
 
-/// Every row, whatever its state, so a retired duplicate can't hide.
 async fn all_rows(fx: &Fixture) -> Vec<mxr_store::TodoRecord> {
     let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM todos")
         .fetch_all(fx.state.store.reader())
         .await
         .unwrap();
     let mut rows = fx.state.store.get_todos(&ids).await.unwrap();
-    // Every scan runs at one pinned clock, so order by due date, not creation.
     rows.sort_by_key(|row| row.due_at);
     rows
 }
@@ -124,8 +120,6 @@ async fn one_email_with_two_bills_a_month_apart_makes_two_to_dos_on_every_scan()
     let first = all_rows(&fx).await;
     let days: Vec<_> = first.iter().map(due_day).collect();
     assert_eq!(days, ["2026-10-31", "2026-11-30"], "{first:#?}");
-    // One item identity a month apart: the case where a rescan could take
-    // the sibling's row for its own.
     let identity =
         |row: &mxr_store::TodoRecord| row.dedup_key.rsplit_once('|').unwrap().0.to_string();
     assert_eq!(identity(&first[0]), identity(&first[1]));

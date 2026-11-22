@@ -56,7 +56,6 @@ fn owed_threads(rows: &[OwedReplyRowData]) -> Vec<ThreadId> {
 async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
     let fx = Fixture::new().await;
 
-    // You answered Maya within an hour twice: your usual pace with her.
     for days in [40, 45] {
         let old = ThreadId::new();
         let asked = fx
@@ -71,7 +70,6 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
         )
         .await;
     }
-    // Owed: Maya answered you two days ago.
     let maya = ThreadId::new();
     let mine = fx
         .attention_message(&maya, ME, "maya@example.com", Duration::days(3), None)
@@ -84,7 +82,6 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
         mine.message_id_header.as_deref(),
     )
     .await;
-    // Owed: you wrote Priya once before; her new thread waits on you.
     let earlier = ThreadId::new();
     fx.attention_message(&earlier, ME, "priya@example.com", Duration::days(9), None)
         .await;
@@ -92,9 +89,6 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
     fx.attention_message(&priya, "priya@example.com", ME, Duration::hours(5), None)
         .await;
 
-    // Not owed by the desk's rule, all in the raw list: a stranger (new
-    // from people), a newsletter, archived mail from a person, and a
-    // thread from before the desk's window.
     let stranger = ThreadId::new();
     fx.attention_message(&stranger, "theo@example.com", ME, Duration::hours(3), None)
         .await;
@@ -126,7 +120,6 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
     fx.attention_message(&ancient, "jon@example.com", ME, Duration::days(90), None)
         .await;
 
-    // The default is the desk's You owe lane: same rows, same order.
     let lane = desk_owed(&fx).await;
     let rows = owed(&fx, 50, false).await;
     let threads = owed_threads(&rows);
@@ -151,10 +144,8 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
         "a day by default"
     );
 
-    // The limit keeps the lane's order.
     assert_eq!(owed_threads(&owed(&fx, 1, false).await), threads[..1]);
 
-    // --all is the store's raw list, exactly as before.
     let raw = owed(&fx, 50, true).await;
     let before = fx
         .state
@@ -215,7 +206,6 @@ async fn owed_windows_apply_to_the_latest_message_from_them() {
 #[tokio::test]
 async fn allowing_a_notification_sender_preserves_visibility_not_automatic_reply_debt() {
     let fx = Fixture::new().await;
-    // Allow gives Messages visibility, not proof of a human request.
     let sender = "notifications@studio.example";
     fx.state
         .store
@@ -245,7 +235,6 @@ async fn allowing_a_notification_sender_preserves_visibility_not_automatic_reply
     assert_eq!(owed_lane.total, 0, "allowing them is not an exchange");
     assert!(owed(&fx, 50, false).await.is_empty());
 
-    // An exchange still cannot erase positive automation evidence.
     let reply = fx
         .attention_message(
             &thread,

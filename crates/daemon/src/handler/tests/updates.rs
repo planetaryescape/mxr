@@ -1,9 +1,3 @@
-//! Updates as a twice-daily briefing on a moved clock: cut boundaries and
-//! the "since" section, sources folded into lines by signal, deltas only
-//! within a template and unit, let go acting on exactly the previewed
-//! cut, breakthroughs to To do once, tuning, expiry, quiet parcels and the
-//! rail.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use crate::handler::updates::{self, LetGo};
@@ -15,21 +9,16 @@ use mxr_protocol::{
 };
 use mxr_updates::Cuts;
 
-/// The zone the daemon itself reads `request`s in. A fixed UTC here put the
-/// cuts in a different local day than the handler on any non-UTC host.
 fn utc() -> chrono::Local {
     chrono::Local
 }
 
-/// A clock two hours after a default cut that is at least three hours in
-/// the past, so mail dated around the cut is never in the future.
 fn clock() -> (DateTime<Utc>, DateTime<Utc>) {
     let wall = Utc::now();
     let cut = Cuts::default().window(wall - Duration::hours(3), &utc()).at;
     (cut, cut + Duration::hours(2))
 }
 
-/// One automated message in the inbox, dated `at`.
 async fn update(
     fx: &Fixture,
     thread: &ThreadId,
@@ -57,7 +46,6 @@ async fn update(
     envelope
 }
 
-/// Earlier mail from `from`, so the source isn't a first-time sender.
 async fn known_source(fx: &Fixture, from: &str) {
     update(
         fx,
@@ -343,7 +331,6 @@ async fn the_cut_splits_the_digest_from_since_and_sources_fold_by_signal() {
         )
         .await;
     }
-    // Vercel's history: seen before, so routine.
     update(
         &fx,
         &ThreadId::new(),
@@ -352,7 +339,6 @@ async fn the_cut_splits_the_digest_from_since_and_sources_fold_by_signal() {
         cut - Duration::days(6),
     )
     .await;
-    // Strava, a week apart: the delta is computed in code.
     update(
         &fx,
         &ThreadId::new(),
@@ -400,7 +386,6 @@ async fn the_cut_splits_the_digest_from_since_and_sources_fold_by_signal() {
         .provenance
         .iter()
         .any(|p| p.field == "delta" && p.source == "code"));
-    // After the cut: in "since", never in the digest.
     assert!(all_lines(&digest)
         .iter()
         .all(|line| !line.message_ids.contains(&after.id)));
@@ -431,7 +416,6 @@ async fn let_go_acts_on_exactly_the_previewed_cut() {
         cut - Duration::hours(1),
     )
     .await;
-    // Same thread, after the cut: it stays.
     let later = update(
         &fx,
         &shared,
@@ -460,7 +444,6 @@ async fn let_go_acts_on_exactly_the_previewed_cut() {
         preview.selection_token
     );
 
-    // Mail that lands in the cut between preview and run: the run refuses.
     let sneaked = update(
         &fx,
         &ThreadId::new(),
@@ -500,7 +483,6 @@ async fn let_go_acts_on_exactly_the_previewed_cut() {
         .lines
         .iter()
         .any(|line| line.message_ids.contains(&later.id)));
-    // The other threads left the inbox: no other mode held them.
     let other_outcome = run
         .items
         .iter()
@@ -530,7 +512,6 @@ async fn a_sign_in_alert_leads_needs_a_look_as_a_suggestion_and_t_makes_the_to_d
         cut - Duration::hours(1),
     )
     .await;
-    // Arrival reads facts and makes nothing: no to-do without you.
     updates::scan(&fx.state, &[alert.id.clone(), routine.id.clone()], now)
         .await
         .unwrap();
@@ -555,7 +536,6 @@ async fn a_sign_in_alert_leads_needs_a_look_as_a_suggestion_and_t_makes_the_to_d
     assert!(first.todo_id.is_none());
     assert!(first.link.is_none(), "a sign-in line never opens a link");
 
-    // t: the user's own action makes the to-do.
     let made = request(
         &fx,
         Request::CreateTodo {
@@ -655,7 +635,6 @@ async fn letting_go_of_one_source_leaves_another_sources_mail_in_a_shared_thread
     };
     let preview = source(None, true).await.unwrap();
     assert_eq!(preview.message_ids, vec![vercel.id.clone()]);
-    // A run without the preview's token is refused.
     assert!(source(None, false)
         .await
         .unwrap_err()
@@ -687,7 +666,6 @@ async fn a_message_put_back_in_the_inbox_is_never_archived_by_a_later_let_go() {
         cut - Duration::hours(3),
     )
     .await;
-    // An earlier let go saw it; then you put it back in the inbox.
     let mark = mxr_store::ModeDoneMark {
         account_id: fx.account.clone(),
         thread_id: thread.clone(),
@@ -783,7 +761,6 @@ async fn expired_codes_never_show_and_are_listed_as_expired() {
     assert_eq!(listed.expired.len(), 1);
     assert_eq!(listed.expired[0].message_id, code.id);
     assert_eq!(listed.expired[0].kind, "one-time code");
-    // Letting go of the cut takes the expired code with it.
     let preview = let_go(&fx, now, None, true).await.unwrap();
     assert_eq!(preview.hidden_count, 1);
 }
@@ -916,7 +893,6 @@ async fn a_parcel_with_no_news_goes_quiet_and_leaves_the_active_list() {
         carrier: Some("DHL".into()),
         ..moving.clone()
     };
-    // Its ETA passed ten days ago, but it moved yesterday: not quiet.
     let late = mxr_store::Delivery {
         id: DeliveryId::new(),
         dedup_key: "late-parcel".into(),
@@ -1096,7 +1072,6 @@ async fn undo_puts_a_let_go_digest_back_line_for_line() {
     assert_eq!(after_lines, before_lines);
 }
 
-/// One source's let go, as the `e` key sends it.
 async fn let_go_source(
     fx: &Fixture,
     now: DateTime<Utc>,
@@ -1146,8 +1121,6 @@ async fn repeat_alerts_from_one_source_fold_to_one_line_and_let_go_still_takes_e
         cut - Duration::hours(1),
     )
     .await;
-    // The same alert from another source is its own line, and the same
-    // source's ordinary mail stays out of the alert line.
     let other = update(
         &fx,
         &ThreadId::new(),
@@ -1165,8 +1138,6 @@ async fn repeat_alerts_from_one_source_fold_to_one_line_and_let_go_still_takes_e
     )
     .await;
 
-    // These are declared automatic notices, not the shared attention
-    // fixture's conversational ask. Billing alone is not a machine identity.
     for message in [&first, &again, &other, &ordinary] {
         fx.state
             .store
@@ -1221,8 +1192,6 @@ async fn repeat_alerts_from_one_source_fold_to_one_line_and_let_go_still_takes_e
         "ordinary mail is not folded into the alert"
     );
 
-    // The whole digest's dry run is exactly the messages its lines hold, so
-    // folding a line never drops a message from the selection.
     let everything = let_go(&fx, now, None, true).await.unwrap();
     let in_lines: Vec<MessageId> = all_lines(
         &updates::digest_at(&fx.state, None, None, false, false, now, &utc())
@@ -1234,8 +1203,6 @@ async fn repeat_alerts_from_one_source_fold_to_one_line_and_let_go_still_takes_e
     .collect();
     assert_eq!(sorted(everything.message_ids), sorted(in_lines),);
 
-    // Letting go of the source previews both messages, the run lets go of
-    // exactly those, and both leave the digest.
     let preview = let_go_source(&fx, now, "acme.com", None, true)
         .await
         .unwrap();
@@ -1264,16 +1231,12 @@ async fn repeat_alerts_from_one_source_fold_to_one_line_and_let_go_still_takes_e
     assert_eq!(after.needs_a_look.len(), 1, "Globex is untouched");
 }
 
-/// The demo dataset seeded at `seed` under `cuts`, synced into a fresh
-/// daemon whose `updates.cuts` is the same list.
 async fn demo_state(seed: DateTime<Utc>, cuts: &[String]) -> Arc<AppState> {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let mut config = state.config_snapshot();
     config.updates.cuts = cuts.to_vec();
     state.set_config_for_test(config).await;
     let account_id = state.default_account_id();
-    // Only the seeded head: the generated bulk after it plays no part in
-    // these digests and nearly doubled each sync's classification work.
     let provider = Arc::new(
         mxr_provider_fake::FakeProvider::with_demo_dataset_at(
             account_id.clone(),
@@ -1297,8 +1260,6 @@ async fn demo_state(seed: DateTime<Utc>, cuts: &[String]) -> Arc<AppState> {
     state
 }
 
-/// Strava's weekly summary is the demo's computed delta; it only sits in
-/// Changed when the seeded mail is fresh in the digest the daemon builds.
 async fn strava_delta(state: &AppState, now: DateTime<Utc>) -> Option<String> {
     let digest = updates::digest_at(state, None, None, false, false, now, &chrono::Local)
         .await
@@ -1310,13 +1271,6 @@ async fn strava_delta(state: &AppState, now: DateTime<Utc>) -> Option<String> {
         .and_then(|line| line.delta.as_ref().map(|d| d.text.clone()))
 }
 
-/// The web e2e daemon runs about 25 minutes on one seed. A fixture dated
-/// against cuts the digest doesn't use (or a cut that falls mid-run) left
-/// the seeded mail outside the digest it was read in.
-///
-/// One test per seed date: each syncs the demo once per cut list, and as one
-/// test they were among the slowest in the suite. Running under
-/// TZ=America/New_York also exercises missing and repeated cuts.
 async fn assert_the_seeded_digest_holds_at((month, day, hour, minute): (u32, u32, u32, u32)) {
     let seed = chrono::Local
         .with_ymd_and_hms(2026, month, day, hour, minute, 0)
@@ -1380,9 +1334,6 @@ async fn assert_the_seeded_digest_holds_at((month, day, hour, minute): (u32, u32
     }
 }
 
-/// The seeded digest holds in the CI failure's three-minute window, just after
-/// midnight, and when US clocks go forward (8 March 2026) and back (1 November
-/// 2026).
 #[tokio::test]
 async fn demo_updates_mail_stays_in_the_digest_across_clock_edge_cases() {
     for seed in [
@@ -1395,8 +1346,6 @@ async fn demo_updates_mail_stays_in_the_digest_across_clock_edge_cases() {
     }
 }
 
-/// The e2e config pins one daily cut a minute before the seed, so a run
-/// of any length under a day never reaches another cut.
 #[tokio::test]
 async fn a_single_pinned_cut_keeps_the_seeded_digest_for_a_whole_e2e_run() {
     let seed = chrono::Local
@@ -1419,8 +1368,6 @@ async fn a_single_pinned_cut_keeps_the_seeded_digest_for_a_whole_e2e_run() {
     }
 }
 
-/// A sign-in alert stays on its line for two days; the code it carried
-/// leaves the line when the code expires, so `y` never copies a dead one.
 #[tokio::test]
 async fn a_lines_code_leaves_with_its_expiry_while_the_alert_stays() {
     let fx = Fixture::new().await;

@@ -1,12 +1,3 @@
-//! `Request::ListOwedReplies`: the replies you owe.
-//!
-//! The default is the desk's You owe lane, computed by the desk itself so
-//! the two never disagree (D103). `people` counts them the way Now and
-//! Messages do: `write_with` is the people these rows are with and
-//! `others` the people who wrote to you, who wait in Messages. `all` keeps
-//! the raw store list (every thread whose latest inbound has no later
-//! outbound) for scripts.
-
 use super::desk::{compose_desk, desk_lane};
 use super::desk_lanes::{pace_ratio, pace_seconds};
 use super::HandlerResult;
@@ -17,7 +8,6 @@ use mxr_protocol::{DeskLaneKind, OwedReplyRowData, PeopleSplitData, ResponseData
 
 const SECONDS_PER_DAY: f64 = 86_400.0;
 
-/// Which rows `ListOwedReplies` returns and how many.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct OwedQuery {
     pub older_than_days: Option<u32>,
@@ -40,8 +30,6 @@ pub(super) async fn list_owed_replies(
     Ok(ResponseData::OwedReplies { rows, people })
 }
 
-/// The desk's You owe lane in its own order, narrowed by the windows,
-/// which apply to the latest message from them.
 async fn desk_rows(
     state: &AppState,
     account_id: &AccountId,

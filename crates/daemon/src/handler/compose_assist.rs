@@ -1,14 +1,3 @@
-//! Writing help (blueprint 34): `ComposeAssist` gathers what the model needs,
-//! plans the prompt, makes one model call, checks the answer and returns a
-//! proposal. It changes nothing; `ApplyComposeProposal` writes a proposal into
-//! a stored draft's text region, and only if that region is still what the
-//! proposal was made against.
-//!
-//! The privacy policy is `DraftCompose`'s: a cloud model sees the user's other
-//! mail only with `llm.allow_cloud_relationship_data`, and typed text that an
-//! earlier suggestion wrote from that history is refused for a cloud model
-//! without the opt-in, as `DraftRefine` refuses it.
-
 use super::compose_proposals::StoredProposal;
 use super::diagnostics_impl::emit_operation_event;
 use super::draft_compose::{
@@ -31,27 +20,19 @@ use mxr_protocol::{
     DaemonEvent, DraftSourceData, DraftTargetData, ResponseData, TextRangeData, VoiceRegisterData,
 };
 
-/// The operation name on each progress event, so a client can tell this
-/// request's stage lines from any other operation's.
 pub(crate) const PROGRESS_OPERATION: &str = "compose-assist";
 
-/// Stage lines are sent as `current` of this many.
 const STAGES: u32 = 3;
 
-/// Which version of the plan and check rules produced a proposal. Bumped when
-/// a prompt or check change could change what a proposal says.
 const COMPOSER_VERSION: &str = "c1";
 
-/// What the request names, resolved to the conversation and people involved.
 struct Gathered {
     account_id: AccountId,
     mode: DraftMode,
     counterparty: Option<Counterparty>,
     turns: Vec<Turn>,
     thread_id: Option<ThreadId>,
-    /// The subject line. Whoever wrote it, it reaches the model as data.
     subject: String,
-    /// The stored draft the request named, if it did.
     draft_id: Option<DraftId>,
     feature: LlmFeature,
 }
@@ -64,11 +45,9 @@ pub(super) struct AssistRequest<'a> {
     pub instruction: Option<&'a str>,
     pub adjust: AssistAdjustData,
     pub model: Option<&'a str>,
-    /// The id of the proposal being revised.
     pub revise: Option<&'a str>,
 }
 
-/// Said when a proposal is not (or no longer) in the daemon's memory.
 const PROPOSAL_GONE: &str = "That proposal expired or was never made. Ask for writing help again.";
 
 pub(super) async fn compose_assist(
@@ -106,7 +85,6 @@ pub(super) async fn compose_assist(
     let account_id = &gathered.account_id;
     let me = draft_voice::me(state, account_id).await;
 
-    // The user's other mail only reaches a cloud model with their opt-in.
     let config = state.config_snapshot();
     let selected_model = request
         .model
@@ -163,7 +141,6 @@ pub(super) async fn compose_assist(
     }
     let share = policy.share_history;
     let typed = resolved.action != AssistActionData::Write && !request.text.trim().is_empty();
-    // Typed text may carry an earlier suggestion written from history.
     let typed_from_history = typed
         && !crate::history_text::source_accounts(&state.store, Some(account_id), request.text)
             .await?
@@ -174,9 +151,6 @@ pub(super) async fn compose_assist(
         ));
     }
 
-    // The proposal being revised: the model sees its text, so it must be the
-    // same account's, and a cloud model without the opt-in must not get text
-    // that was written from the user's history.
     let revised = match request.revise {
         Some(proposal_id) => {
             let stored = state
@@ -357,14 +331,11 @@ pub(super) async fn compose_assist(
             repair_model = Some(model);
         }
     }
-    // Keep only source-backed figures present in this proposal. A guessed
-    // amount inside a gap must not become evidence on the next revision.
     let grounding = [request.text, &known].join("\n");
     let unknown_figures = check::invented_numbers(&checked.text, &grounding);
     let mut grounded_figures = check::invented_numbers(&checked.text, "");
     grounded_figures.retain(|figure| !unknown_figures.contains(figure));
 
-    // Only the examples that fit the prompt shaped the proposal.
     let voice_sources = used_voice_sources(&material.examples, prompt.examples_used);
     let history_used = revised
         .as_ref()
@@ -384,15 +355,11 @@ pub(super) async fn compose_assist(
             .map(|index| gathered.turns[*index].source.clone())
             .collect(),
     );
-    // Sentences a hosted fallback repaired make the proposal cloud-written
-    // even when the endpoint on this machine wrote the rest.
     if repair_model.as_deref().is_some_and(|repair| {
         crate::state::llm_answer_locality(&policy.llm, repair) == AiLocalityData::Cloud
     }) {
         provenance.locality = AiLocalityData::Cloud;
     }
-    // Remembered so a later refine of this text can't hand it to a cloud model
-    // without opt-in (see `history_text`).
     if history_used {
         crate::history_text::record(&state.store, account_id, &checked.text).await;
     }
@@ -421,7 +388,6 @@ pub(super) async fn compose_assist(
     Ok(ResponseData::ComposeProposal { proposal })
 }
 
-/// Cite only the examples the prompt renderer kept, preserving their order.
 fn used_voice_sources(
     examples: &[draft_prompt::VoiceExample],
     used: usize,
@@ -433,8 +399,6 @@ fn used_voice_sources(
         .collect()
 }
 
-/// What the activity log learns: which action ran, on what model and how much
-/// came back. Never the text, the instruction or the conversation.
 fn log_assist(
     state: &AppState,
     source: ClientKind,
@@ -474,7 +438,6 @@ async fn gather(state: &AppState, target: &DraftTargetData) -> Result<Gathered, 
                 .await?
                 .ok_or_else(|| HandlerError::Message(format!("Draft {draft_id} not found")))?;
             let recipient = draft.to.first().cloned();
-            // The parent message, when the draft replies to one.
             let parent = match draft.reply_headers.as_ref() {
                 Some(headers) => state
                     .store
@@ -489,10 +452,6 @@ async fn gather(state: &AppState, target: &DraftTargetData) -> Result<Gathered, 
                     in_conversation(state, &parent.id, Some(to)).await?
                 }
                 (Some(parent), _) => in_conversation(state, &parent.id, None).await?,
-                // A stored forward retains the original content and files, but
-                // not its source message id or reply headers. A client that
-                // knows the source asks with the `forward` target to resolve
-                // the conversation and relationship context.
                 (None, _) => {
                     let to = recipient.ok_or_else(no_recipient)?;
                     new_message(draft.account_id.clone(), &to, &draft.subject)
@@ -521,7 +480,6 @@ fn no_recipient() -> HandlerError {
     HandlerError::InvalidRequest("Writing help needs a recipient to write to.".to_string())
 }
 
-/// A reply to `message_id`, or a note forwarding its conversation to `forward_to`.
 async fn in_conversation(
     state: &AppState,
     message_id: &mxr_core::MessageId,
@@ -587,9 +545,6 @@ fn new_message(account_id: AccountId, to: &Address, subject: &str) -> Gathered {
     }
 }
 
-/// Write a proposal into the stored draft's text region. The signature and the
-/// forward header stay as they are. Refused when the region is no longer what
-/// the proposal was made against, or the proposal was made for another draft.
 pub(super) async fn apply(
     state: &AppState,
     proposal_id: &str,
@@ -636,8 +591,6 @@ pub(super) async fn apply(
         updated_at: chrono::Utc::now(),
         ..draft.clone()
     };
-    // The write checks the revision read above, so a save that lands in
-    // between is a conflict, not a lost update.
     mutations::update_draft(state, &updated).await?;
     state.compose_proposals.remove(proposal_id);
     Ok(ResponseData::ComposeApplied {

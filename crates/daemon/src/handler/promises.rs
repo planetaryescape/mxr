@@ -1,15 +1,3 @@
-//! `DetectPromises` and `RecordPromise`: catching "I'll send the deck by
-//! Friday" in mail you send, and keeping it as a dated commitment when you
-//! say so.
-//!
-//! Detection reads only the outgoing text and its recipients, under the
-//! `Commitments` feature's privacy policy, never relationship history. The
-//! model names the deliverable and copies the due words; the words are
-//! checked against the text and resolved by the natural-time parser in the
-//! caller's zone, so the date shown is the parser's, not the model's.
-//! Detection has a short budget and never fails a send: a missing, blocked
-//! or slow model is a status. Nothing is stored until `RecordPromise`.
-
 use super::commitments_extract::COMMITMENT_PREFILTER;
 use super::relationship_profile::commitment_data;
 use super::thread_context::owned_addresses;
@@ -37,8 +25,6 @@ use serde::Deserialize;
 use std::time::Duration;
 
 const FEATURE: LlmFeature = LlmFeature::Commitments;
-/// Long enough for a local model on a short email, short enough that the
-/// web's undo window (10s by default) usually still covers the answer.
 const DETECT_BUDGET: Duration = Duration::from_secs(8);
 const TEXT_MAX_CHARS: usize = 8_000;
 const WHAT_MAX_CHARS: usize = 120;
@@ -67,7 +53,6 @@ struct RawPromise {
     due: Option<String>,
 }
 
-/// The outgoing text as the model will see it.
 struct OutgoingText {
     recipients: Vec<Address>,
     body: String,
@@ -79,7 +64,6 @@ pub(super) async fn detect_promises(
     now: Option<DateTime<Utc>>,
     time_zone: Option<&str>,
 ) -> HandlerResult {
-    // An unknown zone is the caller's mistake: say so before any model work.
     parse_zone(time_zone)?;
     let outgoing = outgoing_text(state, source).await?;
     let detection = detect(state, &outgoing, now, time_zone, DETECT_BUDGET).await?;
@@ -119,8 +103,6 @@ async fn outgoing_text(
     }
 }
 
-/// The envelope of a message the account itself sent: promises are only
-/// ever yours.
 async fn sent_envelope(
     state: &AppState,
     message_id: &MessageId,
@@ -130,9 +112,6 @@ async fn sent_envelope(
         .get_envelope(message_id)
         .await?
         .ok_or_else(|| format!("Message not found: {message_id}"))?;
-    // Sent means filed as sent: the provider's Sent label or folder, or
-    // mxr's own record of the send (both set MessageFlags::SENT), and from
-    // an address of this account. A From header alone is only a claim.
     let owned = owned_addresses(state, &envelope.account_id).await?;
     if !envelope.flags.contains(MessageFlags::SENT)
         || !owned.contains(&envelope.from.email.to_ascii_lowercase())
@@ -152,11 +131,9 @@ async fn detect(
     time_zone: Option<&str>,
     budget: Duration,
 ) -> Result<PromiseDetectionData, HandlerError> {
-    // Most mail makes no promise at all; don't ask a model about it.
     if !COMMITMENT_PREFILTER.is_match(&outgoing.body) {
         return Ok(answer(PromiseDetectionStatusData::Ready, Vec::new(), None));
     }
-    // Pin once: the provenance label and the call follow the same endpoint.
     let llm = state.llm.for_feature(FEATURE).pin();
     let mut body = outgoing.body.clone();
     mxr_core::text::truncate_to_char_boundary(&mut body, TEXT_MAX_CHARS);
@@ -211,8 +188,6 @@ async fn detect(
     };
     let mut promises = Vec::new();
     for raw in raw.promises {
-        // Only what the message says is offered, in its own words: an
-        // invented deliverable is dropped even when its date is real.
         let Some(what) = find_verbatim(&outgoing.body, &raw.what, WHAT_MAX_CHARS) else {
             continue;
         };
@@ -285,7 +260,6 @@ pub(super) async fn record_promise(
     let supplied = what.trim();
     let envelope = sent_envelope(state, message_id).await?;
     let answer = super::ask_assessments::promise_source(state, &envelope).await?;
-    // Match source text before display cleanup can change its natural identity.
     let source_safe = supplied.chars().count() <= WHAT_MAX_CHARS
         && !supplied
             .chars()
@@ -322,8 +296,6 @@ pub(super) async fn record_promise(
         return Err("Say what you promised, such as \"send the deck\".".into());
     }
     if let Some(answer) = answer.as_ref().filter(|answer| !answer.pending_body) {
-        // The model offers a verbatim fragment; identity belongs to the stored
-        // authored unit, so accepting its date must not create another promise.
         let quotes: Vec<_> = answer
             .units
             .iter()
@@ -372,7 +344,6 @@ pub(super) async fn record_promise(
             .await
             .map_err(|error| error.to_string())?;
         if state.config_snapshot().todo.enabled {
-            // Reproject the stored answer now: a contact-only edit does not dirty mail evidence.
             let cfg = super::todos::pass_config(state, Utc::now());
             mxr_todo::pass::project_stored_ask(&state.store, &cfg, message_id)
                 .await
@@ -430,7 +401,6 @@ mod tests {
         }
     }
 
-    /// Tuesday 29 September 2026, 14:00 UTC (15:00 in London).
     fn anchor() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 9, 29, 14, 0, 0).unwrap()
     }
@@ -507,7 +477,6 @@ mod tests {
         let deck = &detection.promises[0];
         assert_eq!(deck.what, "send the deck");
         assert_eq!(deck.due_phrase.as_deref(), Some("by Friday"));
-        // Friday 2 October at the morning hour, 09:00 London (BST).
         assert_eq!(
             deck.due.as_ref().unwrap().at,
             Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap()
@@ -558,7 +527,6 @@ mod tests {
             "the contract was never promised"
         );
         let promise = &detection.promises[0];
-        // The message's own words, not the model's spelling.
         assert_eq!(promise.what, "send the \"deck\"");
         assert_eq!(promise.due_phrase.as_deref(), Some("by Friday"));
         assert!(promise.due.is_some());
@@ -654,7 +622,6 @@ mod tests {
             .unwrap();
     }
 
-    /// A message the account sent, stored like a synced Sent item.
     async fn stored_sent_message(state: &AppState, account_id: &AccountId) -> MessageId {
         sync(state).await;
         let owned = owned_addresses(state, account_id).await.unwrap();
@@ -755,7 +722,6 @@ mod tests {
     async fn a_spoofed_from_is_not_mail_you_sent() {
         let (state, account_id, _) = fixture(r#"{"promises":[]}"#, Duration::ZERO).await;
         let sent = stored_sent_message(&state, &account_id).await;
-        // Inbound mail whose From header claims to be you: not filed as sent.
         let mut spoofed = state.store.get_envelope(&sent).await.unwrap().unwrap();
         spoofed.id = MessageId::new();
         spoofed.provider_id = "spoofed".into();

@@ -1,4 +1,3 @@
-//! Bank method is factual source evidence, not another obligation verdict.
 use super::*;
 use mxr_core::asks::{ActionKind, Actor, AskAnswer};
 use mxr_todo::provenance::FieldSources;
@@ -12,7 +11,6 @@ const TEXT: &str = "Invoice amount due £125 by 18 November 2026 via bank transf
 fn isolated_utc(f: impl FnOnce()) {
     const CHILD: &str = "MXR_BANK_TIMING_TEST_CHILD";
     if std::env::var_os(CHILD).is_none() {
-        // TZ is process-wide; parallel daemon tests must never observe this fixture's clock zone.
         let thread = std::thread::current();
         let name = thread.name().expect("named native test");
         let status = std::process::Command::new(std::env::current_exe().unwrap())
@@ -199,7 +197,6 @@ fn already_settled_policy16_bill_is_repaired_by_the_normal_tick() {
 }
 
 async fn seed_published_row(fx: &Fixture, expected: &mxr_store::TodoRecord) {
-    // Faithful published current-policy row/run: generic dates, no method provenance, completed v2.
     let input = TimingInput {
         kind: TodoKind::Bill,
         doc_type: None,
@@ -310,7 +307,6 @@ fn an_actual_legacy_bank_row_keeps_its_identity_and_allowance() {
             ),
         )
         .await;
-        // Build the retained v1 row with its real detector and natural key, never as a second live judge.
         let detection = mxr_todo::detect::detect(
             &mxr_todo::detect::MessageInput {
                 subject: "Account copy",
@@ -354,7 +350,6 @@ fn an_actual_legacy_bank_row_keeps_its_identity_and_allowance() {
         assert_eq!(actual.surface_at, legacy.surface_at);
         assert_eq!(actual.reason, TEXT);
         assert!(actual.has_stored_asks());
-        // Legacy adoption records the canonical cutover, independent of the first-run replay version.
         assert_eq!(actual.rules_version, 2);
         finish_first_run(&fx, arrived).await;
         assert_eq!(stored(&fx, &id).await, actual);
@@ -369,9 +364,6 @@ fn replay_preserves_saved_fields_closed_decisions_and_exact_correction_undo() {
             let (id, current) = bank_journey(&fx).await;
             seed_published_row(&fx, &current).await;
             let original = stored(&fx, &id).await;
-            // The correction and schedule handlers reject past times against the
-            // wall clock, so their dates follow it. Fixed dates here failed once
-            // they passed (2026-11-05 and 2026-12-10, 09:00 UTC).
             let due = (Utc::now() + chrono::Duration::days(36))
                 .format("%Y-%m-%d")
                 .to_string();
@@ -435,7 +427,6 @@ fn replay_preserves_saved_fields_closed_decisions_and_exact_correction_undo() {
             if decision == "fields" {
                 assert_eq!(after, before);
             } else {
-                // Automatic facts may refresh, but a saved closed decision and its history stay authoritative.
                 assert_eq!(after.id, before.id);
                 assert_eq!(after.state, before.state);
                 assert_eq!(after.done_at, before.done_at);

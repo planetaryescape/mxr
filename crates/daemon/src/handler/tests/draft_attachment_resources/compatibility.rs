@@ -5,7 +5,6 @@ async fn draft_attachment_resources_pre_upgrade_hash_replay_preserves_unknown_an
     for accepted in [false, true] {
         let (state, fake, draft) = fixture().await;
         let identity = SendIdentity::for_draft(&draft);
-        // Released v0.6.82 serializes no managed field. Preserve that exact struct order, not a sorted JSON Value.
         let mut legacy = draft.clone();
         legacy.revision = None;
         legacy.created_at = chrono::DateTime::UNIX_EPOCH;
@@ -84,7 +83,6 @@ async fn draft_attachment_resources_old_schedule_marker_blocks_managed_but_allow
         },
     )
     .await);
-    // Scheduling advances the owner revision; fetch it before attaching bytes.
     draft = saved(
         call(
             &state,

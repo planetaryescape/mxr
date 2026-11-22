@@ -44,7 +44,6 @@ impl Fixture {
         inbox
     }
 
-    /// Store one inbound message in `account`'s inbox.
     async fn inbound(
         &self,
         account: &mxr_core::AccountId,
@@ -163,7 +162,6 @@ impl Fixture {
         }
     }
 
-    /// The daemon's refusal, for requests that must fail.
     async fn refused(&self, request: Request) -> String {
         let msg = IpcMessage {
             expected_workspace: None,
@@ -177,8 +175,6 @@ impl Fixture {
         }
     }
 
-    /// Waits for the job to finish. Only a deadline, never an ordering: on a
-    /// loaded CI runner two chunks of 100 took longer than the old 4 s.
     async fn wait_for_job(&self, job_id: &str) -> JobData {
         for _ in 0..3000 {
             if let ResponseData::Job { job } = self
@@ -196,8 +192,6 @@ impl Fixture {
         panic!("job {job_id} did not finish");
     }
 
-    /// A failed chunk must report its error rather than leave a test waiting
-    /// forever for a provider barrier the job can no longer reach.
     async fn wait_for_sweep_provider(&self, job_id: &str) {
         if tokio::time::timeout(
             std::time::Duration::from_secs(10),
@@ -328,7 +322,6 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
         other => panic!("expected SenderKindSet, got {other:?}"),
     }
     assert!(fx.place(MailPlaceData::Reading, None).await.0.is_empty());
-    // A sorting correction gives visibility, not evidence of a reply debt.
     match fx
         .send(Request::GetDesk {
             account_id: None,
@@ -377,7 +370,6 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
         "the explicit Messages placement remains visible"
     );
 
-    // Moving it to Paper trail says so, and the sender's next issue follows.
     match fx
         .send(Request::SetSenderKind {
             account_id: fx.account.clone(),
@@ -419,7 +411,6 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
         other => panic!("expected MessageKind, got {other:?}"),
     }
 
-    // Automatic again: back to Reading by its headers.
     fx.send(Request::SetSenderKind {
         account_id: fx.account.clone(),
         sender_email: NEWSLETTER.into(),
@@ -429,7 +420,6 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
     let (reading, _) = fx.place(MailPlaceData::Reading, None).await;
     assert_eq!(bundle(&reading, NEWSLETTER).unwrap().message_count, 2);
 
-    // Screened out leaves every place.
     fx.send(Request::SetSenderKind {
         account_id: fx.account.clone(),
         sender_email: NEWSLETTER.into(),
@@ -475,7 +465,6 @@ async fn sweep_preview_is_the_sweep_pins_stay_and_undo_restores() {
         )
         .await;
 
-    // Pin the one that matters.
     match fx
         .send(Request::PinMessages {
             message_ids: vec![receipts[1].id.clone()],
@@ -494,7 +483,6 @@ async fn sweep_preview_is_the_sweep_pins_stay_and_undo_restores() {
     assert_eq!(shop.pinned_count, 1);
     assert!(shop.messages[0].pinned, "pinned first");
 
-    // One bundle: the preview counts what the sweep will take.
     let (preview, job) = fx.sweep(Some(ROBOT), true, None).await;
     assert!(job.is_none());
     assert_eq!(preview.count, 3);
@@ -507,7 +495,6 @@ async fn sweep_preview_is_the_sweep_pins_stay_and_undo_restores() {
         "newest first, pinned left out"
     );
 
-    // Mail stored after the preview is not swept with it.
     let late = fx
         .inbound(
             &fx.account,
@@ -538,7 +525,6 @@ async fn sweep_preview_is_the_sweep_pins_stay_and_undo_restores() {
     assert!(fx.in_inbox(&alerts.id).await, "another bundle");
     assert!(fx.in_inbox(&issue.id).await, "another place");
 
-    // Undo puts every swept message back.
     for undo_id in job.undo_ids.iter().rev() {
         fx.send(Request::UndoMutation {
             mutation_id: undo_id.clone(),
@@ -549,7 +535,6 @@ async fn sweep_preview_is_the_sweep_pins_stay_and_undo_restores() {
         assert!(fx.in_inbox(&receipt.id).await);
     }
 
-    // The whole place: every bundle's unpinned mail, still sparing Reading.
     let (all, _) = fx.sweep(None, true, None).await;
     assert_eq!(all.count, 5, "3 receipts + late + alerts: {all:?}");
     assert_eq!(all.pinned_excluded, 1);
@@ -617,8 +602,6 @@ async fn a_sweep_never_takes_mail_its_preview_did_not_list() {
     let (preview, _) = fx.sweep(None, true, None).await;
     assert_eq!(preview.count, 2);
 
-    // While the preview is open: another client moves the newsletter into
-    // Paper trail, a message arrives, and one previewed receipt is pinned.
     fx.send(Request::SetSenderKind {
         account_id: fx.account.clone(),
         sender_email: NEWSLETTER.into(),
@@ -647,7 +630,6 @@ async fn a_sweep_never_takes_mail_its_preview_did_not_list() {
         "pinned after the preview"
     );
 
-    // A token works once, for its own scope, and is required.
     assert!(fx
         .refused(Request::SweepPlace {
             place: MailPlaceData::PaperTrail,
@@ -669,7 +651,6 @@ async fn a_sweep_never_takes_mail_its_preview_did_not_list() {
         })
         .await
         .contains("different sweep"));
-    // The mismatch did not use the token up.
     let (_, job) = fx.sweep(Some(ROBOT), false, other.preview_token).await;
     assert!(job.is_some());
     assert!(fx
@@ -692,8 +673,6 @@ fn paper_trail_scope(fx: &Fixture) -> crate::handler::places::SweepScope {
     }
 }
 
-/// The archive job rechecks pins chunk by chunk: a message pinned after
-/// the sweep started, in a later chunk, stays in the inbox and out of undo.
 #[tokio::test]
 async fn a_sweep_job_leaves_out_messages_pinned_before_their_chunk() {
     let fx = Fixture::new().await;
@@ -711,7 +690,6 @@ async fn a_sweep_job_leaves_out_messages_pinned_before_their_chunk() {
             .id,
         );
     }
-    // In the second chunk of 100.
     let late_pin = ids[102].clone();
     fx.state
         .store
@@ -748,9 +726,6 @@ async fn a_sweep_job_leaves_out_messages_pinned_before_their_chunk() {
     }
 }
 
-/// A pin that lands while a sweep job is running, just before a chunk's
-/// recheck, keeps its message. The sweep gate orders them: the test holds
-/// it the way a pin request does, pins, then lets the chunk run.
 #[tokio::test]
 async fn a_pin_made_while_a_sweep_runs_keeps_its_message() {
     let fx = Fixture::new().await;
@@ -783,7 +758,6 @@ async fn a_pin_made_while_a_sweep_runs_keeps_its_message() {
     let ResponseData::JobStarted { job } = started else {
         panic!("expected a job");
     };
-    // The job is queued behind the pin: nothing is archived yet.
     for id in &ids {
         assert!(fx.in_inbox(id).await);
     }
@@ -843,8 +817,6 @@ async fn a_bundle_pages_through_its_messages() {
     assert_eq!(subjects(fx.send(page(4)).await), vec!["Receipt 0"]);
 }
 
-/// The job rechecks place membership chunk by chunk too: a sender moved to
-/// People while the sweep runs keeps its mail, counted as skipped.
 #[tokio::test]
 async fn a_sweep_job_leaves_out_a_sender_moved_before_its_chunk() {
     let fx = Fixture::new().await;
@@ -878,7 +850,6 @@ async fn a_sweep_job_leaves_out_a_sender_moved_before_its_chunk() {
         );
     }
     ids.extend(later.iter().cloned());
-    // The second chunk's sender becomes a person before that chunk runs.
     fx.send(Request::SetSenderKind {
         account_id: fx.account.clone(),
         sender_email: alerts.into(),
@@ -912,15 +883,12 @@ async fn a_sweep_job_leaves_out_a_sender_moved_before_its_chunk() {
     }
 }
 
-/// An undo that restores only part of its messages keeps the rest under
-/// the same id for a retry, and says so instead of claiming success.
 #[tokio::test]
 async fn a_partly_failed_undo_keeps_what_failed_for_a_retry() {
     let fx = Fixture::new().await;
     let restorable = fx
         .inbound(&fx.account, ROBOT, "Receipt", Duration::hours(1), false)
         .await;
-    // A message whose account has no provider right now cannot be restored.
     let offline = mxr_core::Account {
         id: mxr_core::AccountId::new(),
         name: "Offline".into(),
@@ -972,7 +940,6 @@ async fn a_partly_failed_undo_keeps_what_failed_for_a_retry() {
     assert_eq!(kept.snapshots.len(), 1);
     assert_eq!(kept.snapshots[0].message_id, stuck.id);
 
-    // The retry tries only what failed.
     let again = fx
         .refused(Request::UndoMutation {
             mutation_id: "undo-partial".into(),
@@ -981,9 +948,6 @@ async fn a_partly_failed_undo_keeps_what_failed_for_a_retry() {
     assert!(again.contains("restored 0, 1 failed"), "{again}");
 }
 
-/// Each account has its own sweep gate, and a sweep only takes it after its
-/// provider lock: a pin in one account completes while another account's
-/// sweep waits behind that account's provider (a long sync, say).
 #[tokio::test]
 async fn a_pin_in_one_account_never_waits_on_another_accounts_sweep() {
     let fx = Fixture::new().await;
@@ -1004,7 +968,6 @@ async fn a_pin_in_one_account_never_waits_on_another_accounts_sweep() {
         .inbound(&fx.account, ROBOT, "My receipt", Duration::hours(2), false)
         .await;
 
-    // The default account's provider is busy: its sweep can't archive yet.
     let syncing = fx.state.acquire_provider_operation(&fx.account).await;
     let started = super::mutations::start_mutation_job(
         fx.state.clone(),
@@ -1019,11 +982,8 @@ async fn a_pin_in_one_account_never_waits_on_another_accounts_sweep() {
     let ResponseData::JobStarted { job } = started else {
         panic!("expected a job");
     };
-    // The sweep has reached its message and waits on the provider.
     fx.wait_for_sweep_provider(&job.job_id).await;
 
-    // A pin in the other account goes through at once. The timeout only
-    // turns a hang into a failure; nothing waits on it to pass.
     let pinned = tokio::time::timeout(
         std::time::Duration::from_secs(10),
         fx.send(Request::PinMessages {
@@ -1037,7 +997,6 @@ async fn a_pin_in_one_account_never_waits_on_another_accounts_sweep() {
         pinned,
         ResponseData::MessagesPinned { changed: 1, .. }
     ));
-    // So does a sender move there.
     tokio::time::timeout(
         std::time::Duration::from_secs(10),
         fx.send(Request::SetSenderKind {
@@ -1056,9 +1015,6 @@ async fn a_pin_in_one_account_never_waits_on_another_accounts_sweep() {
     assert!(!fx.in_inbox(&mine.id).await);
 }
 
-/// A screener Allow for the sender, made while a sweep waits on the
-/// provider, takes its mail out of Paper trail: the sweep sees the change
-/// at the message and leaves it.
 #[tokio::test]
 async fn an_allow_made_during_a_sweep_keeps_the_message() {
     let fx = Fixture::new().await;
@@ -1079,7 +1035,6 @@ async fn an_allow_made_during_a_sweep_keeps_the_message() {
     let ResponseData::JobStarted { job } = started else {
         panic!("expected a job");
     };
-    // Past the chunk's recheck, waiting on the provider.
     fx.wait_for_sweep_provider(&job.job_id).await;
     fx.send(Request::SetScreenerDecision {
         account_id: fx.account.clone(),
@@ -1097,8 +1052,6 @@ async fn an_allow_made_during_a_sweep_keeps_the_message() {
     assert!(fx.in_inbox(&receipt.id).await, "allowed mid-sweep");
 }
 
-/// Pins across accounts take one account's gate at a time: waiting on a
-/// busy account never holds another account's gate.
 #[tokio::test]
 async fn pins_across_accounts_never_hold_one_gate_while_waiting_for_another() {
     let fx = Fixture::new().await;
@@ -1140,8 +1093,6 @@ async fn pins_across_accounts_never_hold_one_gate_while_waiting_for_another() {
             };
             handle_request(&state, &msg).await
         });
-        // The idle account's gate stays free while the pin waits on the
-        // busy one. The timeout only turns a hang into a failure.
         let idle_gate = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             fx.state.sweep_gate.change([idle]),
@@ -1231,9 +1182,6 @@ async fn sorting_to_messages_invalidates_a_running_reading_sweep() {
 
 #[tokio::test]
 async fn an_alias_registered_during_a_sweep_check_stops_that_check_allowing_the_message() {
-    // The check selected this as Reading mail, from a sender that is not yet
-    // owned. Registering the alias flips it to sent. The check's cached
-    // selection must not survive the change.
     let fx = Fixture::new().await;
     let alias = "alias@example.com";
     let message = fx

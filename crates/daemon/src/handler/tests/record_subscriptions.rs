@@ -1,7 +1,3 @@
-//! Subscriptions over the daemon: detection from filed receipts, field
-//! provenance, totals per currency, the signals on Now and Archive, a
-//! cancellation email, and an approaching yearly renewal review task.
-
 use super::desk::{request, Fixture};
 use super::records::{put, put_in};
 use super::*;
@@ -17,7 +13,6 @@ async fn subscriptions(fx: &Fixture) -> RecordSubscriptionsData {
     }
 }
 
-/// Receipts from `from` with `subject` and `total`, `days_ago` each.
 async fn receipts(
     fx: &Fixture,
     from: (&str, &str),
@@ -98,8 +93,6 @@ async fn monthly_receipts_are_a_subscription_and_a_one_off_is_not() {
         sub.yearly_cost.as_ref().map(|a| a.display.as_str()),
         Some("£143.88")
     );
-    // A rule read the amount, so it stays unchecked, and so does what is
-    // worked out from it.
     let field = |name: &str| {
         sub.fields
             .iter()
@@ -256,8 +249,6 @@ async fn a_cancellation_email_from_the_same_sender_ends_it() {
 #[tokio::test]
 async fn a_yearly_charge_due_soon_creates_one_review_task_on_tick() {
     let fx = Fixture::new().await;
-    // Last charged 357 days ago: the next is due in about a week, inside
-    // the renewal signal's 14-day lead time.
     let ids = receipts(
         &fx,
         ("Admiral", "noreply@admiral.com"),
@@ -403,8 +394,6 @@ async fn a_yearly_charge_months_away_is_not_a_signal_yet() {
     assert!(data.signals.is_empty(), "{:#?}", data.signals);
 }
 
-/// Two mailboxes paying the same issuer are two subscriptions, and each
-/// one counts only the one-off receipts in its own mailbox.
 #[tokio::test]
 async fn one_offs_count_per_account_when_two_accounts_share_an_issuer() {
     let fx = Fixture::new().await;

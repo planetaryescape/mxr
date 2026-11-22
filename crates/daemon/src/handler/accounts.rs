@@ -65,7 +65,6 @@ pub(super) async fn test_account(
 ) -> HandlerResult {
     let result = test_account_config(account).await;
     if result.ok {
-        // Reload providers so a newly-authorized token gets picked up immediately
         let _ = state.reload_accounts_from_disk().await;
     }
     Ok(ResponseData::AccountOperation { result })
@@ -94,12 +93,6 @@ pub(super) async fn repair_account(
 ) -> HandlerResult {
     let mut result = repair_account_config(account);
     if result.ok {
-        // Reload providers so the repaired password takes effect immediately
-        // (rebuilds provider handles and signals the long-lived IDLE loop to
-        // reconnect). Without this, a running daemon keeps the stale cached
-        // credential until a restart. The credential is already on disk, so a
-        // reload failure does not undo the repair — but we must NOT hide it:
-        // surface that the daemon needs a restart to pick up the new password.
         if let Err(error) = state.reload_accounts_from_disk().await {
             result.summary = format!(
                 "{} The credential was saved to disk, but the daemon could not reload it live — restart the daemon to apply the new password.",
@@ -322,9 +315,6 @@ mod tests {
                 ("MXR_DATA_DIR", Some(data_dir.as_os_str())),
                 ("MXR_SOCKET_PATH", Some(socket_path.as_os_str())),
                 ("MXR_SECRETS_PATH", Some(secrets_path.as_os_str())),
-                // Prod instance keeps the credential service unscoped; disable
-                // the keychain mirror so the test never touches the real OS
-                // keychain / Secret Service.
                 ("MXR_INSTANCE", Some("mxr".as_ref())),
                 ("MXR_KEYCHAIN", Some("off".as_ref())),
             ],
@@ -371,8 +361,6 @@ mod tests {
                         other => panic!("Expected AccountOperation, got {other:?}"),
                     }
 
-                    // The daemon (this handler) is the writer: the credential is
-                    // authoritatively on disk in the secrets store.
                     let store = mxr_config::SecretStore::new(secrets_path.clone());
                     assert_eq!(
                         store

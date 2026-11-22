@@ -1,15 +1,12 @@
-//! Local pairing administration and proof checks. Authentication never upgrades IPC trust.
 mod llm_status;
 use super::{HandlerResult, ResponseData};
 use crate::state::AppState;
 use mxr_protocol::{RemoteRequest, RemoteResponse};
 use mxr_transport::{PeerAuth, PeerInfo};
 
-/// Retain the original registration for background work instead of inheriting local IPC trust.
 #[derive(Debug, Clone)]
 pub(crate) struct AdmissionProof {
     pub client_id: String,
-    /// Canonical parent registration, shared by its browser child sessions.
     pub owner_client_id: String,
     pub mail_secret: mxr_core::RemoteSecret,
 }
@@ -282,8 +279,6 @@ pub(super) async fn handle(
     Ok(ResponseData::RemoteAuthority { response })
 }
 
-/// Names the operation and the grant it needs, so a denied client knows
-/// whether re-pairing helps or the operation runs only on the host.
 fn grant_denial(
     granted: &[mxr_core::RemoteCapability],
     request: &mxr_protocol::Request,
@@ -331,7 +326,6 @@ fn grant_denial(
     })
 }
 
-/// The proof is checked at each admission on the writer, never cached on a socket.
 #[cfg(test)]
 pub(super) async fn read(
     state: &std::sync::Arc<AppState>,
@@ -401,14 +395,11 @@ pub(super) async fn read_owned_as(
             "Applying writing help requires host-approved send access".into(),
         ));
     }
-    // Validate the original envelope owner after authentication, never infer it from the selected host.
     super::workspace_owner::validate(state, request, owner).await.map_err(|response| {
         if matches!(&*response, Response::Error { code, .. } if code == "workspace_owner_unavailable") {
             sanitize_error(*response)
         } else { super::HandlerError::RemoteResponse(response) }
     })?;
-    // The gateway preserves the declared kind. Remote grants and cooperative
-    // profiles both apply, including specialized preview/send paths below.
     super::enforce_client_profile(state, &state.config_snapshot(), source, request)
         .await
         .map_err(|_| {
@@ -630,8 +621,6 @@ pub(super) async fn read_owned_as(
             }
             match &mut data {
                 ResponseData::Draft { draft } => super::draft_preview::require_portable(draft)?,
-                // One legacy draft must not hide every other draft from a paired
-                // client. Omitting it keeps its host paths on the host.
                 ResponseData::Drafts { drafts } => {
                     drafts.retain(|draft| super::draft_preview::require_portable(draft).is_ok());
                 }

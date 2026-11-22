@@ -1,7 +1,3 @@
-//! To do on a moved clock: lead times, surfacing once, the pay-link gate,
-//! "looks done", expiry, the first run's windows and catch-up cap, and the
-//! preview matching the change.
-
 use super::desk::{request, Fixture};
 use super::*;
 use crate::handler::todos;
@@ -279,7 +275,6 @@ async fn scan(fx: &Fixture, ids: &[MessageId], now: DateTime<Utc>) -> pass::Pass
     summary
 }
 
-/// Runs the background tick until the first run is complete.
 async fn finish_first_run(fx: &Fixture, now: DateTime<Utc>) {
     let mut fingerprints = HashMap::new();
     super::projection_diagnostics::trace(&fx.state, &fx.account, "before first run").await;
@@ -727,7 +722,6 @@ fn invoice_html(due: DateTime<Utc>, link: &str) -> String {
     )
 }
 
-/// Camden's earlier statement, then its bill due in five days.
 async fn settle_background(fx: &Fixture) {
     let mut after = None;
     while let Some(next) =
@@ -750,7 +744,6 @@ async fn configure_receiver(fx: &Fixture) {
 
 async fn camden_bill(fx: &Fixture, now: DateTime<Utc>) -> MessageId {
     configure_receiver(fx).await;
-    // Three statements over 80 days: an established relationship.
     for days in [120, 80, 40] {
         let mut statement = Mail::new(
             ("Camden Council", "council.tax@camden.gov.uk"),
@@ -779,9 +772,6 @@ async fn camden_bill(fx: &Fixture, now: DateTime<Utc>) -> MessageId {
 #[tokio::test]
 async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_email() {
     let fx = Fixture::new().await;
-    // Pinned to a week with no clock change in any zone, so the machine's
-    // zone and today's date cannot shift the days. Clock changes are
-    // covered in `mxr_todo::timing`, where the zone is explicit.
     let now = Utc.with_ymd_and_hms(2026, 6, 10, 12, 0, 0).unwrap();
     let bill = camden_bill(&fx, now).await;
     finish_first_run(&fx, now).await;
@@ -804,8 +794,6 @@ async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_em
         row.when_label
     );
     assert!(row.when_label.contains("act by"), "{}", row.when_label);
-    // Even a genuine biller with DMARC and a long history gets no one-click
-    // link: Enter opens the email with the link highlighted.
     let action = row.action.as_ref().expect("a button");
     assert_eq!(action.kind, TodoActionKindData::OpenEmail);
     assert!(!action.trusted);
@@ -822,7 +810,6 @@ async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_em
     );
 
     let surface = row.surface_at.expect("a surface time");
-    // Three calendar days, not 72 hours: the two differ across a clock change.
     assert_eq!(
         surface.with_timezone(&Local).date_naive(),
         row.due_at.unwrap().with_timezone(&Local).date_naive() - Duration::days(3)
@@ -838,7 +825,6 @@ async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_em
         later.headline
     );
 
-    // Announced once, even across a restart of the loop.
     assert_eq!(
         pass::sweep(&fx.state.store, then).await.unwrap().surfaced,
         vec![row.id.clone()]
@@ -850,7 +836,6 @@ async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_em
         .surfaced
         .is_empty());
 
-    // Past the due date it stays, as "was due", until you act.
     let long_after = row.due_at.unwrap() + Duration::days(30);
     pass::sweep(&fx.state.store, long_after).await.unwrap();
     let overdue = runway(&fx, long_after).await;
@@ -862,9 +847,6 @@ async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_em
     );
 }
 
-/// The post-sync scan files what its `now` would, whatever the wall clock
-/// reads: the classifier eval pins `now` and must grade the same mail the
-/// same way on any day. The sweep runs this under a shifted system clock.
 #[tokio::test]
 async fn a_pinned_post_sync_scan_files_the_same_to_do_at_any_wall_clock() {
     let fx = Fixture::new().await;
@@ -928,8 +910,6 @@ async fn a_receipt_needs_bill_object_evidence_and_never_closes_the_row() {
     camden_bill(&fx, now).await;
     finish_first_run(&fx, now).await;
 
-    // Amount and sender alone cannot distinguish this bill from another
-    // payment to the same council.
     let mut generic_receipt = Mail::new(
         ("Camden Council", "council.tax@camden.gov.uk"),
         "Payment received",
@@ -1242,7 +1222,6 @@ async fn the_first_run_caps_the_catch_up_and_its_preview_equals_the_change() {
         "letting go is yours, not a lapse"
     );
 
-    // A re-run with a new rule version brings none of it back.
     fx.state
         .store
         .start_todo_run(&fx.account, mxr_todo::RULES_VERSION, now)
@@ -1590,7 +1569,6 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
     }
 }
 
-/// A commitment marked yours, with `evidence` as its evidence message.
 async fn commitment(fx: &Fixture, id: &str, email: &str, what: &str, evidence: &MessageId) {
     let thread = fx
         .state
@@ -1673,7 +1651,6 @@ async fn a_welcome_emails_call_to_action_is_not_a_to_do() {
         ),
     )
     .await;
-    // What the model made of it: a promise of yours.
     commitment(
         &fx,
         "c-welcome",
@@ -1744,8 +1721,6 @@ async fn promise_rows_built_from_inbound_mail_are_dismissed_unless_touched() {
     assert!(rows
         .iter()
         .all(|row| row.state == mxr_store::TodoState::Open));
-    // What an earlier version left behind: the same rows, but their
-    // evidence is mail someone else sent. The user moved one of them.
     for id in &evidence {
         let mut incoming = fx.state.store.get_envelope(id).await.unwrap().unwrap();
         incoming.from.email = "someone-else@example.com".into();
@@ -1763,11 +1738,9 @@ async fn promise_rows_built_from_inbound_mail_are_dismissed_unless_touched() {
         .await
         .unwrap();
 
-    // Normal background reconciliation settles the changed source before the tick.
     crate::handler::assessments::reconcile_messages(&fx.state, &fx.account, &evidence)
         .await
         .unwrap();
-    // A restart mirrors promises afresh.
     finish_first_run(&fx, now + Duration::minutes(5)).await;
 
     let states: Vec<(String, mxr_store::TodoState)> = promise_rows(&fx)
@@ -1958,8 +1931,6 @@ async fn a_dismissed_hint_holds_for_every_client_until_shown_again() {
             .expect("runway hint")
     };
     let first = runway(&guides[0]).seen_at.expect("seen");
-    // A second dismissal keeps the first time, and a fresh read agrees;
-    // the mode's other hint is untouched.
     request(&fx, set("todo.runway", true)).await;
     let guide = todo_guide(&fx).await;
     assert!(runway(&guide).seen);
@@ -1983,7 +1954,6 @@ async fn a_shared_hint_is_one_hint_in_every_mode_it_attaches_in() {
     else {
         panic!()
     };
-    // The answer carries every mode the hint attaches in.
     assert_eq!(
         guides.iter().map(|g| g.mode.as_str()).collect::<Vec<_>>(),
         vec!["now", "messages"]
@@ -1998,8 +1968,6 @@ async fn a_shared_hint_is_one_hint_in_every_mode_it_attaches_in() {
     assert_eq!(hint_seen(&guides, "now", "now.from_mode"), Some(false));
 }
 
-/// D171: "Next time" shows once per action and profile, so only the first
-/// request that marks it is told it was new; an unknown action is refused.
 #[tokio::test]
 async fn a_next_time_hint_is_new_once_per_action() {
     let fx = Fixture::new().await;
@@ -2089,7 +2057,6 @@ async fn ticking_off_leaves_every_hint_alone() {
         },
     )
     .await;
-    // Only Esc or acting on a hint's own element dismisses it.
     assert!(todo_guide(&fx).await.hints.iter().all(|hint| !hint.seen));
 }
 

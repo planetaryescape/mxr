@@ -1,11 +1,3 @@
-//! Slice 5.4 of docs/reference/ai-email.md
-//!
-//! Find people who *answer* questions in the user's archive that
-//! resemble the current message/query. The ranker distinguishes
-//! askers from answerers by looking at message order within a
-//! thread: an "answer" message is one that came after at least one
-//! prior message in the same thread (i.e. it responded to something).
-
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::SortOrder;
@@ -20,8 +12,6 @@ pub(crate) async fn find(
     include_self: bool,
     limit: usize,
 ) -> super::HandlerResult {
-    // The query is a message's subject and snippet: prose, not query
-    // syntax, so it is searched as plain words.
     let Some(query) = QueryBuilder::new(&MxrSchema::build()).build_any_words(query) else {
         return Ok(ResponseData::ExpertSuggestions { experts: vec![] });
     };
@@ -30,12 +20,8 @@ pub(crate) async fn find(
         .search_ast(query, 50, 0, SortOrder::Relevance)
         .await?;
 
-    // A failed read fails the request: an empty set would list you as an expert.
     let self_addresses = state.owned_addresses(account_id).await?;
 
-    // Group hits by thread and walk in chronological order. Anyone
-    // whose message came AFTER at least one earlier message in the
-    // same thread counts as an "answerer" for that thread.
     let mut by_thread: HashMap<String, Vec<mxr_core::types::Envelope>> = HashMap::new();
     for hit in page.results.iter() {
         let id: mxr_core::MessageId = match hit.message_id.parse() {
@@ -57,8 +43,6 @@ pub(crate) async fn find(
 
     let mut by_email: HashMap<String, Aggregate> = HashMap::new();
     for (_thread_id, mut envs) in by_thread {
-        // Need full thread context to know first message; pull all
-        // envelopes for the thread.
         if envs.is_empty() {
             continue;
         }
@@ -80,9 +64,6 @@ pub(crate) async fn find(
                 continue;
             }
             let email = env.from.email.to_ascii_lowercase();
-            // Only credit messages that came AFTER the first one in
-            // the thread -- the first message is the question, every
-            // later one is an answer.
             if env.date <= first_date {
                 continue;
             }
@@ -212,9 +193,6 @@ mod tests {
     #[tokio::test]
     async fn answerer_outranks_asker() {
         let (state, account) = fixture().await;
-        // Two threads: in each, alice asks first, bob answers. Bob
-        // should be the top expert; alice (who only asks) should not
-        // appear at all.
         for _ in 0..2 {
             let thread = ThreadId::new();
             let q = env(
@@ -272,7 +250,6 @@ mod tests {
         );
         index(&state, &q, "kafka rebalance question").await;
         index(&state, &a, "kafka answer details").await;
-        // What the TUI sends: the selected message's subject and snippet.
         let resp = find(
             &state,
             &account,

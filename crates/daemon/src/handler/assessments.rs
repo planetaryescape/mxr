@@ -1,4 +1,3 @@
-//! The canonical home resolver and bounded initialization of derived answers.
 use super::{
     arrivals,
     desk::{self_matcher, Senders},
@@ -65,8 +64,6 @@ fn input_fingerprint(
                 .map(|a| (a.email.to_ascii_lowercase(), is_self(&a.email)))
                 .collect();
             let e = &m.evidence;
-            // Hash observations explicitly: Debug redacts content, and live
-            // inbox/snooze/read state does not change an email's purpose.
             serde_json::json!({
                 "message": [m.id, m.seq, m.thread_id, m.direction, m.date, m.from, m.to, m.cc, m.bcc,
                     m.subject, m.list_id, m.unsubscribe, m.trashed, m.flags.bits() & (mxr_core::MessageFlags::SPAM | mxr_core::MessageFlags::TRASH).bits(), m.is_delivery, m.is_invite],
@@ -108,9 +105,6 @@ async fn spam_boundaries(
         .collect())
 }
 
-/// Validate stored answers without judging or writing them. A mutation can
-/// make a row pending before the background reconciler reaches its thread.
-/// Unrelated account changes never invalidate an unchanged fingerprint.
 pub(super) async fn fresh_stored(
     state: &AppState,
     account: &AccountId,
@@ -163,12 +157,9 @@ pub(super) async fn fresh_stored(
             return Ok(stored);
         }
     }
-    // No coherent input snapshot was available; report pending, never guess.
     Ok(HashMap::new())
 }
 
-/// No rule gate is acquired here: correction/arrival callers already own it.
-/// Re-read full threads, rather than fingerprinting a caller's partial window.
 pub(super) async fn materialize(
     state: &AppState,
     account: &AccountId,
@@ -377,12 +368,9 @@ where
             return Ok((persisted, projected));
         }
     }
-    // Relevant inputs kept moving. Readers must expose pending, never a
-    // newly computed home or a stale stored answer. Dirty work stays queued.
     Ok((HashMap::new(), projected))
 }
 
-/// Synthetic fixtures that bypass sync also cover historical/no-arrivals mail.
 #[cfg(test)]
 pub(crate) async fn reconcile_account(
     state: &AppState,
@@ -391,7 +379,6 @@ pub(crate) async fn reconcile_account(
     reconcile_account_at(state, account, chrono::Utc::now()).await
 }
 
-/// [`reconcile_account`] as of `now`, for the classifier eval's pinned clock.
 #[cfg(test)]
 pub(crate) async fn reconcile_account_at(
     state: &AppState,
@@ -411,8 +398,6 @@ pub(crate) async fn reconcile_account_at(
         materialize_threads_at(state, account, &threads, || async { Ok(()) }, now).await?;
         tokio::task::yield_now().await;
     }
-    // A thread page can contain more than 100 messages. Finish its durable
-    // projection pages through the same bounded seam as the background worker.
     let mut after = None;
     while let Some(last) = reconcile_dirty_page_at(state, account, after.as_deref(), now).await? {
         after = Some(last);
@@ -468,7 +453,6 @@ pub(crate) async fn reconciler_loop(
             continue;
         };
         for account in accounts {
-            // A busy early page must not starve later pages or accounts.
             let mut after = None;
             loop {
                 let result = reconcile_dirty_page(&state, &account.id, after.as_deref()).await;
@@ -551,16 +535,12 @@ async fn reconcile_dirty_page_at(
     let replayed = replay_projections_at(state, account, now).await?.0;
     let threads = state.store.dirty_assessment_threads(account, after).await?;
     let Some(last) = threads.last().map(mxr_core::ThreadId::as_str) else {
-        // Yield between bounded projection pages even when no thread is dirty.
-        // Keep the cursor so completing an outbox page never rescans the account.
         return Ok((replayed == 100).then(|| after.unwrap_or_default().to_string()));
     };
     materialize_threads_at(state, account, &threads, || async { Ok(()) }, now).await?;
     Ok(Some(last))
 }
 
-/// The sync page pays only for its threads; sender-history dependencies are
-/// durably queued by the same transaction that changed the input.
 pub(crate) async fn reconcile_messages(
     state: &AppState,
     account: &AccountId,

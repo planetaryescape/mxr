@@ -1,27 +1,14 @@
-//! Times you set on desk conversations: reply later until a time, and
-//! "bring it back if nobody replies" reminders on threads you wrote last.
-//!
-//! Pure rules over store rows, like the lanes. Whether a conversation is
-//! away or back depends only on the clock and the stored time, never on
-//! the wake loop having run, so a restart or a late tick can't lose a
-//! return or show one twice.
-
 use chrono::{DateTime, Utc};
 use mxr_core::id::ThreadId;
 use mxr_store::{DeskMessage, DeskReminder, DeskReplyLater};
 use std::collections::HashMap;
 
-/// Where a set time leaves a conversation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Timer {
-    /// The time is still to come: off the desk until then.
     Pending,
-    /// The time came: back on the desk. Holds the time that was set.
     Back(DateTime<Utc>),
 }
 
-/// The timed reply-later flags and live reminders of one account, by
-/// conversation.
 #[derive(Debug, Default)]
 pub(super) struct DeskTimers {
     reply_later: HashMap<ThreadId, Vec<DateTime<Utc>>>,
@@ -48,8 +35,6 @@ impl DeskTimers {
         timers
     }
 
-    /// Reply later on the conversation: away while any of its times is
-    /// still to come, back from the latest once all have passed.
     pub(super) fn reply_later(&self, thread_id: &ThreadId, now: DateTime<Utc>) -> Option<Timer> {
         let times = self.reply_later.get(thread_id)?;
         if times.iter().any(|due| *due > now) {
@@ -58,13 +43,6 @@ impl DeskTimers {
         times.iter().max().copied().map(Timer::Back)
     }
 
-    /// "Bring it back if nobody replies" on a conversation you wrote last.
-    /// The reminder on your most recently stored message that has one
-    /// decides, so a follow-up sent with its own time replaces an earlier
-    /// return. A reminder counts only while nothing that `answers` was
-    /// stored after its message: storage order, not the Date header, so a
-    /// reply with a skewed clock still counts, and an answer settles it
-    /// even before the reminder loop cancels it.
     pub(super) fn waiting(
         &self,
         thread: &[DeskMessage],
@@ -94,8 +72,6 @@ impl DeskTimers {
         })
     }
 
-    /// Conversations a time may have brought back, so the desk can load
-    /// the ones whose activity is older than its window.
     pub(super) fn maybe_back(&self, now: DateTime<Utc>) -> impl Iterator<Item = &ThreadId> {
         let reply_later = self
             .reply_later
@@ -130,7 +106,6 @@ mod tests {
             .with_timezone(&Utc)
     }
 
-    /// Anyone but you, in these tests.
     fn answers(message: &DeskMessage) -> bool {
         !message.from.email.eq_ignore_ascii_case(ME)
     }

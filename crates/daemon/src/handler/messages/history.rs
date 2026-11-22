@@ -1,5 +1,3 @@
-//! Incremental thread facts for All. Turns, people links, Done, ranking and
-//! previews remain live; no complete view or time-dependent lane is persisted.
 use super::*;
 use mxr_store::{ConversationSummaryWrite, DeskDismissal};
 use serde::{Deserialize, Serialize};
@@ -92,8 +90,6 @@ impl Summary {
                 .map(|m| (m.date.timestamp(), *m.id.as_uuid()))
                 .max()
                 .unwrap_or_default(),
-            // The only clock-dependent facts are the newest eligible stored
-            // messages. Retire at the first future date becoming eligible.
             valid_until: thread
                 .iter()
                 .filter(|m| m.date > now + Duration::days(1))
@@ -167,8 +163,6 @@ pub(super) async fn load(
         cache.remove(account);
     }
     let summaries = load_stored(state, account, &context, now).await?;
-    // A source change during the read must not make a mixed-generation build
-    // reusable. Turns, people links, Done, ranking and previews are never cached here.
     if let Some(token) = token {
         if state
             .store
@@ -285,8 +279,6 @@ async fn load_stored(
 pub(crate) async fn warm(state: &AppState) -> Result<(), HandlerError> {
     for account in scoped_cached_accounts(state, None).await? {
         load(state, &account, Utc::now()).await?;
-        // A missing facet materialized by the first pass changes its view
-        // token, correctly refusing that pass's optimistic synopsis write.
         load(state, &account, Utc::now()).await?;
     }
     Ok(())

@@ -1,9 +1,3 @@
-//! Relationship context for AI drafts: infer the tone (register) and
-//! length the user typically uses with a contact from stored stylometry,
-//! keep the contact's profile fresh, and finish a model's draft into a
-//! `DraftSuggestion` (humanizer pass, voice-match score, inferred fields).
-//! The prompt itself is built by `draft_prompt` from `draft_voice`.
-
 use super::draft_compose::DraftRewritePolicy;
 use super::draft_provenance::DraftPolicy;
 use super::{relationship_profile, HandlerResult};
@@ -20,33 +14,18 @@ use mxr_protocol::{
 use mxr_relationship::stylometry::StylometryMetrics;
 use mxr_relationship::{compute_metrics, infer_register, score_voice_match, VoiceMatchConfidence};
 
-/// Global ceiling on the assembled user message (chars), sized so the
-/// message plus the fixed system prompt and writing constraints fit an 8k
-/// context window with headroom for the model's response.
 pub(crate) const ASSEMBLED_MESSAGE_BUDGET_CHARS: usize = 28_000;
 
-/// The inferred tone/length for a draft, the voice-match baseline and the
-/// note shown in the UI.
 pub(crate) struct DraftContext {
-    /// Baseline stylometry for post-hoc voice-match scoring.
     pub baseline: Option<(StylometryMetrics, u32)>,
-    /// Relationship summary from the same loaded contact profile.
     pub background: Option<String>,
-    /// The context includes a stored profile derived from sent or received mail.
     pub history_used: bool,
     pub style_used: bool,
-    /// Effective register used for the draft (inferred, unless overridden).
     pub inferred_register: VoiceRegisterData,
-    /// Effective length used for the draft (inferred, unless overridden).
     pub inferred_length: DraftLengthHintData,
-    /// Human-readable note for the UI, e.g. "Matched to alice@x (casual, short)".
     pub context_note: Option<String>,
 }
 
-/// Infer the register/length to use from the stored style of the first
-/// recipient that has one. `register_override`/`length_override`
-/// short-circuit inference (the returned `inferred_*` still reflect the
-/// effective values so the UI chip is accurate).
 pub(crate) async fn build_relationship_block(
     state: &AppState,
     account_id: &AccountId,
@@ -104,8 +83,6 @@ pub(crate) async fn build_relationship_block(
     let inferred_length =
         length_override.unwrap_or_else(|| length_from_style(primary_style.as_ref(), uv_avg));
 
-    // No contact-specific baseline → fall back to the user's voice profile for
-    // the chosen register, so voice-match scoring still has something to grade.
     if baseline.is_none() {
         if let Some(profile) = &user_voice {
             let label = register_label(inferred_register);
@@ -144,10 +121,6 @@ pub(crate) async fn build_relationship_block(
     }
 }
 
-/// Infer the register from how the contact and the user write to each other,
-/// weighting the contact's own formality more heavily (it signals how they
-/// expect to be addressed). Falls back to the user's global voice, then to the
-/// purpose text, then Neutral.
 pub(crate) fn register_from_style(
     style: Option<&ContactStyleData>,
     user_voice_formality: Option<f64>,
@@ -176,9 +149,6 @@ pub(crate) fn register_from_style(
     }
 }
 
-/// Infer the length hint from the typical sentence length in the relationship
-/// (a proxy for how terse the user is with this person), falling back to the
-/// user's global voice, then Medium.
 pub(crate) fn length_from_style(
     style: Option<&ContactStyleData>,
     user_voice_avg_sentence_len: Option<f64>,
@@ -212,9 +182,6 @@ fn build_context_note(
     }
 }
 
-/// Resolve the message being replied to/forwarded into its thread envelopes.
-/// Returns an empty Vec if the message isn't found locally, so callers fall
-/// back to new-message mode rather than failing.
 pub(crate) async fn resolve_thread_envelopes(
     state: &AppState,
     message_id: &MessageId,
@@ -227,8 +194,6 @@ pub(crate) async fn resolve_thread_envelopes(
         .get_thread_envelopes_for_model(&envelope.thread_id)
         .await
         .unwrap_or_default();
-    // The message being answered stays in even when it is in Trash or Spam:
-    // the user chose it.
     if !envelopes
         .iter()
         .any(|candidate| candidate.id == envelope.id)
@@ -239,9 +204,6 @@ pub(crate) async fn resolve_thread_envelopes(
     envelopes
 }
 
-/// If the contact's profile is missing or older than their newest message,
-/// rebuild it (style + summary + commitments) before drafting. Best-effort:
-/// drafting never blocks on or fails from a refresh error.
 pub(crate) async fn ensure_contact_fresh(state: &AppState, account_id: &AccountId, email: &str) {
     let style = state
         .store
@@ -294,12 +256,6 @@ pub(crate) fn length_label(length: DraftLengthHintData) -> &'static str {
     }
 }
 
-/// Run the humanizer pass, score voice match, and package the response with
-/// the inferred tone/length, context note and provenance. `voice_context`
-/// (habits and past emails) reaches the rewrite model only when its own
-/// pinned endpoint may see the user's history; and a draft written from
-/// that history never goes to a rewrite model that may not see it, since
-/// the draft itself carries the voice and facts drawn from it.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn finish_draft_suggestion(
     state: &AppState,
@@ -347,8 +303,6 @@ pub(crate) async fn finish_draft_suggestion(
         let humanizer = report_summary(humanizer_score(&body, &HumanizerOpts::default()));
         (body, humanizer, 0)
     };
-    // Remembered so a later refine or humanize of this text can't hand it
-    // to a cloud model without opt-in (see `history_text`).
     if provenance.history_used
         || provenance
             .rewrite
@@ -427,10 +381,6 @@ mod tests {
 
     #[test]
     fn register_from_style_weights_theirs() {
-        // Their formality is weighted more (0.6) than the user's (0.4): with
-        // theirs=0.9, yours=0.35 the blend is 0.6*0.9 + 0.4*0.35 = 0.68 →
-        // Formal, where a plain average (0.625) would land in Neutral. This
-        // isolates the heavier weighting on the contact's own formality.
         assert_eq!(
             register_from_style(Some(&style(0.35, 0.9, 10.0, 22.0, 4)), None, None),
             VoiceRegisterData::Formal

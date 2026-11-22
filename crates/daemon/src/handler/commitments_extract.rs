@@ -1,15 +1,3 @@
-//! Slice 2.1 of docs/reference/ai-email.md
-//!
-//! Extracts commitment candidates from an outgoing draft. Combines a
-//! cheap regex prefilter (so we don't bother the LLM for drafts with
-//! no commitment markers at all) with an `LlmFeature::Commitments`
-//! call. Stores results in `draft_commitment_candidates`; promotion
-//! to `contact_commitments` happens after a successful send.
-//!
-//! The model copies the due words; code checks them against the draft and
-//! resolves them with the natural-time parser, so a deadline is never a
-//! date the model wrote (D111).
-
 use super::time::due_words_in_zone;
 use crate::state::AppState;
 use mxr_core::types::Draft;
@@ -23,9 +11,6 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
 
-/// Cheap prefilter — strict word-boundary forms of "I'll", "I will",
-/// "I can", "I'll send", "I'll follow up", "I'll get back". Matches
-/// against reader-cleaned text so quoted material does not trigger.
 pub(super) static COMMITMENT_PREFILTER: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\b(I['\u{2019}]ll|I\s+will|I\s+can|I['\u{2019}]ll\s+send|I['\u{2019}]ll\s+follow\s+up|I['\u{2019}]ll\s+get\s+back)\b",
@@ -39,7 +24,6 @@ struct LlmCommitment {
     who_owes: String,
     #[serde(default)]
     what: String,
-    /// The draft's own words for when, never a date the model works out.
     #[serde(default)]
     due: Option<String>,
     #[serde(default)]
@@ -52,12 +36,6 @@ struct LlmCommitmentsBatch {
     commitments: Vec<LlmCommitment>,
 }
 
-/// Extract commitment candidates from `draft`, persist them in the
-/// `draft_commitment_candidates` table, and return the persisted
-/// records. If no prefilter triggers, returns an empty vector and
-/// makes no LLM call. If the LLM is disabled, returns an empty
-/// vector — degradation is silent (vs answer-coverage which
-/// surfaces a warning, since commitments are an enhancement).
 pub(crate) async fn extract_and_store(
     state: &AppState,
     draft: &Draft,
@@ -71,10 +49,6 @@ pub(crate) async fn extract_and_store(
         return Ok(Vec::new());
     }
 
-    // The draft body is analyzed as data (it may quote inbound mail, or be
-    // AI-drafted from a poisoned thread), and the recipient addresses are
-    // mail-derived for replies. Wrap the whole FROM/TO/DRAFT block in
-    // untrusted-content delimiters. Strict-JSON parsing is the boundary.
     let mail_block = format!(
         "FROM: {}\nTO: {}\n\nDRAFT:\n{cleaned}",
         first_email(&draft.to),
@@ -135,12 +109,9 @@ pub(crate) async fn extract_and_store(
             Some("theirs") => CommitmentDirection::Theirs,
             _ => CommitmentDirection::Yours,
         };
-        // The draft is being written now, so its "by Friday" means the
-        // coming Friday in the daemon's zone.
         let by_when = match entry.due.as_deref() {
             Some(due) => due_words_in_zone(state, &cleaned, due, Some(now), None)
                 .map_err(|e| e.to_string())?
-                // One reading only: a guess stays undated, not a deadline.
                 .and_then(|words| words.unambiguous_at()),
             None => None,
         };
@@ -157,7 +128,6 @@ pub(crate) async fn extract_and_store(
             },
             what: what.to_string(),
             by_when,
-            // Dated only by `unambiguous_at` above, from the draft's words.
             by_when_source: by_when.map(|_| mxr_store::ByWhenSource::Words),
             extracted_at: now,
         };
@@ -175,7 +145,6 @@ fn first_email(addrs: &[mxr_core::types::Address]) -> String {
     addrs.first().map(|a| a.email.clone()).unwrap_or_default()
 }
 
-/// IPC dispatch entry point for `Request::ExtractDraftCommitments`.
 pub(crate) async fn extract_request(state: &AppState, draft: &Draft) -> super::HandlerResult {
     let candidates = extract_and_store(state, draft).await?;
     Ok(mxr_protocol::ResponseData::DraftCommitments {
@@ -199,9 +168,6 @@ pub(crate) async fn extract_request(state: &AppState, draft: &Draft) -> super::H
     })
 }
 
-/// Promote any draft-scoped candidates for `draft` to
-/// `contact_commitments`, then delete the draft rows. Idempotent:
-/// the destination's UNIQUE constraint absorbs duplicate promotions.
 pub(crate) async fn promote_after_send(
     state: &AppState,
     draft: &Draft,
@@ -230,8 +196,6 @@ pub(crate) async fn promote_after_send(
             who_owes: c.who_owes.clone(),
             what: c.what.clone(),
             by_when: c.by_when,
-            // The candidate's own provenance: one saved before due words
-            // existed has none, and its date stays unverified.
             by_when_source: c.by_when.and(c.by_when_source),
             evidence_msg_id: sent_message_id.clone(),
             extracted_at: c.extracted_at,
@@ -269,7 +233,6 @@ mod tests {
     fn prefilter_rejects_bare_acknowledgement() {
         assert!(!COMMITMENT_PREFILTER.is_match("Thanks!"));
         assert!(!COMMITMENT_PREFILTER.is_match("Got it, looks good."));
-        // "I'll" inside another word should not trigger.
         assert!(!COMMITMENT_PREFILTER.is_match("Bill is great"));
     }
 
@@ -383,7 +346,6 @@ mod tests {
             msgs: Mutex::new(vec![]),
         });
         state.llm.replace(cap.clone());
-        // Prefilter must fire ("I'll send") so the LLM is actually called.
         let draft = draft_with_body(&account_id, "I'll send the DRAFT-MARKER deck Friday.");
         extract_and_store(&state, &draft).await.unwrap();
 
@@ -428,8 +390,6 @@ mod tests {
     #[tokio::test]
     async fn due_words_from_the_draft_become_the_deadline_through_promotion() {
         use chrono::Local;
-        // "tomorrow" has one reading on any day; "by Friday" typed on a
-        // Friday would not.
         let body = r#"{"commitments":[
             {"who_owes":"me@example.com","what":"send the deck","due":"tomorrow","direction":"yours"}
         ]}"#;
@@ -464,8 +424,6 @@ mod tests {
 
     #[tokio::test]
     async fn due_words_with_more_than_one_reading_leave_the_draft_commitment_undated() {
-        // "fri 3" is 15:00 or 03:00, and "one week after Friday" reads only
-        // as "Friday": neither is a deadline to store.
         let body = r#"{"commitments":[
             {"who_owes":"me@example.com","what":"send the deck","due":"fri 3","direction":"yours"},
             {"who_owes":"me@example.com","what":"send the notes","due":"one week after Friday","direction":"yours"}
@@ -494,8 +452,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_due_the_draft_never_says_leaves_the_commitment_undated() {
-        // "by Monday" isn't in the draft; the RFC 3339 date is the model
-        // working out a date, which the draft doesn't say either.
         let body = r#"{"commitments":[
             {"who_owes":"me@example.com","what":"send the deck","due":"by Monday","direction":"yours"},
             {"who_owes":"me@example.com","what":"send the notes","due":"2026-10-09T17:00:00Z","direction":"yours"}
@@ -532,15 +488,10 @@ mod tests {
         let draft = draft_with_body(&account_id, "I'll send the deck Friday.");
         extract_and_store(&state, &draft).await.unwrap();
 
-        // Pretend the synthetic Sent envelope has this id; we don't
-        // actually need it to exist for the promote path because
-        // promote_after_send falls back to deriving a thread id from
-        // the message id when the envelope is missing.
         let sent_id = mxr_core::MessageId::new();
         let n = promote_after_send(&state, &draft, &sent_id).await.unwrap();
         assert_eq!(n, 1);
 
-        // Draft-scoped candidates were cleared on promotion.
         let leftover = state
             .store
             .list_draft_commitment_candidates(&draft.id)
@@ -548,7 +499,6 @@ mod tests {
             .unwrap();
         assert!(leftover.is_empty());
 
-        // contact_commitments has exactly one row for the recipient.
         let promoted = state
             .store
             .list_contact_commitments(
@@ -573,8 +523,6 @@ mod tests {
 
         let sent_id = mxr_core::MessageId::new();
         promote_after_send(&state, &draft, &sent_id).await.unwrap();
-        // Re-extract (simulating a retry) and promote again with the
-        // same sent id — UNIQUE constraint must absorb the duplicate.
         extract_and_store(&state, &draft).await.unwrap();
         promote_after_send(&state, &draft, &sent_id).await.unwrap();
 

@@ -1,4 +1,3 @@
-//! Portable preview uses the reviewed draft and declarations without publishing resources.
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::{Draft, DraftAttachment};
@@ -31,7 +30,6 @@ pub(super) async fn preview(
             });
         }
     }
-    // Resolve only managed resources, and keep the provider-local clone off the wire.
     super::draft_attachments::resolve(state, draft).await?;
     let mut safety_draft = super::mutations::materialize_text_alternative(draft).into_owned();
     let mut ids: std::collections::HashSet<_> = draft
@@ -57,7 +55,6 @@ pub(super) async fn preview(
             .push(metadata.clone());
     }
     let mut context = context.clone();
-    // A dry-run must not run optional model work or mint persisted safety overrides.
     context.allow_llm = false;
     let report = super::mutations::run_safety_pipeline(state, &safety_draft, &context).await?;
     let ResponseData::ResolvedSendFrom { from } =

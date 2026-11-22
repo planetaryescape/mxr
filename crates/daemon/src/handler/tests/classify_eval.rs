@@ -1,11 +1,3 @@
-//! `mxr classify eval` over the labelled scenario set: a daemon that has
-//! synced the curated demo mail and every near-miss twin, run through the
-//! same post-sync work a real sync runs (to-dos, records, deliveries,
-//! arrivals placement), then graded. The snapshot is the classifier's
-//! measured behaviour: any change to sorting shows up as a reviewed diff, and
-//! no kind of ask may fall below its checked-in floor
-//! (`classify_eval_floor.rs`).
-
 use super::classify_eval_floor;
 use super::*;
 use crate::handler::classify_eval::classify_eval;
@@ -18,10 +10,6 @@ use mxr_protocol::{
 use mxr_provider_fake::fixtures::scenarios::{self, SELF_EMAIL};
 use std::sync::Arc;
 
-/// The personal demo account synced from the scenario set, with the
-/// post-sync classification the daemon runs after each page and a contacts
-/// refresh, which the daemon's background worker does a few seconds after a
-/// sync.
 async fn scenario_state() -> (Arc<AppState>, AccountId) {
     scenario_state_at(Utc::now()).await
 }
@@ -48,10 +36,6 @@ async fn scenario_state_at(now: chrono::DateTime<Utc>) -> (Arc<AppState>, Accoun
             .await
             .unwrap(),
     );
-    // As the daemon sets up a sync, and as `classify_eval_full.rs` does: an
-    // engine that knows the accounts' addresses, so every message has a
-    // direction and sender histories and contacts aggregate. The test state's
-    // own engine has no address lookup and leaves every direction unknown.
     crate::state::load_account_address_registry(&state.store, &state.account_addresses)
         .await
         .unwrap();
@@ -65,11 +49,6 @@ async fn scenario_state_at(now: chrono::DateTime<Utc>) -> (Arc<AppState>, Accoun
             .sync_account_with_outcome(provider.as_ref())
             .await
             .unwrap();
-        // The classification half of the post-sync fanout, as
-        // `classify_eval_full.rs` runs it. The other half (semantic chunking,
-        // relationship and voice profiles) decides nothing graded here, and
-        // in a `semantic-local` build its background chunking was most of
-        // this fixture's time.
         crate::loops::post_sync_classification(
             &state,
             &account_id,
@@ -83,9 +62,6 @@ async fn scenario_state_at(now: chrono::DateTime<Utc>) -> (Arc<AppState>, Accoun
             break;
         }
     }
-    // The whole-table analytics repair the daemon runs at the end of a
-    // backfill (directions, list ids, reply pairs), then the contacts
-    // refresh its worker does a few seconds later.
     crate::loops::run_analytics_repair(&state, &account_id).await;
     state.store.refresh_contacts().await.unwrap();
     authenticate_demo_payment_alerts(&state, &account_id, now).await;
@@ -266,8 +242,6 @@ async fn eval_at(
     }
 }
 
-/// Keep the one-connection in-memory database alive while fixture workers
-/// drain or abort, then verify later fixture reads can still see its schema.
 async fn shutdown_scenario_workers(state: &AppState) {
     let mut database_lifetime = state.store.writer().acquire().await.expect("database");
     state
@@ -286,8 +260,6 @@ async fn shutdown_scenario_workers(state: &AppState) {
     );
 }
 
-/// Counts and the sorted mismatch list, without the rule wording, so a
-/// reworded reason is not a diff but a changed answer is.
 fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchData]) -> String {
     let mut out = format!(
         "label schema v{}; {} labelled in the set, {} in the mailbox, {} not placed\n",
@@ -326,13 +298,9 @@ fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchD
 async fn the_quick_set_is_graded_and_every_mismatch_is_listed() {
     let (state, _) = scenario_state().await;
     let (summary, mismatches) = eval(&state, None).await;
-    // The sent context the twins need is mail the account wrote, not
-    // labelled mail, so every labelled email is present.
     assert_eq!(summary.present, summary.labelled_in_set);
     assert_eq!(summary.not_placed, 0);
     assert_eq!(summary.message, None);
-    // The desk's Your turn needs a sender that classifies as a person, so a
-    // question from a no-reply address is not owed a reply.
     assert!(
         mismatches
             .iter()
@@ -398,7 +366,6 @@ async fn a_mailbox_with_no_labelled_mail_says_so_and_lists_nothing() {
         Some("No labelled mail here; run mxr demo")
     );
     assert!(summary.questions.iter().all(|q| q.evaluated == 0));
-    // Nothing graded, so no asks section and no zero rates.
     assert_eq!(summary.asks, None);
 }
 
@@ -406,9 +373,6 @@ async fn a_mailbox_with_no_labelled_mail_says_so_and_lists_nothing() {
 async fn another_accounts_mail_with_the_same_provider_id_and_sender_is_not_graded() {
     let (state, _) = scenario_state().await;
     let (before, before_mismatches) = eval(&state, None).await;
-    // The work demo account numbers its mail from 1 as well and reuses some
-    // of the same people: here, an email with a scenario's provider id and
-    // sender, which the label does not mean.
     let work = Account {
         id: AccountId::from_provider_id("fake", "alex@work.demo.mxr.local"),
         name: "Alex Work".to_string(),
@@ -432,7 +396,6 @@ async fn another_accounts_mail_with_the_same_provider_id_and_sender_is_not_grade
     assert_eq!(after.unlabelled, before.unlabelled + 1, "it is unlabelled");
     assert_eq!(after.questions, before.questions);
     assert_eq!(after_mismatches, before_mismatches);
-    // Asked about that account alone there is nothing labelled to grade.
     let (work_only, mismatches) = eval(&state, Some(&work.id)).await;
     assert_eq!(work_only.present, 0);
     assert!(mismatches.is_empty());
@@ -533,8 +496,6 @@ async fn a_missing_assessment_is_pending_without_being_repaired_or_graded_as_wro
 #[tokio::test]
 async fn a_to_do_that_was_already_over_when_found_is_not_a_to_do() {
     let (state, _) = scenario_state().await;
-    // The leaving drinks ended before the mail was seen, so the to-do row
-    // exists but was born expired: the product never shows it.
     let born_expired: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM todos t JOIN messages m ON m.id = t.source_message_id
          WHERE m.subject = 'Sam''s leaving drinks' AND t.expired_at_birth = 1",
@@ -556,7 +517,6 @@ async fn a_to_do_that_was_already_over_when_found_is_not_a_to_do() {
 async fn a_stored_ask_without_its_item_projection_is_not_graded_as_delivered() {
     let (state, _) = scenario_state().await;
     let (before, _) = eval(&state, None).await;
-    // The production read must not be credited with the fixture workers' writes.
     shutdown_scenario_workers(&state).await;
     let removed = sqlx::query("DELETE FROM todos WHERE source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
         .execute(state.store.writer()).await.expect("remove only the synthetic projection").rows_affected();
@@ -614,7 +574,6 @@ async fn a_stored_ask_without_its_item_projection_is_not_graded_as_delivered() {
 async fn linked_product_fields_are_measured_from_the_row_without_repairing_them() {
     let (state, _) = scenario_state().await;
     eval(&state, None).await;
-    // The production read must not be credited with the fixture workers' writes.
     shutdown_scenario_workers(&state).await;
     let changed = sqlx::query("UPDATE todos SET amount_minor = amount_minor + 100, due_at = due_at + 172800 WHERE user_edited = 0 AND source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
         .execute(state.store.writer()).await.expect("change only projected fields").rows_affected();

@@ -1,8 +1,3 @@
-//! What a draft request says about itself. The provider is pinned once per
-//! request: whether the user's other mail may go into the prompt, the call
-//! itself and the provenance the client shows all follow that one endpoint,
-//! even if a config reload swaps providers mid-request.
-
 use crate::state::{llm_answer_locality, relationship_data_allowed, AppState};
 use mxr_llm::{LlmFeature, PinnedLlm};
 use mxr_protocol::{
@@ -11,9 +6,6 @@ use mxr_protocol::{
 
 pub(crate) struct DraftPolicy {
     pub llm: PinnedLlm,
-    /// The user's other mail may reach this model (see
-    /// [`relationship_data_allowed`]). Decided before the call from where it
-    /// may go, so a hosted fallback counts even if the endpoint answers.
     pub share_history: bool,
 }
 
@@ -44,10 +36,6 @@ impl DraftPolicy {
         Self { llm, share_history }
     }
 
-    /// A model chosen for drafting rather than configured per feature. Its
-    /// provider is built for this request but shares the daemon's route
-    /// health and records its outcomes in the daemon's runtime, so a failing
-    /// provider is remembered across drafts and shows in `mxr llm status`.
     fn pin_model(
         state: &AppState,
         config: &mxr_config::MxrConfig,
@@ -70,10 +58,6 @@ impl DraftPolicy {
         Self { llm, share_history }
     }
 
-    /// The provenance of text this policy's model wrote. `model` is the name
-    /// the endpoint answered with; the pinned name stands in when it gave
-    /// none. `history_used` reports what the prompt carried, never the gate,
-    /// so a gate bug would show rather than hide.
     pub fn provenance(
         &self,
         model: &str,
@@ -96,9 +80,6 @@ impl DraftPolicy {
         }
     }
 
-    /// A rewrite pass by this policy's model. `model` is the name the
-    /// endpoint answered with; `history_used` when the rewrite saw the
-    /// user's habits or past emails.
     pub fn rewrite_provenance(
         &self,
         model: &str,

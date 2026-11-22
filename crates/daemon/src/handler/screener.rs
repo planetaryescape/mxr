@@ -1,5 +1,3 @@
-//! Screener: per-(account, sender) consent classifications.
-
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::Utc;
@@ -29,12 +27,6 @@ fn disposition_to_proto(d: ScreenerDisposition) -> ScreenerDispositionData {
     }
 }
 
-/// The Screener page. By default the set the desk's Screener count counts
-/// (inbox mail from senders first seen in the last 14 days, no decision),
-/// so the page and the badge always agree; `all_senders` lists every
-/// sender without a decision, in any folder, as before. The default
-/// lists every counted sender whatever `limit` says, so the page never
-/// shows fewer than the badge; `limit` applies to `all_senders`.
 pub(super) async fn list_queue(
     state: &AppState,
     account_id: &AccountId,
@@ -52,8 +44,6 @@ pub(super) async fn list_queue(
         .map(|(_, email)| email)
         .collect();
     counted.sort_unstable();
-    // Narrowed in the query, so no counted sender is pushed out by newer
-    // ones the badge does not count.
     let entries = state
         .store
         .list_screener_queue_for(account_id, &counted)
@@ -110,7 +100,6 @@ pub(super) async fn set_decision(
         route_label,
         decided_at: Utc::now(),
     };
-    // A decision is a sender's kind: it moves mail in or out of the places.
     let _change = state.sweep_gate.change([account_id]).await;
     state.store.set_screener_decision(&decision).await?;
     Ok(ResponseData::Ack)

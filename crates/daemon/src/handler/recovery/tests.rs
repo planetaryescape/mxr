@@ -510,7 +510,6 @@ async fn restored_cached_mail_is_visible_while_paused_and_after_activation_witho
     }
     assert!(fake.sent_drafts().is_empty());
     assert!(fake.mutations().is_empty());
-    // An ordinary disabled profile still hides local mail.
     sqlx::query("DELETE FROM restore_recovery")
         .execute(state.store.writer())
         .await

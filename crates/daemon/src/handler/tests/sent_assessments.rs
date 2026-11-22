@@ -1,4 +1,3 @@
-//! A confirmed local Sent copy has one current asks projection before reads.
 use super::send_outcomes::{call, fixture, send};
 use super::*;
 use mxr_core::{DraftContent, SendIdentity};

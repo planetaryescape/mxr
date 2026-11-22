@@ -1,4 +1,3 @@
-//! A bounded sorting preview and its exact application, shared by every client.
 use super::{arrivals, desk, HandlerError, HandlerResult};
 use crate::{loops::RuleMessage, state::AppState};
 use mxr_protocol::{
@@ -167,8 +166,6 @@ async fn selection(
                 (treatment.as_str().into(), winner.name.clone()),
             );
         }
-        // A candidate rule is a resolver input, so the hypothetical answer
-        // cannot reuse the assessment of the current rule set.
         let current_assessments = std::mem::take(&mut senders.assessments);
         let after = arrivals::place_message(
             message,
@@ -359,8 +356,6 @@ pub(super) async fn run(
     })
 }
 
-/// Callers hold rule_mutation_gate through local treatment and first placement.
-/// Provider actions and shell hooks run after this gate has been released.
 pub(crate) async fn classify_pending(
     state: &AppState,
     account: &mxr_core::AccountId,

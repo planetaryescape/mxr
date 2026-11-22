@@ -78,12 +78,10 @@ fn closeness_follows_reciprocity_recency_and_longevity() {
         closeness(Some(&facts("a@x", 48, 30, 900, 3)), n),
         ClosenessData::Close
     );
-    // Lots of mail, but a year quiet: no longer close.
     assert_eq!(
         closeness(Some(&facts("a@x", 48, 30, 900, 200)), n),
         ClosenessData::Regular
     );
-    // You write, they never answer: not close.
     assert_eq!(
         closeness(Some(&facts("a@x", 20, 1, 900, 3)), n),
         ClosenessData::Regular

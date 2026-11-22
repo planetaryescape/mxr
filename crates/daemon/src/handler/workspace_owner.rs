@@ -1,4 +1,3 @@
-//! Validate captured command ownership before any draft or provider effects.
 use crate::state::AppState;
 use mxr_protocol::{ArchiveWorkspaceData, IpcErrorKind, Request, Response};
 

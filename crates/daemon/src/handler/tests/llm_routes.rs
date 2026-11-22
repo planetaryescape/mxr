@@ -1,7 +1,3 @@
-//! Claude models routed through Anthropic and OpenRouter: what the daemon
-//! says about them, who may send what to them, and how keys and `[llm]`
-//! edits reach a running daemon.
-
 use super::*;
 use crate::state::{llm_endpoint_is_local, relationship_data_allowed};
 use mxr_llm::LlmFeature;
@@ -33,8 +29,6 @@ async fn status(state: &Arc<AppState>) -> LlmStatusSnapshot {
     }
 }
 
-/// Runs `body` with config, data and secrets in a temp dir and no provider
-/// keys in the environment.
 pub(super) fn isolated<F, Fut>(body: F)
 where
     F: FnOnce(Arc<AppState>) -> Fut,
@@ -81,7 +75,6 @@ fn a_routed_model_counts_as_cloud_for_every_gate() {
     isolated(|state| async move {
         use_model(&state, "claude-haiku-5-5", LOCAL).await;
         let pinned = state.llm.for_feature(LlmFeature::DraftNew).pin();
-        // No URL to inspect, and still not on this machine.
         assert_eq!(pinned.base_url(), None);
         assert!(pinned.leaves_machine());
         assert!(!llm_endpoint_is_local(&pinned));
@@ -91,8 +84,6 @@ fn a_routed_model_counts_as_cloud_for_every_gate() {
         config.allow_cloud_relationship_data = true;
         assert!(relationship_data_allowed(&config, &pinned));
 
-        // Relationship features are blocked outright without the opt-in,
-        // however local `base_url` looks.
         let reason = state
             .llm
             .feature_block_reason(LlmFeature::RelationshipSummary)
@@ -157,8 +148,6 @@ fn a_per_feature_override_routes_on_its_own() {
         assert_eq!(row("briefing").model, "claude-opus-5-5");
         assert_eq!(row("briefing").routes[1].model, "anthropic/claude-opus-5.5");
         assert!(!row("summarize").routed && !row("summarize").cloud);
-        // The override's cloud model can't see relationship data without the
-        // opt-in, while the local base can.
         assert!(state
             .llm
             .feature_block_reason(LlmFeature::Briefing)
@@ -187,7 +176,6 @@ fn status_lists_every_feature_with_its_routes_and_which_has_a_key() {
             providers,
             [LlmProviderData::Anthropic, LlmProviderData::Openrouter]
         );
-        // Every hosted provider has a key row, so `mxr llm key status` lists OpenAI.
         let listed: Vec<_> = snapshot.keys.iter().map(|key| key.provider).collect();
         assert_eq!(
             listed,
@@ -199,7 +187,6 @@ fn status_lists_every_feature_with_its_routes_and_which_has_a_key() {
         );
         assert_eq!(row.routes[0].model, "claude-haiku-5-5");
         assert_eq!(row.routes[1].model, "anthropic/claude-haiku-5.5");
-        // No keys: nothing to try.
         assert!(row
             .routes
             .iter()
@@ -207,7 +194,6 @@ fn status_lists_every_feature_with_its_routes_and_which_has_a_key() {
         assert!(!snapshot.api_key_present);
         assert!(snapshot.keys.iter().all(|key| !key.present));
 
-        // An OpenRouter key alone: that is where requests go.
         send(
             &state,
             Request::SetLlmKey {
@@ -253,7 +239,6 @@ fn route_health_shows_up_in_status_with_a_reason_and_a_retry_time() {
         assert!(anthropic.retry_at.is_some());
         assert!(!anthropic.next);
 
-        // A new key for the provider clears the verdict.
         send(
             &state,
             Request::SetLlmKey {
@@ -277,7 +262,6 @@ fn a_key_is_stored_checked_removed_and_never_echoed() {
             dry_run,
         };
 
-        // A dry run says what would happen and stores nothing.
         let response = send(&state, set(true)).await;
         let text = format!("{response:?}");
         assert!(!text.contains(SECRET), "{text}");
@@ -290,7 +274,6 @@ fn a_key_is_stored_checked_removed_and_never_echoed() {
         assert!(change.dry_run && change.changed);
         assert!(!status(&state).await.keys[0].present);
 
-        // Stored for real; the response and status carry presence only.
         let response = send(&state, set(false)).await;
         assert!(!format!("{response:?}").contains(SECRET));
         let snapshot = status(&state).await;
@@ -304,7 +287,6 @@ fn a_key_is_stored_checked_removed_and_never_echoed() {
         let config_toml = std::fs::read_to_string(mxr_config::config_file_path()).unwrap();
         assert!(!config_toml.contains(SECRET), "never in config.toml");
 
-        // Removal previews, then happens.
         let remove = |dry_run| Request::RemoveLlmKey {
             provider: LlmProviderData::Anthropic,
             dry_run,
@@ -322,7 +304,6 @@ fn a_key_is_stored_checked_removed_and_never_echoed() {
         };
         assert!(change.changed && !change.after.present);
         assert!(!status(&state).await.keys[0].present);
-        // Nothing left to remove.
         let Response::Ok {
             data: ResponseData::LlmKeyChange { change },
         } = send(&state, remove(false)).await
@@ -361,13 +342,11 @@ fn llm_edits_made_outside_the_daemon_apply_without_a_restart() {
         use_model(&state, "gemma4", LOCAL).await;
         assert_eq!(status(&state).await.provider, "openai_compatible");
 
-        // What `mxr config set llm.model ...` does: write the file.
         let mut on_disk = mxr_config::load_config().unwrap();
         on_disk.llm.enabled = true;
         on_disk.llm.model = "claude-haiku-5-5".into();
         on_disk.llm.allow_cloud_relationship_data = true;
         mxr_config::save_config(&on_disk).unwrap();
-        // The daemon still has the old one.
         assert_eq!(status(&state).await.model, "gemma4");
 
         let response = send(&state, Request::ReloadLlmConfig).await;
@@ -376,8 +355,6 @@ fn llm_edits_made_outside_the_daemon_apply_without_a_restart() {
         assert_eq!(snapshot.model, "claude-haiku-5-5");
         assert_eq!(snapshot.provider, "routed");
         assert!(snapshot.allow_cloud_relationship_data);
-        // The in-memory config follows, so the next config mutation does not
-        // write the old model back over the file.
         assert_eq!(state.config_snapshot().llm.model, "claude-haiku-5-5");
     });
 }
@@ -407,7 +384,6 @@ fn a_reload_forgets_what_the_old_setup_taught_about_a_route() {
             LlmRouteStateData::Broken
         );
 
-        // The file says the same thing; reloading still starts the routes over.
         let mut on_disk = mxr_config::load_config().unwrap();
         on_disk.llm.enabled = true;
         on_disk.llm.model = "claude-haiku-5-5".into();
@@ -419,8 +395,6 @@ fn a_reload_forgets_what_the_old_setup_taught_about_a_route() {
         );
     });
 }
-
-// --- `[llm.fallback]`: a hosted model behind the user's endpoint ----------
 
 const GEMMA: &str = "gemma4:latest";
 
@@ -447,7 +421,6 @@ fn a_fallback_puts_gpt_6_luna_behind_the_endpoint_but_keeps_relationship_data_lo
     isolated(|state| async move {
         with_fallback(&state, LOCAL, false).await;
 
-        // Drafting may fall back, so it counts as cloud for what it may carry.
         let draft = state.llm.for_feature(LlmFeature::DraftNew).pin();
         assert_eq!(draft.model_name(), GEMMA);
         assert!(draft.leaves_machine());
@@ -455,7 +428,6 @@ fn a_fallback_puts_gpt_6_luna_behind_the_endpoint_but_keeps_relationship_data_lo
             &state.config_snapshot().llm,
             &draft
         ));
-        // Relationship features keep the endpoint alone: not blocked, not cloud.
         for feature in [LlmFeature::RelationshipSummary, LlmFeature::Assistant] {
             assert_eq!(state.llm.feature_block_reason(feature), None);
             let pinned = state.llm.for_feature(feature).pin();
@@ -557,16 +529,12 @@ fn status_shows_which_route_is_in_use_while_the_endpoint_is_out() {
         assert_eq!(summarize.fallback[0].state, LlmRouteStateData::NoKey);
         assert_eq!(summarize.fallback[1].state, LlmRouteStateData::Ok);
         assert!(summarize.fallback[1].next);
-        // The withheld feature shares the endpoint's health and has nowhere
-        // else to go.
         let relationship = row(&snapshot, "relationship_summary");
         assert_eq!(
             relationship.endpoint.as_ref().unwrap().state,
             LlmRouteStateData::Cooling
         );
 
-        // Status JSON an older client reads still parses, and the new
-        // fields are absent when there is no fallback.
         let json = serde_json::to_value(&snapshot).unwrap();
         assert_eq!(json["fallback_model"], "gpt-6-luna");
         let mut config = state.config_snapshot();
@@ -620,8 +588,6 @@ fn an_unroutable_fallback_model_is_left_out_on_reload_and_named_in_status() {
             context_window: None,
         });
         mxr_config::save_config(&on_disk).unwrap();
-        // The rest of `[llm]` applies; the daemon runs without the fallback,
-        // as it does when it starts with one, and status says why.
         let reloaded = send(&state, Request::ReloadLlmConfig).await;
         assert!(matches!(reloaded, Response::Ok { .. }), "{reloaded:?}");
         assert_eq!(state.config_snapshot().llm.model, GEMMA);
@@ -652,7 +618,6 @@ fn a_fallback_mxr_cannot_use_does_not_hold_back_turning_ai_off() {
         mxr_config::save_config(&config).unwrap();
         state.set_config_for_test(config.clone()).await;
 
-        // A hand edit turns AI off and also names a fallback mxr can't route.
         config.llm.enabled = false;
         config.llm.fallback = Some(mxr_config::LlmFallbackConfig {
             model: "gemma4:latest".to_string(),

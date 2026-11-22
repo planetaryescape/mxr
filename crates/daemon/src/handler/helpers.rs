@@ -23,9 +23,6 @@ pub(crate) fn recent_log_lines_sync(
     recent_log_lines_filtered_sync(limit, level, None)
 }
 
-/// Like `recent_log_lines_sync` but also substring-filters each line by
-/// `search` (case-insensitive). Diagnostics surfaces use this for
-/// past-log search.
 pub(crate) fn recent_log_lines_filtered_sync(
     limit: usize,
     level: Option<&str>,
@@ -41,9 +38,6 @@ pub(crate) fn recent_log_lines_filtered_sync(
         .lines()
         .collect::<Result<Vec<_>, _>>()?;
     if let Some(level) = level {
-        // Tracing JSON logs use the upper-case literal `"level":"INFO"`.
-        // Match either that exact key/value pair (precise) or fall back
-        // to a case-insensitive substring (covers plaintext lines).
         let needle = format!("\"level\":\"{}\"", level.to_uppercase());
         let fallback = level.to_ascii_lowercase();
         lines

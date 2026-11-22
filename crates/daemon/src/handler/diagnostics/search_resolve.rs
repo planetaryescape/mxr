@@ -1,19 +1,3 @@
-//! Resolving a search to every message it matches, for bulk actions.
-//!
-//! `Request::Search` answers a page at a time, and each page rescans from the
-//! first hit. A bulk action needs all of them, so this scans once. It
-//! compiles the query through the same helper `execute_search_indexed` uses
-//! and applies the same filters, so the set it returns is the set the paged
-//! search would list end to end:
-//!
-//! - lexical, newest first, trash and spam excluded unless the query asks;
-//! - label display names resolved, the account scope applied in the query;
-//! - only messages in a readable account that are still in the store;
-//! - `is:owed-reply` applied once to the complete set.
-//!
-//! Semantic and hybrid modes are out: they rank by relevance, which is not a
-//! stable meaning for "every match".
-
 use super::search_execute::{compile_query, owed_thread_ids, CompiledQuery, INCOMPLETE_NOTICE};
 use super::search_fallback::{needs_full_index, SearchError};
 use crate::handler::HandlerError;
@@ -25,13 +9,10 @@ use std::collections::{HashMap, HashSet};
 
 const WHAT: &str = "Acting on every search match";
 
-/// Everything a search matches, newest first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedSelection {
     pub ids: Vec<MessageId>,
-    /// Distinct threads among `ids`.
     pub threads: u32,
-    /// Messages per account, in the order each account first appears.
     pub accounts: Vec<(AccountId, u32)>,
 }
 
@@ -91,8 +72,6 @@ async fn resolve(
     let hits = state.search.resolve_date_desc(target).await.map_err(|e| {
         SearchError::Other(format!("search failed while selecting every match: {e}"))
     })?;
-    // A rebuild that started or ended under the scan may have shown it a
-    // half-filled index. Throw the answer away rather than act on it.
     if !state.search.still_ready(epoch) {
         return Err(SearchError::Other(
             "the search index changed while selecting matches; try again".to_string(),
@@ -115,8 +94,6 @@ async fn resolve(
         });
     }
 
-    // Live: still in the store, in a readable account. Checked in chunks so
-    // 500k ids never become one statement.
     let mut live: Vec<(MessageId, AccountId, ThreadId, ThreadId)> = Vec::with_capacity(hits.len());
     for chunk in hits.chunks(2_000) {
         let ids: Vec<MessageId> = chunk.iter().map(|hit| hit.message_id.clone()).collect();
@@ -144,8 +121,6 @@ async fn resolve(
     }
 
     if needs_owed_filter {
-        // The whole set at once, with no per-account cap: a cap would drop
-        // owed threads without a word, and a selection must be exact.
         let accounts: Vec<String> = live
             .iter()
             .map(|(_, account, _, _)| account.as_str())
@@ -158,8 +133,6 @@ async fn resolve(
                 "could not work out which threads are owed a reply in account {account}: {error}"
             )));
         }
-        // `is:owed-reply` compares the thread the index holds, as the paged
-        // search does.
         live.retain(|(_, _, _, indexed_thread)| owed.contains(&indexed_thread.as_str()));
     }
 

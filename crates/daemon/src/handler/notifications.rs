@@ -27,8 +27,6 @@ pub(super) async fn update_notification_chimes(
     })
 }
 
-/// Apply only the given fields, on top of the setting as it is now, inside
-/// the config lock: two clients changing different fields never lose one.
 pub(super) async fn patch_notification_chimes(
     state: &AppState,
     patch: NotificationChimesPatchData,

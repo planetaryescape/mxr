@@ -1,14 +1,8 @@
-//! One owned-address set for every daemon feature: the primary plus every
-//! registered alias, and the same answer from each caller.
-
 use crate::state::AppState;
 use mxr_core::types::AccountAddressLookup;
 
 #[tokio::test]
 async fn owned_set_keeps_the_primary_when_its_address_row_is_missing() {
-    // Before `remove_account_address` refused the primary, removing it left the
-    // account without a primary row. The accounts row still names the mailbox,
-    // so the owned set must keep it.
     let state = AppState::in_memory().await.unwrap();
     let account_id = state.default_account_id();
     let primary = state
@@ -32,9 +26,6 @@ async fn owned_set_keeps_the_primary_when_its_address_row_is_missing() {
 
 #[tokio::test]
 async fn alias_registered_through_the_handler_counts_in_every_owned_reader_at_once() {
-    // The CLI path is `Request::AddAccountAddress`, which refreshes the
-    // registry. Readers that used to go to the store and readers that read the
-    // registry must both see the alias straight away, with no restart.
     let state = AppState::in_memory().await.unwrap();
     let account_id = state.default_account_id();
     let alias = "Alias@Example.com";
@@ -138,8 +129,6 @@ async fn removing_the_primary_through_the_handler_is_refused_and_keeps_it_owned(
 
 #[tokio::test]
 async fn unicode_spellings_of_an_alias_both_validate_as_from() {
-    // The From check folds ASCII only, so both spellings must survive the set
-    // and each must resolve to itself.
     let state = AppState::in_memory().await.unwrap();
     let account_id = state.default_account_id();
     for email in ["user@BÜCHER.example", "user@bücher.example"] {
@@ -168,8 +157,6 @@ async fn unicode_spellings_of_an_alias_both_validate_as_from() {
 
 #[tokio::test]
 async fn sync_registry_keeps_the_configured_email_after_it_stops_being_primary() {
-    // After set-primary and removal of the old configured address, sync and the
-    // handlers must still agree that the configured address is the account's.
     let state = AppState::in_memory().await.unwrap();
     let account_id = state.default_account_id();
     let configured = state
@@ -216,8 +203,6 @@ async fn sync_registry_keeps_the_configured_email_after_it_stops_being_primary()
 
 #[tokio::test]
 async fn registry_refresh_includes_an_account_inserted_after_startup() {
-    // Provider setup inserts configured accounts after the registry is first
-    // built, so a refresh has to pick up accounts that appeared since.
     let state = AppState::in_memory().await.unwrap();
     let account = crate::test_fixtures::test_account_with_id(mxr_core::AccountId::new());
     state.store.insert_account(&account).await.unwrap();
@@ -234,9 +219,6 @@ async fn registry_refresh_includes_an_account_inserted_after_startup() {
 
 #[tokio::test]
 async fn sync_registry_keeps_a_disabled_accounts_addresses() {
-    // Analytics repair reclassifies stored mail through the registry, including
-    // a disabled account's. Dropping its set would persist its own mail as
-    // inbound, and re-enabling could not repair those rows.
     let state = AppState::in_memory().await.unwrap();
     let account_id = state.default_account_id();
     let primary = state
@@ -633,7 +615,6 @@ async fn a_batch_prepared_under_the_old_set_is_reconciled_by_the_post_pass() {
     )
     .await
     .unwrap();
-    // A sync batch prepared before the alias was owned lands after the change.
     let late_batch = store_mail_from(
         &state,
         &account_id,

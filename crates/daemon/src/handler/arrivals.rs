@@ -1,19 +1,3 @@
-//! Sorting shows its work (blueprint 22, D119).
-//!
-//! - Placement: each arrivals row (written by a trigger when sync stores an
-//!   inbound message) gets the mode it went to, the rule and reason, and a
-//!   "not sure" mark for a rule conflict. The placement is the same rule
-//!   live membership uses: the shared classifier, then the thread's shape.
-//! - The arrivals line on Now: every arrival first seen since Now was last
-//!   opened, counted once by where it is now. The counts, the lists they
-//!   open and the track record all read the same rows.
-//! - Moves: `X` moves one email (`MoveMessage`), `K` sets the sender's
-//!   mode. Both are stored as corrections, take effect in every client at
-//!   once and undo exactly (`UndoMove`).
-//!
-//! Corrections feed placement: a per-email move wins for that email until a
-//! newer sender decision, and a sender decision wins over every rule.
-
 use super::conversation_shape::{conversation_shape, human_address, Shape, ShapeInputs};
 use super::desk::{self_matcher, Senders};
 use super::desk_lanes::is_outbound;
@@ -34,25 +18,12 @@ use mxr_store::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// Arrivals placed per pass, so a large backfill never holds one long read.
 const PLACE_BATCH: u32 = 400;
-/// The most emails one `GetArrivalModes` may name.
 pub(crate) const ARRIVAL_MODES_MAX: usize = 200;
-/// A second visit to Now this soon after the first is the same visit, so a
-/// double mount or a quick look elsewhere never empties the line.
 const SAME_VISIT_SECS: i64 = 60;
-/// Undoing a sender's mode through `SetSenderKind` within this long of the
-/// move puts the move back instead of logging a second one.
 const SENDER_UNDO_WINDOW_SECS: i64 = 10 * 60;
-/// The "not sure" mark for someone you've written to who only copied you
-/// (D119's U1).
 const NOT_SURE_COPIED_KNOWN: &str = "copied_known";
 
-// ---------------------------------------------------------------------------
-// Placement
-// ---------------------------------------------------------------------------
-
-/// The stored name of a rule.
 fn rule_id(rule: KindRuleData) -> String {
     serde_json::to_value(rule)
         .ok()
@@ -60,9 +31,6 @@ fn rule_id(rule: KindRuleData) -> String {
         .unwrap_or_else(|| "person".to_string())
 }
 
-/// Where one arrival goes now, by the rules live membership uses.
-/// The shared sender loader reads sent mail directly, so first-sync
-/// placement does not depend on the contacts refresher having run.
 pub(super) fn place_message(
     message: &DeskMessage,
     thread: &[DeskMessage],
@@ -115,8 +83,6 @@ pub(super) fn place_message(
                 },
             );
             if shape == Shape::Copied {
-                // Someone you've written to only copied you: the rules
-                // disagree, so Now asks (U1).
                 let not_sure = (signals.written_to
                     && !signals.addressed
                     && message.cc.iter().any(|address| is_self(&address.email)))
@@ -134,16 +100,11 @@ pub(super) fn place_message(
     }
 }
 
-/// What placing a batch found.
 struct Sorted {
     placements: Vec<ArrivalPlacement>,
-    /// Rows that turned out to be mail the account sent: not arrivals.
     sent: Vec<MessageId>,
 }
 
-/// Place `wanted` (each message with its thread and spam flag) of one
-/// account by today's rules. A message its thread no longer holds (moved
-/// or deleted mid-pass) is left for the next pass.
 async fn place_all(
     state: &AppState,
     account_id: &AccountId,
@@ -183,7 +144,6 @@ async fn place_all(
         let Some(message) = thread.iter().find(|m| &m.id == message_id) else {
             continue;
         };
-        // A row stored with an unknown direction can be your own mail.
         if is_outbound(message, &is_self) {
             sorted.sent.push(message_id.clone());
             continue;
@@ -198,9 +158,6 @@ async fn place_all(
     Ok(sorted)
 }
 
-/// Re-evaluate only the requested cached mail. This is a read projection,
-/// not a repair mutation: first placement, first-seen, moves, tasks, marks,
-/// reminders and provider state are untouched, including across retries.
 pub(super) async fn effective_rows(
     state: &AppState,
     mut rows: Vec<ArrivalRow>,
@@ -238,9 +195,6 @@ pub(super) async fn effective_rows(
     Ok(rows)
 }
 
-/// Count and select from the same current-policy projection, in bounded pages.
-/// Only the requested output page is retained; there is no mailbox-wide cache
-/// or versioned stale classification to repair on upgrade.
 async fn effective_window(
     state: &AppState,
     accounts: &[AccountId],
@@ -301,8 +255,6 @@ async fn effective_window(
     Ok((selected, total, counts))
 }
 
-/// Place every arrival of `account_id` the daemon has not placed yet.
-/// Returns how many were placed.
 pub(crate) async fn place_pending(
     state: &AppState,
     account_id: &AccountId,
@@ -337,7 +289,6 @@ pub(crate) async fn place_pending(
             .set_arrival_placements(&sorted.placements, Utc::now())
             .await?;
         placed = placed.saturating_add(u32::try_from(written).unwrap_or(u32::MAX));
-        // No progress: what is left waits for the next sync.
         if written == 0 && dropped == 0 {
             break;
         }
@@ -354,7 +305,6 @@ pub(crate) async fn place_pending(
     Ok(placed)
 }
 
-/// Re-place one sender's arrivals after their mode changed.
 async fn replace_sender(
     state: &AppState,
     account_id: &AccountId,
@@ -367,9 +317,6 @@ async fn replace_sender(
     replace(state, account_id, rows).await
 }
 
-/// Re-place arrivals after a correction: each row's `now_mode` becomes
-/// where it goes now, by the same rules as live membership, which honour
-/// the moves still in force.
 pub(super) async fn replace(
     state: &AppState,
     account_id: &AccountId,
@@ -392,10 +339,6 @@ pub(super) async fn replace(
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// The line
-// ---------------------------------------------------------------------------
-
 fn window_keys(account_id: Option<&AccountId>) -> (String, String) {
     let scope = account_id.map_or_else(|| "arrivals".to_string(), |a| format!("arrivals:{a}"));
     (format!("{scope}:visit"), format!("{scope}:since"))
@@ -408,12 +351,6 @@ pub(super) fn start_of_day<Tz: TimeZone>(now: DateTime<Utc>, tz: &Tz) -> DateTim
         .map_or(now - Duration::hours(24), |start| start.with_timezone(&Utc))
 }
 
-/// The line's window: since the visit to Now before this one, never more
-/// than 24 hours back; the start of today when Now was never opened.
-/// `mark_seen` starts a new visit. A read that doesn't mark shows the
-/// window Now would open with at this moment: once the last visit has
-/// lapsed that is since the visit itself, not the stale window it opened
-/// with, so the CLI, MCP and an open Now agree.
 async fn window<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -432,7 +369,6 @@ async fn window<Tz: TimeZone>(
     }
     let stored = state.store.mode_last_viewed(&since_key).await?;
     let since = match (mark_seen, lapsed, last_visit, stored) {
-        // Not marking, but a mark would start a visit now.
         (false, true, Some(last_visit), _) => Some(last_visit),
         (_, _, _, stored) => stored,
     };
@@ -443,7 +379,6 @@ async fn window<Tz: TimeZone>(
     Ok(since.min(now))
 }
 
-/// "08:12" today, "yesterday 22:10", or "Tue 22:10".
 fn since_label<Tz: TimeZone>(since: DateTime<Utc>, now: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
@@ -459,14 +394,10 @@ where
     }
 }
 
-/// The window's end: one second past now, so mail stored this second
-/// counts.
 fn until_of(now: DateTime<Utc>) -> DateTime<Utc> {
     now + Duration::seconds(1)
 }
 
-/// Serve an arrivals request. `dispatch` calls this boxed, once, for every
-/// arrivals variant, so none of their futures sit in its poll frame.
 pub(super) async fn handle(state: &AppState, req: &Request) -> HandlerResult {
     match req {
         Request::GetArrivals {
@@ -523,7 +454,6 @@ pub(super) async fn get_arrivals(
     })
 }
 
-/// The line as it stands at `now` in `tz` (tests move the clock).
 pub(super) async fn arrivals_at<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -537,13 +467,10 @@ where
 {
     let started = std::time::Instant::now();
     let accounts = scoped_accounts(state, account_id).await?;
-    // Anything sync stored but nobody placed yet (the upgrade's backfill,
-    // a pass a restart cut short) is placed before it is counted.
     for account in &accounts {
         place_pending(state, account).await?;
     }
     let since = match open_since.filter(|_| !mark_seen) {
-        // The visit the client has open keeps its window.
         Some(open) => open.clamp(now - Duration::hours(24), now),
         None => window(state, account_id, mark_seen, now, tz).await?,
     };
@@ -562,8 +489,6 @@ where
             })
         })
         .collect();
-    // Anything stored under a name the line doesn't know still counts, so
-    // the parts can never silently fall short of the total.
     let known: u32 = line_counts.iter().map(|c| c.count).sum();
     let unplaced = counts.total.saturating_sub(known);
     let also: Vec<ArrivalCountData> = [
@@ -608,7 +533,6 @@ where
         }
         line
     };
-    // "Accounted for" only once every arrival is placed.
     let clear_line = (counts.total > 0 && sorting == 0 && unplaced == 0).then(|| {
         if counts.total == 1 {
             format!("Clear. The 1 email since {label} is accounted for.")
@@ -662,9 +586,6 @@ where
     })
 }
 
-/// Today's "Not sure" questions: the first three conflicts first seen
-/// today in `tz`, minus those answered. The cap counts asked ones, so an
-/// answer never pulls a fourth in.
 async fn not_sure_today<Tz: TimeZone>(
     state: &AppState,
     accounts: &[AccountId],
@@ -713,8 +634,6 @@ async fn not_sure_today<Tz: TimeZone>(
         .collect())
 }
 
-/// "Last week mxr sorted 310 emails; you moved 2." Only once a move
-/// exists: before that it could only ever say 0.
 async fn track_record(
     state: &AppState,
     accounts: &[AccountId],
@@ -738,15 +657,10 @@ async fn track_record(
     )))
 }
 
-// ---------------------------------------------------------------------------
-// Lists and chips
-// ---------------------------------------------------------------------------
-
 fn bucket_of(effective: &str) -> ArrivalBucketData {
     ArrivalBucketData::parse(effective).unwrap_or(ArrivalBucketData::Sorting)
 }
 
-/// The Inbox chip: "→ Updates · automated sender", "In Spam".
 fn chip(bucket: ArrivalBucketData, reason: Option<&str>, moved: bool) -> String {
     match bucket {
         ArrivalBucketData::Spam => "In Spam".to_string(),
@@ -774,8 +688,6 @@ fn item(row: ArrivalRow) -> ArrivalItemData {
         .mode
         .as_deref()
         .map_or(ArrivalBucketData::Sorting, bucket_of);
-    // The read projection supplies the current reason while `arrived_in`
-    // retains history. Never label an automatic policy change a user move.
     let reason = if row.moved {
         Some("you moved this email".to_string())
     } else {
@@ -867,10 +779,6 @@ pub(super) async fn get_arrival_modes(
     })
 }
 
-// ---------------------------------------------------------------------------
-// Moves
-// ---------------------------------------------------------------------------
-
 const fn sender_kind_for(mode: ModeKindData) -> Option<SenderKindData> {
     match mode {
         ModeKindData::Messages => Some(SenderKindData::People),
@@ -880,7 +788,6 @@ const fn sender_kind_for(mode: ModeKindData) -> Option<SenderKindData> {
     }
 }
 
-/// Where a sender kind sends mail, as the ledger names it.
 pub(super) const fn bucket_for_kind(kind: SenderKindData) -> ArrivalBucketData {
     match kind {
         SenderKindData::People => ArrivalBucketData::Messages,
@@ -890,7 +797,6 @@ pub(super) const fn bucket_for_kind(kind: SenderKindData) -> ArrivalBucketData {
     }
 }
 
-/// Where one email is now: its arrivals row, else placed live.
 async fn current_bucket(
     state: &AppState,
     account_id: &AccountId,
@@ -922,7 +828,6 @@ async fn current_bucket(
     Ok((bucket, row))
 }
 
-/// One `MoveMessage`, as the handler hands it over.
 pub(super) struct MoveRequest<'a> {
     pub message_id: &'a MessageId,
     pub mode: ModeKindData,
@@ -1030,8 +935,6 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
                 ..correction("sender")
             })
             .await?;
-        // Sender-level corrections win over this sender's earlier email
-        // moves; a later email move still wins for that email.
         state
             .store
             .supersede_sender_moves(&account_id, &sender_email, id)
@@ -1050,8 +953,6 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
         ModeKindData::Messages | ModeKindData::Updates | ModeKindData::Reading => {
             let to = ArrivalBucketData::from_mode(mode);
             if from == to {
-                // Keeping it where it is answers a Not-sure question; for a
-                // plain move it changes nothing.
                 if source == "not_sure" && !dry_run {
                     state.store.ensure_arrival(message_id).await?;
                     let id = state.store.insert_correction(&correction("email")).await?;
@@ -1118,12 +1019,7 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
             } else {
                 title
             };
-            // The check and the insert below are two store calls. Held until
-            // this arm returns, the lock makes an overlapping move of the same
-            // email see the first one's task instead of making a second.
             let _one_at_a_time = state.acquire_todo_move(message_id).await;
-            // A repeat (a retry, a second client) reuses the open to-do, so
-            // there is one task per email and nothing new to undo.
             if state
                 .store
                 .open_todo_for_message(message_id)
@@ -1163,8 +1059,6 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
             let response = super::records::file(state, message_id, None, dry_run).await?;
             let record_id = match response {
                 ResponseData::RecordChange { change } => {
-                    // Already filed: nothing was made, so there is nothing
-                    // to undo (undoing would dismiss the existing record).
                     if change.message.starts_with(super::records::ALREADY_FILED) {
                         return Ok(moved(outcome(
                             "Already in Archive.".to_string(),
@@ -1213,12 +1107,9 @@ struct AspectMove<'a> {
     dry_run: bool,
     aspect_id: Option<String>,
     correction: NewCorrection,
-    /// The dry run's copy, then the run's.
     copy: (&'static str, &'static str),
 }
 
-/// To do and Archive add the email there (D119: they are aspects, never a
-/// primary mode), and log the correction with what was made, for undo.
 async fn aspect_move(
     state: &AppState,
     request: AspectMove<'_>,
@@ -1245,9 +1136,6 @@ pub(super) async fn undo_move(state: &AppState, correction_id: i64) -> HandlerRe
         .get_correction(correction_id)
         .await?
         .ok_or_else(|| HandlerError::InvalidRequest(format!("No correction {correction_id}.")))?;
-    // An older move can't be undone while a newer one of the same email (or,
-    // for a sender move, the same sender) stands: restoring the older one's
-    // "before" would discard the newer.
     if correction.undone_at.is_none() {
         let fields = &correction.fields;
         let newer_stands = if fields.scope == "sender" {
@@ -1277,8 +1165,6 @@ pub(super) async fn undo_move(state: &AppState, correction_id: i64) -> HandlerRe
             ));
         }
     }
-    // Stamping first makes a double undo (two clients, a double press) a
-    // no-op instead of reverting twice.
     if !state
         .store
         .mark_correction_undone(correction_id, Utc::now())
@@ -1314,8 +1200,6 @@ async fn revert(state: &AppState, correction: &Correction) -> Result<(), Handler
             .as_deref()
             .and_then(ScreenerDisposition::from_db_str)
             .and_then(mail_kind::kind_for);
-        // The decision comes back with its original date: a new one would
-        // override the email moves made since.
         super::places::apply_sender_kind(
             state,
             &fields.account_id,
@@ -1373,9 +1257,6 @@ async fn revert(state: &AppState, correction: &Correction) -> Result<(), Handler
     Ok(())
 }
 
-/// After `SetSenderKind` (the Screener, a sender row's `K`): log the move,
-/// or recognise it as the undo of the move just made, then re-place the
-/// sender's arrivals and tell every client.
 pub(super) async fn after_sender_kind(
     state: &AppState,
     account_id: &AccountId,

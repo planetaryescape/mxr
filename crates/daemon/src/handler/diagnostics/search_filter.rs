@@ -10,12 +10,6 @@ use chrono::Datelike;
 use mxr_core::types::{system_labels, SemanticChunkSourceKind};
 use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
 
-/// Returns true if `node` (or any descendant) is an
-/// `is:owed-reply` filter. Used by the search executor to decide
-/// whether to pre-compute the owed-thread set and apply it as a
-/// post-filter (the filter itself is computed across messages +
-/// contacts + screener_decisions and so can't be expressed as a
-/// per-envelope Tantivy field).
 pub(super) fn ast_contains_owed_reply(node: &QueryNode) -> bool {
     match node {
         QueryNode::Filter(FilterKind::Custom(name)) if name == mxr_search::FILTER_OWED_REPLY => {
@@ -29,7 +23,6 @@ pub(super) fn ast_contains_owed_reply(node: &QueryNode) -> bool {
     }
 }
 
-/// The two places search leaves out unless a query asks for them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Hidden {
     Trash,
@@ -51,8 +44,6 @@ impl Hidden {
         }
     }
 
-    /// `NOT (in:<place> OR label:<PLACE>)`: by flag and by label, since a
-    /// label change from delta sync does not always set the flag.
     fn exclusion(self) -> QueryNode {
         QueryNode::Not(Box::new(QueryNode::Or(
             Box::new(QueryNode::Filter(self.filter())),
@@ -61,16 +52,12 @@ impl Hidden {
     }
 }
 
-/// The place `node` is the default exclusion of, if it is one. Lets the
-/// SQLite fallback read the exclusion back instead of re-deriving it.
 pub(super) fn default_exclusion_of(node: &QueryNode) -> Option<Hidden> {
     [Hidden::Trash, Hidden::Spam]
         .into_iter()
         .find(|place| *node == place.exclusion())
 }
 
-/// Whether `node` asks for `place` (`in:trash`, `in:anywhere`, the label)
-/// outside a negation: `-in:trash` names Trash only to leave it out.
 fn asks_for(node: &QueryNode, place: Hidden) -> bool {
     match node {
         QueryNode::Filter(FilterKind::Anywhere) => true,
@@ -83,9 +70,6 @@ fn asks_for(node: &QueryNode, place: Hidden) -> bool {
     }
 }
 
-/// Whether every alternative of `node` asks for `place`, without
-/// expanding it: one side of an AND is enough, both sides of an OR are
-/// needed.
 fn asked_everywhere(node: &QueryNode, place: Hidden) -> bool {
     match node {
         QueryNode::And(left, right) => {
@@ -98,7 +82,6 @@ fn asked_everywhere(node: &QueryNode, place: Hidden) -> bool {
     }
 }
 
-/// Adds the exclusion of each place `node` does not ask for.
 fn guarded(node: QueryNode) -> QueryNode {
     let lifted = [Hidden::Trash, Hidden::Spam].map(|place| asks_for(&node, place));
     [Hidden::Trash, Hidden::Spam]
@@ -110,12 +93,8 @@ fn guarded(node: QueryNode) -> QueryNode {
         })
 }
 
-/// Most alternatives a query is expanded into before scoping falls back to
-/// the whole query.
 const MAX_SCOPED_ALTERNATIVES: usize = 32;
 
-/// The query as alternatives (OR of ANDs), or `None` when that would exceed
-/// `MAX_SCOPED_ALTERNATIVES`. Negations and leaves are kept whole.
 fn alternatives(node: &QueryNode) -> Option<Vec<QueryNode>> {
     match node {
         QueryNode::Or(left, right) => {
@@ -144,24 +123,9 @@ fn alternatives(node: &QueryNode) -> Option<Vec<QueryNode>> {
     }
 }
 
-/// Leaves Trash and Spam out of a query unless it asks for them, as Gmail
-/// search does. One rewrite, so the lexical half, the dense filter, counts
-/// and `--search` selections all apply the same default.
-///
-/// Each place is lifted on its own: `in:trash` lets Trash in, not Spam. And
-/// the lift is scoped to the alternative that asks: in
-/// `in:trash OR from:alice`, Alice's own Trash and Spam stay out. When the
-/// alternatives all ask for the same places the query keeps its shape.
-///
-/// A query with more than `MAX_SCOPED_ALTERNATIVES` alternatives cannot be
-/// scoped, so it lifts a place only when every alternative asks for it and
-/// otherwise keeps the exclusion: lifting it for the whole query would let
-/// in Trash or Spam the user did not ask for. `in:anywhere` beside the rest
-/// of the query still reaches them.
 pub(super) fn exclude_trash_and_spam_by_default(ast: QueryNode) -> QueryNode {
     let asks = |node: &QueryNode| (asks_for(node, Hidden::Trash), asks_for(node, Hidden::Spam));
     let Some(terms) = alternatives(&ast) else {
-        // Lift a place only where every alternative asks for it.
         let lifted = [Hidden::Trash, Hidden::Spam].map(|place| asked_everywhere(&ast, place));
         return [Hidden::Trash, Hidden::Spam]
             .into_iter()
@@ -293,21 +257,12 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
             matches!(envelope.link_density(), mxr_core::types::LinkDensity::Heavy)
         }
         FilterKind::NoLinks => envelope.link_count == 0,
-        // Mxr-specific custom filters: owed-reply is computed at the
-        // thread level (see ast_contains_owed_reply above) and the
-        // per-envelope test defaults to true so it never independently
-        // drops candidates. reply-later is an indexed boolean handled
-        // by the QueryBuilder; here we default true for the same
-        // reason.
         FilterKind::Custom(name)
             if name == mxr_search::FILTER_OWED_REPLY || name == mxr_search::FILTER_REPLY_LATER =>
         {
             true
         }
-        // Unknown custom filter: default to true (no-op filter) so
-        // future Gmail additions don't break searches.
         FilterKind::Custom(_) => true,
-        // Forward-compat for #[non_exhaustive] mail-query additions.
         _ => true,
     }
 }
@@ -495,7 +450,6 @@ fn all_semantic_source_kinds() -> Vec<SemanticChunkSourceKind> {
 fn source_kinds_for_field(field: &QueryField) -> &'static [SemanticChunkSourceKind] {
     match field {
         QueryField::Subject => &[SemanticChunkSourceKind::Header],
-        // A highlight is a passage of the body the user kept.
         QueryField::Body => &[
             SemanticChunkSourceKind::Body,
             SemanticChunkSourceKind::Highlight,
@@ -529,8 +483,6 @@ mod tests {
     use super::*;
     use mxr_search::parse_query;
 
-    /// Which of Trash and Spam a sample message in each place reaches the
-    /// results through, for a query over Alice's and Bob's mail.
     fn reached(query: &str) -> Vec<&'static str> {
         let ast = exclude_trash_and_spam_by_default(parse_query(query).unwrap());
         let mut reached = Vec::new();
@@ -593,8 +545,6 @@ mod tests {
         assert_eq!(reached("in:anywhere").len(), 5);
     }
 
-    /// Past the expansion cap a query cannot be scoped; it keeps both
-    /// exclusions rather than letting Trash in for every alternative.
     #[test]
     fn a_query_too_large_to_scope_keeps_both_exclusions() {
         let large = "in:trash OR (a OR b) (c OR d) (e OR f) (g OR h) (i OR j) (k OR l)";

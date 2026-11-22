@@ -1,4 +1,3 @@
-//! A paired client's mail actions belong in the host's own activity log.
 use super::*;
 use crate::handler::handle_request;
 use mxr_protocol::{ClientKind, IpcMessage, IpcPayload, MutationCommand, Response};

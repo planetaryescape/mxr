@@ -1,10 +1,3 @@
-//! Everything a draft needs to sound like the user, gathered from the store:
-//! who they are, how they write (real examples first, habits second), and
-//! the conversation as ME / THEM turns with the message to answer marked.
-//!
-//! `before` rebuilds what was known at a moment in time, so the offline
-//! draft evaluation can replay a real reply without seeing it.
-
 use super::draft_prompt::{Me, Turn, VoiceExample};
 use crate::state::AppState;
 use chrono::{DateTime, Local, Utc};
@@ -15,8 +8,6 @@ use mxr_relationship::{analyse_habits, clean_for_voice};
 use std::collections::BTreeSet;
 
 const MAX_EXAMPLES: usize = 5;
-/// Replies shorter than this say nothing about voice ("ok"); longer ones are
-/// usually templates or documents, not how the user talks.
 const EXAMPLE_MIN_WORDS: usize = 3;
 const EXAMPLE_MAX_WORDS: usize = 350;
 const HABIT_SAMPLES: u32 = 25;
@@ -24,13 +15,10 @@ const HABIT_SAMPLES: u32 = 25;
 pub(crate) struct VoiceMaterial {
     pub examples: Vec<VoiceExample>,
     pub habits: Vec<String>,
-    /// Median length of the user's own emails in the sample.
     pub median_words: Option<u32>,
     pub samples: usize,
 }
 
-/// Evidence gathered once for a draft operation. Style rates remain local;
-/// only the material may be passed to a model, subject to the history policy.
 pub(crate) struct VoiceSnapshot {
     pub material: VoiceMaterial,
     pub pattern_rates: mxr_humanizer::PatternRates,
@@ -86,7 +74,6 @@ pub(crate) async fn snapshot(
 }
 
 impl VoiceMaterial {
-    /// Nothing from the user's other mail (a cloud model without opt-in).
     pub fn none() -> Self {
         Self {
             examples: Vec::new(),
@@ -115,7 +102,6 @@ pub(crate) async fn pattern_rates(
     mxr_humanizer::PatternRates::from_samples(bodies.iter().map(String::as_str))
 }
 
-/// The person being written to, as the voice material is chosen for them.
 pub(crate) struct Counterparty {
     pub email: String,
     pub name: Option<String>,
@@ -165,8 +151,6 @@ fn is_mine(envelope: &Envelope, owned: &BTreeSet<String>) -> bool {
     owned.contains(&envelope.from.email.to_ascii_lowercase())
 }
 
-/// The message to answer: the one the user picked, else the newest message
-/// someone else sent, else the newest message.
 pub(crate) fn pick_target<'a>(
     envelopes: &'a [Envelope],
     owned: &BTreeSet<String>,
@@ -183,8 +167,6 @@ pub(crate) fn pick_target<'a>(
         .or_else(|| envelopes.iter().max_by_key(|envelope| envelope.date))
 }
 
-/// Who the reply is really to: the target's sender, or when the user wrote
-/// the target, the first other recipient.
 pub(crate) fn counterparty_of(target: &Envelope, owned: &BTreeSet<String>) -> Option<Counterparty> {
     if !owned.contains(&target.from.email.to_ascii_lowercase()) {
         return Some(Counterparty {
@@ -203,7 +185,6 @@ pub(crate) fn counterparty_of(target: &Envelope, owned: &BTreeSet<String>) -> Op
         })
 }
 
-/// The thread as cleaned turns, oldest first, target marked.
 pub(crate) async fn conversation(
     state: &AppState,
     envelopes: &[Envelope],
@@ -220,7 +201,6 @@ pub(crate) async fn conversation(
         };
         let mut text = clean_for_voice(&raw);
         if text.is_empty() {
-            // All quote (a bare forward) or no body: the snippet beats nothing.
             text = if raw.trim().is_empty() {
                 envelope.snippet.clone()
             } else {
@@ -259,9 +239,6 @@ pub(crate) async fn conversation(
     turns
 }
 
-/// Real emails the user wrote, to `counterparty` first, and the habits
-/// they show. `before` and `exclude_thread` keep the conversation being
-/// drafted (and anything after it) out.
 pub(crate) async fn voice_material(
     state: &AppState,
     account_id: &AccountId,
@@ -361,8 +338,6 @@ pub(crate) async fn voice_material(
         }
     }
 
-    // Too little with this person: fill from how the user replies to anyone,
-    // and describe habits from that wider sample.
     let personal = habit_bodies.len();
     if personal < 3 {
         let pairs = store
@@ -407,7 +382,6 @@ pub(crate) async fn voice_material(
     }
 }
 
-/// A reply the user sent, as a draft source.
 fn reply_source(pair: &mxr_store::MyReplySample, person_name: Option<String>) -> DraftSourceData {
     DraftSourceData {
         message_id: pair.reply_message_id.clone(),

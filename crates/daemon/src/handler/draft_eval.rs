@@ -1,14 +1,3 @@
-//! `mxr draft eval`: how close do AI drafts get to what the user actually
-//! writes? Each of the user's recent replies is replayed: the conversation
-//! and the voice material are rebuilt as they stood just before the reply
-//! (`DraftRequest::before`), a draft is generated through the same path the
-//! product uses, and the two are compared. Local only; nothing is saved,
-//! sent or written to the activity log.
-//!
-//! The relationship summary and stylometry are the current ones, so they
-//! may reflect the reply being replayed; the examples, habits and
-//! conversation never do.
-
 use super::draft_compose::{draft_in_thread, DraftRequest};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -35,7 +24,6 @@ pub(super) async fn draft_eval(
             .ok_or_else(|| HandlerError::InvalidRequest(NO_ACCOUNT.to_string()))?,
     };
     let limit = limit.clamp(1, MAX_EVAL_CASES);
-    // Ask for more than needed: very short or template replies are skipped.
     let samples = state
         .store
         .my_reply_samples(&account_id, None, None, None, limit * 3)
@@ -156,8 +144,6 @@ async fn replay(
     case
 }
 
-/// Greetings and sign-offs compared by their words, ignoring case and
-/// punctuation ("Cheers," matches "cheers").
 fn same(left: Option<&str>, right: Option<&str>) -> bool {
     let key = |text: &str| {
         text.split(|c: char| !c.is_alphanumeric())

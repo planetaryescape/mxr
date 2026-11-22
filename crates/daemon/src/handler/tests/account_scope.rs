@@ -1,7 +1,3 @@
-//! A scoped agent profile reaches only its own accounts: every request
-//! family is denied for another account's data, by account id or by the id
-//! of something the other account owns, and allowed for its own.
-
 use super::desk::{request, Fixture};
 use super::*;
 use chrono::{Duration, Utc};
@@ -17,7 +13,6 @@ use mxr_store::{
     UndoEntrySnapshot, UndoableMutationKind,
 };
 
-/// What one account owns, for naming in requests.
 struct Owned {
     account: mxr_core::AccountId,
     message: MessageId,
@@ -218,8 +213,6 @@ struct Scoped {
     other: Owned,
 }
 
-/// An MCP profile allowed only the default account, with every other gate
-/// open so the account allowlist is the only thing that can say no.
 async fn scoped() -> Scoped {
     let fx = Fixture::new().await;
     let other_account = mxr_core::AccountId::new();
@@ -271,8 +264,6 @@ async fn microsoft_bulk_dispatch_is_limited_to_each_external_profiles_allowed_ac
             .unwrap()
             .allowed_accounts = vec![allowed.account.as_str()];
         s.fx.state.set_config_for_test(config).await;
-        // Only the forbidden account has a live link. An unscoped fallback
-        // would reach its CLI transport instead of returning an empty plan.
         let record =
             s.fx.state
                 .store
@@ -332,7 +323,6 @@ async fn microsoft_bulk_dispatch_is_limited_to_each_external_profiles_allowed_ac
                 matches!(scoped_dispatch(&s, denied).await, Response::Error { message, .. } if message.contains("account allowlist"))
             );
         }
-        // Unrelated daemon-wide requests remain forbidden.
         assert!(
             matches!(scoped_dispatch(&s, Request::ListRecords { account_id: None, filter: RecordFilterData::default(), limit: 10, offset: 0 }).await, Response::Error { message, .. } if message.contains("account allowlist"))
         );
@@ -364,8 +354,6 @@ async fn microsoft_bulk_dispatch_is_limited_to_each_external_profiles_allowed_ac
     }
 }
 
-/// Each request built for the scoped agent's own account is allowed and
-/// the same request built for the other account is denied.
 async fn assert_scoped(s: &Scoped, build: impl Fn(&Owned) -> Request) {
     let own = build(&s.own);
     if let Err(error) = check(s, &own).await {
@@ -545,7 +533,6 @@ async fn archive_requests_stay_in_the_agents_accounts() {
         list_limit: 200,
     })
     .await;
-    // "Show all" lists matches from the same scope as the answer.
     assert_scoped(&s, |o| Request::AnswerFromRecords {
         query: "order".into(),
         account_id: Some(o.account.clone()),
@@ -593,7 +580,6 @@ async fn archive_requests_stay_in_the_agents_accounts() {
         dry_run: true,
     })
     .await;
-    // A mix of own and other records is denied as a whole.
     assert_denied(
         &s,
         &Request::DismissRecord {
@@ -705,8 +691,6 @@ async fn mode_requests_stay_in_the_agents_accounts() {
         sender: None,
     })
     .await;
-    // To do names its rows by id; another account's row is out of scope
-    // even with no thread named.
     assert_scoped(&s, |o| Request::SetModeDone {
         thread_ids: vec![],
         mode: ModeKindData::Todo,
@@ -769,7 +753,6 @@ async fn messages_requests_stay_in_the_agents_accounts() {
         account_id: Some(o.account.clone()),
     })
     .await;
-    // Naming your own account doesn't open another account's thread.
     assert_denied(
         &s,
         &Request::GetPerson {
@@ -859,7 +842,6 @@ async fn thread_desk_and_place_requests_stay_in_the_agents_accounts() {
         dry_run: true,
     })
     .await;
-    // A promise from another account under your own thread is still out.
     assert_denied(
         &s,
         &Request::ResolveDeskItems {
@@ -907,8 +889,6 @@ async fn thread_desk_and_place_requests_stay_in_the_agents_accounts() {
     .await;
 }
 
-/// Requests the old hand-kept list never mentioned, so a scoped agent
-/// could reach any account through them.
 #[tokio::test]
 async fn previously_unlisted_requests_stay_in_the_agents_accounts() {
     let s = scoped().await;
@@ -980,8 +960,6 @@ async fn previously_unlisted_requests_stay_in_the_agents_accounts() {
         draft_id: o.draft.id.clone(),
     })
     .await;
-    // Your own account with another account's label lists that label's
-    // mail, so the label has to be in the named account.
     let other_inbox = crate::test_fixtures::test_label(&s.other.account, "Inbox", "INBOX");
     s.fx.state.store.upsert_label(&other_inbox).await.unwrap();
     assert_scoped(&s, |o| Request::ListEnvelopes {
@@ -1001,8 +979,6 @@ async fn previously_unlisted_requests_stay_in_the_agents_accounts() {
     };
     let error = check(&s, &foreign_label).await.unwrap_err();
     assert!(error.contains("is not in account"), "{error}");
-    // Claiming your own account on a draft body doesn't let you overwrite
-    // another account's stored draft with the same id.
     let mut hijack = s.other.draft.clone();
     hijack.account_id = s.own.account.clone();
     assert_denied(&s, &Request::UpdateDraft { draft: hijack }).await;
@@ -1388,7 +1364,6 @@ async fn mcp_category_catalog_requires_full_account_scope_and_preserves_profile_
     assert!(categories.is_empty());
 }
 
-/// The allowlist is applied in dispatch, not only in the helper.
 #[tokio::test]
 async fn dispatch_denies_another_accounts_records_to_a_scoped_mcp_client() {
     let s = scoped().await;
@@ -1446,9 +1421,6 @@ fn scoped_profile(s: &Scoped) -> mxr_config::AgentProfileConfig {
         .unwrap()
 }
 
-/// Legacy Gmail thread ids aren't account-scoped: one id can hold messages
-/// from two accounts. The check must see both accounts, not whichever one
-/// the thread row happens to report.
 #[tokio::test]
 async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
     let s = scoped().await;
@@ -1467,8 +1439,6 @@ async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
             .await
             .unwrap();
     }
-    // Resolution sees both accounts. A check that took the one account the
-    // thread row reports would pass or fail on which row SQLite picked.
     let mut holders =
         super::super::account_scope::thread_accounts(&s.fx.state, std::slice::from_ref(&shared))
             .await
@@ -1499,8 +1469,6 @@ async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
         assert_denied(&s, &req).await;
     }
 
-    // Second safety net: a thread load answered to a scoped client keeps
-    // only the allowed accounts' messages.
     let thread = s.fx.state.store.get_thread(&shared).await.unwrap().unwrap();
     let messages =
         s.fx.state
@@ -1527,8 +1495,6 @@ async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
     assert_eq!(messages[0].account_id, s.own.account);
 }
 
-/// Status stays allowed as the version handshake, but a scoped client sees
-/// only its own accounts' names, sync health and counts.
 #[tokio::test]
 async fn status_shows_a_scoped_client_only_its_accounts() {
     let s = scoped().await;
@@ -1569,10 +1535,6 @@ async fn status_shows_a_scoped_client_only_its_accounts() {
     assert_eq!(total_messages, own_count);
 }
 
-/// Freshness for every account stays allowed (it is the status bar's
-/// poll), but a scoped client sees only its own accounts' arrivals and sync
-/// health, never another account's senders or errors. Naming the other
-/// account is denied.
 #[tokio::test]
 async fn freshness_shows_a_scoped_client_only_its_accounts() {
     let s = scoped().await;
@@ -1624,9 +1586,6 @@ async fn freshness_shows_a_scoped_client_only_its_accounts() {
     .await;
 }
 
-/// Signatures bound to an excluded account are hidden; unbound ones and
-/// the agent's own stay. Snippets aren't tied to an account, so a scoped
-/// client gets none.
 #[tokio::test]
 async fn signatures_bound_elsewhere_are_hidden_and_snippets_denied() {
     let s = scoped().await;
@@ -1675,8 +1634,6 @@ async fn signatures_bound_elsewhere_are_hidden_and_snippets_denied() {
     }
 }
 
-/// A thread id holding the agent's message and another account's, whose
-/// subject sorts first so the aggregate thread row takes it.
 async fn share_thread(s: &Scoped) -> ThreadId {
     let shared = ThreadId::new();
     for (account, tag, subject, sender) in [
@@ -1727,8 +1684,6 @@ fn assert_only_own_part(thread: &mxr_core::types::Thread, s: &Scoped) {
     );
 }
 
-/// The thread list for the agent's own account hydrates every thread from
-/// all its messages; a scoped client sees only its own part of a shared one.
 #[tokio::test]
 async fn list_threads_shows_a_scoped_client_only_its_part_of_a_shared_thread() {
     let s = scoped().await;
@@ -1757,8 +1712,6 @@ async fn list_threads_shows_a_scoped_client_only_its_part_of_a_shared_thread() {
     assert_only_own_part(thread, &s);
 }
 
-/// The subject comes from the kept messages, not the aggregate that may
-/// have taken it from a hidden one.
 #[tokio::test]
 async fn a_scoped_thread_takes_its_subject_from_the_kept_messages() {
     let s = scoped().await;

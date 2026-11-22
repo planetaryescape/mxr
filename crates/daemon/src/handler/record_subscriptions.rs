@@ -1,12 +1,3 @@
-//! Archive's subscriptions: IPC and the signals on Now and Archive. A
-//! price change, a missed charge and a yearly renewal within its lead
-//! time are suggestions on the same surface. The records tick also files
-//! approaching annual renewals as review tasks when To do is enabled.
-//!
-//! Detection lives in `mxr_records::subscriptions` and runs over the
-//! records on every call, so nothing here stores state: correcting a
-//! record's amount or date changes its subscription on the next read.
-
 use super::places::scoped_accounts;
 use super::records::amount_data as amount;
 use super::{HandlerError, HandlerResult};
@@ -58,8 +49,6 @@ async fn to_data(
 ) -> Result<RecordSubscriptionsData, HandlerError> {
     let found = &loaded.detection.subscriptions;
     let today = subscriptions::local_day(now, &Local);
-    // The first and newest charge's records give the fields their
-    // provenance: where the amount, the issuer and the dates were read.
     let mut ids: Vec<String> = Vec::new();
     for subscription in found {
         ids.push(subscription.charges[0].record_ids[0].clone());
@@ -69,7 +58,6 @@ async fn to_data(
     ids.dedup();
     let mut winners: HashMap<(String, String), RecordFieldValue> = HashMap::new();
     for (record_id, value) in state.store.archive_record_fields(&ids).await? {
-        // The store orders candidates best first.
         winners
             .entry((record_id, value.field.clone()))
             .or_insert(value);
@@ -220,9 +208,6 @@ fn subscription_data(
     })
 }
 
-/// Every field with where it came from. What a record said keeps that
-/// record's provenance (a rule's amount stays unchecked); what was worked
-/// out says how, and is checked only when everything it rests on is.
 fn fields(
     subscription: &Subscription,
     [first_id, last_id]: [&String; 2],
@@ -430,9 +415,6 @@ fn signal_data(found: &[Subscription], today: NaiveDate) -> Vec<RecordSubscripti
         .collect()
 }
 
-/// The signals as lines for Now and Archive's strip, until Updates' Needs
-/// a look is there to take them: a price change, a missed charge or an
-/// approaching yearly renewal each read as a moment of their own.
 pub(super) async fn signal_moments(
     state: &AppState,
     accounts: &[AccountId],

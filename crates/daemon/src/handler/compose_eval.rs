@@ -1,9 +1,3 @@
-//! `mxr draft eval --set quick`: draft every case of the labelled compose
-//! corpus with the configured draft model and grade each draft against what
-//! its case required (blueprint 34). Cases run one after another, one
-//! request each. Nothing is saved, sent or logged, and the humanizer rewrite
-//! pass does not run, so the numbers are the draft pass alone.
-
 use super::compose_corpus;
 use super::diagnostics_impl::emit_operation_event;
 use super::draft_compose::complete_with_retry;
@@ -23,8 +17,6 @@ use mxr_provider_fake::fixtures::compose;
 const NO_MODEL: &str = "Draft eval --set quick needs a model: no model is set up for drafting. \
 Configure one under [llm], then run it again. `--set mine` also needs a model.";
 
-/// The operation name on each progress event, so a client can tell this run's
-/// events from any other operation's.
 pub(crate) const PROGRESS_OPERATION: &str = "draft-eval-quick";
 
 pub(super) async fn quick(state: &AppState) -> HandlerResult {
@@ -44,8 +36,6 @@ pub(super) async fn quick(state: &AppState) -> HandlerResult {
     let operation_id = uuid::Uuid::now_v7().to_string();
     for (index, case) in compose::cases().enumerate() {
         cases.push(draft_case(&policy.llm, case, &today, &mut model).await);
-        // One event per case, after its draft is graded, so a client can show
-        // progress through a run that takes minutes.
         emit_operation_event(
             state,
             DaemonEvent::OperationProgress {

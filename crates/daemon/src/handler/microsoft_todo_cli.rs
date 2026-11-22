@@ -1,6 +1,3 @@
-//! The optional CLI is the only Microsoft To Do transport. Never invoke a
-//! shell, parse task text, prompt for credentials, or retry an uncertain write.
-
 use chrono::NaiveDate;
 use mxr_todo::linked::LinkedTodoFields;
 use serde::Deserialize;
@@ -201,8 +198,6 @@ pub(super) struct RemoteTask {
     pub sync_state: String,
     #[serde(rename = "dueDateTime")]
     due: Option<RemoteDate>,
-    // Missing is not the same as explicitly cleared: older schema-2 CLIs
-    // predate deferral and must never erase a linked schedule.
     #[serde(deserialize_with = "Option::<NaiveDate>::deserialize")]
     pub defer_until: Option<NaiveDate>,
     pub recurrence: Option<serde_json::Value>,
@@ -304,8 +299,6 @@ impl MicrosoftTodoCli {
                 Ok(bytes)
             };
             let drain = async {
-                // Discard every byte with bounded memory. A capped reader can
-                // close the pipe early or strand a verbose child on stderr.
                 tokio::io::copy(&mut stderr, &mut tokio::io::sink())
                     .await
                     .map_err(|_| CliError::Unknown)?;
@@ -340,8 +333,6 @@ impl MicrosoftTodoCli {
         Ok(())
     }
 
-    /// Schema 2 predates deferral. Inspect the advertised task contract before
-    /// creating anything, rather than discovering an old CLI after a write.
     pub(super) async fn check_compatible(&self) -> Result<(), CliError> {
         let schema = self
             .run(&["schema".into(), "tasks".into(), "show".into()], None)
@@ -421,8 +412,6 @@ impl MicrosoftTodoCli {
         Ok((applied.op_id, task))
     }
 
-    /// Patch only shared fields. Never replace notes, recurrence, reminders,
-    /// steps, categories, importance, list membership or linked resources.
     pub(super) async fn apply(
         &self,
         task_id: &str,

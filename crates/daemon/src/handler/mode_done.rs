@@ -1,21 +1,3 @@
-//! `Request::SetModeDone`: done here, per mode (blueprint 22, "Handoff
-//! names where the item went").
-//!
-//! - Messages, Updates, Reading: the thread's done mark in that mode, at
-//!   the watermark of the messages this plan read, so a later message
-//!   brings it back to that mode only.
-//! - To do: its open rows on the thread are ticked off.
-//! - Archive has no done: records stay.
-//!
-//! When no other mode holds the thread (Archive never does) and
-//! `modes.archive_on_last_done` is on, the thread is archived and marked
-//! read at the provider too. Each outcome carries the handoff copy.
-//!
-//! One plan serves the preview and the run, so a dry run lists exactly
-//! what the run changes. Messages go through the shared mutation path; the
-//! run saves one undo entry holding the messages' prior labels and read
-//! state plus the marks, rows and promises as they were.
-
 use super::mode_rules::{due_detail, handoff_copy, provider_name, Handoff, StillIn};
 use super::modes::{mark_name, place_threads, threads_by_account, without_done, Placement};
 use super::mutations::{apply_mutation_batch, UNDO_WINDOW_SECS};
@@ -35,22 +17,16 @@ use mxr_store::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// What done in one mode will do to one thread.
 struct Plan {
     thread_id: ThreadId,
     account_id: Option<AccountId>,
     mode: ModeKindData,
     mark: Option<ModeDoneMark>,
-    /// To do: the open rows to tick off.
     todos: Vec<TodoRecord>,
     still_in: Vec<StillIn>,
-    /// In the inbox, archived and marked read: the last mode let go.
     archive: Vec<MessageId>,
-    /// Of those, the ones unread.
     unread: usize,
-    /// No mode holds it but the setting keeps it in the inbox.
     left_in_inbox: bool,
-    /// To do on a record: the toast says it is filed in Archive.
     filed: bool,
     provider: &'static str,
     error: Option<String>,
@@ -103,14 +79,11 @@ impl Plan {
     }
 }
 
-/// One `SetModeDone`, as the handler hands it over.
 pub(super) struct DoneRequest<'a> {
     pub thread_ids: &'a [ThreadId],
     pub mode: ModeKindData,
     pub dry_run: bool,
-    /// To do: only these rows; empty ticks off every open row.
     pub todo_ids: &'a [String],
-    /// Every thread of this sender's in the mode, added to `thread_ids`.
     pub sender: Option<&'a ModeDoneSenderData>,
 }
 
@@ -146,11 +119,6 @@ pub(super) async fn set_mode_done(state: &AppState, request: DoneRequest<'_>) ->
     finish(state, plans, dry_run).await
 }
 
-/// Let go of exactly these Updates messages and nothing else: each
-/// thread's mark covers them plus what its earlier mark saw, so another
-/// source's mail in the same thread, or mail after the cut, stays. A
-/// thread with inbox mail the mark doesn't cover is still held, so it is
-/// never archived at the provider.
 pub(super) async fn let_go_updates(
     state: &AppState,
     thread_ids: &[ThreadId],
@@ -182,7 +150,6 @@ pub(super) async fn let_go_updates(
     finish(state, plans, dry_run).await
 }
 
-/// The exact messages a let go covers, with each thread's earlier mark.
 struct Exact<'a> {
     ids: &'a HashSet<MessageId>,
     prior: HashMap<ThreadId, DeskDismissal>,
@@ -210,8 +177,6 @@ async fn finish(state: &AppState, plans: Vec<Plan>, dry_run: bool) -> HandlerRes
     Box::pin(run(state, plans)).await
 }
 
-/// Every thread of one sender's that `mode` holds now, newest first: the
-/// same mail its early view lists, minus what was already done there.
 async fn sender_threads(
     state: &AppState,
     mode: ModeKindData,
@@ -276,8 +241,6 @@ async fn plan(
     Ok(thread_ids
         .iter()
         .map(|thread_id| {
-            // One plan per thread, so each message is changed and
-            // snapshotted for undo once.
             if !seen.insert(thread_id) {
                 return Plan::failed(thread_id, mode, "this thread is already in the request");
             }
@@ -308,14 +271,11 @@ fn plan_one(
 ) -> Plan {
     let data = &placement.data;
     let provider = provider_name(placement.provider.as_ref());
-    // To do: the rows this done ticks off, and the ones it leaves open.
     let (ticked, still_open): (Vec<TodoRecord>, Vec<TodoRecord>) = placement
         .todos
         .iter()
         .cloned()
         .partition(|todo| todo_ids.is_empty() || todo_ids.contains(&todo.id));
-    // Only the mode holding a thread can let inbox mail go. Messages also
-    // lists archived history; done there only records its local watermark.
     let refusal = if data.modes.iter().any(|entry| entry.mode == mode)
         || (mode == ModeKindData::Messages && history_topic)
     {
@@ -337,8 +297,6 @@ fn plan_one(
         plan.provider = provider;
         return plan;
     }
-    // The watermark of the messages this plan read: anything stored after
-    // it brings the thread back to this mode.
     let mark = mark_name(mode)
         .zip(DeskDismissal::through(
             placement
@@ -352,8 +310,6 @@ fn plan_one(
             mode: name.to_string(),
             through,
         });
-    // To do still holds the thread while any of its to-dos stays open,
-    // so ticking one of two off never lets the email go.
     let still_in: Vec<StillIn> = data
         .modes
         .iter()
@@ -362,9 +318,6 @@ fn plan_one(
         .filter(|held| {
             *held != mode
                 || (mode == ModeKindData::Todo && !still_open.is_empty())
-                // Archiving needs every inbox message to be in this
-                // preview: one an earlier let go saw but you put back in
-                // the inbox is yours again, never archived behind you.
                 || exact.is_some_and(|exact| {
                     placement.messages.iter().any(|m| {
                         m.in_inbox
@@ -445,8 +398,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         .collect();
 
     let mut snapshots: Vec<UndoEntrySnapshot> = Vec::new();
-    // Messages the archive fully changed; a failed one is undone but its
-    // thread isn't done.
     let mut changed: HashSet<MessageId> = HashSet::new();
     let mut account_errors: HashMap<AccountId, String> = HashMap::new();
     let mut batch_error: Option<String> = None;
@@ -454,14 +405,10 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         let cmd = MutationCommand::ReadAndArchive {
             message_ids: archive_ids,
         };
-        // Boxed, as each deep step below is: done's future is large, and
-        // inline it overflowed a debug build's worker stack.
         match Box::pin(apply_mutation_batch(state, &cmd, &mutation_id, None)).await {
             Ok(batch) => {
                 changed.extend(batch.changed.iter().map(|s| s.message_id.clone()));
                 snapshots.extend(batch.changed);
-                // A message that failed half way (read, not archived) is
-                // undone too.
                 snapshots.extend(batch.failed);
                 for AccountMutationResultData {
                     account_id, error, ..
@@ -479,8 +426,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         }
     }
 
-    // A thread is done only when every message it archives changed; the
-    // rest keep their place in the mode, so running done again retries.
     for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
         if plan.archive.iter().all(|id| changed.contains(id)) {
             continue;
@@ -504,8 +449,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         }
     }
 
-    // Every account whose message or mark actually changed. Captured before
-    // the undo entry takes the snapshots.
     let mut changed_accounts: HashSet<AccountId> = snapshots
         .iter()
         .map(|snapshot| snapshot.account_id.clone())
@@ -532,10 +475,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         }
     };
 
-    // A plan that completed committed its marks or ticks; put_away may have
-    // written some before it failed, so a failed put_away notifies every plan
-    // account rather than staying silent. A dry run never reaches `run`, and a
-    // plan whose every write failed added no snapshot and stays silent.
     changed_accounts.extend(
         plans
             .iter()
@@ -561,8 +500,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     })
 }
 
-/// Write the marks and tick the rows off, noting in `desk` how each was
-/// before.
 async fn put_away(
     state: &AppState,
     plans: &mut [Plan],
@@ -596,7 +533,6 @@ async fn put_away(
             .store
             .set_todos_state(&ids, &[TodoState::Open], TodoState::Done, now)
             .await?;
-        // A row ticked off elsewhere since the plan isn't this run's to undo.
         plan.todos.retain(|todo| changed.contains(&todo.id));
         for todo in &plan.todos {
             desk.todos_ticked.push(TodoTickPrior {
@@ -612,8 +548,6 @@ async fn put_away(
     Ok(())
 }
 
-/// A promise row's commitment is resolved with it, so the desk and `mxr
-/// commitments` agree; returns how it was for undo.
 async fn tick_promise(
     state: &AppState,
     todo: &TodoRecord,

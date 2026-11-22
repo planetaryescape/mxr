@@ -130,6 +130,21 @@ panic/unwrap/default-mutation keeps fixture failures clearer. Keep the
 annotation on the smallest test module or function that needs it, and include
 the reason.
 
+Comments are ratcheted: CI fails when a file gains a comment, and when a file
+loses one without the baseline being lowered. Say it in code instead (a name, a
+type, a test). Put a decision and its reason in
+`docs/blueprint/15-decision-log.md`, and a workaround's fix in `docs/issues/`.
+Doc comments and tool directives (`// SAFETY:`, lint suppressions) are not
+counted. After deleting comments, lock the lower count in:
+
+```bash
+node scripts/comment-ratchet.mjs --update
+node scripts/comment-ratchet.mjs
+```
+
+The `/delete-comment` agent skill sweeps a diff, path or crate, and lists which
+comments may stay. `--stats` shows what is left.
+
 If you touch the docs site:
 
 ```bash

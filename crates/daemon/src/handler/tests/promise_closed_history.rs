@@ -1,4 +1,3 @@
-//! Explicit resolution retains recovery for already-closed promise history.
 use super::desk::{request, Fixture};
 use super::promise_projection::{accept, settle, source, QUOTE};
 use super::*;
@@ -18,7 +17,6 @@ async fn direct_resolve_repairs_linked_open_tasks_on_closed_commitments() {
             .await
             .unwrap()
             .remove(0);
-        // Reproduce retained history from a pre-fix Desk resolve or expiration.
         fx.state
             .store
             .set_contact_commitment_status(&fx.account, &id, status, Some(chrono::Utc::now()))

@@ -179,7 +179,6 @@ async fn gmail_cooldown_defers_approved_send_without_dispatch_or_false_uncertain
             .attempts,
         1
     );
-    // A mutable source path cannot change the already approved bytes.
     std::fs::write(&attachment, b"changed after approval").unwrap();
     let future = chrono::Utc::now() + chrono::Duration::seconds(960);
     assert_eq!(

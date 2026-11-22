@@ -1,4 +1,3 @@
-//! Replaying a completed projection after a real store reopen does not rejudge mail.
 use super::*;
 
 #[test]

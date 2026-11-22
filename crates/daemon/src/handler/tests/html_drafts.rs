@@ -1,25 +1,9 @@
-//! HTML drafts at the daemon boundary.
-//!
-//! Two promises are under test. First, the validation gate lives in the daemon,
-//! so an IPC client speaking the socket directly cannot route around it — and a
-//! refused document is reported back unchanged rather than sanitised into
-//! something sendable. Second, an HTML draft that carries no `text/plain`
-//! alternative still reaches the safety pipeline with real text: without that,
-//! `DraftContent::analysis_text()` is `""` and every check (PII, secrets, tone,
-//! commitments) passes by examining nothing.
-
 use super::*;
 
-/// The canonical piece of active content: reported and refused, never stripped.
 const DANGEROUS_HTML: &str = "<html><body><p>Hello</p><script>alert(1)</script></body></html>";
 
 const SAFE_HTML: &str = "<html><body><p>Hello, the numbers are below.</p></body></html>";
 
-/// An AWS access key id that appears **only** inside the HTML — not in the
-/// subject, and with no supplied `text/plain` alternative. `mxr_safety`'s PII
-/// detector reads `DraftContent::analysis_text()`, which is the empty string for
-/// an HTML-only draft, so this secret is detectable only once the daemon has
-/// materialised a text alternative from the document.
 const SECRET_IN_HTML: &str =
     "<html><body><p>the deploy key AKIAIOSFODNN7EXAMPLE ships today</p></body></html>";
 
@@ -75,7 +59,6 @@ fn expect_ok(resp: IpcMessage) -> ResponseData {
     }
 }
 
-/// The stored HTML for a draft; panics if the row is gone or is not HTML.
 async fn stored_html(state: &AppState, id: &mxr_core::DraftId) -> String {
     let draft = state
         .store
@@ -95,10 +78,6 @@ fn assert_reports_the_script(message: &str) {
         "the refusal must name the offending construct; got: {message}"
     );
 }
-
-// ---------------------------------------------------------------------------
-// The validation gate is in the daemon, on every entry point.
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn save_draft_refuses_dangerous_html_and_stores_nothing() {
@@ -202,15 +181,12 @@ async fn send_draft_refuses_dangerous_html_before_it_reaches_a_provider() {
     );
 }
 
-/// The row was written by a binary that predates the gate. Loading it must not
-/// be a way past validation, and the refusal must not rewrite the row.
 #[tokio::test]
 async fn send_stored_draft_revalidates_a_row_written_before_the_gate_existed() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
     let state = Arc::new(state);
     let draft = html_draft(state.default_account_id(), DANGEROUS_HTML, None);
     let id = draft.id.clone();
-    // Straight into the store, bypassing the handler entirely.
     state.store.insert_draft(&draft).await.unwrap();
 
     let message = expect_error(
@@ -241,9 +217,6 @@ async fn send_stored_draft_revalidates_a_row_written_before_the_gate_existed() {
     );
 }
 
-/// `inline_assets` is documented as always empty on a markdown draft, but the
-/// wire shape allows it and the store persists it. A cid carrying CRLF would
-/// forge a `Content-ID` header, so the check cannot sit behind the HTML branch.
 #[tokio::test]
 async fn a_cid_that_could_forge_a_header_is_refused_on_a_markdown_draft_too() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -307,11 +280,6 @@ async fn duplicate_inline_cids_are_refused() {
     assert!(message.contains("duplicate content id"), "got: {message}");
 }
 
-// ---------------------------------------------------------------------------
-// An update may not change a draft's body kind.
-// ---------------------------------------------------------------------------
-
-/// Save an HTML draft and return its id.
 async fn stored_html_draft(state: &Arc<AppState>, html: &str) -> mxr_core::DraftId {
     let draft = html_draft(state.default_account_id(), html, None);
     let id = draft.id.clone();
@@ -319,8 +287,6 @@ async fn stored_html_draft(state: &Arc<AppState>, html: &str) -> mxr_core::Draft
     id
 }
 
-/// Round-trip a stored draft through JSON with the named keys removed, the way
-/// a client that simply does not model those fields would send it back.
 async fn draft_without_keys(
     state: &Arc<AppState>,
     id: &mxr_core::DraftId,
@@ -331,9 +297,6 @@ async fn draft_without_keys(
         .expect("payload should decode")
 }
 
-/// The fallible form: some key removals are refused by `DraftContent`'s own
-/// deserialiser rather than by a handler, and a test asserting that needs the
-/// error rather than a panic.
 async fn try_draft_without_keys(
     state: &Arc<AppState>,
     id: &mxr_core::DraftId,
@@ -350,9 +313,6 @@ async fn try_draft_without_keys(
     serde_json::from_value(payload)
 }
 
-/// The data-loss vector: an update payload with no body fields at all
-/// deserialises to an empty markdown body, which would overwrite the supplied
-/// document with `""`.
 #[tokio::test]
 async fn update_draft_refuses_a_payload_that_omits_the_body_entirely() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -360,7 +320,6 @@ async fn update_draft_refuses_a_payload_that_omits_the_body_entirely() {
     let id = stored_html_draft(&state, SAFE_HTML).await;
 
     let edited = draft_without_keys(&state, &id, &["body_html", "body_text"]).await;
-    // Premise: this is what the permissive deserialiser produces.
     assert_eq!(
         edited.content,
         mxr_core::types::DraftContent::markdown(""),
@@ -383,11 +342,6 @@ async fn update_draft_refuses_a_payload_that_omits_the_body_entirely() {
     assert!(fake.sent_drafts().is_empty());
 }
 
-/// Same root cause, second shape: `body_text` without `body_html`. This one is
-/// now stopped a layer earlier — `DraftContent`'s deserialiser refuses it — so
-/// the payload never becomes a `Draft` for `update_draft` to judge. The
-/// assertion follows the guard to where it actually lives; asserting on
-/// `update_draft` instead would only prove that the wire never reaches it.
 #[tokio::test]
 async fn a_payload_that_supplies_only_the_text_alternative_never_decodes() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -425,7 +379,6 @@ async fn update_draft_refuses_an_explicit_markdown_body_for_an_html_draft() {
     assert_eq!(stored_html(&state, &id).await, SAFE_HTML);
 }
 
-/// The mirror direction is refused too: one rule, no asymmetry to reason about.
 #[tokio::test]
 async fn update_draft_refuses_an_html_body_for_a_markdown_draft() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -478,7 +431,6 @@ async fn update_draft_accepts_a_new_markdown_body_for_a_markdown_draft() {
     assert_eq!(stored.content.markdown_source(), Some("second"));
 }
 
-/// The common case the guard must not break: editing everything except the body.
 #[tokio::test]
 async fn update_draft_accepts_metadata_changes_that_leave_an_html_body_alone() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -510,13 +462,6 @@ async fn update_draft_accepts_metadata_changes_that_leave_an_html_body_alone() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// The safety pipeline must never analyse an empty body.
-// ---------------------------------------------------------------------------
-
-/// An HTML-only draft with no supplied `text/plain` must still be scanned. The
-/// secret lives only in the HTML, so a send that goes through means safety read
-/// nothing at all.
 #[tokio::test]
 async fn sending_an_html_only_draft_scans_the_document_for_secrets() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -525,8 +470,6 @@ async fn sending_an_html_only_draft_scans_the_document_for_secrets() {
     let id = draft.id.clone();
     state.store.insert_draft(&draft).await.unwrap();
 
-    // Guard the premise: if the store itself filled in a text alternative, this
-    // test would pass for the wrong reason.
     let loaded = state.store.get_draft(&id).await.unwrap().unwrap();
     assert_eq!(
         loaded.content,
@@ -565,23 +508,14 @@ async fn sending_an_html_only_draft_scans_the_document_for_secrets() {
     );
 }
 
-/// The blank-alternative variant, and the more dangerous one: the row carries
-/// `text: Some("")`, which is "supplied" as far as every consumer is concerned.
-/// `materialize_text_alternative` used to match only `None`, so this row kept
-/// its useless alternative and safety scanned an empty string — a live
-/// credential in the document, and a green verdict.
 #[tokio::test]
 async fn sending_an_html_draft_with_a_blank_text_alternative_still_scans_the_document() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
     let state = Arc::new(state);
     let draft = html_draft(state.default_account_id(), SECRET_IN_HTML, Some("   \n"));
     let id = draft.id.clone();
-    // Straight into the store: this is the shape an older binary, or any IPC
-    // client that skips the CLI, leaves behind.
     state.store.insert_draft(&draft).await.unwrap();
 
-    // Guard the premise: the row must really come back blank, or this test
-    // would pass for the wrong reason.
     let loaded = state.store.get_draft(&id).await.unwrap().unwrap();
     assert!(
         loaded.content.analysis_text().trim().is_empty(),
@@ -615,8 +549,6 @@ async fn sending_an_html_draft_with_a_blank_text_alternative_still_scans_the_doc
     );
 }
 
-/// The same seam through the other entry point: `CheckDraftSafety` builds its
-/// verdict from a transient draft that was never stored.
 #[tokio::test]
 async fn check_draft_safety_scans_an_html_only_draft() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -661,10 +593,6 @@ async fn check_draft_safety_scans_an_html_only_draft() {
     assert!(fake.sent_drafts().is_empty(), "a check must never transmit");
 }
 
-// ---------------------------------------------------------------------------
-// No-send proofs for the ordinary, valid HTML paths.
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn saving_and_updating_a_valid_html_draft_transmits_nothing() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -703,9 +631,6 @@ async fn saving_and_updating_a_valid_html_draft_transmits_nothing() {
     );
 }
 
-/// A stored HTML draft carries a text alternative even though the caller
-/// supplied none, so downstream readers (safety, preview, export, TUI) are not
-/// looking at an empty body.
 #[tokio::test]
 async fn a_saved_html_draft_carries_a_generated_text_alternative() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();

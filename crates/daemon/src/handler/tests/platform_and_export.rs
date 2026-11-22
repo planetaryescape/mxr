@@ -42,15 +42,6 @@ async fn dispatch_unsubscribe_mailto_sends_via_provider() {
     assert_eq!(sent[0].subject, "unsubscribe");
 }
 
-/// Phase 2.6: `mxr unsubscribe <id>` is idempotent. A second call
-/// against the same message must NOT re-send the mailto / re-POST
-/// the one-click URL — the user's intent on the second call is "I
-/// already unsubscribed, stop bugging me." Without this guard, a
-/// shell retry / agent loop would spam the list operator's inbox.
-/// Phase 1.5: saved-search unread counts return one entry per
-/// configured saved search. Counts reflect the saved query
-/// ANDed with `is:unread`. The tab strip uses this to render
-/// `(N)` on each tab.
 #[tokio::test]
 async fn dispatch_list_saved_search_unread_counts_returns_id_to_count_map() {
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
@@ -61,10 +52,6 @@ async fn dispatch_list_saved_search_unread_counts_returns_id_to_count_map() {
         .await
         .unwrap();
 
-    // Register two saved searches with predictable shapes:
-    //   "All Mail"  = "" (empty query) — matches everything;
-    //                  unread count == number of unread messages
-    //   "Nonexistent" = "from:nobody@nope.example" — zero matches
     let now = chrono::Utc::now();
     let search_all = mxr_core::types::SavedSearch {
         id: mxr_core::id::SavedSearchId::new(),
@@ -108,8 +95,6 @@ async fn dispatch_list_saved_search_unread_counts_returns_id_to_count_map() {
         other => panic!("expected SavedSearchUnreadCounts, got {other:?}"),
     };
 
-    // Both saved searches appear in the response (even the
-    // zero-match one — the tab strip needs to know it exists).
     assert!(
         counts.contains_key(&search_all.id),
         "every registered saved search must be present in the count map; missing All Mail"
@@ -122,14 +107,8 @@ async fn dispatch_list_saved_search_unread_counts_returns_id_to_count_map() {
         counts[&search_none.id], 0,
         "the never-matching saved search reports zero unread"
     );
-    // We don't assert an exact number for All Mail because the
-    // FakeProvider fixture set evolves; we just assert it's
-    // non-negative (always true for u32) and the response shape
-    // is correct.
 }
 
-/// Purging the event log must not let a second unsubscribe go out: the
-/// receipt, not the log row, is what stops it.
 #[tokio::test]
 async fn dispatch_unsubscribe_stays_idempotent_after_event_log_is_purged() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -186,8 +165,6 @@ async fn dispatch_unsubscribe_stays_idempotent_after_event_log_is_purged() {
     );
 }
 
-/// The HTTP one-click POST is the external effect; count what reaches the
-/// server across a purge.
 #[tokio::test]
 async fn dispatch_one_click_post_fires_once_after_event_log_is_purged() {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -290,8 +267,6 @@ async fn mailto_fixture(state: &Arc<AppState>) -> mxr_core::MessageId {
         .expect("mailto fixture")
 }
 
-/// A browser handoff is not a send. The claim is released, so a retry opens
-/// the page again, and nothing reads as sent.
 #[tokio::test]
 async fn a_browser_handoff_is_not_recorded_as_sent_and_a_retry_may_open_again() {
     let (state, _fake) = synced_state().await;
@@ -370,8 +345,6 @@ fn is_ack(response: &Response) -> bool {
     )
 }
 
-/// Two requests in flight at once must produce one send. The loser either
-/// finds the winner's confirmed receipt (Ack) or its live claim (retryable).
 #[tokio::test]
 async fn concurrent_unsubscribes_send_exactly_once() {
     let (state, fake) = synced_state().await;
@@ -389,9 +362,6 @@ async fn concurrent_unsubscribes_send_exactly_once() {
     assert_eq!(fake.sent_drafts().len(), 1, "only the claimant sends");
 }
 
-/// Recording the send fails after it went out. The error is not retryable,
-/// and the message stays claimed, so a request inside the claim window must
-/// not send again.
 #[tokio::test]
 async fn a_send_that_cannot_be_recorded_is_not_retryable_and_never_resent() {
     let (state, fake) = synced_state().await;
@@ -425,9 +395,6 @@ async fn a_send_that_cannot_be_recorded_is_not_retryable_and_never_resent() {
     assert_eq!(fake.sent_drafts().len(), 1, "a retry must not send again");
 }
 
-/// The provider fails after accepting the mail. The attempt is not confirmed,
-/// so its claim is released and a retry may send again. The error names no
-/// recipient.
 #[tokio::test]
 async fn a_failed_send_releases_the_claim_and_a_retry_may_send_again() {
     let (state, fake) = synced_state().await;
@@ -486,8 +453,6 @@ async fn mailto_address(state: &Arc<AppState>, id: &mxr_core::MessageId) -> Stri
         .expect("mailto address")
 }
 
-/// Another attempt holds a live claim. This request must neither send nor
-/// acknowledge: the other attempt may still fail and release the claim.
 #[tokio::test]
 async fn a_live_claim_from_another_attempt_is_retryable_and_never_acknowledged() {
     let (state, fake) = synced_state().await;
@@ -511,8 +476,6 @@ async fn a_live_claim_from_another_attempt_is_retryable_and_never_acknowledged()
     assert!(fake.sent_drafts().is_empty());
 }
 
-/// The send fails and the claim cannot be released. The attempt stays
-/// marked, the error says so and is not retryable, and nothing is sent again.
 #[tokio::test]
 async fn a_failed_send_whose_claim_cannot_be_released_is_not_retryable() {
     let (state, fake) = synced_state().await;
@@ -552,9 +515,6 @@ async fn a_failed_send_whose_claim_cannot_be_released_is_not_retryable() {
     );
 }
 
-/// A connection failure makes reqwest's own error text carry the request URL.
-/// The URL here carries a marker, and neither it nor the marker may reach the
-/// user-facing error.
 #[tokio::test]
 async fn a_connection_failure_never_names_the_url() {
     let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -597,10 +557,6 @@ async fn a_connection_failure_never_names_the_url() {
     }
 }
 
-/// The server refuses the first POST with a 500, so the attempt is not
-/// confirmed: its claim is released and the retry goes out. A third request
-/// finds the confirmed receipt and acknowledges without sending. The error
-/// names neither the URL nor the server's address.
 #[tokio::test]
 async fn a_server_refusal_is_retryable_and_the_retry_sends() {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -678,12 +634,6 @@ async fn a_server_refusal_is_retryable_and_the_retry_sends() {
     );
 }
 
-/// Phase 2.6: when the unsubscribe URL fails (network error,
-/// non-2xx), the handler must surface an Error response. Quietly
-/// returning Ack would mislead the user into thinking they were
-/// removed from the list when nothing happened. Equally critically,
-/// no `_unsubscribed` event must be logged on a failed attempt —
-/// otherwise the idempotency check would block a future retry.
 #[tokio::test]
 async fn dispatch_unsubscribe_oneclick_failure_returns_error_and_does_not_log() {
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
@@ -694,9 +644,6 @@ async fn dispatch_unsubscribe_oneclick_failure_returns_error_and_does_not_log() 
         .await
         .unwrap();
 
-    // Replace the fixture envelope's unsubscribe method with a
-    // OneClick URL pointing at a port nothing's listening on — the
-    // POST will reliably fail.
     let mut envelope = state
         .store
         .list_envelopes_by_account(&state.default_account_id(), 200, 0)
@@ -706,7 +653,6 @@ async fn dispatch_unsubscribe_oneclick_failure_returns_error_and_does_not_log() 
         .next()
         .expect("at least one fixture envelope");
     envelope.unsubscribe = UnsubscribeMethod::OneClick {
-        // 127.0.0.1:1 — RFC 6890 / "definitely-no-listener" port.
         url: "http://127.0.0.1:1/unsubscribe".into(),
     };
     state
@@ -728,12 +674,10 @@ async fn dispatch_unsubscribe_oneclick_failure_returns_error_and_does_not_log() 
     )
     .await;
     match resp.payload {
-        IpcPayload::Response(Response::Error { .. }) => {} // expected
+        IpcPayload::Response(Response::Error { .. }) => {}
         other => panic!("expected Error for failed one-click POST, got {other:?}"),
     }
 
-    // No success event was logged. If it were, a retry would be
-    // blocked by the idempotency short-circuit.
     let logged = state
         .store
         .has_event_for_message_with_summary(&envelope.id.as_str(), "mutation", "unsubscrib")
@@ -1041,12 +985,6 @@ async fn dispatch_send_draft_replay_returns_original_receipt_without_resending()
     );
 }
 
-/// Slice 1.3: when CheckDraftSafety returns Blocked, the daemon
-/// mints a single-use override token and stamps it onto each
-/// blocker issue. The next SendStoredDraft with that token must
-/// succeed (and FakeProvider must actually be invoked exactly once),
-/// while a second send attempt with the same token must fail with
-/// the token already-used error.
 #[tokio::test]
 async fn override_token_unblocks_send_exactly_once() {
     let account_id = mxr_core::AccountId::new();
@@ -1060,7 +998,6 @@ async fn override_token_unblocks_send_exactly_once() {
             .unwrap(),
     );
 
-    // PEM private key in the body → Blocker.
     let draft = mxr_core::types::Draft {
         revision: None,
         id: mxr_core::DraftId::new(),
@@ -1106,7 +1043,6 @@ async fn override_token_unblocks_send_exactly_once() {
         other => panic!("expected confirmed Draft, got {other:?}"),
     };
 
-    // Save the draft so SendStoredDraft can locate it.
     let save = handle_request(
         &state,
         &IpcMessage {
@@ -1121,7 +1057,6 @@ async fn override_token_unblocks_send_exactly_once() {
     .await;
     let draft = saved_draft(save, &draft.id);
 
-    // 1. Check returns Blocked + a token on the blocker issue.
     let check = handle_request(
         &state,
         &IpcMessage {
@@ -1156,7 +1091,6 @@ async fn override_token_unblocks_send_exactly_once() {
         other => panic!("expected DraftSafetyReportResponse, got {other:?}"),
     };
 
-    // 2. SendStoredDraft WITHOUT the token: refused, FakeProvider untouched.
     assert_eq!(fake.sent_drafts().len(), 0);
     let blocked = handle_request(
         &state,
@@ -1184,10 +1118,8 @@ async fn override_token_unblocks_send_exactly_once() {
         0,
         "provider must NOT be called when blocked"
     );
-    // Draft must still be in `Draft` status (no CAS to Sending).
     assert!(state.store.get_draft(&draft.id).await.unwrap().is_some());
 
-    // 3. SendStoredDraft WITH token: succeeds.
     let ok = handle_request(
         &state,
         &IpcMessage {
@@ -1215,10 +1147,6 @@ async fn override_token_unblocks_send_exactly_once() {
     );
     assert_eq!(fake.sent_drafts().len(), 1);
 
-    // 4. Reusing the same token after the draft is gone — token is
-    // single-use; consume must fail. We test by minting a fresh
-    // override against a new draft, sending once, then trying the
-    // SAME token a second time to assert single-use.
     let draft2 = mxr_core::types::Draft {
         revision: None,
         id: mxr_core::DraftId::new(),
@@ -1281,7 +1209,6 @@ async fn override_token_unblocks_send_exactly_once() {
             .expect("blocker token"),
         other => panic!("unexpected: {other:?}"),
     };
-    // First use succeeds.
     let first = handle_request(
         &state,
         &IpcMessage {
@@ -1301,9 +1228,6 @@ async fn override_token_unblocks_send_exactly_once() {
         first.payload,
         IpcPayload::Response(Response::Ok { .. })
     ));
-    // Second use with the SAME token must fail (token consumed). We
-    // can't re-send the same draft (already gone after send), so we
-    // make a third draft and try to use the spent token.
     let draft3 = mxr_core::types::Draft {
         revision: None,
         id: mxr_core::DraftId::new(),
@@ -1349,10 +1273,6 @@ async fn override_token_unblocks_send_exactly_once() {
     }
 }
 
-/// A plain `SendStoredDraft` (no token) on a blocked draft must carry a
-/// freshly-minted, usable override token in its error, so the caller can
-/// resend with `--override-safety <token>` without a separate
-/// `CheckDraftSafety` round-trip.
 #[tokio::test]
 async fn blocked_send_error_carries_usable_override_token() {
     let account_id = mxr_core::AccountId::new();
@@ -1409,7 +1329,6 @@ async fn blocked_send_error_carries_usable_override_token() {
     )
     .await;
 
-    // Plain send → blocked, with a resend command + token in the error.
     let blocked = handle_request(
         &state,
         &IpcMessage {
@@ -1442,7 +1361,6 @@ async fn blocked_send_error_carries_usable_override_token() {
         "provider untouched while blocked"
     );
 
-    // Resending with the token from the error succeeds.
     let ok = handle_request(
         &state,
         &IpcMessage {
@@ -1471,14 +1389,12 @@ async fn blocked_send_error_carries_usable_override_token() {
     assert_eq!(fake.sent_drafts().len(), 1);
 }
 
-/// Definite local provider resolution failure must precede a submission claim.
 #[tokio::test]
 async fn send_stored_draft_without_provider_does_not_claim_submission() {
     let account_id = mxr_core::AccountId::new();
     let account = crate::test_fixtures::test_account_with_id(account_id.clone());
     let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
     let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
-    // No send provider — `send_provider_for_account` will fail.
     let state = Arc::new(
         AppState::in_memory_with_sync_provider(account, sync_provider, None)
             .await
@@ -1508,7 +1424,6 @@ async fn send_stored_draft_without_provider_does_not_claim_submission() {
         updated_at: chrono::Utc::now(),
     };
     state.store.insert_draft(&draft).await.unwrap();
-    // Pre-condition: a brand-new draft has no heartbeat.
     assert_eq!(
         state.store.get_draft_heartbeat(&draft.id).await.unwrap(),
         None,
@@ -1914,14 +1829,12 @@ async fn dispatch_save_draft_to_server_falls_back_to_local_draft() {
 async fn dispatch_export_thread_markdown() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
-    // Sync to get messages
     state
         .sync_engine
         .sync_account(state.default_provider().as_ref())
         .await
         .unwrap();
 
-    // Get an envelope to find its thread_id
     let list_msg = IpcMessage {
         expected_workspace: None,
         id: 1,
@@ -1942,7 +1855,6 @@ async fn dispatch_export_thread_markdown() {
         other => panic!("Expected Envelopes, got {other:?}"),
     };
 
-    // Export the thread as markdown
     let export_msg = IpcMessage {
         expected_workspace: None,
         id: 2,
@@ -2275,10 +2187,6 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
 }
 
-/// A manual sync returns after one page. When the provider still has
-/// pages, the account's sync loop has to be woken or the backfill stalls
-/// until its next tick — and the status row would sit at
-/// `sync_in_progress = true` the whole time.
 #[tokio::test]
 async fn dispatch_sync_now_wakes_the_sync_loop_while_the_backfill_has_more() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -2319,9 +2227,6 @@ async fn dispatch_sync_now_wakes_the_sync_loop_while_the_backfill_has_more() {
     );
 }
 
-/// The status row must say the account is still syncing while pages
-/// remain: clients that wait for an initial sync (`mxr demo`, `mxr sync
-/// --wait`) read this flag, and a gap between pages would read as done.
 #[tokio::test]
 async fn dispatch_sync_now_keeps_sync_in_progress_while_the_backfill_has_more() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -2351,10 +2256,6 @@ async fn dispatch_sync_now_keeps_sync_in_progress_while_the_backfill_has_more() 
     assert!(status.sync_in_progress);
 }
 
-/// A background sync answers before the work is done, and the account is
-/// already marked as syncing when it does — a client that acks and then polls
-/// `GetSyncStatus` must not catch a gap in which the account looks idle and
-/// conclude the sync is already over.
 #[tokio::test]
 async fn dispatch_background_sync_now_acks_with_the_account_already_marked_syncing() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -2397,9 +2298,6 @@ async fn dispatch_background_sync_now_acks_with_the_account_already_marked_synci
     );
 }
 
-/// A background sync runs the same finalize and fan-out as every other sync
-/// path. `NewMessages` is the cheapest proof: the old handler-local sync never
-/// emitted it, so seeing it means the pass went through the shared finalizer.
 #[tokio::test]
 async fn dispatch_background_sync_now_runs_the_full_fan_out() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -2449,10 +2347,6 @@ async fn dispatch_background_sync_now_runs_the_full_fan_out() {
     assert!(status.last_success_at.is_some());
 }
 
-/// Provider double that parks inside `sync_messages` until the test lets it
-/// go. Without a barrier the "is a second sync deduplicated?" test depends on
-/// the first pass still being in flight when the second request lands, which
-/// on a fast machine it may not be.
 struct HeldPageSyncProvider {
     account_id: mxr_core::AccountId,
     entered: Arc<tokio::sync::Notify>,
@@ -2519,8 +2413,6 @@ impl mxr_core::MailSyncProvider for HeldPageSyncProvider {
     }
 }
 
-/// A second background sync while one is running joins it rather than queueing
-/// another pass behind the same provider lock: two acks, one sync.
 #[tokio::test]
 async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -2544,8 +2436,6 @@ async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
     };
 
     let first = handle_request(&state, &request(312)).await;
-    // The first pass is now parked inside the provider, so the second request
-    // lands while it is unambiguously in flight.
     tokio::time::timeout(std::time::Duration::from_secs(5), entered.notified())
         .await
         .expect("the first background sync should reach the provider");
@@ -2565,9 +2455,6 @@ async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
 
     release.notify_waiters();
 
-    // The claim becoming free again is the signal that the spawned task has
-    // finished. Only then is the sync-log count final: one pass opens exactly
-    // one row, and a second request that queued its own pass would leave two.
     let mut settled = None;
     for _ in 0..200 {
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
@@ -2584,9 +2471,6 @@ async fn dispatch_background_sync_now_does_not_start_a_second_pass() {
     );
 }
 
-/// The status row carries live progress while a multi-page sync is running —
-/// the number `mxr demo` and `mxr sync --wait` render, and the one the
-/// detached-sync reaper uses to tell a slow sync from a wedged one.
 #[tokio::test]
 async fn get_sync_status_reports_live_progress_while_a_sync_runs() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -2636,8 +2520,6 @@ async fn get_sync_status_reports_live_progress_while_a_sync_runs() {
     );
 }
 
-/// The mirror case: a sync that drained the provider must not leave the
-/// account marked as syncing.
 #[tokio::test]
 async fn dispatch_sync_now_clears_sync_in_progress_when_the_provider_is_drained() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -2666,8 +2548,6 @@ async fn dispatch_sync_now_clears_sync_in_progress_when_the_provider_is_drained(
 #[tokio::test]
 async fn resolve_time_answers_with_choices_or_a_specific_error() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
-    // A fixed Tuesday noon UTC keeps "fri 3" on the same Friday in any zone
-    // a test machine is likely to run in.
     let now = chrono::Utc.with_ymd_and_hms(2030, 5, 7, 12, 0, 0).unwrap();
     let resolve = |input: &str| IpcMessage {
         expected_workspace: None,
@@ -2738,7 +2618,6 @@ async fn resolve_time_uses_the_callers_zone_when_given() {
         }),
     };
 
-    // 09:00 in Tokyo (+09:00) is midnight UTC, whatever the daemon's zone.
     let resp = handle_request(&state, &resolve("Asia/Tokyo")).await;
     let IpcPayload::Response(Response::Ok {
         data:
@@ -2763,8 +2642,6 @@ async fn resolve_time_uses_the_callers_zone_when_given() {
     assert!(message.contains("Unknown time zone"), "{message}");
 }
 
-/// Saved searches are run, renamed and deleted by name: a second one with
-/// the same name is refused rather than left ambiguous.
 #[tokio::test]
 async fn saved_search_names_stay_unique() {
     let state = Arc::new(AppState::in_memory().await.unwrap());

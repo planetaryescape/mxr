@@ -1,7 +1,3 @@
-//! The `[safety]` config reaches the send-path checks. A configured value has
-//! to change the verdict a real draft gets, and an absent section has to give
-//! exactly the safety crate's defaults.
-
 use super::*;
 use mxr_core::types::{Address, Draft, DraftContent, DraftIntent, DraftSafetyIssueCode};
 use mxr_core::DraftSafetySeverity;
@@ -49,8 +45,6 @@ async fn safety_report(state: &Arc<AppState>, draft: &Draft) -> mxr_core::types:
     report
 }
 
-/// A stored baseline of how the recipient writes, with `formality` as their
-/// formality score. Enough samples and words that the voice match counts.
 async fn seed_recipient_baseline(state: &AppState, email: &str, formality: f64) {
     let baseline = mxr_relationship::stylometry::StylometryMetrics {
         formality_score: formality,
@@ -97,8 +91,6 @@ async fn a_configured_tone_threshold_changes_the_send_path_decision() {
         formality < 0.7,
         "fixture formality {formality} leaves no room"
     );
-    // The draft sits 0.3 from the recipient's baseline: under the default
-    // 0.4, over a configured 0.25.
     seed_recipient_baseline(&state, "sam@example.com", formality + 0.3).await;
     let draft = draft_to(&state, "sam@example.com", body);
 

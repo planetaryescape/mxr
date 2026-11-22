@@ -1,4 +1,3 @@
-//! Accepted authority and canonical projections retain one identity and lifecycle.
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::{Duration, Utc};
@@ -45,8 +44,6 @@ pub(super) fn chosen() -> chrono::DateTime<Utc> {
         .and_utc()
 }
 
-/// The first day of the month `months` after this one, written the way mail
-/// writes it ("1 December 2026"). Fixed dates lapsed once the clock passed them.
 pub(super) fn month_start(months: u32) -> chrono::NaiveDate {
     use chrono::Datelike as _;
     Utc::now()
@@ -464,7 +461,6 @@ async fn public_record_promise_updates_the_existing_task_without_a_settle_helper
         original.commitment_id.as_deref(),
         Some(commitment.id.as_str())
     );
-    // No scan, assessment reconciliation or tick between these public requests.
     let ResponseData::Todo { todo } = request(
         &fx,
         Request::GetTodo {
@@ -642,7 +638,6 @@ async fn public_record_promise_preserves_closed_and_user_edited_task_decisions()
                         },
                         mxr_protocol::TodoEditData {
                             field: "due".into(),
-                            // Ahead of the clock, and a day apart from the accepted one.
                             value: (chosen() - Duration::days(7))
                                 .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
                         },

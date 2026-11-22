@@ -690,7 +690,6 @@ async fn review6_accepted_dates_keep_independent_fields_and_closed_decisions() {
             .await
             .unwrap()
             .remove(0);
-        // The user's own day: ahead of the clock, apart from both accepted ones.
         let user_due = (chosen() + Duration::days(20))
             .format("%-d %B %Y")
             .to_string();
@@ -964,7 +963,6 @@ async fn review6_legacy_model_or_missing_date_source_stays_unverified_until_acce
         else {
             panic!("record");
         };
-        // Seed the persisted shape of an old extractor row; remove the unedited seed task.
         sqlx::query("DELETE FROM todos WHERE commitment_id=?")
             .bind(&commitment.id)
             .execute(fx.state.store.writer())

@@ -1,11 +1,7 @@
-//! Native account trust, structured provenance and cached-source invalidation.
 use super::*;
 
 #[tokio::test]
 async fn structured_fields_retain_exact_authored_quote_and_revoke_with_account_trust() {
-    // The rescan below moves the due date from now+2 to now+3. On 26 Oct
-    // both fall in one month; on 29 Oct the move crosses into November,
-    // which the due month in a bill's key once turned into a second row.
     for now in [
         Utc.with_ymd_and_hms(2026, 10, 26, 12, 0, 0).unwrap(),
         Utc.with_ymd_and_hms(2026, 10, 29, 12, 0, 0).unwrap(),

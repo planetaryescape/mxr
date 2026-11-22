@@ -1,7 +1,3 @@
-//! The modes on one email: membership and its reasons, done per mode with
-//! its handoff copy, archive when the last mode lets go, the preview
-//! matching the run, undo, and the rail's counts.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::Duration;
@@ -11,7 +7,6 @@ use mxr_protocol::{
     ModeDoneOutcomeData, ModeKindData, RailStatusData, SenderKindData, ThreadModesData,
 };
 
-/// One message with its own sender and subject.
 async fn mail(
     fx: &Fixture,
     thread: &ThreadId,
@@ -33,7 +28,6 @@ async fn mail(
     };
     fx.store_envelope(&envelope, direction).await;
     if direction == MessageDirection::Inbound {
-        // Mode handoff tests add their tasks explicitly; the email asks only for a reply.
         fx.state
             .store
             .insert_body(&mxr_core::MessageBody {
@@ -50,8 +44,6 @@ async fn mail(
     envelope
 }
 
-/// You asked Sam about the lease; he sent it back to sign and asked if
-/// you're around Thursday, so it's your turn.
 async fn landlord(fx: &Fixture) -> (ThreadId, Envelope) {
     let thread = ThreadId::new();
     mail(fx, &thread, ME, "Lease renewal", Duration::days(2)).await;
@@ -198,10 +190,8 @@ async fn the_landlords_email_is_in_messages_and_to_do_each_saying_why() {
         "{}",
         todo_entry.also_in
     );
-    // You've written to Sam, so he's never asked about.
     assert!(placed.new_sender.is_none());
 
-    // The same thread named by its message.
     let ResponseData::ModeMembership { threads } = request(
         &fx,
         Request::GetModeMembership {
@@ -236,7 +226,6 @@ async fn done_in_messages_leaves_the_to_do_and_gmail_and_the_preview_matches() {
         "{}",
         preview.copy
     );
-    // Nothing changed yet.
     assert_eq!(
         modes(&membership(&fx, &thread).await),
         [ModeKindData::Messages, ModeKindData::Todo]
@@ -251,13 +240,11 @@ async fn done_in_messages_leaves_the_to_do_and_gmail_and_the_preview_matches() {
     assert_eq!(modes(&after), [ModeKindData::Todo]);
     assert_eq!(after.done_in, [ModeKindData::Messages]);
 
-    // Off the desk too: Messages and the desk share one owed rule.
     let ResponseData::Desk { owed, .. } = fx.desk(25).await else {
         panic!("expected the desk")
     };
     assert_eq!(owed.total, 0);
 
-    // A new message brings it back to Messages only.
     mail(
         &fx,
         &thread,
@@ -272,7 +259,6 @@ async fn done_in_messages_leaves_the_to_do_and_gmail_and_the_preview_matches() {
     );
 }
 
-/// How many `ModesChanged` events the daemon sent since the last drain.
 fn modes_changed_events(
     events: &mut tokio::sync::broadcast::Receiver<mxr_protocol::IpcMessage>,
 ) -> usize {
@@ -294,7 +280,6 @@ async fn done_tells_every_client_where_the_conversation_went() {
     let (thread, _ask) = landlord(&fx).await;
     let mut events = fx.state.event_tx.subscribe();
 
-    // The preview changes nothing, so it says nothing.
     done(&fx, &thread, ModeKindData::Messages, true).await;
     assert_eq!(modes_changed_events(&mut events), 0, "a dry run is silent");
 
@@ -306,7 +291,6 @@ async fn done_tells_every_client_where_the_conversation_went() {
         "the committed done reaches every client once"
     );
 
-    // A plan whose conversation doesn't exist changes nothing and is silent.
     let missing = ThreadId::new();
     let (outcome, _) = done(&fx, &missing, ModeKindData::Messages, false).await;
     assert!(outcome.error.is_some());
@@ -328,8 +312,6 @@ async fn ticking_off_the_last_mode_archives_and_undo_puts_everything_back() {
     assert_eq!(preview.todos_ticked, vec![todo.clone()]);
     assert!(preview.still_in.is_empty());
     assert_eq!(preview.archived, 1, "Sam's message is the one in the inbox");
-    // A signed lease is a contract: ticking it off files it in Archive,
-    // and the toast keeps that apart from the provider's archive.
     assert_eq!(
         preview.copy,
         "Ticked off. Filed in Archive. Archived on the mail server."
@@ -482,8 +464,6 @@ async fn automated_mail_is_in_updates_a_receipt_also_in_archive_and_archive_neve
     )
     .await;
 
-    // Filed as a record (the detector needs a reference or a total, which
-    // this bare test mail lacks, so it is filed by hand).
     request(
         &fx,
         Request::FileRecord {
@@ -510,7 +490,6 @@ async fn automated_mail_is_in_updates_a_receipt_also_in_archive_and_archive_neve
         "Here because: you filed it (unchecked)."
     );
 
-    // Archive holds records, not the inbox: done in Updates archives.
     let (outcome, _) = done(&fx, &receipt_thread, ModeKindData::Updates, false).await;
     assert_eq!(outcome.copy, "Done. Archived on the mail server.");
     assert!(!in_inbox(&fx, &receipt.id).await);
@@ -519,7 +498,6 @@ async fn automated_mail_is_in_updates_a_receipt_also_in_archive_and_archive_neve
         [ModeKindData::Archive]
     );
 
-    // With the setting off, a later notification brings Updates back.
     let mut config = fx.state.config_snapshot();
     config.modes.archive_on_last_done = false;
     fx.state.set_config_for_test(config).await;
@@ -559,7 +537,6 @@ async fn a_first_time_sender_is_asked_one_question_where_their_mail_landed() {
     assert_eq!(question.question, "New sender. Keep in Messages?");
     assert_eq!(question.choices[0].kind, SenderKindData::People);
 
-    // Answering is the sender's kind: the question goes.
     request(
         &fx,
         Request::SetSenderKind {
@@ -646,7 +623,6 @@ async fn the_rail_lists_now_the_modes_and_inbox_with_keys_and_counts() {
     let keys: Vec<&str> = rail.entries.iter().map(|e| e.key.as_str()).collect();
     assert_eq!(keys, ["g h", "g m", "g x", "g u", "g r", "g e", "g i"]);
     let entry = |id: &str| rail.entries.iter().find(|e| e.id == id).unwrap();
-    // Sam owes nothing; you owe Sam, and the to-do is due: work is 2.
     assert_eq!(entry("now").badge, Some(2));
     assert_eq!(entry("messages").count, Some(1));
     assert_eq!(entry("todo").count, Some(1));
@@ -680,7 +656,6 @@ async fn only_the_mode_holding_a_thread_can_let_it_go() {
     assert_eq!(outcome.archived, 0);
 
     done(&fx, &thread, ModeKindData::Messages, false).await;
-    // Archived by the last mode letting go; done again is refused.
     let (again, _) = done(&fx, &thread, ModeKindData::Messages, true).await;
     assert_eq!(again.error.as_deref(), Some("already done in Messages"));
     assert!(!in_inbox(&fx, &ask.id).await);
@@ -737,8 +712,6 @@ async fn an_automated_new_sender_is_not_asked_and_lands_in_its_mode_saying_why()
     );
 }
 
-/// Iris wrote weeks ago and you never answered or archived it: no lane
-/// holds it, but it is still person mail in the inbox.
 async fn quiet_person(fx: &Fixture, age: Duration) -> (ThreadId, Envelope) {
     let thread = ThreadId::new();
     let note = mail(
@@ -749,7 +722,6 @@ async fn quiet_person(fx: &Fixture, age: Duration) -> (ThreadId, Envelope) {
         age,
     )
     .await;
-    // She is someone you've written to before, so she isn't new.
     let other = ThreadId::new();
     mail(fx, &other, ME, "Dinner?", Duration::days(90)).await;
     (thread, note)
@@ -796,14 +768,11 @@ async fn ticking_off_a_to_do_on_a_quiet_thread_never_archives_it() {
     assert_eq!(outcome.archived, 0, "nobody said done in Messages");
     assert!(in_inbox(&fx, &note.id).await);
 
-    // Done in Messages is what lets it go.
     let (outcome, _) = done(&fx, &thread, ModeKindData::Messages, false).await;
     assert_eq!(outcome.archived, 1);
     assert!(!in_inbox(&fx, &note.id).await);
 }
 
-/// Delete a message the way a provider expunge reaches the store, without
-/// the done-mark cleanup, so the next insert can take its rowid.
 async fn drop_message(fx: &Fixture, id: &MessageId) {
     sqlx::query("DELETE FROM messages WHERE id = ?1")
         .bind(id.as_str())
@@ -827,7 +796,6 @@ async fn a_new_message_brings_a_thread_back_even_when_sqlite_reuses_a_rowid() {
     config.modes.archive_on_last_done = false;
     fx.state.set_config_for_test(config).await;
 
-    // Updates: two notifications, done, the newest deleted, a new one in.
     let build = ThreadId::new();
     let from = "notifications@github.com";
     mail(&fx, &build, from, "Build failed", Duration::hours(3)).await;
@@ -848,7 +816,6 @@ async fn a_new_message_brings_a_thread_back_even_when_sqlite_reuses_a_rowid() {
         "the new notification is never hidden"
     );
 
-    // Messages: Sam's ask, done, deleted, and a new message from Sam.
     let (thread, ask) = landlord(&fx).await;
     done(&fx, &thread, ModeKindData::Messages, false).await;
     assert!(membership(&fx, &thread).await.modes.is_empty());
@@ -969,7 +936,6 @@ async fn a_late_message_with_an_older_date_brings_a_done_thread_back() {
     config.modes.archive_on_last_done = false;
     fx.state.set_config_for_test(config).await;
 
-    // Updates: done, then a notification arrives dated before the others.
     let build = ThreadId::new();
     let from = "notifications@github.com";
     mail(&fx, &build, from, "Build failed", Duration::hours(2)).await;
@@ -989,7 +955,6 @@ async fn a_late_message_with_an_older_date_brings_a_done_thread_back() {
         "a message the mark never saw is new, whatever its Date says"
     );
 
-    // Messages: done, a message deleted, and a new one dated earlier.
     let (thread, ask) = landlord(&fx).await;
     done(&fx, &thread, ModeKindData::Messages, false).await;
     drop_message(&fx, &ask.id).await;
@@ -1149,8 +1114,6 @@ async fn quiet_mail_is_counted_on_the_rail_beside_messages() {
     assert_eq!(messages.quiet, Some(1));
 }
 
-/// A bank desk that has written the same two subjects for months and
-/// you never wrote back, and a toy shop's `hello@`: machines, not people.
 #[tokio::test]
 async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messages() {
     let fx = Fixture::new().await;
@@ -1224,7 +1187,6 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
         "Here because: No rule decided; Updates for now (Not sure)."
     );
 
-    // Moving the sender to people wins over every rule.
     request(
         &fx,
         Request::SetSenderKind {
@@ -1240,7 +1202,6 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
     );
 }
 
-/// The same bank desk, once you have written to it, is someone you talk to.
 #[tokio::test]
 async fn a_templated_sender_you_have_written_to_stays_in_messages() {
     let fx = Fixture::new().await;
@@ -1274,8 +1235,6 @@ async fn a_templated_sender_you_have_written_to_stays_in_messages() {
     );
 }
 
-/// A welcome from a club's founders, sent through a bulk-mail service: the
-/// first message from a sender you never wrote to, and not a person.
 #[tokio::test]
 async fn bulk_infrastructure_alone_does_not_discard_a_possible_person() {
     let fx = Fixture::new().await;
@@ -1312,7 +1271,6 @@ async fn bulk_infrastructure_alone_does_not_discard_a_possible_person() {
     assert_eq!(modes(&placed), [ModeKindData::Messages]);
     assert!(placed.new_sender.is_some());
 
-    // A role address alone cannot discard an authored directed request.
     let other = ThreadId::new();
     mail(
         &fx,
@@ -1346,7 +1304,6 @@ async fn an_archive_made_elsewhere_keeps_the_thread_in_its_modes() {
         [ModeKindData::Updates]
     );
 
-    // Another client archives it: the provider delta removes INBOX locally.
     fx.state
         .store
         .remove_message_label(
@@ -1364,7 +1321,6 @@ async fn an_archive_made_elsewhere_keeps_the_thread_in_its_modes() {
     );
     assert!(!after.in_inbox);
 
-    // mxr's own archive is a mode decision, not an outside one.
     let own = ThreadId::new();
     let own_mail = mail(
         &fx,

@@ -195,7 +195,6 @@ async fn draft_attachment_resources_chunks_retries_cas_and_provider_bytes() {
         .await
         .unwrap()
         .is_some());
-    // A retained receipt survives completed-resource cleanup as well as draft deletion.
     state
         .store
         .delete_draft_attachment(&resource.id)

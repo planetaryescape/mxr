@@ -1,10 +1,3 @@
-//! `mxr draft eval --set quick` over the labelled compose corpus, with no
-//! model in CI. The snapshots are the reviewable record: the prompt today's
-//! code builds for every case, and the grade table for recorded model
-//! outputs, good and bad. A prompt or check change shows up as a diff in them.
-//! The live part runs the same cases through a scripted model to pin how many
-//! requests a run makes and what it reports.
-
 use super::*;
 use crate::handler::compose_corpus::{assemble, grade};
 use crate::handler::compose_eval::quick;
@@ -16,7 +9,6 @@ use mxr_provider_fake::fixtures::compose::{self, Case, DraftState};
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
-/// A fixed date, so the prompts do not move with the clock.
 const TODAY: &str = "Wednesday 21 October 2026";
 
 fn prompts_report() -> String {
@@ -24,8 +16,6 @@ fn prompts_report() -> String {
     let mut system_written = false;
     for case in compose::cases() {
         let assembled = assemble(case, TODAY);
-        // The system message as the model receives it: the base task plus the
-        // untrusted-mail guard, exactly as the draft path appends it.
         if !system_written {
             out.push_str("SYSTEM MESSAGE (the same for every case)\n");
             out.push_str(&mxr_llm::guarded_system_prompt(&assembled.prompt.system));
@@ -57,8 +47,6 @@ fn prompts_report() -> String {
     out
 }
 
-/// One row per recorded output, with each check's verdict, then the failures
-/// spelled out: what the draft had to do and what it did.
 fn grade_report() -> String {
     let mut out = String::new();
     let mut rows: Vec<(&Case, &str, Report)> = Vec::new();
@@ -135,7 +123,6 @@ fn grade_report() -> String {
     out
 }
 
-/// The check a recorded defect is meant to trip.
 fn check_for(defect: &str) -> Option<Check> {
     match defect {
         "bad: subject line" | "bad: recap of thread" | "bad: duplicate signature" => {
@@ -212,7 +199,6 @@ fn offline_grader_names_style_marks_and_still_rejects_invented_amounts() {
     assert_eq!(invented_report.passed(Check::Invented), Some(false));
 }
 
-/// Answers every draft the same way, and keeps what it was asked.
 #[derive(Default)]
 struct Scripted {
     prompts: Mutex<Vec<String>>,
@@ -264,8 +250,6 @@ async fn the_quick_set_drafts_each_case_once_and_grades_every_check() {
     assert_eq!(summary.cases, 40);
     assert_eq!(summary.errors, 0);
     assert_eq!(summary.model, "scripted");
-    // The scripted reply keeps nothing, so every typed case fails `kept`; the
-    // 18 cases with nothing typed pass it.
     let kept = summary
         .checks
         .iter()

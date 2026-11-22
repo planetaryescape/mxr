@@ -1,7 +1,3 @@
-//! One definition of who is waiting on you: Now, the rail, Messages, the
-//! Owed page, the desk, a thread's relationship line and the Screener all
-//! count from the same lanes, on one seeded account.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use crate::handler::now;
@@ -14,7 +10,6 @@ fn utc() -> FixedOffset {
     FixedOffset::east_opt(0).unwrap()
 }
 
-/// You wrote to `who`; they replied, so it's your turn.
 async fn you_write_with(fx: &Fixture, who: &str) -> ThreadId {
     let thread = ThreadId::new();
     let mine = fx
@@ -31,16 +26,12 @@ async fn you_write_with(fx: &Fixture, who: &str) -> ThreadId {
     thread
 }
 
-/// Mail from a stranger you never wrote to, `age` ago.
 async fn wrote_to_you(fx: &Fixture, who: &str, age: Duration) -> ThreadId {
     let thread = ThreadId::new();
     fx.attention_message(&thread, who, ME, age, None).await;
     thread
 }
 
-/// Two people, two owed threads with one of them (Maya), a group thread,
-/// two first-time senders, two repeat senders first seen 16 days ago,
-/// one thread you wait on and one owed thread past its decay.
 struct Seeded {
     fx: Fixture,
     maya_threads: [ThreadId; 2],
@@ -57,7 +48,6 @@ async fn seed() -> Seeded {
     let maya_b = you_write_with(&fx, "maya@example.com").await;
     you_write_with(&fx, "jon@example.com").await;
 
-    // A group thread: you wrote in it, Ruth answered. One unit.
     let group = ThreadId::new();
     let started = fx
         .attention_message(&group, ME, "ruth@example.com", Duration::days(2), None)
@@ -78,9 +68,6 @@ async fn seed() -> Seeded {
     fx.store_envelope(&ruth, MessageDirection::Inbound).await;
 
     let first_time = wrote_to_you(&fx, "stranger@example.com", Duration::hours(2)).await;
-    // Repeat senders: first seen 16 days ago, wrote again yesterday, and
-    // you never replied. They are "others who wrote to you" on the desk
-    // and past the Screener's 14 days.
     let repeat = wrote_to_you(&fx, "repeat1@example.com", Duration::hours(30)).await;
     wrote_to_you(&fx, "repeat1@example.com", Duration::days(16)).await;
     wrote_to_you(&fx, "repeat2@example.com", Duration::hours(26)).await;
@@ -90,8 +77,6 @@ async fn seed() -> Seeded {
     fx.attention_message(&waiting, ME, "waits@example.com", Duration::days(3), None)
         .await;
 
-    // They replied 20 days ago, you wrote to them 25 days ago: past the
-    // turn's decay, so nobody's turn any more.
     let old_owed = ThreadId::new();
     let mine = fx
         .attention_message(&old_owed, ME, "old@example.com", Duration::days(25), None)
@@ -105,7 +90,6 @@ async fn seed() -> Seeded {
     )
     .await;
 
-    // The contacts table is what first-seen dates come from.
     fx.state.store.refresh_contacts().await.unwrap();
 
     Seeded {
@@ -161,8 +145,6 @@ async fn thread_owes(fx: &Fixture, thread: &ThreadId) -> bool {
 async fn every_surface_counts_the_same_people() {
     let seeded = seed().await;
     let fx = &seeded.fx;
-    // Maya (two threads), Jon and the group are people you write with; the
-    // stranger and the two repeat senders wrote to you.
     let expected = PeopleSplitData {
         write_with: 3,
         others: 3,
@@ -235,8 +217,6 @@ async fn waiting_people_are_not_counted_and_their_view_has_its_own_empty_line() 
     );
     assert!(theirs.empty_state.is_none(), "one thread waits on them");
 
-    // Nobody to wait on: the view says so in its own words, not that
-    // nobody is waiting on you.
     let quiet = Fixture::new().await;
     you_write_with(&quiet, "maya@example.com").await;
     let theirs = messages(&quiet, Some(mxr_protocol::MessagesTurnData::Theirs)).await;
@@ -326,7 +306,6 @@ async fn done_here_moves_the_badge_the_page_and_the_headline_together() {
         .unwrap();
     assert_eq!(count(before.people.split), 6);
 
-    // Maya has two owed threads: putting one away leaves her a unit.
     let done = |thread: &ThreadId| Request::ResolveDeskItems {
         items: vec![mxr_protocol::DeskDoneItemData {
             thread_id: thread.clone(),
@@ -364,8 +343,6 @@ async fn done_here_moves_the_badge_the_page_and_the_headline_together() {
     );
 }
 
-/// Now's total, Messages' Your turn rows and the rail's Messages badge on
-/// the same account at the same moment.
 async fn three_counts(fx: &Fixture) -> (u32, u32, Option<u32>) {
     let now = now::now_at(&fx.state, None, Utc::now(), &utc())
         .await
@@ -406,9 +383,6 @@ async fn the_owed_page_says_how_many_others_wait_when_it_is_empty() {
     assert_eq!(three_counts(&fx).await, (1, 1, Some(1)));
 }
 
-/// Alice, watched daily, wrote in a group thread two days ago; Bob, whom
-/// you never wrote to, wrote yesterday. The desk keeps the thread on Waiting
-/// on (it outranks New from people), so nobody's turn.
 async fn watched_alice_group(fx: &Fixture) -> ThreadId {
     let thread = ThreadId::new();
     let mut alice = fx
@@ -561,7 +535,6 @@ async fn list_sender_history_does_not_erase_possible_participants_or_split_surfa
     let mut config = fx.state.config_snapshot();
     config.messages.recent_days = 1;
     fx.state.set_config_for_test(config).await;
-    // A known list address, with its own archived thread three days old.
     sqlx::query(
         "INSERT INTO contacts (account_id, email, display_name, first_seen_at, last_seen_at,
            last_inbound_at, last_outbound_at, total_inbound, total_outbound, replied_count,
@@ -575,7 +548,6 @@ async fn list_sender_history_does_not_erase_possible_participants_or_split_surfa
     .unwrap();
     let archived = wrote_to_you(&fx, "crew@partners.example.com", Duration::days(3)).await;
     let _ = archived;
-    // Two owed Alice threads, each written with the list copied.
     for _ in 0..2 {
         let thread = you_write_with(&fx, "alice@example.com").await;
         for mut envelope in fx.state.store.get_thread_envelopes(&thread).await.unwrap() {
@@ -635,8 +607,6 @@ async fn the_screener_page_counts_unknown_direction_mail_as_inbound_like_the_bad
     let envelope = fx
         .attention_message(&thread, "old@example.com", ME, Duration::hours(24), None)
         .await;
-    // An older database before repair: the message is stored without a
-    // direction.
     sqlx::query("UPDATE messages SET direction = 'unknown' WHERE id = ?")
         .bind(envelope.id.as_str())
         .execute(fx.state.store.writer())
@@ -666,7 +636,6 @@ async fn the_screener_page_counts_unknown_direction_mail_as_inbound_like_the_bad
 async fn the_all_accounts_screener_badge_counts_the_account_its_link_opens() {
     let fx = Fixture::new().await;
     wrote_to_you(&fx, "first@example.com", Duration::hours(2)).await;
-    // A second account with its own new sender.
     let second = mxr_core::AccountId::new();
     fx.state
         .store

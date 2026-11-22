@@ -3,8 +3,6 @@ use super::promise_projection::{month_start, settle, source, written};
 use super::*;
 use mxr_store::{CommitmentStatus, TodoState};
 
-/// Both promises fall due on the first of next month, so they stay open
-/// whatever day the tests run.
 fn gbp_text() -> String {
     format!(
         "I'll pay invoice #A123 amount due £25 by {}.",
@@ -271,7 +269,6 @@ async fn review4_policy14_currency_collision_keeps_closed_user_history_and_task_
                 month_start(1).format("%Y-%m")
             ))
         );
-        // Reproduce policy14's one surviving EUR commitment and unlinked GBP task.
         sqlx::query("DELETE FROM contact_commitments WHERE id=?")
             .bind(&gbp.commitment_id)
             .execute(fx.state.store.writer())
@@ -331,8 +328,6 @@ async fn review4_policy14_currency_collision_keeps_closed_user_history_and_task_
                 .commitment_id,
             None
         );
-        // Retained tasks carry the old policy's unit provenance. Keeping the
-        // seed's current provenance would falsely model an already-applied replay.
         sqlx::query("UPDATE todos SET field_sources=replace(field_sources, ?, 'asks-r2c-14:') WHERE source_message_id=?")
             .bind(format!("{}:", mxr_core::asks::ASKS_POLICY_VERSION))
             .bind(mail.id.as_str()).execute(fx.state.store.writer()).await.unwrap();

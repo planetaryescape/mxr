@@ -1124,8 +1124,6 @@ async fn kind_correction_previews_retimes_and_restores_the_exact_row() {
             None,
         )
         .await;
-    // Keep the deadline far enough ahead that the two kinds have distinct
-    // lead times; a fixed imminent date clamps both to the source date.
     let due = (mail.date + Duration::days(30)).format("%-d %B %Y");
     body(
         &fx,

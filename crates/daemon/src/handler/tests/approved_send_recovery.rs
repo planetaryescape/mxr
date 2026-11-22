@@ -263,7 +263,6 @@ async fn approved_send_recovery_stops_after_bounded_attempts_and_never_sends_an_
         ..Default::default()
     });
     let (state, _, draft) = fixture_with_sender(Some(sender.clone())).await;
-    // A normal saved draft is not a queue entry, even far in the future.
     super::super::send_recovery::process_due(
         &state,
         chrono::Utc::now() + chrono::Duration::days(30),
@@ -424,11 +423,6 @@ async fn approved_send_recovery_local_ingestion_repairs_acceptance_without_resen
     assert_eq!(sender.submissions.load(Ordering::SeqCst), 1);
 }
 
-/// Opens a file-backed store at `path` through the real `Store::new`, seeded
-/// from the migrated in-memory template (a fresh migration took 7-12 s per
-/// store on a busy Mac). These tests need a file (the restart, and logs beside
-/// the database), not a fresh migration run. `Store::new` still takes the workspace lease,
-/// switches to WAL, checks every migration stamp and validates the schema.
 async fn migrated_file_store(path: &std::path::Path) -> mxr_store::Store {
     crate::test_fixtures::write_migrated_database(path).await;
     mxr_store::Store::new(path).await.unwrap()

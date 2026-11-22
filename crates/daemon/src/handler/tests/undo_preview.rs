@@ -1,7 +1,3 @@
-//! `UndoPreview` (the dry run of `mxr undo`) takes the undo's own lookup: it
-//! refuses what the undo refuses with the same message, names the targets the
-//! undo then restores, and changes nothing.
-
 use super::selection_jobs::Fixture;
 use super::*;
 use mxr_core::id::{AccountId, MessageId};
@@ -265,7 +261,6 @@ async fn a_preview_calls_no_provider_records_no_activity_and_keeps_the_entry() {
     assert_eq!(format!("{entry_after:?}"), format!("{entry_before:?}"));
 }
 
-/// Runs `request` as an MCP caller that may only touch `allowed`.
 async fn as_mcp_limited_to(fx: &Fixture, allowed: AccountId, request: Request) -> Response {
     use mxr_config::SafetyPolicy;
     let mut config = fx.state.config_snapshot();
@@ -326,8 +321,6 @@ async fn a_scoped_caller_is_refused_the_preview_exactly_as_the_undo() {
     else {
         panic!("a caller outside the undo's account must be refused both");
     };
-    // The allowlist refusal names the request it refused, so only that kind
-    // differs; the reason and everything else must match.
     assert_eq!(
         previewed.replace("undo_preview", "undo_mutation"),
         undone,

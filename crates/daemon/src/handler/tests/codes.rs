@@ -1,6 +1,3 @@
-//! One-time codes from recent mail: found by rules, newest first, current
-//! while in their window, never a promo code.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::{Duration, Utc};
@@ -103,15 +100,12 @@ async fn a_code_only_the_body_gives_is_found_and_a_promo_is_not() {
     let codes = codes(&fx).await;
     assert_eq!(codes.len(), 1, "{codes:?}");
     assert_eq!(codes[0].code, "882308");
-    // The lifetime the message states.
     assert_eq!(
         codes[0].expires_at - codes[0].received_at,
         Duration::minutes(5)
     );
 }
 
-/// A sender's Date header is not believed into the future: a mail dated
-/// 2099 would otherwise be the latest code until 2099.
 #[tokio::test]
 async fn mail_dated_in_the_future_is_not_the_latest_code() {
     let fx = Fixture::new().await;
@@ -139,7 +133,6 @@ async fn mail_dated_in_the_future_is_not_the_latest_code() {
     assert_eq!(codes[0].sender_host, "x.example");
 }
 
-/// A sign-in alert stays two days in Updates; its code lasts what it says.
 #[tokio::test]
 async fn a_sign_in_alerts_code_expires_on_its_own_clock() {
     let fx = Fixture::new().await;
@@ -157,8 +150,6 @@ async fn a_sign_in_alerts_code_expires_on_its_own_clock() {
     assert!(!codes[0].current, "five minutes, not the alert's two days");
 }
 
-/// A code only the body gives shows once the body arrives, even after a
-/// read that found no body and cached what it could see.
 #[tokio::test]
 async fn a_code_shows_once_its_body_arrives() {
     let fx = Fixture::new().await;
@@ -170,7 +161,6 @@ async fn a_code_shows_once_its_body_arrives() {
         None,
     )
     .await;
-    // Synced with headers only, as IMAP can: no body yet.
     sqlx::query("DELETE FROM bodies WHERE message_id = ?")
         .bind(id.as_str())
         .execute(fx.state.store.writer())
@@ -185,7 +175,6 @@ async fn a_code_shows_once_its_body_arrives() {
     );
 }
 
-/// Newer expired codes never push one that still works past the limit.
 #[tokio::test]
 async fn a_current_code_comes_before_newer_expired_ones() {
     let fx = Fixture::new().await;

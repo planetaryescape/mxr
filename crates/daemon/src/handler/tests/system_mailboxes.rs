@@ -1,6 +1,3 @@
-//! "All accounts" system mailboxes: a `label_role` request lists the mailbox
-//! across every enabled account, and everything else keeps its meaning.
-
 use super::desk::{request, Fixture};
 use super::*;
 use chrono::{Duration, Utc};
@@ -19,7 +16,6 @@ struct Accounts {
 
 async fn label(fx: &Fixture, account: &AccountId, name: &str, kind: LabelKind) -> LabelId {
     let id = LabelId::from_scoped_provider_id(account, "test", name);
-    // A System label carries the role its name stands for, as a provider reports it.
     let role = (kind == LabelKind::System)
         .then(|| mxr_core::Role::from_system_label_name(name))
         .flatten();
@@ -147,7 +143,6 @@ async fn thread_subjects(a: &Accounts, req: Request) -> Vec<String> {
 async fn role_without_account_lists_every_enabled_account_newest_first() {
     let a = accounts().await;
     let expected = vec!["first-newest", "second-middle", "first-oldest"];
-    // The label id is the default account's, as an updated client still sends it.
     let req = list_envelopes(None, Some(a.first_inbox.clone()), Some("inbox"));
     assert_eq!(envelope_subjects(&a, req).await, expected);
     let req = list_threads(None, Some(a.first_inbox.clone()), Some("inbox"));
@@ -169,7 +164,6 @@ async fn role_with_an_account_lists_only_that_account() {
 #[tokio::test]
 async fn request_without_a_role_behaves_as_before() {
     let a = accounts().await;
-    // An old client: only the default account's label id.
     let req = list_envelopes(None, Some(a.first_inbox.clone()), None);
     assert_eq!(
         envelope_subjects(&a, req).await,
@@ -177,7 +171,6 @@ async fn request_without_a_role_behaves_as_before() {
     );
     let req = list_threads(None, Some(a.second_inbox.clone()), None);
     assert_eq!(thread_subjects(&a, req).await, vec!["second-middle"]);
-    // No label and no account still means the default account.
     let req = list_envelopes(None, None, None);
     assert_eq!(
         envelope_subjects(&a, req).await,
@@ -262,7 +255,6 @@ async fn list_labels_all_accounts_returns_each_enabled_accounts_labels() {
 #[tokio::test]
 async fn list_subscriptions_all_accounts_answers_and_a_scoped_profile_cannot_ask_for_it() {
     let a = accounts().await;
-    // Every enabled account's senders when asked; the default account's otherwise.
     let ResponseData::Subscriptions { .. } = request(
         &a.fx,
         Request::ListSubscriptions {
@@ -284,7 +276,6 @@ async fn list_subscriptions_all_accounts_answers_and_a_scoped_profile_cannot_ask
     assert!(scoped_check(&a, &req).await.is_err(), "{req:?}");
 }
 
-/// Profile limited to the first account, every other gate open.
 async fn scope_to_first(a: &Accounts) {
     let mut config = a.fx.state.config_snapshot();
     config.agent_surfaces.profiles.insert(
@@ -309,8 +300,6 @@ async fn scoped_check(a: &Accounts, req: &Request) -> Result<(), String> {
 async fn scoped_profiles_cannot_use_the_role_path_to_reach_other_accounts() {
     let a = accounts().await;
     scope_to_first(&a).await;
-    // No account named: that is the all-accounts path, which a scoped
-    // profile may not use.
     for req in [
         list_envelopes(None, None, Some("inbox")),
         list_threads(None, None, Some("all_mail")),
@@ -321,7 +310,6 @@ async fn scoped_profiles_cannot_use_the_role_path_to_reach_other_accounts() {
     ] {
         assert!(scoped_check(&a, &req).await.is_err(), "{req:?}");
     }
-    // Naming the other account is refused, naming its own is fine.
     assert!(scoped_check(
         &a,
         &list_envelopes(Some(a.second.clone()), None, Some("inbox"))
@@ -353,15 +341,12 @@ async fn system_mailbox_counts_add_up_enabled_accounts_only() {
     let total = |mailboxes: &[mxr_protocol::SystemMailboxCount], role: &str| {
         mailboxes.iter().find(|m| m.role == role).map(|m| m.total)
     };
-    // All Mail is counted from messages: first (3) + second (1); the disabled
-    // account's message is not in scope.
     let all = counts(None).await;
     assert_eq!(total(&all, "all_mail"), Some(4));
     assert_eq!(
         total(&counts(Some(a.second.clone())).await, "all_mail"),
         Some(1)
     );
-    // A disabled account named directly has nothing in scope.
     assert!(counts(Some(a.disabled.clone())).await.is_empty());
 }
 
@@ -370,13 +355,11 @@ async fn starred_lists_imap_flags_and_gmail_labels_together_through_the_daemon()
     let a = accounts().await;
     let starred_label = label(&a.fx, &a.first, "STARRED", LabelKind::System).await;
     let gmail_message = mail(&a.fx, &a.first, &starred_label, 2, "gmail-starred").await;
-    // Gmail sync sets the starred flag from the STARRED label.
     a.fx.state
         .store
         .set_starred(&gmail_message, true, EventSource::Sync)
         .await
         .unwrap();
-    // IMAP-shaped second account: the flag only, no STARRED label.
     let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
         .account_id(a.second.clone())
         .provider_id("sysbox-imap-flag")
@@ -481,8 +464,6 @@ async fn opening_a_shared_thread_reads_only_enabled_accounts_messages() {
     else {
         panic!("expected a thread")
     };
-    // Subject, snippet and counts come from the enabled account alone, and
-    // the message list the reader fetches bodies for has no hidden message.
     assert_eq!(thread.subject, "Aaa visible");
     assert_eq!(thread.snippet, "visible snippet");
     assert_eq!(thread.account_id, a.second);
@@ -493,7 +474,6 @@ async fn opening_a_shared_thread_reads_only_enabled_accounts_messages() {
         vec![ids[0].clone()]
     );
 
-    // A thread only a disabled account holds is not found at all.
     let only_hidden = ThreadId::new();
     let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
         .account_id(a.disabled.clone())

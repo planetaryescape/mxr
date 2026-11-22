@@ -1,10 +1,7 @@
-//! Bounded diagnostics for synthetic stored-output grading failures.
 use super::*;
 use mxr_protocol::{ClassifyEvalMismatchData, ClassifyEvalSummaryData};
 use std::collections::BTreeMap;
 
-/// Synthetic test diagnostics must survive a floor panic. Sample distinct ask
-/// mismatch shapes, then read their actual stored facets and projections.
 pub(super) async fn emit_ask_diagnostics(
     state: &AppState,
     summary: &ClassifyEvalSummaryData,

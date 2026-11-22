@@ -1,7 +1,3 @@
-//! Sorting shows its work (D119): the arrivals line sums and each count
-//! opens exactly its emails, the never-bury rule, corrections and their
-//! precedence, undo, the Not-sure cap and the track record.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use crate::handler::arrivals::arrivals_at;
@@ -13,7 +9,6 @@ use mxr_protocol::{
     ThreadModesData,
 };
 
-/// One message: `to` and `cc` as given, list headers when `list` is set.
 async fn mail(
     fx: &Fixture,
     thread: &ThreadId,
@@ -221,7 +216,6 @@ async fn unreferenced_quote_context_and_informational_placement_ignore_import_or
         previous.in_reply_to = None;
         previous.references.clear();
         previous.date = Utc::now() - Duration::minutes(30);
-        // The source was copied context, not an unresolved ask to this owner.
         previous.to = vec![Address {
             name: None,
             email: "other@team.example".into(),
@@ -345,7 +339,6 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
     wrote_to(&fx, "emea_invoicing@email.vendor.example").await;
     wrote_to(&fx, "maya@team.example").await;
     let newsletter = inbound(&fx, "editor@weekly.example", false).await;
-    // Simulate an already-placed row from the old policy before headers arrive.
     line(&fx).await;
     let original = fx
         .state
@@ -599,7 +592,6 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
     assert!(fx.fake.sent_drafts().is_empty());
 }
 
-/// You once wrote to `email`, so the contacts table knows it.
 async fn wrote_to(fx: &Fixture, email: &str) {
     mail(
         fx,
@@ -614,7 +606,6 @@ async fn wrote_to(fx: &Fixture, email: &str) {
     fx.state.store.refresh_contacts().await.unwrap();
 }
 
-/// The line now, with its window starting an hour ago.
 async fn line(fx: &Fixture) -> ArrivalsData {
     let now = Utc::now();
     fx.state
@@ -749,7 +740,6 @@ async fn the_line_sums_with_spam_aspects_and_mail_archived_after_it_arrived() {
     let mut spam = inbound(&fx, "prize@win.example", false).await;
     spam.flags = MessageFlags::SPAM;
     fx.store_envelope(&spam, MessageDirection::Inbound).await;
-    // A to-do from Maya's email: also in To do, never added to the sum.
     request(
         &fx,
         Request::CreateTodo {
@@ -764,7 +754,6 @@ async fn the_line_sums_with_spam_aspects_and_mail_archived_after_it_arrived() {
     .await;
 
     let first = line(&fx).await;
-    // Archived after it arrived: still counted where it went.
     fx.state
         .store
         .set_message_labels(&newsletter.id, &[], mxr_core::types::EventSource::User)
@@ -825,19 +814,15 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
     let fx = Fixture::new().await;
     let tz = Utc;
     let morning = Utc.with_ymd_and_hms(2026, 10, 7, 8, 12, 0).unwrap();
-    // Never opened: the start of today.
     let first = arrivals_at(&fx.state, None, true, None, morning, &tz)
         .await
         .unwrap();
     assert_eq!(first.since_label, "00:00");
-    // The next visit counts from 08:12.
     let noon = morning + Duration::hours(4);
     let second = arrivals_at(&fx.state, None, true, None, noon, &tz)
         .await
         .unwrap();
     assert_eq!(second.since_label, "08:12");
-    // Back within a minute (a double mount, a quick look elsewhere): the
-    // same visit.
     let again = arrivals_at(
         &fx.state,
         None,
@@ -849,16 +834,11 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
     .await
     .unwrap();
     assert_eq!(again.since_label, "08:12");
-    // Never more than 24 hours back.
     let days_later = noon + Duration::days(3);
     let late = arrivals_at(&fx.state, None, true, None, days_later, &tz)
         .await
         .unwrap();
     assert_eq!(late.since, days_later - Duration::hours(24));
-    // Reading without marking (the CLI, MCP) starts no visit, and shows the
-    // window an open Now would show then: within the visit's minute the
-    // one it opened with, once it has lapsed the visit itself, so the
-    // line never reads smaller after the click than before it.
     let within = arrivals_at(
         &fx.state,
         None,
@@ -869,7 +849,6 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
     )
     .await
     .unwrap();
-    // Still the visit's own window, clamped to 24 hours before now.
     assert_eq!(
         within.since,
         days_later + Duration::seconds(30) - Duration::hours(24)
@@ -891,7 +870,6 @@ async fn list_mail_keeps_its_purpose_even_from_someone_you_wrote_to() {
     wrote_to(&fx, "maya@orbit.example").await;
     let known = inbound(&fx, "maya@orbit.example", true).await;
     let stranger = inbound(&fx, "editor@weekly.example", true).await;
-    // Only copied: not covered, so Now asks about it.
     let copied_thread = ThreadId::new();
     let copied = mail(
         &fx,
@@ -918,7 +896,6 @@ async fn list_mail_keeps_its_purpose_even_from_someone_you_wrote_to() {
     let (_, known_chip) = chip(&fx, &known.id).await;
     assert_eq!(known_chip, "→ Reading · has List-Unsubscribe");
 
-    // Live membership agrees: the known sender's list mail is in Messages.
     let held = membership(&fx, &known.thread_id).await;
     assert!(!modes(&held).contains(&ModeKindData::Messages), "{held:?}");
     assert!(modes(&held).contains(&ModeKindData::Reading), "{held:?}");
@@ -933,7 +910,6 @@ async fn list_mail_keeps_its_purpose_even_from_someone_you_wrote_to() {
     );
     assert!(line.not_sure_hint.is_some());
 
-    // Placements record the rule.
     let rule: String = sqlx::query_scalar("SELECT rule FROM arrivals WHERE message_id = ?1")
         .bind(known.id.as_str())
         .fetch_one(fx.state.store.reader())
@@ -1007,12 +983,10 @@ async fn a_sender_move_beats_earlier_email_moves_and_a_later_email_move_beats_it
     let b = inbound(&fx, "editor@weekly.example", true).await;
     line(&fx).await;
 
-    // X on A only.
     move_to(&fx, &a.id, ModeKindData::Messages, false).await;
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Messages);
     assert_eq!(chip(&fx, &b.id).await.0, ArrivalBucketData::Reading);
 
-    // K: the sender's mode wins over A's earlier move, in the same second.
     let sender = move_to(&fx, &b.id, ModeKindData::Updates, true).await;
     assert_eq!(
         sender.copy,
@@ -1021,17 +995,14 @@ async fn a_sender_move_beats_earlier_email_moves_and_a_later_email_move_beats_it
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Updates);
     assert_eq!(chip(&fx, &b.id).await.0, ArrivalBucketData::Updates);
 
-    // X after K: this email only.
     let later = move_to(&fx, &b.id, ModeKindData::Reading, false).await;
     assert_eq!(chip(&fx, &b.id).await.0, ArrivalBucketData::Reading);
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Updates);
 
-    // New mail from the sender follows K.
     let c = inbound(&fx, "editor@weekly.example", true).await;
     line(&fx).await;
     assert_eq!(chip(&fx, &c.id).await.0, ArrivalBucketData::Updates);
 
-    // Undo K: A's move stands again; B's later move still stands.
     undo(&fx, sender.correction_id.unwrap()).await;
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Messages);
     assert_eq!(chip(&fx, &b.id).await.0, ArrivalBucketData::Reading);
@@ -1061,8 +1032,6 @@ async fn a_sender_mode_set_elsewhere_is_logged_and_its_quick_reversal_is_an_undo
     assert_eq!(corrections.len(), 1);
     assert_eq!(corrections[0].fields.from_mode, "auto");
     assert_eq!(corrections[0].fields.to_mode, "messages");
-    // The client's undo puts the old kind back: the move is undone, not a
-    // second move.
     request(&fx, set(None)).await;
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Reading);
     assert!(!fx
@@ -1138,8 +1107,6 @@ async fn a_dry_run_changes_nothing_and_a_sender_move_needs_a_kind_mode() {
         handle_request(&fx.state, &msg).await.payload,
         IpcPayload::Response(Response::Error { .. })
     ));
-    // Moving twice: the second move stands, and undoing it returns to the
-    // first, not to where it arrived.
     let first = move_to(&fx, &newsletter.id, ModeKindData::Updates, false).await;
     let second = move_to(&fx, &newsletter.id, ModeKindData::Messages, false).await;
     assert_eq!(second.from, ArrivalBucketData::Updates);
@@ -1173,8 +1140,6 @@ async fn not_sure_asks_at_most_three_a_day_by_the_local_day() {
         .await;
         ids.push(copied.id);
     }
-    // In UTC+10, the first email arrived at 23:30 yesterday and the rest
-    // after midnight today.
     let tz = FixedOffset::east_opt(10 * 3600).unwrap();
     let midnight = tz
         .with_ymd_and_hms(2026, 10, 8, 0, 0, 0)
@@ -1194,7 +1159,6 @@ async fn not_sure_asks_at_most_three_a_day_by_the_local_day() {
             .unwrap();
     }
     let now = midnight + Duration::hours(2);
-    // Place them first.
     arrivals_at(&fx.state, None, false, None, now, &tz)
         .await
         .unwrap();
@@ -1212,7 +1176,6 @@ async fn not_sure_asks_at_most_three_a_day_by_the_local_day() {
         "today's first three, in arrival order"
     );
 
-    // Answering one never pulls the fourth in.
     let kept = move_with(&fx, &ids[1], ModeKindData::Updates, false, Some("not_sure")).await;
     assert_eq!(kept.copy, "Kept in Updates.");
     assert!(kept.correction_id.is_some(), "keeping it is an answer");
@@ -1229,9 +1192,7 @@ async fn not_sure_asks_at_most_three_a_day_by_the_local_day() {
         after.not_sure_line.as_deref(),
         Some("2 emails I wasn't sure about. Where should these go?")
     );
-    // Keeping an email where it was is not a move for the track record.
     assert!(after.track_record.is_none());
-    // A day later UTC is still the 8th, but it's the 9th in UTC+10.
     let next_day = arrivals_at(&fx.state, None, false, None, now + Duration::days(1), &tz)
         .await
         .unwrap();
@@ -1254,7 +1215,6 @@ async fn a_message_stored_mid_correction_is_placed_by_the_rules_and_the_move_sta
     .await;
     line(&fx).await;
     move_to(&fx, &first.id, ModeKindData::Messages, false).await;
-    // Sync stores the next issue in the same thread.
     let next = mail(
         &fx,
         &thread,
@@ -1318,7 +1278,6 @@ async fn each_account_counts_its_own_mail() {
     assert_eq!(work.total, 1);
 }
 
-/// The error text of a request the daemon refuses.
 async fn refused(fx: &Fixture, request: Request) -> String {
     let msg = IpcMessage {
         expected_workspace: None,
@@ -1345,15 +1304,11 @@ async fn an_open_now_keeps_its_window_while_it_polls() {
         .await
         .unwrap();
     assert_eq!(opened.since, morning);
-    // A minute-plus later the open page refetches without marking and
-    // names the window it holds: it must not jump to the visit itself.
     let later = noon + Duration::minutes(5);
     let polled = arrivals_at(&fx.state, None, false, Some(opened.since), later, &tz)
         .await
         .unwrap();
     assert_eq!(polled.since, opened.since);
-    // A peek that holds no window (the CLI) still answers what Now would
-    // open with.
     let peek = arrivals_at(&fx.state, None, false, None, later, &tz)
         .await
         .unwrap();
@@ -1380,7 +1335,6 @@ async fn undoing_an_older_move_is_refused_while_a_newer_one_stands() {
         ArrivalBucketData::Messages,
         "the newer move is untouched"
     );
-    // Newest first works, and then the older one is free to undo.
     undo(&fx, second.correction_id.unwrap()).await;
     undo(&fx, first.correction_id.unwrap()).await;
     assert_eq!(
@@ -1394,8 +1348,6 @@ async fn undoing_a_sender_move_leaves_earlier_email_moves_standing() {
     let fx = Fixture::new().await;
     let a = inbound(&fx, "editor@weekly.example", true).await;
     line(&fx).await;
-    // The sender was sent to Reading some time ago; then A was moved to
-    // Messages by hand.
     let long_ago = Utc::now() - Duration::hours(3);
     request(
         &fx,
@@ -1414,8 +1366,6 @@ async fn undoing_a_sender_move_leaves_earlier_email_moves_standing() {
     move_to(&fx, &a.id, ModeKindData::Messages, false).await;
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Messages);
 
-    // K to Updates overrides A's move; undoing K restores Reading for the
-    // sender with its old date, so A's move stands again.
     let sender = move_to(&fx, &a.id, ModeKindData::Updates, true).await;
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Updates);
     undo(&fx, sender.correction_id.unwrap()).await;
@@ -1450,7 +1400,6 @@ async fn reversing_a_sender_mode_set_elsewhere_keeps_earlier_email_moves() {
     move_to(&fx, &a.id, ModeKindData::Messages, false).await;
     request(&fx, set(Some(mxr_protocol::SenderKindData::PaperTrail))).await;
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Updates);
-    // The quick reversal is an undo: Reading is back, A's move stands.
     request(&fx, set(Some(mxr_protocol::SenderKindData::Reading))).await;
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Messages);
 }
@@ -1465,8 +1414,6 @@ async fn moving_to_archive_when_already_filed_records_no_undo_and_keeps_the_reco
     let again = move_to(&fx, &receipt.id, ModeKindData::Archive, false).await;
     assert_eq!(again.copy, "Already in Archive.");
     assert!(again.correction_id.is_none() && again.aspect_id.is_none());
-    // Nothing the repeat logged can dismiss the record; undoing the first
-    // filing still does.
     let still = fx
         .state
         .store
@@ -1502,15 +1449,11 @@ async fn moving_to_to_do_twice_makes_one_task() {
     .await
     .unwrap();
     assert_eq!(open, 1);
-    // Undo of the one move still dismisses that task.
     undo(&fx, first.correction_id.unwrap()).await;
     let row = fx.state.store.get_todo(&todo).await.unwrap().unwrap();
     assert_eq!(row.state, mxr_store::TodoState::Dismissed);
 }
 
-/// The race above is a window of a few store calls, too narrow to hit on
-/// demand. This holds the per-email lock the move must take, so a move that
-/// skips it completes anyway and the test fails.
 #[tokio::test]
 async fn a_move_to_to_do_waits_for_another_move_of_the_same_email() {
     let fx = Fixture::new().await;
@@ -1538,9 +1481,7 @@ async fn known_senders_list_purpose_survives_copy_newsletter_address_and_crowd()
     let fx = Fixture::new().await;
     wrote_to(&fx, "maya@orbit.example").await;
     wrote_to(&fx, "newsletter@orbit.example").await;
-    // Newsletter-address rule, addressed to you.
     let by_address = inbound(&fx, "newsletter@orbit.example", true).await;
-    // Crowd: more than ten recipients, addressed to you.
     let crowd: Vec<String> = (0..12).map(|i| format!("p{i}@team.example")).collect();
     let mut to: Vec<&str> = crowd.iter().map(String::as_str).collect();
     to.push(ME);
@@ -1554,7 +1495,6 @@ async fn known_senders_list_purpose_survives_copy_newsletter_address_and_crowd()
         Duration::minutes(4),
     )
     .await;
-    // List mail with you only in Cc: not buried in Reading; Now asks.
     let cc_only = mail(
         &fx,
         &ThreadId::new(),
@@ -1597,8 +1537,6 @@ async fn always_messages_for_a_sender_keeps_a_copied_email_in_messages() {
     assert_eq!(chip(&fx, &copied.id).await.0, ArrivalBucketData::Updates);
     move_to(&fx, &copied.id, ModeKindData::Messages, false).await;
     assert_eq!(chip(&fx, &copied.id).await.0, ArrivalBucketData::Messages);
-    // K supersedes the per-email move; the sender's Messages setting must
-    // hold the email there, as the preview and the toast promise.
     let preview = match request(
         &fx,
         Request::MoveMessage {
@@ -2301,8 +2239,6 @@ async fn concurrent_classification_keeps_pending_mail_visible_then_recovers_stor
         .assessments(&fx.account, policy)
         .await
         .unwrap();
-    // Start a real rebuild. Settled projections deliberately do not run the
-    // resolver (and therefore cannot race its publication hook).
     sqlx::query("UPDATE bodies SET text_plain = text_plain || ' invalidated' WHERE message_id = ?")
         .bind(mail.id.as_str())
         .execute(fx.state.store.writer())
@@ -2314,7 +2250,6 @@ async fn concurrent_classification_keeps_pending_mail_visible_then_recovers_stor
         let state = state.clone();
         let id = id.clone();
         Box::pin(async move {
-            // A separate writer lands after all resolver reads, before CAS.
             tokio::spawn(async move {
                 sqlx::query(
                     "UPDATE bodies SET text_plain = text_plain || ' changed' WHERE message_id = ?",

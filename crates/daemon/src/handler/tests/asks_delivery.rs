@@ -316,7 +316,6 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 current_detection,
                 false,
             );
-            // Reproduce the two policy13 units observed in the native RED receipt.
             let unit_index = old
                 .units
                 .iter()
@@ -332,7 +331,6 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 start: first.span.end + 1,
                 end: text.len(),
             };
-            // Policy13 selected amounts within each unit's exact byte span.
             second.tags.as_mut().unwrap().amount = None;
             for vote in &mut second.votes {
                 vote.tags.amount = None;
@@ -406,8 +404,6 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 .unwrap()
                 .unwrap();
             if prior_grouped {
-                // Policy14 already moved the untouched first row to the merged
-                // identity while missing the NULL-currency correction on the second.
                 let fields = grouped
                     .field_sources
                     .replace(

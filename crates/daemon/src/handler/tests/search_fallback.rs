@@ -1,7 +1,3 @@
-//! With the lexical index unavailable, a plain search still answers from
-//! SQLite and says so; a query the fallback cannot honour is refused by name;
-//! a healthy daemon's reply is untouched.
-
 use super::*;
 use crate::test_fixtures::TestEnvelopeBuilder;
 use chrono::{Duration, Utc};
@@ -80,8 +76,6 @@ fn error_of(response: Response) -> (String, String) {
     }
 }
 
-/// A message in the store only. Its search-table row comes from the store's
-/// triggers; the lexical index never sees it, which is the point.
 async fn store_message(
     state: &AppState,
     account: &mxr_core::AccountId,
@@ -219,8 +213,6 @@ async fn a_healthy_daemon_answers_from_the_index_with_no_degraded_field() {
 async fn an_index_that_finds_nothing_is_not_a_reason_to_fall_back() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let account = state.default_account_id();
-    // In the store (and so in the search table) but not in the index: a
-    // fallback would find it, the index correctly does not.
     store_message(&state, &account, "a", "zebra crossing", "x@one.test", 1).await;
 
     let found = page(send(&state, search_request("zebra", None, 10, 0)).await);
@@ -245,7 +237,6 @@ async fn a_rebuild_in_progress_answers_from_sqlite_until_it_ends() {
         during.degraded.map(|degraded| degraded.reason),
         Some(SearchDegradedReason::IndexRebuilding)
     );
-    // Back on the index, which was never given this message.
     assert!(after.ids.is_empty());
     assert!(after.degraded.is_none());
 }
@@ -256,8 +247,6 @@ async fn a_short_index_is_not_read_between_startup_open_and_its_rebuild() {
     let account = state.default_account_id();
     let wanted = store_message(&state, &account, "a", "Quarterly invoice", "x@one.test", 1).await;
 
-    // Startup open found the index short of SQLite and holds it as rebuilding
-    // until the startup maintenance runs. The message is not in the index yet.
     state.search.hold_startup_rebuild();
     let during = page(send(&state, search_request("invoice", None, 10, 0)).await);
 
@@ -281,9 +270,6 @@ async fn a_failed_rebuild_keeps_search_limited_until_a_later_rebuild_finishes() 
     let wanted = store_message(&state, &account, "a", "Quarterly invoice", "x@one.test", 1).await;
     store_message(&state, &account, "b", "Weekly digest", "x@one.test", 2).await;
 
-    // Reindex has no failure injection point, so this mirrors its failure path:
-    // clear the index, commit the first batch, then drop the guard unfinished,
-    // which is what its `?` does when a later batch fails.
     let rebuild = state.search.begin_rebuild();
     state.search.clear().await.unwrap();
     let first_batch = state

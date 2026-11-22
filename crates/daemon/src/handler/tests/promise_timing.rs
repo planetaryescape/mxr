@@ -1,4 +1,3 @@
-//! Explicit promise dates use the retained task kind's delivery window.
 use super::desk::{request, Fixture, ME};
 use super::promise_projection::{chosen, settle, source};
 use super::*;
@@ -7,8 +6,6 @@ use mxr_todo::provenance::{FieldSource, FieldSources};
 use mxr_todo::timing::{lead_time, window, TimingInput};
 use mxr_todo::TodoKind;
 
-/// A promise dated four months ahead of the clock. A fixed date lapsed into
-/// the catch-up once the wall clock passed it.
 fn text() -> &'static str {
     static TEXT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     TEXT.get_or_init(|| {
@@ -432,7 +429,6 @@ async fn replay_repairs_previously_persisted_promise_timing_without_changing_the
         event_start: None,
     };
     let old = lead_time(&input, &Local, cfg.morning_hour);
-    // Faithful published row: Lease fields/provenance, but Promise-derived dates from reacceptance.
     sqlx::query("UPDATE todos SET act_by_at=?, surface_at=?, relevant_until=? WHERE id=?")
         .bind(old.act_by.map(|at| at.timestamp()))
         .bind(old.surface_at.map(|at| at.timestamp()))
@@ -469,7 +465,6 @@ async fn replay_repairs_previously_persisted_promise_timing_without_changing_the
     assert_eq!(actual.reason, expected.reason);
     assert_eq!(actual.commitment_id, expected.commitment_id);
     assert_eq!(actual.dedup_key, expected.dedup_key);
-    // A projector that read the old kind cannot replace the corrected kind's timing.
     let mut stale = actual.clone();
     stale.kind = "promise".into();
     stale.act_by_at = old.act_by;

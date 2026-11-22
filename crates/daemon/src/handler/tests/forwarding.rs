@@ -133,7 +133,6 @@ async fn forwarding_preview_saved_draft_and_test_transport_preserve_original_and
         parts.push(AttachmentMeta {
             id: mxr_core::AttachmentId::new(),
             message_id: id.clone(),
-            // Repeated names must remain separate; extensions deliberately lie.
             filename: if index < 5 {
                 "report.pdf".into()
             } else {
@@ -160,7 +159,6 @@ async fn forwarding_preview_saved_draft_and_test_transport_preserve_original_and
             } else {
                 std::fs::metadata(&path).unwrap().len()
             },
-            // Exercise provider fetch, not only already-downloaded files.
             local_path: (index != 0).then_some(path),
             provider_id: format!("part-{index}"),
         });
@@ -434,7 +432,6 @@ async fn forwarding_truncated_attachment_and_missing_inline_asset_are_errors() {
         })
         .await
         .unwrap();
-    // A retry must still fail; do not replace the advertised size with a partial download.
     for _ in 0..2 {
         let error = mutations::prepare_forward(&state, &id)
             .await

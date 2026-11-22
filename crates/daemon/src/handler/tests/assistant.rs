@@ -1,6 +1,3 @@
-//! The assistant end to end: real handlers, the real MCP tools in-process,
-//! and a scripted model. Changes wait for the user and run only on approval.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use async_trait::async_trait;
@@ -209,7 +206,6 @@ async fn a_change_waits_for_approval_then_runs_exactly_what_was_shown() {
         Some(AssistantItemData::User { text, .. }) if text == "star the bank email"
     ));
 
-    // The same approval can't be replayed.
     let replay = handle_request(
         &fx.state,
         &IpcMessage {
@@ -371,7 +367,6 @@ async fn a_trusted_conversation_stars_without_asking() {
         panic!("expected a conversation");
     };
     let id = conversation.id;
-    // The first turn starts before trust is set, so it asks.
     let first = settled(&fx, &id).await;
     assert_eq!(first.status, AssistantStatusData::AwaitingUser);
     decide(
@@ -423,7 +418,6 @@ fn call(call_id: &str) -> ToolCall {
     }
 }
 
-/// Appends the messages in order and returns each one's seq.
 async fn append_messages(
     fx: &Fixture,
     conversation_id: &str,
@@ -453,9 +447,6 @@ fn search_result(subjects: impl Iterator<Item = String>) -> String {
     serde_json::json!({"kind": "Search", "results": results, "total": 14}).to_string()
 }
 
-/// A conversation with one step (`call1`) that stored a 12-email result, and
-/// a second step (`call2`) still waiting for its result. Returns the seq of
-/// the message that declared `call1`.
 async fn seeded_step(fx: &Fixture, id: &str, listed: usize) -> i64 {
     fx.state
         .store
@@ -525,7 +516,6 @@ async fn a_step_hands_over_every_row_its_result_lists() {
     assert_eq!(listed, 12);
     assert_eq!(total, Some(14));
 
-    // A step still running has no result yet, so it has nothing to show.
     let Response::Ok {
         data:
             ResponseData::AssistantStepRows {
@@ -568,7 +558,6 @@ async fn a_repeated_call_id_names_its_own_step() {
         .create_assistant_conversation("asst_repeat", "repeat")
         .await
         .unwrap();
-    // The stream names id-less calls `call_0`, so one id repeats across turns.
     let seqs = append_messages(
         &fx,
         "asst_repeat",
@@ -619,7 +608,6 @@ async fn a_repeated_call_id_names_its_own_step() {
     let later_rows = titles(step_rows(&fx, "asst_repeat", "call_0", later).await);
     assert_eq!(later_rows.len(), 5);
     assert_eq!(later_rows[0], "Later 0");
-    // The later step failed, so it has no rows, and the earlier ones keep theirs.
     assert!(titles(step_rows(&fx, "asst_repeat", "call_0", failed).await).is_empty());
 }
 

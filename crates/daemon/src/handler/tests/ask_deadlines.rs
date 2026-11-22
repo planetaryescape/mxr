@@ -1,4 +1,3 @@
-//! Deadline scope keeps a completion request and its evidence together.
 use chrono::Utc;
 use mxr_core::asks::AskAnswer;
 use mxr_core::{AccountId, MailSyncProvider, OwnedAddresses};

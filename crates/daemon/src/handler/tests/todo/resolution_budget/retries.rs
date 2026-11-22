@@ -97,9 +97,6 @@ async fn invalid_model_outputs_retry_each_pair_five_times_independently() {
     );
 }
 
-/// An unreachable endpoint is not the pair's fault: the batch pauses and
-/// hands the attempt back, and once the breaker opens later batches make no
-/// call at all. No pair loses an attempt to the outage.
 #[tokio::test]
 async fn endpoint_failures_and_breaker_skips_preserve_attempt_count_and_return_idle_cadence() {
     let (fx, model, ids) = ambiguous_pairs(6, 1).await;

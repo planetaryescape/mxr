@@ -1,10 +1,3 @@
-//! Synthetic trusted-receiver evidence gates alert to-dos (D193).
-//! This tests the decision, not the live provider's authentication policy.
-//! The corpus runs each case through the
-//! code the daemon runs after a sync: the provider's arrival record is built
-//! from a synthetic pinned receiver verdict, `updates::scan`
-//! decides, and the to-do table is what is counted.
-
 use super::desk::{Fixture, ME};
 use crate::handler::updates;
 use chrono::{DateTime, Duration, FixedOffset, Local, TimeZone, Utc};
@@ -23,15 +16,10 @@ fn fail(host: &str) -> String {
     format!("mx.google.com; dkim=fail header.d={host}; dmarc=fail (p=NONE) header.from={host}")
 }
 
-/// What the provider adapter wrote for the message.
 #[derive(Clone)]
 enum Arrival {
-    /// Synthetic trusted receiver: these verdict headers, in received order.
-    /// This fixture does not prove Gmail authors a live API message's header.
     Gmail(Vec<String>),
-    /// An IMAP server that is not Gmail, Outlook included.
     OtherImap,
-    /// Synced before mxr kept arrival records.
     NotRecorded,
 }
 
@@ -43,15 +31,12 @@ struct Case {
     subject: &'static str,
     received_ago: Duration,
     arrival: Arrival,
-    /// Earlier mail: (host, messages, days before now of the oldest).
     prior: Vec<(&'static str, u32, i64)>,
-    /// Mail from the sender that arrives after the alert.
     later: Vec<(&'static str, u32)>,
     list: bool,
     in_inbox: bool,
     is_live: bool,
     read: bool,
-    /// Whether this case must make a to-do.
     creates: bool,
 }
 
@@ -99,7 +84,6 @@ fn corpus() -> Vec<Case> {
             ..adversarial("an unverified first-time payment-failure alert")
         },
         Case {
-            // Round 2: a forged pass below the provider's own failure.
             arrival: Arrival::Gmail(vec![
                 fail("accounts.google.com"),
                 pass("accounts.google.com"),
@@ -107,7 +91,6 @@ fn corpus() -> Vec<Case> {
             ..adversarial("a forged pass below the provider's own failure")
         },
         Case {
-            // …and above it.
             arrival: Arrival::Gmail(vec![
                 pass("accounts.google.com"),
                 fail("accounts.google.com"),
@@ -115,7 +98,6 @@ fn corpus() -> Vec<Case> {
             ..adversarial("a forged pass above the provider's own failure")
         },
         Case {
-            // Round 2: a header the receiver did not write.
             arrival: Arrival::Gmail(vec![
                 "evil.example; dmarc=pass header.from=accounts.google.com".into(),
             ]),
@@ -136,18 +118,15 @@ fn corpus() -> Vec<Case> {
             ..adversarial("no provider verdict at all")
         },
         Case {
-            // Round 2: the candidate counted as its own prior mail.
             prior: vec![],
             ..adversarial("a first-time sender dated before today")
         },
         Case {
-            // Round 2: backfill order. The sender's history all arrives later.
             prior: vec![],
             later: vec![("accounts.google.com", 5)],
             ..adversarial("an older alert classified after the sender's newer mail")
         },
         Case {
-            // Round 2: an authenticated attacker domain wearing a brand.
             from: "security@evil.example",
             display: Some("Google"),
             arrival: Arrival::Gmail(vec![pass("evil.example")]),
@@ -169,7 +148,6 @@ fn corpus() -> Vec<Case> {
             ..adversarial("two earlier messages")
         },
         Case {
-            // Round 2: Outlook carried no authserv-id and failed silently.
             arrival: Arrival::OtherImap,
             ..adversarial("an Outlook or other IMAP account")
         },
@@ -178,7 +156,6 @@ fn corpus() -> Vec<Case> {
             ..adversarial("mail synced before arrival records existed")
         },
         Case {
-            // Round 1: archived or not in the inbox.
             in_inbox: false,
             ..adversarial("an alert that is not in the inbox")
         },
@@ -187,7 +164,6 @@ fn corpus() -> Vec<Case> {
             ..adversarial("an alert the user already opened")
         },
         Case {
-            // Round 1: backfilled mail.
             received_ago: Duration::days(3),
             ..adversarial("backfilled mail three days old")
         },
@@ -239,7 +215,6 @@ async fn store_prior(fx: &Fixture, host: &str, at: DateTime<Utc>) {
         )
         .await
         .unwrap();
-    // Fixture history was already locally observed at its logical past time.
     sqlx::query("UPDATE message_arrivals SET observed_at=? WHERE message_id=?")
         .bind(at.timestamp())
         .bind(message.id.as_str())
@@ -248,8 +223,6 @@ async fn store_prior(fx: &Fixture, host: &str, at: DateTime<Utc>) {
         .expect("past local observation");
 }
 
-/// Decision fixtures model a source whose independently verified originals
-/// predate this candidate. Provider tests separately exercise real signatures.
 pub(super) async fn authenticated_known_source(fx: &Fixture, message: &Envelope) {
     let host = message
         .from
@@ -303,13 +276,11 @@ fn evidence(arrival: &Arrival, from: &str, received: DateTime<Utc>) -> ArrivalEv
     evidence
 }
 
-/// Store the case's mail and its arrival records, without scanning.
 async fn arrange(case: &Case, config: mxr_config::MxrConfig) -> Run {
     let fx = Fixture::with_config(config).await;
     let now = Utc::now();
     for (host, count, oldest_days) in &case.prior {
         for i in 0..*count {
-            // Spread from the oldest toward 20 days ago.
             let days = oldest_days - i64::from(i) * ((oldest_days - 20).max(1) / i64::from(*count));
             store_prior(&fx, host, now - Duration::days(days)).await;
         }
@@ -483,7 +454,6 @@ async fn a_resync_a_reclassification_or_a_dismissed_to_do_never_makes_a_second()
 async fn a_second_alert_of_a_kind_in_a_local_day_is_one_to_do_and_the_next_day_is_another() {
     let case = Case::google_sign_in("days", true);
     let run = arrange(&case, mxr_config::MxrConfig::default()).await;
-    // A differently worded alert twenty minutes later, same local day.
     let noon = Local
         .from_local_datetime(
             &run.now
@@ -562,7 +532,6 @@ async fn a_second_alert_of_a_kind_in_a_local_day_is_one_to_do_and_the_next_day_i
                 .len()
         }
     };
-    // Each scan runs one minute after its alert arrived.
     for (message, at) in [
         (&first, noon),
         (&second, noon + Duration::minutes(20)),
@@ -618,7 +587,6 @@ async fn the_switch_turns_automatic_creation_off_and_the_alert_stays_a_suggestio
 #[tokio::test]
 async fn the_digest_says_why_an_untrusted_alert_was_not_made_and_marks_a_made_one() {
     let utc = FixedOffset::east_opt(0).unwrap();
-    // An IMAP server that gives mxr no verdict.
     let imap = Case {
         arrival: Arrival::OtherImap,
         ..Case::google_sign_in("imap", false)
@@ -650,7 +618,6 @@ async fn the_digest_says_why_an_untrusted_alert_was_not_made_and_marks_a_made_on
     assert!(suggestion.contains(&note.reason_text), "{suggestion}");
     assert!(line.todo_id.is_none());
 
-    // A verified one: the line is already in To do, and says what confirmed it.
     let real = arrange(
         &Case::google_sign_in("real", true),
         mxr_config::MxrConfig::default(),
@@ -1141,10 +1108,6 @@ async fn an_existing_alert_task_does_not_drop_the_independent_owner_request() {
     )
     .await;
 
-    // A task of the alert's own kind already exists for this message (the
-    // user made one by hand, or an older flow did), so the alert insert takes
-    // its `existing` branch. The independent owner request is its own work and
-    // must still be written under the durable claim.
     let now = run.now;
     let existing = mxr_store::TodoRecord {
         id: "manual-payment-task".into(),

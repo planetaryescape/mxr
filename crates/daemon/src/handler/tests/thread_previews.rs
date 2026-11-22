@@ -1,6 +1,3 @@
-//! `GetThreadPreviews`: headline facts for many threads at once, no bodies,
-//! at most 100 per request, unknown ids left out.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::Duration;
@@ -55,7 +52,6 @@ async fn a_preview_says_who_wrote_last_when_and_how_many_without_any_body() {
     assert_eq!(preview.snippet, "Please confirm payment by Friday");
     assert!(preview.has_attachments);
 
-    // The fixture stores a body for inbound mail; none of it travels.
     let wire = serde_json::to_string(&found).unwrap();
     assert!(!wire.contains("review the launch plan"), "{wire}");
     assert!(!wire.contains("text_plain"), "{wire}");

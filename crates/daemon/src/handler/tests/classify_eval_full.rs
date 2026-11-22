@@ -1,18 +1,3 @@
-//! `mxr classify eval --set full` over generated demos: both demo accounts
-//! synced from the scenario families, run through the same post-sync
-//! classification a real sync runs (to-dos, records, deliveries, arrivals
-//! placement), then graded.
-//!
-//! * `the_full_set_is_graded_on_the_whole_demo` builds the whole
-//!   50,000-message demo, takes minutes and is `#[ignore]`d so the workspace
-//!   test jobs skip it. CI's "Classifier Eval" job runs it, and a change that
-//!   moves any answer shows up as a reviewed snapshot diff. Locally:
-//!   `scripts/cargo-test -p mxr --lib -- --ignored handler::tests::classify_eval_full`
-//!   (once; it is heavy).
-//! * The other test runs the same code over a demo of 1,500 messages, so the
-//!   set selection, the held-out accounting and the per-account scoping are
-//!   checked on every run.
-
 use super::classify_eval_diagnostics::emit_ask_diagnostics;
 use super::classify_eval_floor;
 use super::*;
@@ -28,9 +13,6 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// The sync page the demo is fed through. The daemon pages a demo by the
-/// provider's own page size; a larger page only changes how much post-sync
-/// work one call batches, never what it concludes.
 const PAGE_SIZE: usize = 1000;
 
 fn account(email: &str, name: &str) -> Account {
@@ -47,36 +29,11 @@ fn account(email: &str, name: &str) -> Account {
     }
 }
 
-/// Both demo accounts synced from a demo of `total` messages (split 55/45
-/// between them, as `mxr demo` does), set up as the daemon sets up a sync.
-///
-/// * The sync engine is the daemon's: built with `with_address_lookup` over the
-///   account address registry, loaded from the stored accounts
-///   (`load_account_address_registry`). The test state's own engine has no
-///   address lookup and leaves every message's direction unknown, and then
-///   nothing aggregates into contacts or sender histories.
-/// * Each page gets the post-sync classification the daemon runs.
-/// * At the end of the backfill the daemon's whole-table analytics repair runs
-///   (`run_analytics_repair`: directions, list ids, reply pairs), then the
-///   contacts refresh its worker does.
-///
-/// Skipped, because none of it is read by who, home, to-do or record: the
-/// semantic ingest, the relationship-profile and voice-profile workers, and
-/// the search warm-up (all beside the classification, and three quarters of the
-/// post-sync time on a 12,000-message demo); and the demo's seeded rules and
-/// screener decisions, which `mxr demo` adds over IPC and the quick-set test
-/// does not have either (CONTRIBUTING says its numbers differ slightly).
-///
-/// The demo is dated, and its to-dos and records are found, as of today at
-/// noon UTC ([`pinned_now`]), not the moment the run starts.
 async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
     let (state, personal, work, _) = demo_state_timed(total).await;
     (state, personal, work)
 }
 
-/// Lines with this prefix are a markdown table the CI job copies into its
-/// summary (`.github/workflows/ci.yml`, job `classifier-eval`), so a slow run
-/// shows which stage was slow without opening the log.
 const TIMING_PREFIX: &str = "classify-eval-timing: ";
 
 fn timing_row(stage: &str, pages: &str, sync: Option<Duration>, wall: Duration) {
@@ -88,8 +45,6 @@ fn timing_row(stage: &str, pages: &str, sync: Option<Duration>, wall: Duration) 
     );
 }
 
-/// [`demo_state`], printing a [`TIMING_PREFIX`] row per stage, and the time
-/// spent inside `sync_account_with_outcome` for both accounts.
 async fn demo_state_timed(total: usize) -> (Arc<AppState>, AccountId, AccountId, Duration) {
     let mut total_sync = Duration::ZERO;
     eprintln!(
@@ -114,7 +69,6 @@ async fn demo_state_timed(total: usize) -> (Arc<AppState>, AccountId, AccountId,
             .with_page_size(PAGE_SIZE),
     );
     state.add_sync_provider_for_test(work_provider.clone());
-    // Both accounts are stored, so the registry holds both primaries.
     crate::state::load_account_address_registry(&state.store, &state.account_addresses)
         .await
         .unwrap();
@@ -136,10 +90,6 @@ async fn demo_state_timed(total: usize) -> (Arc<AppState>, AccountId, AccountId,
                 .unwrap();
             sync_time += stage.elapsed();
             let stage = Instant::now();
-            // As the daemon seeds a demo: every page but the last is part of
-            // the initial backfill, which leaves Reading's whole-account
-            // sweep to the last page. Run on every page it is quadratic and
-            // was over half of the time.
             crate::loops::post_sync_classification(
                 &state,
                 id,
@@ -151,8 +101,6 @@ async fn demo_state_timed(total: usize) -> (Arc<AppState>, AccountId, AccountId,
             .await;
             classify_time += stage.elapsed();
             pages += 1;
-            // A line per few pages: a queued job that prints nothing for
-            // minutes is taken for stuck.
             if pages % 5 == 0 {
                 eprintln!("  {id}: {pages} pages in {:?} (sync {sync_time:?}, classify {classify_time:?})", started.elapsed());
             }
@@ -179,13 +127,6 @@ async fn demo_state_timed(total: usize) -> (Arc<AppState>, AccountId, AccountId,
     (state, personal.id, work.id, total_sync)
 }
 
-/// Today at 12:00 UTC. A demo bill is due a whole day ("due by Friday 24
-/// October") counted from its email's date and time, and stays open until
-/// that day ends. On the wall clock, which bills had already lapsed depended
-/// on the hour the job ran, and the snapshot moved with it. Pinned to a time
-/// of day, the same mail gets the same answers on any run. Read once per
-/// process, so a run that crosses midnight grades as of the day it built the
-/// demo.
 fn pinned_now() -> chrono::DateTime<chrono::Utc> {
     static NOW: std::sync::OnceLock<chrono::DateTime<chrono::Utc>> = std::sync::OnceLock::new();
     *NOW.get_or_init(|| {
@@ -197,10 +138,6 @@ fn pinned_now() -> chrono::DateTime<chrono::Utc> {
     })
 }
 
-/// The correspondence history the classifier reads exists: every message has
-/// a direction, the accounts' own mail is outbound, and contacts and the
-/// addresses written to were aggregated from it. Without an address-aware
-/// sync none of this holds and the eval grades a mailbox the daemon never has.
 async fn assert_directions_are_known(state: &AppState) {
     let count = |sql: &'static str| async move {
         sqlx::query_scalar::<_, i64>(sql)
@@ -258,8 +195,6 @@ fn question_lines(questions: &[mxr_protocol::ClassifyEvalQuestionData]) -> Strin
         .collect()
 }
 
-/// A field mismatch is clustered by its shape, not its value: 98 different
-/// amounts are one cluster.
 fn shape<'a>(question: &str, value: &'a str) -> &'a str {
     match question {
         "amount" | "due" | "counterparty" if value != "none" => "a value",
@@ -267,24 +202,9 @@ fn shape<'a>(question: &str, value: &'a str) -> &'a str {
     }
 }
 
-/// Scenario, question, expected and actual answer.
 type ClusterKey<'a> = (&'a str, &'a str, &'a str, &'a str);
-/// How many, how many of them held out, and whether any label is a judgement
-/// call.
 type Cluster = (u32, u32, bool);
 
-/// Counts, per-question accuracy, held-out accuracy and the mismatches
-/// grouped by what was expected and what was said. Never one line per email:
-/// a 50,000-email set is reviewed by cluster. Rule wording is left out so a
-/// reworded reason is not a diff but a changed answer is.
-///
-/// `placed_live` is left out on purpose. A message counts as an arrival during
-/// an account's first sync only if its date is within 30 days of the moment it
-/// is stored (the `arrivals_on_message_insert` trigger), and the demo's mail is
-/// dated from the moment the provider was built, so the number of emails
-/// dated near that line depends on how long the run took: 34,121 and 34,122 on
-/// the same code. Those emails are placed live by the same rules, so no graded
-/// answer changes. The CLI still prints the count.
 fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchData]) -> String {
     let mut out = format!(
         "label schema v{}\n{} labelled emails graded, {} stored emails unlabelled, {} not placed\n\n",
@@ -301,7 +221,6 @@ fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchD
     ));
     out.push_str(&question_lines(&summary.held_out_questions));
 
-    // (scenario, question, expected, actual) -> (all, held out, label to check)
     let mut clusters: BTreeMap<ClusterKey, Cluster> = BTreeMap::new();
     for m in mismatches {
         let entry = clusters
@@ -330,9 +249,6 @@ fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchD
     out
 }
 
-/// Grades all 50,000 emails of the demo. CI's "Classifier Eval" job runs it.
-/// The snapshot is the classifier's measured behaviour on the whole demo:
-/// any change to sorting shows up as a reviewed diff.
 #[tokio::test]
 #[ignore = "builds the whole 50,000-message demo; CI's Classifier Eval job runs it"]
 async fn the_full_set_is_graded_on_the_whole_demo() {
@@ -354,8 +270,6 @@ async fn the_full_set_is_graded_on_the_whole_demo() {
     );
     assert_eq!(summary.set, ClassifyEvalSetData::Full);
     assert_eq!(summary.message, None);
-    // Everything the account did not send is labelled, so what is left
-    // unlabelled is the mail the demo's accounts wrote.
     assert!(
         summary.present > 30_000,
         "only {} of the demo's emails are labelled",
@@ -365,8 +279,6 @@ async fn the_full_set_is_graded_on_the_whole_demo() {
     emit_ask_diagnostics(&state, &summary, &mismatches).await;
     classify_eval_floor::check("full", summary.asks.as_ref().expect("asks"));
     insta::assert_snapshot!(report(&summary, &mismatches));
-    // Checked after the snapshot, so a run that is both slower and wrong
-    // reports the wrong answers first.
     assert!(
         work_per_sync <= WORK_PER_SYNC_BUDGET,
         "classify and other work took {work_per_sync:.1} times the sync time, over the \
@@ -375,37 +287,14 @@ async fn the_full_set_is_graded_on_the_whole_demo() {
     );
 }
 
-/// Everything but sync (post-sync classification, analytics repair,
-/// reconcile, grading) as a multiple of the time spent syncing.
-///
-/// The job's wall time can't tell a slow runner from a slow classifier: on
-/// 2026-10-28 this test took 9 minutes on main and 22 on a PR that did not
-/// touch the classifier, and compile, sync and classification all slowed by 2
-/// to 3 times. Sync runs on the same runner in the same process and is not
-/// classifier code, so it is the yardstick. Estimated from that day's CI logs,
-/// the ratio was 13 to 14 on main's runners and about 10 on the slow one; on a
-/// heavily loaded laptop it was 16.2.
 fn work_per_sync(sync: Duration, elapsed: Duration) -> f64 {
     elapsed.saturating_sub(sync).as_secs_f64() / sync.as_secs_f64().max(f64::EPSILON)
 }
 
-/// Roughly twice the usual [`work_per_sync`] ratio: on a usual runner a change
-/// that doubles the classification work per synced email fails, and no runner
-/// measured so far came near it.
 const WORK_PER_SYNC_BUDGET: f64 = 25.0;
 
-/// Messages in the demo the checks below share, across both accounts. Building
-/// it is nearly all of their time, and the time grows with its size. At 1,500
-/// the full set still grades more than 1,000 labelled emails (1,180; 1,200
-/// messages gave 946), with held-out mail in every question and on both
-/// accounts.
 const SHARED_DEMO_MESSAGES: usize = 1_500;
 
-// One test builds one generated demo and runs every check on it: a runner
-// that gives every test its own process (nextest) shares nothing between
-// tests, so a second test means a second demo. Grading twice gives the same
-// answer (checked first), so one check's grading does not change what the
-// next one sees.
 #[tokio::test]
 async fn a_generated_demo_grades_the_same_twice_both_accounts_and_the_quick_set_on_curated_mail() {
     let (state, personal, work) = demo_state(SHARED_DEMO_MESSAGES).await;
@@ -429,12 +318,9 @@ async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart(
         "the full set is whatever the store holds that is labelled"
     );
     assert!(summary.present > 1_000, "{}", summary.present);
-    // Mail the accounts wrote is context, not labelled.
     assert!(summary.unlabelled > 100, "{}", summary.unlabelled);
     assert_eq!(summary.not_placed, 0);
 
-    // Held-out phrasings are graded on their own line, per question, and
-    // their share is a fraction of all.
     assert!(summary.held_out_present > 100);
     assert!(summary.held_out_present < summary.present);
     assert_eq!(summary.held_out_questions.len(), summary.questions.len());
@@ -443,8 +329,6 @@ async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart(
         assert!(held.evaluated > 0 && held.evaluated < all.evaluated);
         assert!(held.correct <= all.correct);
     }
-    // A mismatch on a held-out email is flagged, and the flags add up to the
-    // held-out tallies.
     for (index, question) in summary.questions.iter().enumerate() {
         let held_wrong = mismatches
             .iter()
@@ -459,8 +343,6 @@ async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart(
         );
     }
 
-    // Asked about one account, only that account's mail is graded; together
-    // they are the whole.
     let (personal_only, _) = eval(state, Some(personal), ClassifyEvalSetData::Full).await;
     let (work_only, _) = eval(state, Some(work), ClassifyEvalSetData::Full).await;
     assert!(personal_only.present > 0 && work_only.present > 0);
@@ -474,8 +356,6 @@ async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart(
 async fn the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail(state: &AppState) {
     let (quick, quick_mismatches) = eval(state, None, ClassifyEvalSetData::Quick).await;
     let (full, _) = eval(state, None, ClassifyEvalSetData::Full).await;
-    // The quick set is the hand-written mail of the personal account: the
-    // twins are not in a demo, and none of it is held out.
     assert_eq!(quick.set, ClassifyEvalSetData::Quick);
     assert!(quick.present > 90 && quick.present < full.present);
     assert_eq!(quick.held_out_present, 0);
@@ -535,8 +415,6 @@ async fn the_full_set_labels_the_curated_mail_with_the_quick_sets_labels(
     state: &AppState,
     personal: &AccountId,
 ) {
-    // Every mismatch the quick set finds on the curated mail is also found,
-    // with the same expected and actual answer, by the full set.
     let (_, quick_mismatches) = eval(state, Some(personal), ClassifyEvalSetData::Quick).await;
     let (_, full_mismatches) = eval(state, Some(personal), ClassifyEvalSetData::Full).await;
     assert!(!quick_mismatches.is_empty());

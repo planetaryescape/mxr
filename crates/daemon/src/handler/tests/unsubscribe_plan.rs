@@ -23,8 +23,6 @@ fn mailto(address: &str) -> UnsubscribeMethod {
     }
 }
 
-/// Gives the first `count` synced messages a List-Unsubscribe method chosen by
-/// index, with dates rising by index. Returns their ids, oldest first.
 async fn stamp_messages(
     state: &AppState,
     count: usize,
@@ -33,8 +31,6 @@ async fn stamp_messages(
     stamp_range(state, 0, count, method).await
 }
 
-/// As `stamp_messages`, for `count` messages starting at synced index `start`,
-/// so two senders can occupy disjoint messages of one mailbox.
 async fn stamp_range(
     state: &AppState,
     start: usize,
@@ -82,7 +78,6 @@ async fn plan(state: &Arc<AppState>, message_ids: &[MessageId]) -> UnsubscribePl
     }
 }
 
-/// What the CLI does for the planned request.
 async fn send_unsubscribe(state: &Arc<AppState>, message_id: &MessageId) -> Response {
     let msg = IpcMessage {
         expected_workspace: None,

@@ -1,8 +1,3 @@
-//! Messages end to end on the handler: people as rows with their topics,
-//! group threads as their own rows, copied threads in Updates, the shared
-//! owed rule and its decay, manual merges with a suggestion, new text with
-//! the trimmed marker, and Got it's preview equal to what it sends.
-
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::{Duration, Utc};
@@ -133,8 +128,6 @@ async fn persisted_thread_facts_match_rebuilding_and_read_edits_retire_them() {
     .await;
     fx.state.store.refresh_contacts().await.unwrap();
     let now = Utc::now();
-    // The first pass may materialize missing facets. A second observes their
-    // committed tokens and persists facts; no mode-response cache is involved.
     history_at(&fx, now).await;
     let expected = history_at(&fx, now).await;
     let saved: i64 = sqlx::query_scalar("SELECT count(*) FROM conversation_summaries")
@@ -277,7 +270,6 @@ fn history_filter() -> MessagesFilterData {
     }
 }
 
-/// The expanded view used to exercise grouping and history presentation.
 async fn list(fx: &Fixture) -> MessagesData {
     match request(
         fx,
@@ -312,7 +304,6 @@ async fn person(fx: &Fixture, who: &str, topic: Option<&ThreadId>) -> PersonPage
     }
 }
 
-/// A message with a name on the sender and every recipient given.
 async fn mail(
     fx: &Fixture,
     thread: &ThreadId,
@@ -341,7 +332,6 @@ async fn mail(
     };
     fx.store_envelope(&envelope, direction).await;
     if direction == MessageDirection::Inbound {
-        // These journeys owe a conversation reply; action requests have separate fixtures.
         body(
             fx,
             &envelope.id,
@@ -552,8 +542,6 @@ async fn due_follow_up_on_archived_mail_is_attention_in_messages_now_and_rail() 
         .why
         .contains("no reply by the time you set"));
     assert_eq!(attention.row_count, 1);
-    // Window/history preloading must still add the desk's returned threads
-    // outside the recent window, and never relabel a due turn as waiting.
     let all = filtered(&fx, Some(MessagesTurnData::All), Default::default()).await;
     assert_eq!(all.your_turn[0].topics[0].thread_id, thread);
     assert_eq!(all.your_turn[0].topics[0].state, TopicStateData::YourTurn);
@@ -635,7 +623,6 @@ async fn a_person_is_one_row_a_group_is_its_own_and_copied_mail_is_in_updates() 
         Duration::days(2),
     )
     .await;
-    // You're only copied, and you never wrote in it.
     let copied = ThreadId::new();
     mail(
         &fx,
@@ -693,7 +680,6 @@ async fn a_person_is_one_row_a_group_is_its_own_and_copied_mail_is_in_updates() 
         other => panic!("expected membership, got {other:?}"),
     }
 
-    // The person page lists the group under "with".
     let page = person(&fx, SAMIR, None).await;
     assert_eq!(page.topics.len(), 3);
     let with: Vec<_> = page.topics.iter().filter(|t| !t.with.is_empty()).collect();
@@ -704,7 +690,6 @@ async fn a_person_is_one_row_a_group_is_its_own_and_copied_mail_is_in_updates() 
     assert!(conversation.composer.label.starts_with("Reply to Samir · "));
     assert!(!conversation.composer.reply_all);
 
-    // A profile read (a hover card's) carries the same facts and no message text.
     let profile = match request(
         &fx,
         Request::GetPerson {
@@ -780,7 +765,6 @@ async fn your_turn_goes_quiet_after_a_week_without_a_cadence() {
 #[tokio::test]
 async fn closer_people_rank_first_in_your_turn() {
     let fx = Fixture::new().await;
-    // Years of mail both ways with Maya.
     for days in [400, 300, 200, 100, 60, 40, 30, 20, 15, 12, 10, 8] {
         let t = ThreadId::new();
         mail(
@@ -1085,7 +1069,6 @@ async fn conversation_marks_snippet_fallback_and_preserves_stored_empty_body() {
         Duration::hours(1),
     )
     .await;
-    // This case deliberately represents a provider preview with no cache.
     sqlx::query("DELETE FROM bodies WHERE message_id = ?")
         .bind(preview.id.as_str())
         .execute(fx.state.store.writer())
@@ -1110,7 +1093,6 @@ async fn conversation_marks_snippet_fallback_and_preserves_stored_empty_body() {
     assert_eq!(messages[2].text, preview.snippet);
 }
 
-/// A thread where Samir answered your deck: Got it has someone to thank.
 async fn deck_thread(fx: &Fixture) -> (ThreadId, Envelope) {
     let thread = ThreadId::new();
     let mine = mail(
@@ -1223,10 +1205,8 @@ async fn got_it_sends_exactly_the_previewed_plan_once() {
     );
     assert_eq!(outbound_count(&fx, &thread).await, 2);
 
-    // The same token again: already acknowledged, nothing more goes out.
     let again = ack_at(&fx, &thread, false, Some((&token, &preview.text)), now).await;
     assert!(again.unwrap_err().contains("lready"), "a repeat is refused");
-    // And a fresh preview has nobody left to acknowledge.
     assert!(ack_at(&fx, &thread, true, None, now).await.is_err());
     assert_eq!(outbound_count(&fx, &thread).await, 2);
     let messages = list(&fx).await;
@@ -1251,7 +1231,6 @@ async fn got_it_refuses_to_send_without_a_preview() {
         let refused = ack_at(&fx, &thread, false, proof, now).await;
         assert!(refused.is_err(), "{proof:?} must not send");
     }
-    // A token minted by hand, without the daemon's key, is refused too.
     let forged = format!("{}.{}", now.timestamp(), "0".repeat(64));
     assert!(
         ack_at(&fx, &thread, false, Some((&forged, &preview.text)), now)
@@ -1287,7 +1266,6 @@ async fn a_conversation_that_changed_since_the_preview_sends_nothing() {
     let now = Utc::now();
     let preview = ack_at(&fx, &thread, true, None, now).await.unwrap();
     let token = preview.preview_token.clone().unwrap();
-    // Samir writes again before the countdown ends: a new target.
     let newer = mail(
         &fx,
         &thread,
@@ -1335,7 +1313,6 @@ async fn reply_to_body(fx: &Fixture, message: &MessageId, reply_to: &str) {
 #[tokio::test]
 async fn got_it_checks_where_the_reply_actually_goes() {
     let now = Utc::now();
-    // A Reply-To on another domain you never wrote to: refused.
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     mail(
@@ -1362,7 +1339,6 @@ async fn got_it_checks_where_the_reply_actually_goes() {
     let refused = ack_at(&fx, &thread, true, None, now).await;
     assert!(refused.unwrap_err().contains("collect@harvester.example"));
 
-    // A no-reply Reply-To on the same domain: refused.
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     mail(
@@ -1388,7 +1364,6 @@ async fn got_it_checks_where_the_reply_actually_goes() {
     reply_to_body(&fx, &theirs.id, "no-reply@launchpad.example").await;
     assert!(ack_at(&fx, &thread, true, None, now).await.is_err());
 
-    // A Reply-To on Samir's own domain is his colleague: allowed.
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     mail(
@@ -1463,7 +1438,6 @@ async fn a_quote_only_reply_shows_a_placeholder_not_the_quoted_words() {
     assert_eq!(last.trimmed_label.as_deref(), Some("trimmed: quote"));
 }
 
-/// Samir's latest message is only a quote of Alex's question.
 async fn quote_only_thread(fx: &Fixture, earlier_words: Option<&str>) {
     let thread = ThreadId::new();
     let opener = mail(
@@ -1531,7 +1505,6 @@ async fn a_quote_only_latest_message_previews_the_latest_earlier_one_with_words(
         !previews[0].contains(mxr_reader::ONLY_QUOTED_TEXT),
         "{previews:?}"
     );
-    // Alex's own question is the latest message with words of its own.
     assert_eq!(
         previews[0],
         "You: Should we keep the canary at 5% until the dashboard is quiet?"
@@ -1642,13 +1615,11 @@ async fn a_send_the_provider_took_but_we_lost_is_never_sent_again() {
     let now = Utc::now();
     let preview = ack_at(&fx, &thread, true, None, now).await.unwrap();
     let token = preview.preview_token.clone().unwrap();
-    // The provider accepts the mail, then the call fails (a timeout).
     fx.fake.fail_sends_after_accepting(true);
     let first = ack_at(&fx, &thread, false, Some((&token, &preview.text)), now).await;
     assert!(first.is_err());
     assert_eq!(fx.fake.sent_drafts().len(), 1);
     fx.fake.fail_sends_after_accepting(false);
-    // A retry, with a fresh preview, must not send a second copy.
     let retry_preview = ack_at(&fx, &thread, true, None, now).await;
     let retry = match retry_preview {
         Ok(plan) => {
@@ -1788,11 +1759,7 @@ async fn a_name_that_looks_like_markup_stays_text_in_both_parts() {
     }
 }
 
-/// Maya: your turn, unread, past her usual pace. Samir: your turn, unread,
-/// no pace yet. Jon: waiting on him, nothing unread.
 async fn seed_filter_rows(fx: &Fixture) {
-    // Pace: you answered Maya within an hour, twice, long ago. Pace counts
-    // replies linked by In-Reply-To, so the reply names its parent.
     for days in [40, 45] {
         let old = ThreadId::new();
         let asked = fx.message(&old, MAYA, ME, Duration::days(days), None).await;
@@ -1861,7 +1828,6 @@ async fn filtered(
     }
 }
 
-/// Every row shown in any band, once each, sorted by id.
 fn shown_ids(messages: &MessagesData) -> Vec<String> {
     let mut ids: Vec<String> = messages
         .your_turn
@@ -1910,8 +1876,6 @@ async fn each_filter_alone_and_combined_keeps_its_rows_and_not_the_counts() {
     );
     assert_eq!(all.filter, history_filter());
 
-    // Each filter below is read after the plain list, so a cache hit on
-    // the plain key would show up as unfiltered rows here.
     let only_unread = filtered(&fx, None, unread).await;
     assert_eq!(shown_ids(&only_unread), person_ids(&[MAYA, SAMIR]));
     assert_eq!(only_unread.matched, 2);
@@ -1949,8 +1913,6 @@ async fn each_filter_alone_and_combined_keeps_its_rows_and_not_the_counts() {
     assert_eq!(shown_ids(&theirs), person_ids(&[JON]));
     assert!(theirs.empty_state.is_none());
 
-    // Waiting on them has nothing unread: the filtered empty copy, with
-    // the turn named and what is still in Your turn.
     let theirs_unread = filtered(
         &fx,
         None,
@@ -1968,7 +1930,6 @@ async fn each_filter_alone_and_combined_keeps_its_rows_and_not_the_counts() {
         Some("In Waiting on them, no unread messages from people.\nYour turn still has 2 people.")
     );
 
-    // The header counts ignore every filter.
     for filtered in [
         &only_unread,
         &only_past,
@@ -2143,8 +2104,6 @@ async fn attention_filters_reuse_a_complete_fresh_snapshot_without_changing_the_
     );
 }
 
-/// `who` wrote, then you replied, so they wait on you not and the row is
-/// waiting on them. The message they wrote is unread unless `read`.
 async fn waiting_on(fx: &Fixture, who: &str, unread: bool, reply_age: Duration) -> Envelope {
     let thread = ThreadId::new();
     let mut asked = fx
@@ -2165,7 +2124,6 @@ async fn waiting_on(fx: &Fixture, who: &str, unread: bool, reply_age: Duration) 
     asked
 }
 
-/// Pinning a person in Messages is adding them to the cadence watchlist.
 async fn pin(fx: &Fixture, email: &str) {
     match request(
         fx,
@@ -2193,8 +2151,6 @@ fn pinned_ids(messages: &MessagesData) -> Vec<String> {
 #[tokio::test]
 async fn a_pinned_unread_person_past_the_cap_shows_under_unread() {
     let fx = Fixture::new().await;
-    // Ten pinned people, newest first: the tenth is past Pinned's nine, and
-    // the only one with unread mail from them.
     let mut ids = Vec::new();
     for n in 0..10 {
         let who = format!("pinned{n}@cap.example");
@@ -2289,7 +2245,6 @@ async fn an_unsent_reply_shows_on_its_row_and_page_until_it_leaves() {
             .cloned()
             .expect("Samir's row")
     };
-    // Opening Reply and leaving it empty is not a draft to the user.
     let draft = match request(
         &fx,
         Request::EnsureReplyDraft {
@@ -2326,7 +2281,6 @@ async fn an_unsent_reply_shows_on_its_row_and_page_until_it_leaves() {
         Some(thread.clone())
     );
 
-    // A reply on its way out is no longer one to resume.
     fx.state
         .store
         .update_draft_status(&draft.id, mxr_core::types::DraftStatus::Sending)

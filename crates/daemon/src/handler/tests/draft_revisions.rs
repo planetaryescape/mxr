@@ -207,7 +207,6 @@ async fn gmail_draft_sync_downloads_an_edit_once_and_tracks_the_downloaded_revis
         .expect(1)
         .mount(&server)
         .await;
-    // A second Gmail edit lands between the metadata and raw requests.
     Mock::given(method("GET"))
         .and(path("/drafts/linked-draft"))
         .and(query_param("format", "raw"))
@@ -279,8 +278,6 @@ async fn gmail_draft_sync_establishes_a_legacy_baseline_without_downloading_cont
     assert_eq!(current.content.analysis_text(), "original");
     server.verify().await;
 
-    // The baseline must be remembered, so a later remote edit is pulled
-    // instead of silently treated as another first sync.
     server.reset().await;
     Mock::given(method("GET"))
         .and(path("/drafts/linked-draft"))
@@ -369,8 +366,6 @@ async fn gmail_draft_sync_preserves_local_contents_on_lookup_or_download_failure
         assert_eq!(current.content.analysis_text(), "original");
         server.verify().await;
 
-        // A failed content download must not advance the saved provider
-        // revision and make the next successful response look unchanged.
         server.reset().await;
         Mock::given(method("GET"))
             .and(path("/drafts/linked-draft"))
@@ -650,8 +645,6 @@ async fn draft_revisions_reconciliation_advances_revision_before_stale_editor_or
         tokio::spawn(
             async move { reconcile_provider_drafts(&reconciling_state, &account_id).await },
         );
-    // The store read before reconciliation's lock can yield; wait for the
-    // lock to be held rather than assuming one task yield reached it.
     tokio::time::timeout(std::time::Duration::from_secs(2), async {
         loop {
             if tokio::time::timeout(
@@ -733,8 +726,6 @@ async fn draft_revisions_edit_holds_lock_while_waiting_for_provider_and_send_use
         tokio::spawn(
             async move { call(&editing_state, Request::UpdateDraft { draft: edited }).await },
         );
-    // The store read before reconciliation's lock can yield; wait for the
-    // lock to be held rather than assuming one task yield reached it.
     tokio::time::timeout(std::time::Duration::from_secs(2), async {
         loop {
             if tokio::time::timeout(

@@ -238,7 +238,6 @@ async fn dispatch_respond_invite_matches_account_alias_attendee() {
         })
     ));
     assert_eq!(fake.sent_drafts().len(), 1);
-    // The RSVP is sent From the matched owned alias, so From and ATTENDEE agree.
     let froms = fake.sent_from_addresses();
     assert_eq!(froms.len(), 1);
     assert_eq!(froms[0].email, "alias@example.com");
@@ -1045,14 +1044,10 @@ async fn dispatch_download_attachment_persists_local_path() {
 
 #[tokio::test]
 async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
-    // Behavior: marking a message reply-later via IPC persists the flag,
-    // and subsequent `ListReplyQueue` requests return the envelope.
-    // Clearing the flag removes it from the queue.
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
     let state = Arc::new(state);
     let id = sync_and_get_first_id(&state).await;
 
-    // Initially the queue is empty.
     let resp = handle_request(
         &state,
         &IpcMessage {
@@ -1070,7 +1065,6 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
         other => panic!("expected ReplyQueue, got {other:?}"),
     }
 
-    // Set the flag.
     let resp = handle_request(
         &state,
         &IpcMessage {
@@ -1091,7 +1085,6 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
         })
     ));
 
-    // Queue now contains the flagged envelope.
     let resp = handle_request(
         &state,
         &IpcMessage {
@@ -1122,7 +1115,6 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
     assert_eq!(search_page.results.len(), 1, "search sees reply-later");
     assert_eq!(search_page.results[0].message_id, id.as_str());
 
-    // Clear the flag.
     let resp = handle_request(
         &state,
         &IpcMessage {
@@ -1143,7 +1135,6 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
         })
     ));
 
-    // Queue is empty again.
     let resp = handle_request(
         &state,
         &IpcMessage {
@@ -1171,12 +1162,6 @@ async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
     assert!(search_page.results.is_empty(), "search updates after clear");
 }
 
-/// Phase 2.1: dismissing a reply-later flag is a pure metadata
-/// operation. It removes the message from the queue, but it must
-/// not generate a draft, hand a message to the outbound pipeline,
-/// or otherwise pretend the user replied. The user is saying
-/// "never mind, I'm not going to reply" — the daemon must take that
-/// at face value.
 #[tokio::test]
 async fn dispatch_clearing_reply_later_does_not_send_reply() {
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
@@ -1184,7 +1169,6 @@ async fn dispatch_clearing_reply_later_does_not_send_reply() {
     let id = sync_and_get_first_id(&state).await;
     let account_id = state.default_account_id();
 
-    // Flag it first so we have something to dismiss.
     let resp = handle_request(
         &state,
         &IpcMessage {
@@ -1205,13 +1189,9 @@ async fn dispatch_clearing_reply_later_does_not_send_reply() {
         })
     ));
 
-    // Capture a baseline of state that would change if a reply were
-    // queued or sent.
     let drafts_before = state.store.list_drafts(&account_id).await.unwrap().len();
     let mut events = state.event_tx.subscribe();
 
-    // Dismiss the flag — this is the "I'm not going to reply"
-    // outcome the user signals by clearing the queue entry.
     let resp = handle_request(
         &state,
         &IpcMessage {
@@ -1232,19 +1212,14 @@ async fn dispatch_clearing_reply_later_does_not_send_reply() {
         })
     ));
 
-    // No draft created, none consumed — the drafts table is exactly
-    // where it was before the dismiss.
     let drafts_after = state.store.list_drafts(&account_id).await.unwrap().len();
     assert_eq!(
         drafts_after, drafts_before,
         "dismissing reply-later must not touch the drafts table"
     );
 
-    // No daemon event was emitted by the dismiss. The flag clear
-    // is a pure metadata edit; anything published here means the
-    // path is doing more than the user asked for.
     match events.try_recv() {
-        Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {} // expected
+        Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {}
         Ok(received) => panic!(
             "dismissing reply-later must not emit any daemon event; got {:?}",
             received.payload
@@ -1255,15 +1230,11 @@ async fn dispatch_clearing_reply_later_does_not_send_reply() {
 
 #[tokio::test]
 async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
-    // End-to-end: setting a reminder via IPC persists it; the
-    // background-loop function fires it once `now >= remind_at` and
-    // emits a `ReminderTriggered` event.
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
     let state = Arc::new(state);
     let id = sync_and_get_first_id(&state).await;
     let mut events = state.event_tx.subscribe();
 
-    // Set the reminder for "1 hour ago" so it's already due.
     let remind_at = chrono::Utc::now() - chrono::Duration::hours(1);
     let resp = handle_request(
         &state,
@@ -1285,13 +1256,11 @@ async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
         })
     ));
 
-    // Run one tick of the loop with `now` past the reminder.
     let fired = crate::loops::process_due_timers(&state, chrono::Utc::now())
         .await
         .unwrap();
     assert_eq!(fired, 1, "one due reminder fires");
 
-    // Expect a ReminderTriggered event for the right message.
     let received = events.try_recv().expect("event published");
     match received.payload {
         IpcPayload::Event(DaemonEvent::ReminderTriggered { sent_message_id }) => {
@@ -1322,8 +1291,6 @@ async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
         other => panic!("expected ReplyQueue response, got {other:?}"),
     }
 
-    // Second tick: nothing fires (already-triggered reminders are
-    // excluded).
     let fired_again = crate::loops::process_due_timers(&state, chrono::Utc::now())
         .await
         .unwrap();
@@ -1332,8 +1299,6 @@ async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
 
 #[tokio::test]
 async fn dispatch_cancel_auto_reminder_prevents_firing() {
-    // Setting then cancelling a reminder leaves no due rows for
-    // the loop to fire.
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
     let state = Arc::new(state);
     let id = sync_and_get_first_id(&state).await;
@@ -1379,8 +1344,6 @@ async fn dispatch_cancel_auto_reminder_prevents_firing() {
 
 #[tokio::test]
 async fn due_reminder_is_cancelled_when_the_thread_got_a_reply_the_headers_missed() {
-    // "Remind me if nobody replies": a reply to an earlier message in the
-    // thread (no In-Reply-To pointing at the sent one) still counts.
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
     let state = Arc::new(state);
     let id = sync_and_get_first_id(&state).await;
@@ -1429,14 +1392,10 @@ async fn due_reminder_is_cancelled_when_the_thread_got_a_reply_the_headers_misse
 
 #[tokio::test]
 async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
-    // End-to-end: schedule an existing draft for a past send_at,
-    // run one tick of the loop, expect the send pipeline to fire
-    // and the draft's status to advance past 'draft'.
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
     let state = Arc::new(state);
     let _ = sync_and_get_first_id(&state).await;
 
-    // Insert a draft for the synthetic account.
     let account = state
         .store
         .list_accounts()
@@ -1469,7 +1428,6 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
     };
     state.store.insert_draft(&draft).await.unwrap();
 
-    // Schedule for "1 hour ago" — already due.
     let resp = handle_request(
         &state,
         &IpcMessage {
@@ -1501,22 +1459,17 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
         "send_at persisted"
     );
 
-    // Run a tick of the flusher.
     let fired = crate::loops::process_due_scheduled_sends(&state, chrono::Utc::now())
         .await
         .unwrap();
     assert_eq!(fired, 1);
 
-    // Draft no longer needs sending: either advanced past `draft`
-    // status (FakeProvider may delete on success) or is gone entirely.
     let status = state.store.get_draft_status(&draft.id).await.unwrap();
     assert!(
         !matches!(status, Some(mxr_core::types::DraftStatus::Draft)),
         "draft no longer in 'draft' status: {status:?}"
     );
 
-    // The schedule entry is cleared (the row may be gone too) so a
-    // second tick won't try to re-flush it.
     assert!(state
         .store
         .get_scheduled_send(&draft.id)
@@ -1528,8 +1481,6 @@ async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
         .unwrap();
     assert_eq!(fired_again, 0);
 
-    // A successful flush records the attempt's outcome, so it must NOT
-    // linger as a "lost send" candidate for startup surfacing.
     assert!(
         state
             .store
@@ -1618,7 +1569,6 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
         .unwrap();
     assert_eq!(fired, 0);
 
-    // Draft remains in 'draft' status — never sent.
     assert_eq!(
         state.store.get_draft_status(&draft.id).await.unwrap(),
         Some(mxr_core::types::DraftStatus::Draft)
@@ -1643,8 +1593,6 @@ async fn dispatch(state: &Arc<AppState>, id: u64, request: Request) -> Response 
     }
 }
 
-/// Undo Send after the flusher has fired must say so, not report a stop
-/// that did not happen.
 #[tokio::test]
 async fn cancelling_a_send_that_already_fired_reports_too_late() {
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
@@ -1685,8 +1633,6 @@ async fn cancelling_a_send_that_already_fired_reports_too_late() {
     }
 }
 
-/// The flusher only finds out at firing time that an account cannot send;
-/// scheduling must refuse it instead of promising a send.
 #[tokio::test]
 async fn scheduling_refuses_an_account_without_a_send_provider() {
     let (state, _) = AppState::in_memory_with_fake().await.unwrap();
@@ -1810,8 +1756,6 @@ async fn dispatch_list_scheduled_sends_lists_pending_across_accounts_and_scopes(
             data: ResponseData::Ack
         })
     ));
-    // The other account has no send provider here, so the daemon would
-    // refuse to schedule it; the listing still has to show stored schedules.
     state
         .store
         .schedule_send(&sooner.id, sooner_at)
@@ -1852,7 +1796,6 @@ async fn dispatch_mutation_star() {
     let resp = handle_request(&state, &msg).await;
     assert_mutation_succeeded(resp.payload);
 
-    // Verify flag is set
     let get_msg = IpcMessage {
         expected_workspace: None,
         id: 2,
@@ -1931,8 +1874,6 @@ async fn modify_labels_on_folder_provider_does_not_leave_one_message_in_two_fold
     );
 }
 
-/// Seed a METHOD:REQUEST calendar invite addressed to `attendee` on `account_id`,
-/// returning its message id. Mirrors the shape sync produces.
 async fn seed_request_invite(
     state: &AppState,
     account_id: &mxr_core::AccountId,
@@ -2033,8 +1974,6 @@ fn send_invite_reply_msg(draft: mxr_core::types::Draft) -> IpcMessage {
 
 #[tokio::test]
 async fn send_rejects_inline_reply_whose_attendee_differs_from_the_send_from() {
-    // The invite is addressed to the alias, but the draft was tampered to send
-    // From the primary (a different owned address). ATTENDEE must equal From.
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
     let account_id = state.default_account_id_opt().unwrap();
     state
@@ -2048,10 +1987,10 @@ async fn send_rejects_inline_reply_whose_attendee_differs_from_the_send_from() {
 
     let draft = invite_reply_draft(
         account_id,
-        "user@example.com", // send From the primary…
+        "user@example.com",
         mxr_core::types::InlineCalendarReply {
             source_message_id: source,
-            attendee_email: "user@example.com".into(), // …claiming to RSVP as primary
+            attendee_email: "user@example.com".into(),
             partstat: mxr_core::types::CalendarPartstat::Accepted,
             ics_body: "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into(),
         },
@@ -2069,8 +2008,6 @@ async fn send_rejects_inline_reply_whose_attendee_differs_from_the_send_from() {
 
 #[tokio::test]
 async fn send_rejects_inline_reply_with_an_unknown_source_message() {
-    // A tampered/forged source that isn't a real invite for this account must
-    // never send (and never touch PARTSTAT).
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
     let account_id = state.default_account_id_opt().unwrap();
     let state = Arc::new(state);
@@ -2079,7 +2016,7 @@ async fn send_rejects_inline_reply_with_an_unknown_source_message() {
         account_id,
         "user@example.com",
         mxr_core::types::InlineCalendarReply {
-            source_message_id: mxr_core::MessageId::new(), // no such invite
+            source_message_id: mxr_core::MessageId::new(),
             attendee_email: "user@example.com".into(),
             partstat: mxr_core::types::CalendarPartstat::Accepted,
             ics_body: "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into(),

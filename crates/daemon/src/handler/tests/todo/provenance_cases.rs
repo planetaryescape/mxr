@@ -1,4 +1,3 @@
-//! Structured fields cannot overwrite authored dates or upgrade inferred certainty.
 use super::*;
 
 #[tokio::test]

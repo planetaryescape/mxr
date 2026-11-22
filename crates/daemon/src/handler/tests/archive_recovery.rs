@@ -137,14 +137,14 @@ async fn assert_completed_history(state: &AppState, operation: &ArchiveOperation
 async fn archive_lost_acceptance_and_completion_replies_concurrent_replays_never_repeat() {
     let (state, provider, operation) = fixture().await;
     let (one, two) = tokio::join!(submit(&state, &operation), submit(&state, &operation));
-    assert!(one.is_ok() && two.is_ok()); // Drop both acknowledgements.
+    assert!(one.is_ok() && two.is_ok());
     let outcome = wait(&state, &operation).await;
     assert!(outcome
         .items
         .iter()
         .all(|item| item.state == ItemState::Completed));
     assert_eq!(provider.mutations().len(), 2);
-    submit(&state, &operation).await.unwrap(); // Completion response was lost too.
+    submit(&state, &operation).await.unwrap();
     let replay = wait(&state, &operation).await;
     assert_eq!(replay.items, outcome.items);
     assert_eq!(provider.mutations().len(), 2);
@@ -317,7 +317,7 @@ async fn archive_interrupted_dispatch_is_unknown_and_query_never_resumes_pending
     let (state, provider, mut operation) = fixture().await;
     operation.accepted = true;
     operation.items[0].state = ItemState::Unknown;
-    overwrite(&state, &operation).await; // Crash after dispatch claim; second item never claimed.
+    overwrite(&state, &operation).await;
     let queried = query(&state, &operation).await;
     assert_eq!(queried.items[0].state, ItemState::Unknown);
     assert_eq!(queried.items[1].state, ItemState::Pending);

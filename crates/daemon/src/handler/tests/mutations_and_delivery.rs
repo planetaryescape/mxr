@@ -124,10 +124,6 @@ fn snooze_message(id: u64, message_id: mxr_core::MessageId, hours: i64) -> IpcMe
     }
 }
 
-/// Dogfood 2026-10-29: Not now on mail that was already snoozed (Snoozed's
-/// `b`, "send it away again") failed with "UNIQUE constraint failed:
-/// snoozed.message_id". It moves the wake time, and waking still restores
-/// the labels from before the first snooze.
 #[tokio::test]
 async fn snoozing_snoozed_mail_again_moves_its_wake_time() {
     let state = folder_copy_state().await;
@@ -352,11 +348,6 @@ async fn dispatch_mutation_archive() {
     assert!(events[0].summary.contains("Archived"));
 }
 
-/// Phase 1.4 / Behaviors 1+2+3+8: archive a message, observe the new
-/// `mutation_id` in the response, undo it within the window, and
-/// verify the message is back under the INBOX label both locally and
-/// on the (fake) provider. Proves the snapshot capture, write,
-/// reverse-op dispatch, and local restoration all line up.
 async fn add_test_label_to_message(state: &AppState, id: &mxr_core::MessageId, label: &str) {
     let account_id = state.default_account_id();
     let label_record = upsert_test_label(state, label).await;
@@ -511,7 +502,6 @@ async fn undo_archive_restores_inbox_label() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;
 
-    // Pre-condition: the message has the INBOX label.
     let pre = state.store.get_envelope(&id).await.unwrap().unwrap();
     assert!(
         pre.label_provider_ids.iter().any(|l| l == "INBOX"),
@@ -519,7 +509,6 @@ async fn undo_archive_restores_inbox_label() {
         pre.label_provider_ids
     );
 
-    // Archive — captures snapshot, writes undo entry, returns mutation_id.
     let archive = IpcMessage {
         expected_workspace: None,
         id: 1,
@@ -541,7 +530,6 @@ async fn undo_archive_restores_inbox_label() {
         post_archive.label_provider_ids
     );
 
-    // Undo — restores INBOX both locally and via the fake provider.
     let undo = IpcMessage {
         expected_workspace: None,
         id: 2,
@@ -565,8 +553,6 @@ async fn undo_archive_restores_inbox_label() {
         restored.label_provider_ids
     );
 
-    // The undo entry is consumed — replaying the same id is now a no-op
-    // (regression test for "user mashes u and double-undoes").
     let replay = IpcMessage {
         expected_workspace: None,
         id: 3,
@@ -628,9 +614,6 @@ async fn undo_move_restores_prior_labels() {
     assert_eq!(actual, expected);
 }
 
-/// Phase 1.4 / Behavior 4: Undo for an unknown id returns Error
-/// with "not found" so the TUI can render the right message instead
-/// of silently succeeding or panicking.
 #[tokio::test]
 async fn undo_unknown_mutation_id_returns_not_found() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -653,17 +636,11 @@ async fn undo_unknown_mutation_id_returns_not_found() {
     }
 }
 
-/// Phase 1.4 / Behavior 6: a bulk Archive of multiple messages
-/// produces a single mutation_id and a single Undo restores all of
-/// them. Catches regressions where snapshots are dropped or only the
-/// first envelope is restored.
 #[tokio::test]
 async fn undo_bulk_archive_restores_all_messages() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
-    // Sync first to populate the fixture.
     let _ = sync_and_get_first_id(&state).await;
 
-    // Pull three INBOX-tagged messages by listing envelopes.
     let list_msg = IpcMessage {
         expected_workspace: None,
         id: 100,
@@ -710,7 +687,6 @@ async fn undo_bulk_archive_restores_all_messages() {
         other => panic!("expected Ack; got {other:?}"),
     }
 
-    // Every archived message should now have INBOX again.
     for id in &ids {
         let env = state.store.get_envelope(id).await.unwrap().unwrap();
         assert!(
@@ -721,8 +697,6 @@ async fn undo_bulk_archive_restores_all_messages() {
     }
 }
 
-/// Phase 1.4: Star is not undoable — the response carries no
-/// mutation_id so clients know not to render the undo affordance.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn async_mutation_job_reports_progress_and_undo_ids_for_large_batch() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -814,8 +788,6 @@ async fn async_mutation_job_reports_progress_and_undo_ids_for_large_batch() {
     }
 }
 
-/// `count` new inbox messages for the fake account, indexed in search, with
-/// `term` in each subject so a test can find exactly them.
 async fn indexed_inbox_messages(
     state: &Arc<AppState>,
     term: &str,
@@ -829,7 +801,6 @@ async fn indexed_inbox_messages(
         .unwrap()
         .unwrap()
         .account_id;
-    // upsert_envelope stores no label links, so attach INBOX explicitly.
     let inbox = state
         .store
         .list_labels_by_account(&account_id)
@@ -914,8 +885,6 @@ fn archive_request(message_ids: Vec<mxr_core::MessageId>) -> IpcMessage {
     }
 }
 
-/// A batch mutation reindexes its messages in one search commit rather than
-/// one per message, and every message in the batch must still be refreshed.
 #[tokio::test]
 async fn batch_archive_reindexes_every_message_in_search() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -929,8 +898,6 @@ async fn batch_archive_reindexes_every_message_in_search() {
     assert_eq!(lexical_hits(&state, "quarterlyreindex in:inbox").await, 0);
 }
 
-/// Undo reindexes its restored messages in one commit at the end, and
-/// search must still see every one of them back in the inbox.
 #[tokio::test]
 async fn undo_reindexes_every_restored_message_in_search() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -956,17 +923,11 @@ async fn undo_reindexes_every_restored_message_in_search() {
     assert_eq!(lexical_hits(&state, "undoreindex in:inbox").await, 3);
 }
 
-/// One message whose store read fails must not cost the rest of the batch
-/// their reindex, and must stay marked until a later reindex can read it:
-/// the search document count does not change, so the count-based startup
-/// repair would never find it.
 #[tokio::test]
 async fn a_failed_search_read_skips_only_that_message_and_marks_it_for_repair() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let ids = indexed_inbox_messages(&state, "unreadablereindex", 3).await;
     let unreadable = ids[1].clone();
-    // An attachment row whose id does not parse makes get_body fail for this
-    // message only; the archive itself never reads the body.
     sqlx::query(
         "INSERT INTO bodies (message_id, text_plain, text_html, fetched_at, metadata_json)
          VALUES (?, 'body', NULL, 0, '{}')",
@@ -991,15 +952,12 @@ async fn a_failed_search_read_skips_only_that_message_and_marks_it_for_repair() 
     );
     assert_eq!(result.succeeded, 3);
 
-    // The two readable messages left the inbox in search; only the
-    // unreadable one is stale, and it is marked.
     assert_eq!(lexical_hits(&state, "unreadablereindex in:inbox").await, 1);
     assert_eq!(
         state.store.list_search_reindex_pending(10).await.unwrap(),
         vec![unreadable.clone()]
     );
 
-    // Once the message reads again, the next mutation's reindex repairs it.
     sqlx::query("DELETE FROM attachments WHERE id = 'not-an-id'")
         .execute(state.store.writer())
         .await
@@ -1020,24 +978,18 @@ async fn a_failed_search_read_skips_only_that_message_and_marks_it_for_repair() 
         .is_empty());
 }
 
-/// A reindex must read the store after it takes the reindex lock, not
-/// before. Otherwise a reindex that read early but committed late would
-/// leave search on an older state than the store, past any restart.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_mutation_reindex_commits_the_store_state_at_commit_time() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let ids = indexed_inbox_messages(&state, "racereindex", 1).await;
     let id = ids[0].clone();
 
-    // Stall every reindex at the lock.
     let held = state.search_reindex.lock().await;
     let archive = {
         let state = state.clone();
         let request = archive_request(ids);
         tokio::spawn(async move { handle_request(&state, &request).await.payload })
     };
-    // Wait for the archive to reach the store, then give it time to reach
-    // the reindex lock.
     while !state
         .store
         .get_message_label_ids(&id)
@@ -1049,8 +1001,6 @@ async fn a_mutation_reindex_commits_the_store_state_at_commit_time() {
     }
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    // A later change to the same message lands in the store while the
-    // archive's reindex waits.
     state
         .store
         .set_starred(&id, true, mxr_core::EventSource::User)
@@ -1187,7 +1137,6 @@ async fn dispatch_prepare_reply() {
         .unwrap()
         .subject;
 
-    // Fetch body first so it's cached
     let body_msg = IpcMessage {
         expected_workspace: None,
         id: 1,
@@ -1263,8 +1212,6 @@ async fn dispatch_prepare_reply_prefers_reply_to_header() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;
 
-    // The original message carries a Reply-To distinct from its From
-    // (the mailing-list / no-reply case).
     state
         .store
         .insert_body(&mxr_core::types::MessageBody {
@@ -1318,7 +1265,6 @@ async fn dispatch_prepare_forward() {
         .unwrap()
         .subject;
 
-    // Fetch body first
     let body_msg = IpcMessage {
         expected_workspace: None,
         id: 1,
@@ -1999,11 +1945,6 @@ async fn agent_profile_enforces_account_allowlist_in_dispatch() {
     }
 }
 
-/// A profile with `allow_destructive = true` but an
-/// `allowed_destructive_actions` allowlist restricts to those specific
-/// actions: an in-list action (archive) is permitted while an
-/// out-of-list one (trash) is rejected, even though the coarse gate is
-/// open.
 #[tokio::test]
 async fn agent_profile_destructive_action_allowlist_scopes_per_action() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -2024,7 +1965,6 @@ async fn agent_profile_destructive_action_allowlist_scopes_per_action() {
     );
     state.set_config_for_test(config).await;
 
-    // Archive is in the allowlist → permitted.
     let archive = IpcMessage {
         expected_workspace: None,
         id: 1,
@@ -2038,7 +1978,6 @@ async fn agent_profile_destructive_action_allowlist_scopes_per_action() {
         other => panic!("expected archive to be allowed, got {other:?}"),
     }
 
-    // Trash is NOT in the allowlist → rejected by the per-action gate.
     let trash = IpcMessage {
         expected_workspace: None,
         id: 2,
@@ -2191,7 +2130,6 @@ async fn dispatch_snooze_and_list() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;
 
-    // Snooze
     let wake_at = chrono::Utc::now() + chrono::Duration::hours(24);
     let msg = IpcMessage {
         expected_workspace: None,
@@ -2210,7 +2148,6 @@ async fn dispatch_snooze_and_list() {
         other => panic!("Expected Ack for Snooze, got {other:?}"),
     }
 
-    // List snoozed - should have 1
     let msg = IpcMessage {
         expected_workspace: None,
         id: 2,
@@ -2227,7 +2164,6 @@ async fn dispatch_snooze_and_list() {
         other => panic!("Expected SnoozedMessages, got {other:?}"),
     }
 
-    // Unsnooze
     let msg = IpcMessage {
         expected_workspace: None,
         id: 3,
@@ -2242,7 +2178,6 @@ async fn dispatch_snooze_and_list() {
         other => panic!("Expected Ack for Unsnooze, got {other:?}"),
     }
 
-    // List snoozed - should have 0
     let msg = IpcMessage {
         expected_workspace: None,
         id: 4,
@@ -2343,7 +2278,6 @@ async fn dispatch_set_flags() {
         other => panic!("Expected Ack, got {other:?}"),
     }
 
-    // Verify flags
     let get_msg = IpcMessage {
         expected_workspace: None,
         id: 2,
@@ -2446,17 +2380,11 @@ async fn unsubscribe_purge_without_method_does_not_archive_unless_allowed() {
     }
 }
 
-/// Regression: phishing that spoofs carriers (fake "DHL"/tracking) lands in
-/// Spam, and the delivery detector used to classify it as a real shipment.
-/// Spam/trash mail must be skipped — even when its content would otherwise
-/// create a delivery.
 #[tokio::test]
 async fn spam_or_trash_mail_is_never_detected_as_a_delivery() {
     let state = folder_copy_state().await;
     let account_id = state.default_account_id_opt().unwrap();
 
-    // Carrier sender + checksum-valid UPS tracking number: exactly the shape
-    // that creates a delivery. Flagged SPAM, it must be skipped.
     let spam_id = seed_carrier_shipment(
         &state,
         &account_id,
@@ -2469,7 +2397,6 @@ async fn spam_or_trash_mail_is_never_detected_as_a_delivery() {
     assert_eq!(summary.scanned, 1);
     assert_eq!(summary.created, 0, "spam mail must not create a delivery");
 
-    // Same in TRASH — also skipped.
     let trash_id = seed_carrier_shipment(
         &state,
         &account_id,
@@ -2484,8 +2411,6 @@ async fn spam_or_trash_mail_is_never_detected_as_a_delivery() {
         "trashed mail must not create a delivery"
     );
 
-    // Identical content without the flag DOES create — proves the guard, not
-    // the content, is what suppresses the spam/trash cases.
     let clean_id = seed_carrier_shipment(
         &state,
         &account_id,
@@ -2533,8 +2458,6 @@ async fn seed_carrier_shipment(
         .unwrap();
     id
 }
-
-// --- Per-message From selection -----------------------------------------
 
 fn from_request(request: Request) -> IpcMessage {
     IpcMessage {
@@ -2605,13 +2528,10 @@ async fn send_uses_registered_alias_from_override() {
         resp.payload
     );
 
-    // The resolved From actually handed to the provider is the alias, named
-    // with the account's display name (Zoho-composer behaviour).
     let froms = fake.sent_from_addresses();
     assert_eq!(froms.len(), 1);
     assert_eq!(froms[0].email, "hello@example.com");
     assert_eq!(froms[0].name.as_deref(), Some("Fake Account"));
-    // The draft the provider saw carries the override, too.
     assert_eq!(
         fake.sent_drafts()[0].from.as_ref().unwrap().email,
         "hello@example.com"
@@ -2648,7 +2568,6 @@ async fn send_rejects_unowned_from_override() {
         }
         other => panic!("expected an error, got {other:?}"),
     }
-    // Nothing left the daemon, and the draft is not wedged in `Sending`.
     assert!(fake.sent_drafts().is_empty());
     assert!(matches!(
         state.store.get_draft_status(&draft_id).await.unwrap(),
@@ -2667,7 +2586,6 @@ async fn save_draft_to_server_validates_from_like_send() {
         .unwrap();
     let state = Arc::new(state);
 
-    // Unowned override: rejected before the provider save payload is built.
     let resp = handle_request(
         &state,
         &from_request(Request::SaveDraftToServer {
@@ -2682,7 +2600,6 @@ async fn save_draft_to_server_validates_from_like_send() {
         other => panic!("expected an error, got {other:?}"),
     }
 
-    // Owned alias: accepted.
     let resp = handle_request(
         &state,
         &from_request(Request::SaveDraftToServer {
@@ -2702,10 +2619,6 @@ async fn save_draft_to_server_validates_from_like_send() {
     );
 }
 
-/// A pushed reply draft learns the provider thread it landed on, so the next
-/// push (or the send) does not have to resolve the parent again. The fake
-/// provider files reply drafts on `fake-thread-<in_reply_to>`, like Gmail
-/// files them on the parent's `threadId`.
 #[tokio::test]
 async fn save_draft_to_server_caches_the_provider_thread_id_on_reply_drafts() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -2749,7 +2662,6 @@ async fn save_draft_to_server_caches_the_provider_thread_id_on_reply_drafts() {
         "the provider thread id is cached onto the local draft"
     );
 
-    // A draft that already knows its thread keeps it.
     let mut known = draft_from(stored.account_id.clone(), None);
     known.intent = mxr_core::DraftIntent::Reply;
     known.reply_headers = Some(mxr_core::ReplyHeaders {
@@ -2771,9 +2683,6 @@ async fn save_draft_to_server_caches_the_provider_thread_id_on_reply_drafts() {
     );
 }
 
-/// The provider-failure promise: a push that the provider rejects leaves the
-/// local draft exactly as it was, thread-id cache included. The id is only
-/// worth caching once the draft is actually filed on that thread.
 #[tokio::test]
 async fn a_failed_push_does_not_cache_the_thread_id() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -2821,7 +2730,6 @@ async fn resolve_send_from_previews_and_validates_like_send() {
         .unwrap();
     let state = Arc::new(state);
 
-    // None resolves to the account primary.
     let resp = handle_request(
         &state,
         &from_request(Request::ResolveSendFrom {
@@ -2837,7 +2745,6 @@ async fn resolve_send_from_previews_and_validates_like_send() {
         other => panic!("expected ResolvedSendFrom, got {other:?}"),
     }
 
-    // A registered alias is accepted and named with the account display name.
     let resp = handle_request(
         &state,
         &from_request(Request::ResolveSendFrom {
@@ -2859,7 +2766,6 @@ async fn resolve_send_from_previews_and_validates_like_send() {
         other => panic!("expected ResolvedSendFrom, got {other:?}"),
     }
 
-    // An unowned address is rejected identically to the real send path.
     let resp = handle_request(
         &state,
         &from_request(Request::ResolveSendFrom {
@@ -2889,7 +2795,6 @@ async fn prepare_reply_defaults_from_to_delivered_alias() {
         .await
         .unwrap();
 
-    // Message delivered to the alias -> reply defaults its From to the alias.
     let to_alias = crate::test_fixtures::TestEnvelopeBuilder::new()
         .account_id(account_id.clone())
         .provider_id("reply-alias")
@@ -2900,7 +2805,6 @@ async fn prepare_reply_defaults_from_to_delivered_alias() {
     let alias_msg_id = to_alias.id.clone();
     state.store.upsert_envelope(&to_alias).await.unwrap();
 
-    // Message delivered to a non-owned address -> falls back to the primary.
     let to_other = crate::test_fixtures::TestEnvelopeBuilder::new()
         .account_id(account_id.clone())
         .provider_id("reply-other")
@@ -2943,10 +2847,6 @@ async fn prepare_reply_defaults_from_to_delivered_alias() {
     }
 }
 
-/// Insert a message delivered to an external To (no owned To/Cc, so the From
-/// default falls to the `Delivered-To:` header) with `raw_headers` built the
-/// way the store actually builds them — header pairs, headers-only, no
-/// blank-line separator — and return its id.
 async fn seed_reply_source_with_raw_headers(
     state: &AppState,
     account_id: &mxr_core::AccountId,
@@ -3004,10 +2904,6 @@ async fn reply_context_from(state: &Arc<AppState>, message_id: mxr_core::Message
 
 #[tokio::test]
 async fn prepare_reply_neutralizes_a_value_injected_delivered_to_and_defaults_to_primary() {
-    // NEGATIVE end-to-end (the root-cause path): a benign header VALUE carries
-    // an injected "\r\nDelivered-To: <owned alias>" — a provider cloning a
-    // hostile value verbatim. Sanitized at the serialization boundary so it
-    // never becomes a header; the reply defaults to the primary, not the alias.
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
     let account_id = state.default_account_id_opt().unwrap();
     state
@@ -3035,9 +2931,6 @@ async fn prepare_reply_neutralizes_a_value_injected_delivered_to_and_defaults_to
 
 #[tokio::test]
 async fn prepare_reply_ignores_a_synthesized_name_delivered_to_and_defaults_to_primary() {
-    // NEGATIVE end-to-end: a ":Delivered-To" *name* tries to synthesize a real
-    // header by relying on strip-the-colon rewriting. Reject-don't-rewrite
-    // drops the pair, so the reply defaults to the primary, not the alias.
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
     let account_id = state.default_account_id_opt().unwrap();
     state
@@ -3555,13 +3448,11 @@ async fn an_unsubscribe_committed_with_its_preview_token_clears_only_what_was_pr
         .expect("a dry run issues a token");
     assert!(preview.message_count > 0);
 
-    // Another sender's preview, or a made-up token, is refused.
     let wrong = purge(&state, "noreply@rust-lang.org", false, Some(token.clone())).await;
     assert!(matches!(wrong, Response::Error { .. }), "{wrong:?}");
     let made_up = purge(&state, "alice@work.com", false, Some("nope".into())).await;
     assert!(matches!(made_up, Response::Error { .. }), "{made_up:?}");
 
-    // Mail from the sender after the preview stays out of the commit.
     let mut later = state
         .store
         .get_envelope(&preview.message_ids[0])
@@ -3594,7 +3485,6 @@ async fn an_unsubscribe_committed_with_its_preview_token_clears_only_what_was_pr
     };
     assert_eq!(result.message_ids, preview.message_ids);
     assert!(!result.message_ids.contains(&later.id));
-    // A token is good once.
     let again = purge(&state, "alice@work.com", false, Some(token)).await;
     assert!(matches!(again, Response::Error { .. }), "{again:?}");
 }
@@ -3846,8 +3736,6 @@ async fn unsubscribe_keep_mail_with_an_empty_preview_token_is_refused() {
     assert!(fake.sent_drafts().is_empty());
 }
 
-/// A committed preview sends once. Purging the event log and previewing and
-/// committing the same sender again must not send a second time.
 #[tokio::test]
 async fn unsubscribe_purge_commit_sends_once_after_event_log_is_purged() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -3884,9 +3772,6 @@ async fn unsubscribe_purge_commit_sends_once_after_event_log_is_purged() {
     );
 }
 
-/// Another attempt holds a live claim on the sender's mail. The commit must
-/// report the failure and neither send nor archive: the other attempt decides
-/// whether the unsubscribe goes out.
 #[tokio::test]
 async fn unsubscribe_purge_commit_stops_when_an_attempt_is_in_progress() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -4025,9 +3910,6 @@ async fn ensure_reply(
     }
 }
 
-/// Dogfood 2026-10-29: with an empty reply and one with text on the same
-/// conversation, Messages showed "Draft: <text>" but `r` resumed the older
-/// empty one. Opening the reply continues the draft the row shows.
 #[tokio::test]
 async fn ensure_reply_draft_continues_the_draft_with_text_over_an_older_empty_one() {
     let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -4120,7 +4002,6 @@ const THREE_ACCOUNTS: &str = "[general]\ndefault_account = \"personal\"\n\
 [accounts.personal]\nname = \"Personal\"\nemail = \"personal@example.com\"\nenabled = true\n\
 [accounts.side]\nname = \"Side\"\nemail = \"side@example.com\"\nenabled = true\n";
 
-/// Runs `body` against a daemon whose config dir is a temp dir holding `config`.
 fn with_config_file<F>(config: &str, env_default: Option<&str>, body: F)
 where
     F: FnOnce(std::path::PathBuf) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()>>>,
@@ -4155,8 +4036,6 @@ fn a_removal_whose_cached_mail_update_fails_reports_the_config_change_as_saved()
     with_config_file(THREE_ACCOUNTS, None, |config_file| {
         Box::pin(async move {
             let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
-            // The config write commits; the store write after it cannot. The
-            // in-memory store reads on the same connection, so reads still work.
             sqlx::query("PRAGMA query_only = ON")
                 .execute(state.store.writer())
                 .await
@@ -4193,7 +4072,6 @@ fn two_config_writes_on_one_worker_both_finish() {
                 config_account("personal", "Personal Mail", false),
                 true,
             );
-            // A deadlock would park the only worker and never reach the timeout.
             let (identity, upsert) =
                 tokio::time::timeout(std::time::Duration::from_secs(20), async {
                     tokio::join!(identity, upsert)
@@ -4216,7 +4094,6 @@ fn an_env_default_override_is_not_written_by_an_untouched_toggle() {
     with_config_file(THREE_ACCOUNTS, Some("work"), |config_file| {
         Box::pin(async move {
             let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
-            // The form for the effective default carries is_default = true.
             let result = crate::handler::account_config::upsert_account_config(
                 &state,
                 config_account("work", "Work Mail", true),
@@ -4228,7 +4105,6 @@ fn an_env_default_override_is_not_written_by_an_untouched_toggle() {
                 mxr_config::load_config_file_as_written(&config_file).expect("load as written");
             assert_eq!(written.general.default_account.as_deref(), Some("personal"));
 
-            // Toggling a different account on still changes the file.
             let result = crate::handler::account_config::upsert_account_config(
                 &state,
                 config_account("side", "Side", true),
@@ -4255,7 +4131,6 @@ async fn dispatch_prepare_reply_all() {
         .unwrap()
         .subject;
 
-    // Fetch body first
     let body_msg = IpcMessage {
         expected_workspace: None,
         id: 1,
@@ -4282,7 +4157,6 @@ async fn dispatch_prepare_reply_all() {
         }) => {
             assert!(context.reply_to.contains('@'));
             assert_eq!(context.subject, expected_subject);
-            // cc may or may not be empty depending on the message, but the field should exist
         }
         other => panic!("Expected ReplyContext, got {other:?}"),
     }
@@ -4293,7 +4167,6 @@ async fn dispatch_unsubscribe_no_method() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;
 
-    // The first envelope from FakeProvider fixtures uses UnsubscribeMethod::None
     let msg = IpcMessage {
         expected_workspace: None,
         id: 1,

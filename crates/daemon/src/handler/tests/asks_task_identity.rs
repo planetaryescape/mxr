@@ -102,8 +102,6 @@ async fn review2_currency_balances_keep_distinct_rows_and_unit_links() {
                 .await;
             replace(&fx, &second, &b).await;
             settle(&fx, &second).await;
-            // A new correspondent message invalidates the earlier thread's context.
-            // Exercise the normal account reconciler before asserting current links.
             super::super::assessments::reconcile_account(&fx.state, &fx.account)
                 .await
                 .unwrap();

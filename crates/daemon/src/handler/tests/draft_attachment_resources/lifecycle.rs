@@ -31,7 +31,6 @@ async fn draft_attachment_resources_cleanup_retains_owner_absent_inflight_bytes(
                 .await
                 .unwrap();
         }
-        // Account deletion can cascade the owner row; the durable outcome remains a reference.
         state.store.delete_draft(&draft.id).await.unwrap();
         sqlx::query("UPDATE draft_attachment_resources SET updated_at = 0")
             .execute(state.store.writer())

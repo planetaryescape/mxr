@@ -1,7 +1,3 @@
-//! `--all`: a bulk action over a selection the daemon resolves, previews and
-//! runs as one job. Everything here goes through the real handler, a Tantivy
-//! index in a temp directory, and the fake provider's recorded mutations.
-
 use super::*;
 use chrono::Duration;
 use mxr_core::id::{AccountId, LabelId, MessageId, ThreadId};
@@ -83,8 +79,6 @@ impl Fixture {
         id
     }
 
-    /// A second account the fake provider does not serve: its mail can be
-    /// found and listed, but not changed.
     pub(super) async fn other_account(&self, enabled: bool) -> AccountId {
         let id = AccountId::new();
         self.state
@@ -106,7 +100,6 @@ impl Fixture {
         id
     }
 
-    /// `n` inbox messages whose subject starts with `subject`, newest first.
     pub(super) async fn many(&self, n: usize, subject: &str) -> Vec<Envelope> {
         let mut made = Vec::with_capacity(n);
         for index in 0..n {
@@ -126,8 +119,6 @@ impl Fixture {
         made
     }
 
-    /// Store and index one message in `account`'s inbox. `minutes_ago` keeps
-    /// the dates distinct, so "newest first" has one answer.
     pub(super) async fn message(
         &self,
         account: &AccountId,
@@ -153,7 +144,6 @@ impl Fixture {
         envelope
     }
 
-    /// In the store with its labels, not yet in the index.
     pub(super) async fn store_message(
         &self,
         account: &AccountId,
@@ -209,7 +199,6 @@ impl Fixture {
         envelope
     }
 
-    /// Put these stored messages in the search index, as sync would.
     pub(super) async fn index(&self, envelopes: &[&Envelope]) {
         let ids: Vec<MessageId> = envelopes.iter().map(|e| e.id.clone()).collect();
         super::super::mutations::reindex_messages_in_search(&self.state, &ids)
@@ -230,7 +219,6 @@ impl Fixture {
         }
     }
 
-    /// The reply as it is, error or not.
     pub(super) async fn send_raw(&self, request: Request) -> Response {
         let msg = IpcMessage {
             expected_workspace: None,
@@ -257,8 +245,6 @@ impl Fixture {
         }
     }
 
-    /// Every id a search lists, a page at a time, the way a client paging
-    /// `Request::Search` sees them: lexical, newest first.
     pub(super) async fn paged_search(
         &self,
         query: &str,
@@ -377,7 +363,6 @@ impl Fixture {
         }
     }
 
-    /// Waits for the job to finish. Only a deadline, never an ordering.
     pub(super) async fn wait_for_job(&self, job_id: &str) -> JobData {
         for _ in 0..6000 {
             let job = self.job(job_id).await;
@@ -389,7 +374,6 @@ impl Fixture {
         panic!("job {job_id} did not finish");
     }
 
-    /// Provider ids the fake archived (removed INBOX from), in call order.
     pub(super) fn archived_provider_ids(&self) -> Vec<String> {
         self.fake
             .mutations()
@@ -405,8 +389,6 @@ impl Fixture {
             .collect()
     }
 
-    /// Drop a message from the store and leave it in the search index, the
-    /// way a sync that deletes mail does until the index catches up.
     pub(super) async fn delete_from_store(&self, envelope: &Envelope) {
         self.state
             .store
@@ -437,12 +419,6 @@ pub(super) fn archive() -> MutationCommand {
     }
 }
 
-// ---------------------------------------------------------------------------
-// The resolver
-// ---------------------------------------------------------------------------
-
-/// The resolver returns the set a client paging `Request::Search` would see
-/// end to end, across everything the live pager filters.
 #[tokio::test]
 async fn the_resolver_lists_what_paged_search_lists() {
     let fx = Fixture::new().await;
@@ -450,7 +426,6 @@ async fn the_resolver_lists_what_paged_search_lists() {
     let other = fx.other_account(true).await;
     let hidden = fx.other_account(false).await;
 
-    // Live mail across the account's states.
     for n in 0..9 {
         fx.message(&fx.account, &format!("report {n}"), 100 + n)
             .await;
@@ -467,7 +442,6 @@ async fn the_resolver_lists_what_paged_search_lists() {
         .await;
     fx.message_with(&fx.account, "report spam", 30, MessageFlags::SPAM, &[])
         .await;
-    // Another visible account, and one that is not visible.
     for n in 0..3 {
         fx.message(&other, &format!("report other {n}"), 20 + n)
             .await;
@@ -476,7 +450,6 @@ async fn the_resolver_lists_what_paged_search_lists() {
         fx.message(&hidden, &format!("report hidden {n}"), 10 + n)
             .await;
     }
-    // In the index but gone from the store.
     let ghost = fx
         .store_message(&fx.account, "report ghost", 5, MessageFlags::empty(), &[])
         .await;
@@ -505,9 +478,6 @@ async fn the_resolver_lists_what_paged_search_lists() {
         );
     }
 
-    // A query the structured parser rejects goes to the index's free-text
-    // parser, which refuses it too: both surfaces fail the same way, and a
-    // selection never falls back to something looser.
     let message = fx
         .refused(Request::Search {
             query: "report OR".into(),
@@ -533,7 +503,6 @@ async fn the_resolver_lists_what_paged_search_lists() {
         .contains("Syntax Error")
     );
 
-    // And the cases above are not all empty: the filters did something.
     let everything = fx.resolved("report", None).await;
     let account_live = fx.resolved("report", Some(&fx.account)).await;
     assert_eq!(
@@ -567,7 +536,6 @@ async fn a_selection_by_owed_reply_covers_the_whole_set_not_one_page() {
             .await;
         owed.push(envelope);
     }
-    // One answered thread, which must stay out.
     let answered = fx
         .store_message(
             &fx.account,
@@ -626,8 +594,6 @@ async fn a_selection_by_owed_reply_covers_the_whole_set_not_one_page() {
     assert!(resolved.len() >= 30);
 }
 
-/// The paged search caps its owed-thread lookup at 5,000 per account; a
-/// selection must not, or it would drop owed threads without a word.
 #[tokio::test]
 async fn a_selection_by_owed_reply_is_not_cut_at_five_thousand_threads() {
     let fx = Fixture::new().await;
@@ -651,10 +617,6 @@ async fn a_selection_by_owed_reply_is_not_cut_at_five_thousand_threads() {
     let resolved = fx.resolved("is:owed-reply", None).await;
     assert_eq!(resolved.len(), total);
 }
-
-// ---------------------------------------------------------------------------
-// Preview
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn a_preview_counts_and_samples_without_listing_ids() {
@@ -680,7 +642,6 @@ async fn a_preview_counts_and_samples_without_listing_ids() {
     assert!(!preview.preview_token.is_empty());
     assert!(preview.expires_at > chrono::Utc::now().timestamp_millis());
 
-    // Across both accounts when none is named.
     let ResponseData::SelectionPreview { preview: all } = fx
         .send(Request::PreviewSelection {
             selection: Fixture::selection("invoice", None),
@@ -696,7 +657,6 @@ async fn a_preview_counts_and_samples_without_listing_ids() {
     assert_eq!(all.sample.len(), 3);
     assert_eq!(all.sample_size, 3);
 
-    // The reply is small whatever the selection: it holds no id list.
     let wire = serde_json::to_vec(&ResponseData::SelectionPreview { preview }).unwrap();
     assert!(wire.len() < 20_000, "{} bytes", wire.len());
 }
@@ -744,10 +704,6 @@ async fn a_preview_refuses_what_a_selection_job_cannot_do() {
         .contains("Invalid search query"));
 }
 
-// ---------------------------------------------------------------------------
-// Preview and run agree
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn the_job_acts_on_what_the_preview_counted_and_nothing_else() {
     let fx = Fixture::new().await;
@@ -755,14 +711,12 @@ async fn the_job_acts_on_what_the_preview_counted_and_nothing_else() {
     let preview = fx.preview("invoice", &archive()).await;
     assert_eq!(preview.count, 5);
 
-    // Mail arrives after the preview, and one message is deleted.
     let late = fx.message(&fx.account, "invoice late", 0).await;
     fx.delete_from_store(&msgs[2]).await;
 
     let started = fx
         .start("invoice", &preview.preview_token, &archive())
         .await;
-    // The first poll already says which accounts the job touches.
     let accounts = &started.result.as_ref().unwrap().accounts;
     assert_eq!(accounts.len(), 1);
     assert_eq!(accounts[0].account_id, fx.account);
@@ -827,10 +781,6 @@ async fn a_label_job_applies_and_removes_the_named_labels() {
     assert_eq!(added, 3);
 }
 
-// ---------------------------------------------------------------------------
-// Only the user's own labels
-// ---------------------------------------------------------------------------
-
 fn edit_labels(add: &[&str], remove: &[&str]) -> MutationCommand {
     MutationCommand::ModifyLabels {
         message_ids: Vec::new(),
@@ -839,15 +789,9 @@ fn edit_labels(add: &[&str], remove: &[&str]) -> MutationCommand {
     }
 }
 
-/// A provider acts on some labels rather than tagging: adding `TRASH` or
-/// `SPAM` trashes or spams, an IMAP trash folder has an id of its own, and a
-/// name like `DELETED` becomes the `\Deleted` flag. A selection's label edit
-/// may name only labels the user created, however the name is spelled, added
-/// or removed, in a preview or in a raw start.
 #[tokio::test]
 async fn a_label_edit_may_only_name_the_users_own_labels() {
     let fx = Fixture::new().await;
-    // An IMAP-style trash folder: displayed as TRASH, with an id of its own.
     fx.label_of(&fx.account, "Deleted Items", "TRASH", LabelKind::System)
         .await;
     fx.label_of(&fx.account, "Clients", "Clients", LabelKind::Folder)
@@ -864,25 +808,20 @@ async fn a_label_edit_may_only_name_the_users_own_labels() {
         text
     };
     for (add, remove) in [
-        // System labels by id, by name and by the id a provider gave them.
         (&["TRASH"][..], &[][..]),
         (&["SPAM"], &[]),
         (&["INBOX"], &[]),
         (&["Inbox"], &[]),
         (&["Deleted Items"], &[]),
         (&["Work", "TRASH"], &[]),
-        // Names that are no label here: wrong case, IMAP flags, made up.
         (&["trash"], &[]),
         (&["DELETED"], &[]),
         (&["\\Deleted"], &[]),
         (&["Nope"], &[]),
-        // A provider folder is not a label the user created.
         (&["Clients"], &[]),
-        // Removing is held to the same rule.
         (&[], &["TRASH"]),
         (&[], &["INBOX"]),
         (&["Work"], &["Deleted Items"]),
-        // Nothing to do.
         (&[], &[]),
     ] {
         let mutation = edit_labels(add, remove);
@@ -894,7 +833,6 @@ async fn a_label_edit_may_only_name_the_users_own_labels() {
             })
             .await;
         refused(preview);
-        // A raw start has no token from a preview that froze such a label.
         let start = fx
             .refused(fx.start_request(
                 &uuid::Uuid::now_v7().to_string(),
@@ -914,7 +852,6 @@ async fn a_label_edit_may_only_name_the_users_own_labels() {
         assert!(fx.in_inbox(&message.id).await);
     }
 
-    // A user label can be added and removed.
     assert_eq!(
         fx.preview("invoice", &edit_labels(&["Work"], &[]))
             .await
@@ -935,7 +872,6 @@ async fn a_label_edit_may_only_name_the_users_own_labels() {
     );
 }
 
-/// A label stored as the user's but carrying a mailbox role is refused too.
 #[tokio::test]
 async fn a_user_label_with_a_mailbox_role_is_refused() {
     let fx = Fixture::new().await;
@@ -965,8 +901,6 @@ async fn a_user_label_with_a_mailbox_role_is_refused() {
     assert!(refusal.contains("system label or folder"), "{refusal}");
 }
 
-/// Across accounts a name must be the user's label in each of them, because
-/// each message is edited with its own account's label of that name.
 #[tokio::test]
 async fn a_label_edit_over_every_account_needs_the_label_in_each() {
     let fx = Fixture::new().await;
@@ -985,15 +919,12 @@ async fn a_label_edit_over_every_account_needs_the_label_in_each() {
         missing.contains("not a label you created in account Other"),
         "{missing}"
     );
-    // Naming the account it exists in is fine.
     assert_eq!(
         fx.preview("invoice", &edit_labels(&["Work"], &[]))
             .await
             .count,
         2
     );
-    // So is a search over every account that only reaches that one: an
-    // account the selection does not reach is not asked about its labels.
     fx.message(&fx.account, "receipt here", 4).await;
     let ResponseData::SelectionPreview { preview } = fx
         .send(Request::PreviewSelection {
@@ -1014,11 +945,6 @@ async fn a_label_edit_over_every_account_needs_the_label_in_each() {
     assert_eq!(preview.count, 3);
 }
 
-// ---------------------------------------------------------------------------
-// The labels are the ones the preview meant
-// ---------------------------------------------------------------------------
-
-/// Provider label ids the fake added, one entry per call.
 fn added_labels(fx: &Fixture) -> Vec<Vec<String>> {
     fx.fake
         .mutations()
@@ -1030,9 +956,6 @@ fn added_labels(fx: &Fixture) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// The preview pins each name to a label. Renaming it afterwards, and making
-/// another label with the old name, does not move the job to the new label,
-/// before the start or while the job runs.
 #[tokio::test]
 async fn a_rename_after_the_preview_does_not_change_which_label_is_edited() {
     let fx = Fixture::new().await;
@@ -1041,11 +964,9 @@ async fn a_rename_after_the_preview_does_not_change_which_label_is_edited() {
     let add = edit_labels(&["Work"], &[]);
     let preview = fx.preview("invoice", &add).await;
 
-    // `Work` becomes `Old`, and a new `Work` appears.
     fx.label(&fx.account, "Label_work", "Old").await;
     fx.label(&fx.account, "Label_new", "Work").await;
     let started = fx.start("invoice", &preview.preview_token, &add).await;
-    // And again while the job runs: no batch resolves the name again.
     fx.label(&fx.account, "Label_work", "Older").await;
     fx.label(&fx.account, "Label_newer", "Old").await;
     let job = fx.wait_for_job(&started.job_id).await;
@@ -1069,7 +990,6 @@ async fn a_label_deleted_after_the_preview_refuses_the_start() {
     let add = edit_labels(&["Work"], &[]);
     let preview = fx.preview("invoice", &add).await;
     fx.state.store.delete_label(&work).await.unwrap();
-    // A label of the same name made since is not the one previewed.
     fx.label(&fx.account, "Label_new", "Work").await;
 
     let job_id = uuid::Uuid::now_v7().to_string();
@@ -1089,10 +1009,6 @@ async fn a_label_deleted_after_the_preview_refuses_the_start() {
         "no job was recorded"
     );
 }
-
-// ---------------------------------------------------------------------------
-// The token
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn a_token_is_single_use_and_for_one_selection_and_action() {
@@ -1122,7 +1038,6 @@ async fn a_token_is_single_use_and_for_one_selection_and_action() {
         .await;
     assert!(refusal.contains("expired or was already used"), "{refusal}");
 
-    // The refusals did not use it up.
     let job = fx.start("note", &token, &archive()).await;
     fx.wait_for_job(&job.job_id).await;
     let again = fx
@@ -1131,10 +1046,6 @@ async fn a_token_is_single_use_and_for_one_selection_and_action() {
     assert!(again.contains("expired or was already used"), "{again}");
     assert_eq!(fx.archived_provider_ids().len(), 3);
 }
-
-// ---------------------------------------------------------------------------
-// Idempotent start
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn a_repeated_start_returns_the_same_job_and_a_lost_reply_is_recoverable() {
@@ -1149,9 +1060,7 @@ async fn a_repeated_start_returns_the_same_job_and_a_lost_reply_is_recoverable()
     };
     assert_eq!(first.job_id, job_id);
 
-    // The reply was lost: the client asks for the job it named.
     assert_eq!(fx.job(&job_id).await.job_id, job_id);
-    // And may send the start again, which returns the job, not a second one.
     let ResponseData::JobStarted { job: second } = fx.send(request).await else {
         panic!("expected the same job back");
     };
@@ -1175,7 +1084,6 @@ async fn a_repeated_start_returns_the_same_job_and_a_lost_reply_is_recoverable()
     assert_eq!(archived.len(), 3);
     assert_eq!(fx.archived_provider_ids().len(), 3, "each message once");
 
-    // The id belongs to that selection.
     let other = fx
         .refused(fx.start_request(&job_id, "different", "whatever", &archive()))
         .await;
@@ -1186,16 +1094,11 @@ async fn a_repeated_start_returns_the_same_job_and_a_lost_reply_is_recoverable()
     assert!(bad.contains("UUID"), "{bad}");
 }
 
-// ---------------------------------------------------------------------------
-// Partial failure
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn a_failing_message_ends_the_job_with_exact_counts_and_its_details() {
     let fx = Fixture::new().await;
     let msgs = fx.many(250, "invoice").await;
     let preview = fx.preview("invoice", &archive()).await;
-    // Message 150 is in the second chunk of 100.
     fx.fake.fail_mutations_of(Some(&msgs[150].provider_id));
     let started = fx
         .start("invoice", &preview.preview_token, &archive())
@@ -1224,7 +1127,6 @@ async fn a_failing_message_ends_the_job_with_exact_counts_and_its_details() {
     assert!(job.undo_ids.is_empty(), "an --all job keeps no undo");
     assert_eq!(job.result.as_ref().unwrap().accounts[0].failed, 1);
 
-    // No later chunk ran.
     assert_eq!(fx.archived_provider_ids().len(), 150);
     for later in &msgs[200..] {
         assert!(fx.in_inbox(&later.id).await);
@@ -1233,10 +1135,6 @@ async fn a_failing_message_ends_the_job_with_exact_counts_and_its_details() {
         assert!(fx.in_inbox(&skipped.id).await);
     }
 }
-
-// ---------------------------------------------------------------------------
-// Rate limits
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn a_rate_limit_pauses_the_job_and_it_resumes_without_repeating_a_call() {
@@ -1296,24 +1194,17 @@ async fn a_provider_that_never_stops_rate_limiting_ends_the_job_with_exact_count
     assert!(fx.fake.mutations().is_empty());
 }
 
-// ---------------------------------------------------------------------------
-// Restart
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn a_restart_marks_a_running_job_interrupted_with_the_counts_it_had() {
     let fx = Fixture::new().await;
     let reached = fx.many(100, "alpha").await;
     let never_reached = fx.many(105, "beta").await;
 
-    // A real job over the first 100 leaves real counts.
     let preview = fx.preview("alpha", &archive()).await;
     let started = fx.start("alpha", &preview.preview_token, &archive()).await;
     let done = fx.wait_for_job(&started.job_id).await;
     assert_eq!(done.status, JobStatusData::Succeeded);
 
-    // The row is then written as the previous daemon would have left it
-    // after its first chunk of a 205-message job: still running.
     let mut running = done.clone();
     running.status = JobStatusData::Running;
     running.finished_at = None;
@@ -1340,14 +1231,11 @@ async fn a_restart_marks_a_running_job_interrupted_with_the_counts_it_had() {
     );
     assert!(job.finished_at.is_some());
 
-    // Nothing is left running to mark again.
     assert_eq!(
         super::super::job_recovery::mark_interrupted_mutation_jobs(&fx.state).await,
         0
     );
 
-    // A second run over the same search finishes what the first never
-    // reached; what it did reach is not in the inbox any more to match.
     let preview = fx.preview("in:inbox", &archive()).await;
     assert_eq!(preview.count, 105);
     let second = fx
@@ -1360,12 +1248,7 @@ async fn a_restart_marks_a_running_job_interrupted_with_the_counts_it_had() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// No undo (D192)
-// ---------------------------------------------------------------------------
-
 impl Fixture {
-    /// Archive everything matching `query` as one finished job.
     pub(super) async fn archive_job(&self, query: &str) -> JobData {
         let preview = self.preview(query, &archive()).await;
         let started = self.start(query, &preview.preview_token, &archive()).await;
@@ -1374,7 +1257,6 @@ impl Fixture {
         job
     }
 
-    /// Rows in the undo log, whoever wrote them.
     pub(super) async fn undo_entries(&self) -> i64 {
         sqlx::query_scalar("SELECT COUNT(*) FROM mutation_undo_log")
             .fetch_one(self.state.store.reader())
@@ -1383,9 +1265,6 @@ impl Fixture {
     }
 }
 
-/// An `--all` job keeps no undo: no snapshot is taken and no undo entry is
-/// written, for any of its actions, over several chunks, nor for a message a
-/// rate limit stopped part way.
 #[tokio::test]
 async fn an_all_job_writes_no_undo_entries() {
     let fx = Fixture::new().await;
@@ -1407,8 +1286,6 @@ async fn an_all_job_writes_no_undo_entries() {
         assert_eq!(job.undo_id_count, 0);
         assert!(job.result.as_ref().unwrap().mutation_id.is_none());
     }
-    // Read-archive with the archive refused once after the mark-read: the
-    // retry finishes it, and nothing is kept for undo.
     let read_archive = MutationCommand::ReadAndArchive {
         message_ids: Vec::new(),
     };
@@ -1422,7 +1299,6 @@ async fn an_all_job_writes_no_undo_entries() {
     assert!(job.undo_ids.is_empty());
     assert_eq!(fx.undo_entries().await, 0, "an --all job writes no undo");
 
-    // An ordinary mutation still keeps its undo, as before.
     let mail = fx.many(1, "letter").await;
     let ResponseData::MutationResult { result } = fx
         .send(Request::mutation(MutationCommand::Archive {
@@ -1436,9 +1312,6 @@ async fn an_all_job_writes_no_undo_entries() {
     assert_eq!(fx.undo_entries().await, 1);
 }
 
-/// `UndoMutation` with an `--all` job's id says that such a job cannot be
-/// undone and why, rather than "not found". Other unknown ids keep the
-/// not-found error.
 #[tokio::test]
 async fn undoing_an_all_job_is_refused_as_such() {
     let fx = Fixture::new().await;
@@ -1464,9 +1337,6 @@ async fn undoing_an_all_job_is_refused_as_such() {
     assert!(unknown.contains("not found"), "{unknown}");
 }
 
-/// An agent or MCP caller cleared for the `--all` job's accounts reaches the
-/// same refusal the CLI gets. One that is not cleared gets the not-found an
-/// unknown id gets, so the job's existence does not leak outside its accounts.
 #[tokio::test]
 async fn a_scoped_caller_gets_the_refusal_only_for_an_all_job_in_its_accounts() {
     use mxr_config::SafetyPolicy;
@@ -1520,11 +1390,6 @@ async fn a_scoped_caller_gets_the_refusal_only_for_an_all_job_in_its_accounts() 
     assert!(!outside.contains("--all"), "{outside}");
 }
 
-// ---------------------------------------------------------------------------
-// Label counts
-// ---------------------------------------------------------------------------
-
-/// What the sidebar shows for the inbox.
 async fn inbox_count(fx: &Fixture) -> u32 {
     fx.state
         .store
@@ -1537,9 +1402,6 @@ async fn inbox_count(fx: &Fixture) -> u32 {
         .total_count
 }
 
-/// Refreshing label counts scans the whole mailbox, so a batch does it once
-/// rather than per message (70,000 messages took over an hour that way). The
-/// counts must still be right when the job ends.
 #[tokio::test]
 async fn a_job_leaves_label_counts_right() {
     let fx = Fixture::new().await;
@@ -1581,10 +1443,6 @@ async fn an_immediate_batch_refreshes_label_counts_before_it_replies() {
     assert_eq!(inbox_count(&fx).await, 5);
 }
 
-// ---------------------------------------------------------------------------
-// Scope
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn a_scoped_profile_reaches_only_selections_of_its_own_account() {
     use mxr_config::SafetyPolicy;
@@ -1625,17 +1483,13 @@ async fn a_scoped_profile_reaches_only_selections_of_its_own_account() {
         client_correlation_id: None,
     };
 
-    // Not naming an account would reach every account's mail.
     assert!(check(preview(None)).await.is_err());
     assert!(check(start(None)).await.is_err());
-    // Another account's mail.
     assert!(check(preview(Some(&other))).await.is_err());
     assert!(check(start(Some(&other))).await.is_err());
-    // Its own.
     check(preview(Some(&fx.account))).await.unwrap();
     check(start(Some(&fx.account))).await.unwrap();
 
-    // The job it started is readable at once.
     let finished = fx.archive_job("invoice").await;
     check(Request::GetJob {
         job_id: finished.job_id.clone(),
@@ -1643,7 +1497,6 @@ async fn a_scoped_profile_reaches_only_selections_of_its_own_account() {
     .await
     .unwrap();
 
-    // A read-only profile may preview and may not start.
     assert!(enforce_safety_policy(SafetyPolicy::ReadOnly, &preview(Some(&fx.account))).is_ok());
     assert!(enforce_safety_policy(SafetyPolicy::ReadOnly, &start(Some(&fx.account))).is_err());
 }
@@ -1652,7 +1505,6 @@ async fn a_scoped_profile_reaches_only_selections_of_its_own_account() {
 async fn a_job_over_an_account_the_daemon_cannot_reach_stops_and_says_which() {
     let fx = Fixture::new().await;
     let other = fx.other_account(true).await;
-    // The fake provider serves only the first account.
     for n in 0..3 {
         fx.message(&other, &format!("invoice {n}"), n).await;
     }
@@ -1689,10 +1541,6 @@ async fn a_job_over_an_account_the_daemon_cannot_reach_stops_and_says_which() {
         .contains("account unavailable"));
     assert_eq!(job.progress.skipped, 3);
 }
-
-// ---------------------------------------------------------------------------
-// Activity
-// ---------------------------------------------------------------------------
 
 async fn job_activity(fx: &Fixture) -> Vec<mxr_store::ActivityRow> {
     crate::activity::settle(&fx.state.activity).await;
@@ -1763,8 +1611,6 @@ async fn a_job_records_nothing_when_activity_is_off() {
     assert!(job_activity(&fx).await.is_empty());
 }
 
-/// `MXR_ACTIVITY=off` is read when the recorder starts, so the check runs in
-/// a child process that has it set.
 #[tokio::test]
 async fn a_job_records_nothing_under_the_activity_kill_switch() {
     const CHILD: &str = "MXR_TEST_SELECTION_ACTIVITY_CHILD";
@@ -1794,10 +1640,6 @@ async fn a_job_records_nothing_under_the_activity_kill_switch() {
     assert!(job_activity(&fx).await.is_empty());
 }
 
-// ---------------------------------------------------------------------------
-// One start per job id
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn concurrent_starts_under_one_job_id_run_one_job_and_keep_the_other_token() {
     let fx = Fixture::new().await;
@@ -1820,7 +1662,6 @@ async fn concurrent_starts_under_one_job_id_run_one_job_and_keep_the_other_token
     assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
     assert_eq!(job.progress.succeeded, 150);
 
-    // One job ran, once: no message was sent to the provider twice.
     let mut archived = fx.archived_provider_ids();
     assert_eq!(archived.len(), 150);
     archived.sort();
@@ -1831,7 +1672,6 @@ async fn concurrent_starts_under_one_job_id_run_one_job_and_keep_the_other_token
     };
     assert_eq!(jobs.iter().filter(|job| job.job_id == job_id).count(), 1);
 
-    // The request that lost kept its token; the one that won used its own.
     let mut usable = 0;
     for token in [&first, &second] {
         let reply = fx
@@ -1870,7 +1710,6 @@ async fn a_job_id_is_for_one_action_whole() {
     );
     fx.wait_for_job(&job_id).await;
 
-    // Same kind of job, same selection, other label or other direction.
     for other in [
         edit_labels(&[], &["Work"]),
         edit_labels(&["Label_work"], &[]),
@@ -1884,15 +1723,12 @@ async fn a_job_id_is_for_one_action_whole() {
             "{refusal}"
         );
     }
-    // The same action again is the same job.
     let again = fx
         .send(fx.start_request(&job_id, "invoice", "spent", &add))
         .await;
     assert!(matches!(again, ResponseData::JobStarted { job } if job.job_id == job_id));
 }
 
-/// Two starts with one token and different job ids: one job runs, the other
-/// request is refused, and no job is recorded for it.
 #[tokio::test]
 async fn one_token_starts_one_job_whatever_the_job_ids() {
     let fx = Fixture::new().await;
@@ -1935,9 +1771,6 @@ async fn one_token_starts_one_job_whatever_the_job_ids() {
     assert_eq!(archived.len(), 150);
 }
 
-/// A retry of J that arrives while J's start holds the token and has not
-/// recorded the job yet is refused; it is never handed a job id with no job
-/// behind it. Once J is recorded, a retry gets J.
 #[tokio::test]
 async fn a_retry_while_the_start_is_being_accepted_never_gets_a_phantom_job() {
     let fx = Fixture::new().await;
@@ -1963,7 +1796,6 @@ async fn a_retry_while_the_start_is_being_accepted_never_gets_a_phantom_job() {
     };
     reached.notified().await;
 
-    // J holds the token and has no row yet.
     let retry = fx
         .send_raw(fx.start_request(&job_id, "invoice", &token, &archive()))
         .await;
@@ -1995,10 +1827,6 @@ async fn a_retry_while_the_start_is_being_accepted_never_gets_a_phantom_job() {
     assert_eq!(fx.archived_provider_ids().len(), 3, "one job ran");
 }
 
-// ---------------------------------------------------------------------------
-// A rate limit between the two calls of read-archive
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn a_rate_limit_between_read_and_archive_is_finished_by_the_retry() {
     let fx = Fixture::new().await;
@@ -2007,7 +1835,6 @@ async fn a_rate_limit_between_read_and_archive_is_finished_by_the_retry() {
         message_ids: Vec::new(),
     };
     let preview = fx.preview("invoice", &read_archive).await;
-    // The first message's mark-read goes through, its archive is refused once.
     fx.fake.rate_limit_mutations_after(1, 1, 5);
     let started = fx
         .start("invoice", &preview.preview_token, &read_archive)
@@ -2036,20 +1863,10 @@ async fn a_rate_limit_between_read_and_archive_is_finished_by_the_retry() {
     assert!(job.undo_ids.is_empty(), "an --all job keeps no undo");
 }
 
-// ---------------------------------------------------------------------------
-// What a job response carries
-// ---------------------------------------------------------------------------
-
-/// The largest job record there can be: every free-text field far past its
-/// bound (Gmail keeps whole HTTP bodies in its errors), in the characters JSON
-/// spends the most bytes on, every list past its cap, and a selection and
-/// label edit at the largest the daemon accepts. 16 accounts per job. Both
-/// a listing of the 100 retained jobs and one job's detail stay under 4 MiB.
 #[tokio::test]
 async fn the_largest_job_records_stay_under_four_mib_on_the_wire() {
     const FOUR_MIB: usize = 4 * 1024 * 1024;
     let fx = Fixture::new().await;
-    // `"` is two bytes in JSON, a control character six (it becomes a space).
     let huge = |n: usize| "\"\u{1}é".repeat(n);
     let template = |n: usize| {
         let accounts: Vec<mxr_protocol::AccountMutationResultData> = (0..16)
@@ -2106,7 +1923,6 @@ async fn the_largest_job_records_stay_under_four_mib_on_the_wire() {
         "the setup is past the frame limit unbounded: {unbounded} bytes"
     );
 
-    // Bounded where it is written: the stored row, not just the response.
     let stored: JobData = serde_json::from_str(
         &fx.state
             .store
@@ -2140,8 +1956,6 @@ async fn the_largest_job_records_stay_under_four_mib_on_the_wire() {
     assert!(wire.len() < FOUR_MIB, "detail: {} bytes", wire.len());
     assert_eq!((one.failures.len(), one.failure_count), (50, 50));
 
-    // A sweep or plain job is undone from its list, so its detail carries
-    // every undo id. The largest: a sweep over two million messages, 20,001.
     let mut plain = template(100);
     plain.selection = None;
     plain.action = None;
@@ -2170,7 +1984,6 @@ async fn the_largest_job_records_stay_under_four_mib_on_the_wire() {
     );
 }
 
-/// The daemon refuses a selection bigger than a job record keeps.
 #[tokio::test]
 async fn a_selection_past_the_record_bounds_is_refused() {
     let fx = Fixture::new().await;
@@ -2200,13 +2013,6 @@ async fn a_selection_past_the_record_bounds_is_refused() {
     assert!(too_long.contains("at most 512 bytes"), "{too_long}");
 }
 
-// ---------------------------------------------------------------------------
-// Bounded previews, plain-job undo ids, frozen labels
-// ---------------------------------------------------------------------------
-
-/// A preview carries text from stored mail and the account list: each field
-/// is cut to its bound, so even 100 samples of enormous subjects and senders
-/// in an account with an enormous name stay small.
 #[tokio::test]
 async fn a_preview_of_mail_with_huge_subjects_and_senders_stays_small() {
     let fx = Fixture::new().await;
@@ -2272,8 +2078,6 @@ async fn a_preview_of_mail_with_huge_subjects_and_senders_stays_small() {
     eprintln!("worst case: preview of 100 samples {wire} bytes");
 }
 
-/// A sweep or plain job is undone from its list of chunk undo ids, so
-/// `GetJob` returns every one, however many there are.
 #[tokio::test]
 async fn a_plain_job_returns_every_undo_id() {
     let fx = Fixture::new().await;
@@ -2296,7 +2100,6 @@ async fn a_plain_job_returns_every_undo_id() {
             .unwrap(),
     )
     .unwrap();
-    // As a sweep of 10,100 messages has: 101 ids.
     let mut ids: Vec<String> = (0..100).map(|n| format!("chunk-{n}")).collect();
     ids.append(&mut stored.undo_ids);
     stored.undo_ids = ids.clone();
@@ -2304,7 +2107,6 @@ async fn a_plain_job_returns_every_undo_id() {
     let seen = fx.job(&plain.job_id).await;
     assert_eq!(seen.undo_ids, ids);
     assert_eq!(seen.undo_id_count, 101);
-    // The listing is a summary for every job.
     let ResponseData::Jobs { jobs } = fx.send(Request::ListJobs).await else {
         panic!("expected jobs");
     };
@@ -2313,16 +2115,11 @@ async fn a_plain_job_returns_every_undo_id() {
     assert_eq!(listed.undo_id_count, 101);
 }
 
-/// Round 3: a label *named* like another label's provider id. The edit finds
-/// labels by provider id only, so the provider and the local copy get the
-/// same label.
 #[tokio::test]
 async fn a_label_named_like_another_labels_id_is_never_picked() {
     let fx = Fixture::new().await;
     let decoy = fx.label(&fx.account, "Label_100", "Label_200").await;
     let work = fx.label(&fx.account, "Label_200", "Work").await;
-    // The setup is the collision: a name-or-id lookup of `Label_200` finds
-    // the decoy, not Work.
     let labels = fx
         .state
         .store
@@ -2354,14 +2151,6 @@ async fn a_label_named_like_another_labels_id_is_never_picked() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Scale
-// ---------------------------------------------------------------------------
-
-/// Set `MXR_BULK_SCALE` to a message count (for example 70000) and run with
-/// `--ignored`. Builds a demo mailbox of that size through the real sync path,
-/// previews and archives all of it as one job, and checks that no frame comes
-/// near the limit and the fake provider saw each message once.
 #[tokio::test]
 #[ignore = "scale test: set MXR_BULK_SCALE=70000 and run with --ignored"]
 async fn a_selection_job_over_a_large_mailbox_stays_small_on_the_wire_and_complete() {
@@ -2383,7 +2172,6 @@ async fn a_selection_job_over_a_large_mailbox_stays_small_on_the_wire_and_comple
     .await
     .unwrap();
     let state = Arc::new(state);
-    // One pass pulls a bounded batch, so sync until the whole dataset is in.
     let mut stored = 0usize;
     for _ in 0..100 {
         state

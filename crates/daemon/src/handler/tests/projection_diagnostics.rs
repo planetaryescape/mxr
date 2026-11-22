@@ -1,4 +1,3 @@
-//! Opt-in native state packets for source/authority and projection regressions.
 use crate::state::AppState;
 use mxr_core::AccountId;
 

@@ -1,4 +1,3 @@
-//! Reply speech acts are graded from canonical stored units, independently of live visibility.
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::{Duration, TimeZone, Utc};
@@ -103,8 +102,6 @@ async fn observe(
     } else {
         assert!(entry.home.is_some());
     }
-    // Feed the packet's semantic reply answer through the existing grader;
-    // a synthetic oracle avoids resolving any mixed-generator scenario.
     let reply = !entry.envelope.flags.contains(MessageFlags::SPAM)
         && answer
             .units
@@ -383,8 +380,6 @@ async fn semantic_reply_survives_archiving_while_the_delivered_turn_does_not() {
 #[tokio::test]
 async fn approved_visible_followup_and_notice_packets_expose_source_normalization() {
     let fx = fixture().await;
-    // Only literals from the public terse people variant and rail-tickets notice.
-    // No mixed generator or scenario selection is executed.
     let followup = source(
         &fx,
         "Thanks, that works for me. I'll update the doc and ping you when it's ready.\n\nRiley",

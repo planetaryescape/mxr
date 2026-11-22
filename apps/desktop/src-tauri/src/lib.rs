@@ -1,17 +1,3 @@
-//! mxr desktop: a window around the selected mxr web app.
-//!
-//! The daemon is the system. This shell runs `mxr web --session-json --no-open`,
-//! loads the URL it prints and adds a global new-message shortcut. It bundles
-//! no frontend (only a down page), manages no daemon and has no updater.
-//!
-//! Its menu comes from the key definition and runs the web app's actions by
-//! id (`menu`).
-//!
-//! Security: the shell grants no Tauri IPC to anything. There are no
-//! capabilities and no `invoke` handler, so neither the bundled down page
-//! nor the bridge origin can call Rust. "Try again" is a navigation that
-//! `on_navigation` intercepts.
-
 mod downloads;
 mod menu;
 mod mxr_cli;
@@ -32,14 +18,11 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const MAIN: &str = "main";
-/// Midnight desk, so the window never flashes white before the page paints.
 const DESK: tauri::window::Color = tauri::window::Color(0x0d, 0x16, 0x1f, 0xff);
-/// Overrides the default shortcut, e.g. `MXR_DESKTOP_SHORTCUT=super+shift+m`.
 const SHORTCUT_ENV: &str = "MXR_DESKTOP_SHORTCUT";
 
 #[derive(Default)]
 struct Shell {
-    /// Origin the window may show, set once `mxr web` has printed it.
     bridge: Mutex<Option<Url>>,
     browser_code: Mutex<Option<String>>,
     launching: AtomicBool,
@@ -51,9 +34,6 @@ impl Shell {
     }
 }
 
-/// Control+Option+Command+M. Command+Shift+M is already "Move to" in Mail and
-/// "switch profile" in Chrome, and a global shortcut would steal it from every
-/// app, so the default avoids the common bindings.
 fn default_shortcut() -> Shortcut {
     Shortcut::new(
         Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER),
@@ -79,12 +59,6 @@ fn show_main(app: &AppHandle) -> Option<WebviewWindow> {
 fn open_new_message(app: &AppHandle) {
     let Some(window) = show_main(app) else { return };
     let shell = app.state::<Arc<Shell>>();
-    // Only when the web app is showing; on the down page there is nothing to
-    // compose in. The window can't leave the bridge origin (on_navigation), so
-    // having a bridge URL means the web app is what is on screen. Reading
-    // `window.url()` instead panics inside wry while a page is still loading.
-    // The script keeps the user's place when the app is mounted and falls back
-    // to a full navigation to /compose/new when it is not.
     if let Some(script) = shell
         .bridge()
         .and_then(|bridge| new_message_script(&bridge))
@@ -93,8 +67,6 @@ fn open_new_message(app: &AppHandle) {
     }
 }
 
-/// Runs a menu command in the web app (see `menu`). Only on the web app,
-/// for the same reason `open_new_message` checks the bridge.
 fn run_menu_command(app: &AppHandle, id: &str) {
     let Some(window) = show_main(app) else { return };
     let shell = app.state::<Arc<Shell>>();
@@ -112,7 +84,6 @@ fn down_url(reason: &str) -> Url {
     url
 }
 
-/// Runs `mxr web` off the main thread, then points the window at the result.
 fn start_web(app: &AppHandle) {
     let shell = app.state::<Arc<Shell>>();
     if shell.launching.swap(true, Ordering::SeqCst) {
@@ -152,10 +123,6 @@ fn start_web(app: &AppHandle) {
     });
 }
 
-/// Opens a link in the default browser. The opener plugin itself is not
-/// registered: it injects a script that turns every `target=_blank` click into
-/// an IPC call and cancels the click, which this shell denies on purpose, so
-/// links would silently do nothing. Its `open_url` function needs no plugin.
 fn open_externally(url: &Url) {
     if may_open_externally(url) {
         let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
@@ -203,14 +170,12 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
             let Some(script) = browser_session_script(payload.url(), &target, code) else {
                 return;
             };
-            // Take before evaluating: redirects and repeat page events cannot reuse it.
             *pending = None;
             drop(pending);
             if window.eval(script).is_err() {
                 let _ = window.navigate(down_url(LaunchError::Failed.reason()));
             }
         })
-        // `target=_blank` and `window.open` never get a second window.
         .on_new_window(move |url, _features| {
             open_externally(&url);
             tauri::webview::NewWindowResponse::Deny
@@ -263,14 +228,11 @@ pub fn run() {
         .manage(Arc::new(Shell::default()))
         .setup(move |app| {
             create_main_window(app.handle())?;
-            // Taken by another app or denied: the window still works.
             let _ = app.global_shortcut().register(shortcut);
             start_web(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Closing hides the window so the shortcut and the Dock icon can
-            // bring it back; Command+Q quits.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == MAIN {
                     api.prevent_close();

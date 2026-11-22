@@ -1,7 +1,3 @@
-//! The webview may only show the bridge origin it got from `mxr web` and the
-//! bundled down page. Everything else is refused, and web links go to the
-//! default browser.
-
 use tauri::Url;
 
 pub const DOWN_PAGE: &str = "tauri://localhost/down.html";
@@ -10,9 +6,7 @@ pub const BROWSER_LAUNCH_PATH: &str = "/api/v1/remote/browser-launch";
 #[derive(Debug, PartialEq, Eq)]
 pub enum Nav {
     Allow,
-    /// The down page's "Try again" link: start `mxr web` again.
     Retry,
-    /// Hand to the default browser (or mail client) and stay put.
     External,
     Deny,
 }
@@ -40,7 +34,6 @@ pub fn classify(url: &Url, bridge: Option<&Url>) -> Nav {
         return if retry { Nav::Retry } else { Nav::Allow };
     }
     match url.scheme() {
-        // Frames inside the web app (the sandboxed mail reader uses srcdoc).
         "about" if matches!(url.as_str(), "about:blank" | "about:srcdoc") => Nav::Allow,
         "http" | "https" => match bridge {
             Some(bridge) if same_origin(url, bridge) => Nav::Allow,
@@ -51,20 +44,13 @@ pub fn classify(url: &Url, bridge: Option<&Url>) -> Nav {
     }
 }
 
-/// Only these schemes may leave the app, however the request arrived.
 pub fn may_open_externally(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https" | "mailto")
 }
 
-/// Script that opens a new message over the current page. The web app listens
-/// for `mxr:new-message` and sets `mxrNewMessageReady` once mounted
-/// (apps/web/src/features/compose/useNewMessageEvent.ts). Until then, or when
-/// the window shows the down page or another origin, it navigates to
-/// `/compose/new`, which opens the same composer after a full load.
 pub fn new_message_script(bridge: &Url) -> Option<String> {
     let fallback = bridge.join("compose/new").ok()?;
     let origin = bridge.origin().ascii_serialization();
-    // JSON strings are valid JS string literals, so neither value can break out.
     let origin = serde_json::to_string(&origin).ok()?;
     let fallback = serde_json::to_string(fallback.as_str()).ok()?;
     Some(format!(
@@ -73,8 +59,6 @@ pub fn new_message_script(bridge: &Url) -> Option<String> {
     ))
 }
 
-/// Exchange only on the selected launch page. The secret travels in a POST body,
-/// and the script checks the live location again before creating the form.
 pub fn browser_session_script(page: &Url, target: &Url, code: &str) -> Option<String> {
     if !same_origin(page, target)
         || page.path() != BROWSER_LAUNCH_PATH
@@ -241,7 +225,6 @@ mod tests {
         assert!(script.contains("\"http://mxr.localhost:42829/compose/new\""));
         assert!(script.contains("mxrNewMessageReady===true"));
         assert!(script.contains("mxr:new-message"));
-        // The token fragment is not carried into the fallback URL.
         let with_fragment =
             new_message_script(&u("http://mxr.localhost:42829/#token=s3cret")).unwrap();
         assert!(!with_fragment.contains("s3cret"));

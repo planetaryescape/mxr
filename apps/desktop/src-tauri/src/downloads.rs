@@ -1,17 +1,9 @@
-//! Attachment saves. The web app builds a Blob and clicks `<a download>`;
-//! WKWebView only follows that when the shell handles downloads, and it
-//! needs a destination. Files go to the user's Downloads folder under the
-//! name the page suggested, never overwriting an existing file.
-
 use std::path::{Path, PathBuf};
 use tauri::Url;
 
-/// Only a download the web app started itself: a blob it created, or a file
-/// served by the bridge. Anything else is refused.
 pub fn is_from_bridge(url: &Url, bridge: Option<&Url>) -> bool {
     let Some(bridge) = bridge else { return false };
     let origin = if url.scheme() == "blob" {
-        // `blob:http://host:port/<uuid>`: the origin is the inner URL's.
         match Url::parse(url.path()) {
             Ok(inner) => inner.origin(),
             Err(_) => return false,
@@ -22,8 +14,6 @@ pub fn is_from_bridge(url: &Url, bridge: Option<&Url>) -> bool {
     origin == bridge.origin()
 }
 
-/// `~/Downloads/<name>`, or `<name> (2).<ext>` and so on when taken. The page
-/// suggests the name, so only its last path component is used.
 pub fn destination(
     downloads: &Path,
     suggested: Option<&std::ffi::OsStr>,

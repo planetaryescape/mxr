@@ -1,8 +1,3 @@
-//! Promises on send in the TUI: after a send, the daemon checks the sent
-//! message for promises ("I'll send the deck by Friday"). Each dated one is
-//! offered as a one-line prompt: `y` keeps it as a reminder due at that
-//! time, `n` or Esc lets it go. Prompts expire on their own; nothing is
-//! stored unless the user says yes.
 
 use super::{App, MutationEffect};
 use crate::app::{Toast, ToastSeverity};
@@ -10,7 +5,6 @@ use mxr_core::MessageId;
 use mxr_protocol::{PromiseDetectionData, PromiseDetectionStatusData, Request};
 use std::time::{Duration, Instant};
 
-/// Long enough to read and answer, short enough not to linger.
 pub(crate) const PROMISE_PROMPT_TTL: Duration = Duration::from_secs(30);
 /// A prompt ignores answers this soon after it appears. Most terminals send
 /// a held key as repeated presses, not as repeats, so this is what stops a
@@ -22,14 +16,11 @@ pub struct PromisePrompt {
     pub message_id: MessageId,
     pub what: String,
     pub due_at: chrono::DateTime<chrono::Utc>,
-    /// "Friday 2 October, 09:00", from the daemon's resolution.
     pub due_label: String,
-    /// When the prompt became the one on screen.
     pub shown_at: Instant,
 }
 
 impl App {
-    /// Queue a prompt for each dated promise the sent message makes.
     pub(crate) fn offer_promises(
         &mut self,
         message_id: MessageId,
@@ -53,7 +44,6 @@ impl App {
         }
     }
 
-    /// `y` (keep) or `n` (let go) for the prompt on screen.
     pub(crate) fn answer_promise(&mut self, keep: bool, now: Instant) {
         let Some(front) = self.promise_prompts.front() else {
             return;
@@ -79,7 +69,6 @@ impl App {
         self.restart_next_promise(now);
     }
 
-    /// Drop the prompt on screen once it has been up for its whole window.
     pub(crate) fn tick_promise_prompts(&mut self, now: Instant) {
         let expired = self.promise_prompts.front().is_some_and(|prompt| {
             now.saturating_duration_since(prompt.shown_at) >= PROMISE_PROMPT_TTL
@@ -96,8 +85,6 @@ impl App {
         }
     }
 
-    /// The prompt on screen as a toast with its keys and a countdown,
-    /// synthesized at draw time so answering removes it at once.
     pub fn pending_promise_toast(&self, now: Instant) -> Option<Toast> {
         let prompt = self.promise_prompts.front()?;
         let toast = Toast {

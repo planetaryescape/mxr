@@ -105,8 +105,6 @@ impl App {
                     }
                     None
                 }
-                // Keep mine: the canonical send review and original editor
-                // file remain untouched until a proposal is accepted.
                 Some("ComposeProofKeep") => {
                     if self
                         .compose

@@ -1,14 +1,8 @@
-//! The hint bar's verbs for what is lit in a mode, from the key
-//! definition's `[[strip]]` tables (blueprint chapter 35, D130). The web
-//! app's status strip reads the same tables, so one state offers the same
-//! verbs in both clients.
 
 use super::state::{NowRow, ReadingRow, TodoPanel, UpdatesRow};
 use super::*;
 
 impl App {
-    /// The key definition's name for the mode the list is showing, when it
-    /// is one with its own keys.
     pub(crate) fn mode_key_context(&self) -> Option<&'static str> {
         if self.screen != Screen::Mailbox || self.mailbox.active_pane != ActivePane::MailList {
             return None;
@@ -35,7 +29,6 @@ impl App {
         })
     }
 
-    /// The strip for the lit item, with the members that don't apply to it.
     fn lit_strip(&self, context: &str) -> Option<(&'static str, Vec<&'static str>)> {
         Some(match context {
             "now" => match self.selected_now_row()? {
@@ -62,7 +55,6 @@ impl App {
                 if page.current().is_some() {
                     ("focus", Vec::new())
                 } else {
-                    // The end: leave, or `j` for the ones set aside.
                     let mut omit = vec!["focus.reply", "focus.done", "focus.snooze", "focus.draft"];
                     if page.deferred.is_empty() {
                         omit.push("focus.skip");
@@ -118,8 +110,6 @@ impl App {
         })
     }
 
-    /// Key and label for each verb of the lit item's strip that has a TUI
-    /// key here. `None` outside a mode, or when nothing is lit.
     pub(crate) fn mode_strip_hints(&self) -> Option<Vec<(String, String)>> {
         let context = self.mode_key_context()?;
         let (strip_id, omit) = self.lit_strip(context)?;
@@ -151,14 +141,10 @@ impl App {
 }
 
 impl App {
-    /// The key definition's places help lists keys for: where keys are
-    /// going while help tracks focus. Empty while help is filtered to
-    /// another context, so help lists that context's places.
     pub(crate) fn help_key_places(&self) -> Vec<&'static str> {
         if self.modals.help_context_filter.is_some() {
             return Vec::new();
         }
-        // The invites lens reads its own keys; the list's don't apply there.
         if self.screen == Screen::Mailbox
             && self.mailbox.active_pane == ActivePane::MailList
             && self.mailbox.mailbox_view == MailboxView::CalendarInvites
@@ -169,7 +155,6 @@ impl App {
     }
 }
 
-/// The hint bar spells a few keys shorter than the definition does.
 fn key_display(key: &str) -> String {
     match key {
         "Escape" => "Esc".into(),
@@ -182,15 +167,9 @@ fn key_display(key: &str) -> String {
 }
 
 impl App {
-    /// The prefix guide, once a prefix has waited [`PREFIX_GUIDE_DELAY`]
-    /// (blueprint 35): the prefix and the keys that can follow it where keys
-    /// are going, from the same rows help lists.
-    ///
-    /// [`PREFIX_GUIDE_DELAY`]: crate::input::PREFIX_GUIDE_DELAY
     pub(crate) fn prefix_guide(
         &self,
     ) -> Option<(char, Vec<crate::ui::prefix_guide::Continuation>)> {
-        // The handler's own clock, which set the prefix's deadline.
         if self.input.prefix_waited(self.input.now())? < crate::input::PREFIX_GUIDE_DELAY {
             return None;
         }
@@ -198,7 +177,6 @@ impl App {
             .filter(|(_, choices)| !choices.is_empty())
     }
 
-    /// The waiting prefix and every key that can follow it here.
     fn prefix_choices(&self) -> Option<(char, Vec<crate::ui::prefix_guide::Continuation>)> {
         let prefix = self.input.pending_prefix()?;
         let mut places = self.help_key_places();
@@ -210,8 +188,6 @@ impl App {
             view: self.keybinding_context(),
         };
         let mut choices = crate::ui::prefix_guide::continuations(&keys, &places, prefix);
-        // `g 1`…`g 9` open the saved searches in sidebar order: name each
-        // one, and leave out the digits with no saved search behind them.
         let saved = &self.mailbox.saved_searches;
         choices.retain_mut(|choice| {
             let Some(slot) = choice.id.strip_prefix("nav.saved-search-") else {
@@ -233,14 +209,11 @@ impl App {
         Some((prefix, choices))
     }
 
-    /// Test-only: stop the key handler's clock, so prefix timing moves
-    /// only by [`Self::advance_input_clock_for_tests`].
     #[cfg(test)]
     pub(crate) fn freeze_input_clock_for_tests(&mut self) {
         self.input.freeze_clock_for_tests();
     }
 
-    /// Test-only: move the key handler's frozen clock forward by `by`.
     #[cfg(test)]
     pub(crate) fn advance_input_clock_for_tests(&mut self, by: std::time::Duration) {
         self.input.advance_clock_for_tests(by);

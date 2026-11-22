@@ -1,8 +1,3 @@
-//! Reading in the TUI: the edition the daemon serves
-//! (`GetReadingEdition`), one item in the reader (`GetReadingItem`), the
-//! mode's teaching copy, and the two confirmations (let go of everything
-//! shown, unsubscribe). The daemon owns every band, rank and line; this
-//! state only holds what came back and what the user is doing with it.
 
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_protocol::{
@@ -10,11 +5,8 @@ use mxr_protocol::{
     ReadingLinkData, ReadingUnsubscribeData,
 };
 
-/// Digest links shown under their issue; the rest are "+ N more".
 pub const READING_LINKS_SHOWN: usize = 4;
 
-/// One selectable row of the edition: an item, or one of a digest's
-/// links under it.
 #[derive(Debug, Clone, Copy)]
 pub enum ReadingRow<'a> {
     Item(&'a ReadingItemData),
@@ -22,7 +14,6 @@ pub enum ReadingRow<'a> {
 }
 
 impl<'a> ReadingRow<'a> {
-    /// The item key the reader, Later and highlights take.
     pub fn key(&self) -> &'a str {
         match self {
             Self::Item(item) => &item.item_key,
@@ -30,7 +21,6 @@ impl<'a> ReadingRow<'a> {
         }
     }
 
-    /// The issue the row belongs to: its thread, sender and source.
     pub fn issue(&self) -> &'a ReadingItemData {
         match self {
             Self::Item(item) | Self::Link(item, _) => item,
@@ -41,7 +31,6 @@ impl<'a> ReadingRow<'a> {
         matches!(self, Self::Link(..))
     }
 
-    /// The domain a fetch would contact, when the row points at an article.
     pub fn domain(&self) -> Option<&'a str> {
         match self {
             Self::Item(item) => item.url.as_ref().and(item.domain.as_deref()),
@@ -50,7 +39,6 @@ impl<'a> ReadingRow<'a> {
     }
 }
 
-/// Which text the reader shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ReadingView {
     #[default]
@@ -58,52 +46,39 @@ pub enum ReadingView {
     Article,
 }
 
-/// What `D` asks about before anything is sent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadingUnsubscribeTarget {
     pub account_id: AccountId,
     pub sender_email: String,
     pub source: String,
-    /// "You opened 0 of the last 11 issues."
     pub evidence: String,
     pub method: ReadingUnsubscribeData,
 }
 
-/// A preview on screen, waiting for Enter or Esc.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadingConfirm {
-    /// `A`: the daemon's dry run of letting go of these threads. Enter
-    /// lets go of exactly these.
     LetGoAll {
         thread_ids: Vec<ThreadId>,
         items: Vec<ModeDoneOutcomeData>,
     },
-    /// `D`: the daemon's dry run of unsubscribing from a source.
     Unsubscribe {
         target: ReadingUnsubscribeTarget,
-        /// Issues in the mailbox that leave with it.
         message_count: u32,
-        /// The dry run's token: Enter commits exactly that preview. None
-        /// when the preview gave none, and then Enter does nothing.
         preview_token: Option<String>,
     },
 }
 
-/// `H`: the open item's highlights, one selected.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HighlightsPanel {
     pub selected: usize,
     pub step: HighlightStep,
 }
 
-/// What the highlights panel is doing with the selected highlight.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum HighlightStep {
     #[default]
     Browse,
-    /// `e`: typing the note; Enter saves it, a blank one clears it.
     Note(String),
-    /// `x`: Enter removes this highlight, by its id.
     Remove,
 }
 
@@ -111,46 +86,27 @@ pub enum HighlightStep {
 pub struct ReadingPageState {
     pub edition: Option<ReadingEditionData>,
     pub guide: Option<ModeGuideData>,
-    /// Closed here before the daemon answered, so it never flickers back.
-    /// Ask the runtime for the edition and the guide.
     pub pending_refresh: bool,
-    /// The next refresh counts as a visit. Only opening the lens does.
     pub pending_mark_visit: bool,
-    /// The item in the reader pane.
     pub reader: Option<ReadingItemDetailData>,
-    /// Ask the runtime for this item (a refetch after a change).
     pub pending_item: Option<String>,
-    /// The item the runtime is fetching, so the cursor asks once.
     pub item_in_flight: Option<String>,
-    /// Ask the runtime for this email's own text, for `R`.
     pub pending_original: Option<mxr_core::id::MessageId>,
-    /// Ask the runtime to fetch this item's article (`refresh`).
     pub pending_fetch: Option<(String, bool)>,
-    /// Ask the daemon what letting go of these threads would do.
     pub pending_let_go_preview: Option<Vec<ThreadId>>,
-    /// Ask the daemon what unsubscribing would do.
     pub pending_unsubscribe_preview: Option<ReadingUnsubscribeTarget>,
     pub confirm: Option<ReadingConfirm>,
-    /// `H`: the reader's highlights, to edit a note or remove one.
     pub highlights: Option<HighlightsPanel>,
-    /// The Later tab (`2`) instead of the edition.
     pub later_shelf: bool,
-    /// The keyboard is in the reader pane (Enter), not the list.
     pub reader_focused: bool,
     pub view: ReadingView,
-    /// Reader lines scrolled past.
     pub scroll: u16,
-    /// Lines the reader drew last, for progress.
     pub reader_lines: u16,
-    /// When the reader was entered, for the time-read report.
     pub opened_at: Option<std::time::Instant>,
-    /// The email's own text, for `R` on a source that asked for it.
     pub original_text: Option<String>,
 }
 
 impl ReadingPageState {
-    /// Selectable rows in display order: each band's items, a digest's
-    /// first links under it.
     pub fn rows(&self) -> Vec<ReadingRow<'_>> {
         let Some(edition) = &self.edition else {
             return Vec::new();
@@ -177,7 +133,6 @@ impl ReadingPageState {
         self.rows().len()
     }
 
-    /// Every thread in the edition, once each, in order: what `A` lets go.
     pub fn thread_ids(&self) -> Vec<ThreadId> {
         let mut out: Vec<ThreadId> = Vec::new();
         for row in self.rows() {
@@ -189,8 +144,6 @@ impl ReadingPageState {
         out
     }
 
-    /// The keys Reading's hints attach to: the first item in the Fading
-    /// band, and the first link under a digest. None on the Later shelf.
     pub fn hint_anchors(&self) -> (Option<&str>, Option<&str>) {
         let Some(edition) = self.edition.as_ref().filter(|_| !self.later_shelf) else {
             return (None, None);
@@ -210,7 +163,6 @@ impl ReadingPageState {
         (fading, link)
     }
 
-    /// Take a thread out of the edition before the daemon answers.
     pub fn remove_thread(&mut self, thread_id: &ThreadId) {
         if let Some(edition) = self.edition.as_mut() {
             for band in &mut edition.bands {
@@ -228,7 +180,6 @@ impl ReadingPageState {
         }
     }
 
-    /// How far down the reader is, 0 to 1.
     pub fn progress(&self) -> f64 {
         if self.reader_lines == 0 {
             return 0.0;

@@ -1,13 +1,8 @@
-//! `b`, Not now (blueprint 35, D173): one picker everywhere. "Later (no
-//! time)" comes first, then the snooze presets on digits, then a typed
-//! time. What Later and a time do depends on where `b` was pressed, and
-//! each sends the request that place always sent (`NotNowTarget`).
 
 use super::*;
 use crate::app::state::NotNowTarget;
 
 impl App {
-    /// What `b` acts on where the cursor is, or `None` with nothing to act on.
     pub(crate) fn not_now_target(&self) -> Option<NotNowTarget> {
         if self.mailbox.mailbox_view == MailboxView::Focus {
             return self
@@ -56,7 +51,6 @@ impl App {
         })
     }
 
-    /// `b`: open the picker for what the cursor is on.
     pub(super) fn open_not_now(&mut self) {
         let Some(target) = self.not_now_target() else {
             self.status_message = Some(
@@ -89,7 +83,6 @@ impl App {
         panel.custom_time.clear();
     }
 
-    /// Enter: the highlighted row, or the typed time while typing one.
     pub(super) fn confirm_not_now(&mut self) {
         let Some(target) = self.modals.snooze_panel.target.clone() else {
             self.close_not_now();
@@ -109,7 +102,6 @@ impl App {
                     Some("Type a time, e.g. `tomorrow 9am` or `in 2h`".into());
                 return;
             }
-            // Commit the instant the panel previewed, not a fresh parse.
             match self.modals.snooze_panel.custom_time.chosen() {
                 Ok(at) => {
                     self.close_not_now();
@@ -139,7 +131,6 @@ impl App {
         }
     }
 
-    /// A digit picks the Nth preset at once.
     pub(super) fn not_now_preset(&mut self, nth: usize) {
         let Some(target) = self.modals.snooze_panel.target.clone() else {
             return;
@@ -153,7 +144,6 @@ impl App {
         self.not_now_until(target, at);
     }
 
-    /// Later, with no time.
     fn not_now_later(&mut self, target: NotNowTarget) {
         if let NotNowTarget::Mail { message_id } = &target {
             self.focus_put_off(message_id);
@@ -172,12 +162,10 @@ impl App {
                 domain,
                 ..
             } => self.set_reading_later(item_key, !on_later, link, domain),
-            // No Later row is shown for these.
             NotNowTarget::Conversation { waiting: true, .. } | NotNowTarget::Todo { .. } => {}
         }
     }
 
-    /// Off until `at`, by the request this place always used.
     fn not_now_until(&mut self, target: NotNowTarget, at: chrono::DateTime<chrono::Utc>) {
         if let NotNowTarget::Mail { message_id } = &target {
             self.focus_put_off(message_id);
@@ -197,8 +185,6 @@ impl App {
                 );
             }
             NotNowTarget::Conversation { thread_id, .. } => {
-                // Off the desk at once; the answer says what was set, and a
-                // failure refetches the desk.
                 self.remove_desk_thread(&thread_id);
                 self.queue_mutation(
                     Request::DeferThreads {

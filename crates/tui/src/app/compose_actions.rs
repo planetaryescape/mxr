@@ -4,7 +4,6 @@ impl App {
     pub(super) fn apply_compose_action(&mut self, action: Action) {
         match action {
             Action::Compose => {
-                // Build contacts from known envelopes (senders we've seen)
                 let mut seen = std::collections::HashMap::new();
                 for env in &self.mailbox.all_envelopes {
                     seen.entry(env.from.email.clone()).or_insert_with(|| {
@@ -19,8 +18,6 @@ impl App {
                 self.compose.compose_picker.open_to(contacts);
             }
             Action::Reply | Action::ReplyAll if self.messages_list_focused() => {
-                // In Messages, the open topic is the conversation to answer.
-                // A reply left unsent there is continued, not started again.
                 if let Some(topic) = self.selected_messages_topic() {
                     let drafted = self
                         .selected_messages_row()
@@ -42,7 +39,6 @@ impl App {
                 }
             }
             Action::Reply | Action::ReplyAll if self.now_list_focused() => {
-                // On Now, a person row is the conversation to answer.
                 if let Some((message_id, account_id)) = self.now_person_email() {
                     self.dispatch_or_defer_reply(
                         message_id,
@@ -85,9 +81,6 @@ impl App {
         }
     }
 
-    /// The email `r`, `a` and `f` act on in Now: a person row's latest
-    /// message, or a Not-sure question's email. The other rows are a to-do, a
-    /// digest or a reading pick, which `o` opens first.
     fn now_person_email(&self) -> Option<(mxr_core::MessageId, mxr_core::AccountId)> {
         match self.selected_now_row()? {
             NowRow::Person(person) => {
@@ -100,14 +93,6 @@ impl App {
         }
     }
 
-    /// Pick the fastest available path for `r`/`a`:
-    /// - **Cache hit**: skip the IPC entirely (instant editor).
-    /// - **Prewarm in flight**: park the action in `deferred_compose` so
-    ///   the prewarm result handler dispatches it. Firing a duplicate
-    ///   `PrepareReply` here would queue *behind* the in-flight prewarm
-    ///   on the serial IPC worker, doubling the wait.
-    /// - **Otherwise** (cold path): fire the action with no preloaded
-    ///   context — `handle_compose_action` does the IPC.
     pub(super) fn dispatch_or_defer_reply(
         &mut self,
         message_id: mxr_core::MessageId,

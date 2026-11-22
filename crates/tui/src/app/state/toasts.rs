@@ -1,17 +1,10 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-/// Default lifetime for transient toasts. Mirrors the long-standing
-/// status-bar convention of clearing transient messages after ~5s.
 pub const TOAST_DEFAULT_TTL: Duration = Duration::from_secs(5);
 
-/// Maximum toasts rendered at once. Older toasts stay queued and become
-/// visible as newer ones expire, so a burst of completions can't paper
-/// over the whole screen.
 pub const TOAST_MAX_VISIBLE: usize = 3;
 
-/// Hard cap on queued toasts. Past this, the oldest entries are dropped —
-/// nobody reads 50 stale "Done" notifications.
 const TOAST_QUEUE_CAPACITY: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,18 +15,12 @@ pub enum ToastSeverity {
     Error,
 }
 
-/// A transient, self-expiring notification rendered as a stacked box
-/// above the status bar. Use for completed/failed operations the user
-/// should notice without blocking; ambient state (mailbox counts, sync
-/// status) stays on `App::status_message` / the status bar.
 #[derive(Debug, Clone)]
 pub struct Toast {
     pub text: String,
     pub severity: ToastSeverity,
     pub created_at: Instant,
     pub ttl: Duration,
-    /// Optional trailing hint, e.g. "u to undo". When set, the renderer
-    /// appends the hint plus a live countdown of the remaining window.
     pub action_hint: Option<String>,
 }
 
@@ -84,9 +71,6 @@ impl Toast {
     }
 }
 
-/// FIFO queue of toasts owned by `App`. Newest entries are pushed to the
-/// back; rendering shows the most recent `TOAST_MAX_VISIBLE` with the
-/// newest closest to the status bar.
 #[derive(Debug, Default)]
 pub struct ToastQueue {
     entries: VecDeque<Toast>,
@@ -100,14 +84,10 @@ impl ToastQueue {
         self.entries.push_back(toast);
     }
 
-    /// Drop expired toasts. Called from the main-loop tick alongside the
-    /// other time-based sweeps (`tick_pending_undo` etc).
     pub fn sweep_expired(&mut self, now: Instant) {
         self.entries.retain(|toast| !toast.expired(now));
     }
 
-    /// Most recent unexpired toasts, newest first, capped at
-    /// [`TOAST_MAX_VISIBLE`].
     pub fn visible(&self, now: Instant) -> Vec<&Toast> {
         self.entries
             .iter()
@@ -121,8 +101,6 @@ impl ToastQueue {
         self.entries.is_empty()
     }
 
-    /// Time until the next queued toast expires. An already-expired entry
-    /// returns zero once, letting the loop sweep it before scheduling again.
     pub(crate) fn next_expiry(&self, now: Instant) -> Option<Duration> {
         self.entries.iter().map(|toast| toast.remaining(now)).min()
     }

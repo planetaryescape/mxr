@@ -14,7 +14,6 @@ impl App {
             Action::CloseCommandPalette => {
                 self.command_palette.palette.visible = false;
             }
-            // Sync
             Action::Help => {
                 self.modals.help_open = !self.modals.help_open;
                 self.modals.help_scroll_offset = 0;

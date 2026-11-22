@@ -1,12 +1,6 @@
 use super::*;
 
 impl App {
-    /// How many messages the store holds, or `None` when nobody has said yet.
-    ///
-    /// `all_envelopes` is a capped window (5000), so it is a floor rather than
-    /// a total — usable as a stand-in only until the daemon reports. When the
-    /// daemon has answered but the answer was degraded, it has not reported,
-    /// and the capped length would read as a real total.
     fn all_mail_total_count(&self) -> Option<usize> {
         if let Some(count) = self.diagnostics.page.total_messages {
             return Some(count as usize);
@@ -39,13 +33,8 @@ impl App {
         Some(primary_body_label(metadata, source).to_string())
     }
 
-    /// The status bar, with a hint in place of the ambient message while
-    /// the cursor is on a hint's element. Warnings and the connection
-    /// state still win.
     pub fn status_bar_state(&self) -> ui::status_bar::StatusBarState {
         let mut state = self.base_status_bar_state();
-        // Messages names the filters it is showing, so a narrowed list is never
-        // mistaken for the whole of Messages.
         if self.mailbox.mailbox_view == MailboxView::People {
             if let Some(label) =
                 mxr_protocol::messages_copy::filter_label(self.mailbox.messages_page.filter)
@@ -188,8 +177,6 @@ impl App {
         }
     }
 
-    /// The search mode to name in the status bar: the search screen's query
-    /// while that screen is open, otherwise an applied mailbox filter (Ctrl-f).
     fn active_search_mode(&self) -> Option<mxr_core::SearchMode> {
         if self.screen == Screen::Search {
             return (!self.search.page.query.is_empty()).then_some(self.search.page.mode);
@@ -211,11 +198,6 @@ impl App {
             })
     }
 
-    /// The status bar's sync words. With freshness: when the newest mail
-    /// arrived and the worst account's sync state ("Latest mail 5m ago ·
-    /// synced 1m ago", "Latest mail 2h ago · Gmail paused: rate limited,
-    /// retrying 09:50"); worked out now so the ages tick. Without it, the
-    /// older per-account summary.
     pub(super) fn sync_status_label(&self) -> Option<String> {
         let Some(data) = self.freshness.as_ref() else {
             return self.last_sync_status.clone();
@@ -254,7 +236,6 @@ impl App {
         Some(format!("{}: {detail}", account.label))
     }
 
-    /// An account's name for a message, never its id.
     pub(crate) fn account_display_name(&self, account_id: &mxr_core::AccountId) -> String {
         self.freshness
             .as_ref()
@@ -269,8 +250,6 @@ impl App {
             )
     }
 
-    /// Sync is failing, paused or stale somewhere: the bar shows its words
-    /// in the warning colour.
     pub(super) fn sync_warning(&self) -> bool {
         let now = chrono::Utc::now();
         self.freshness.as_ref().is_some_and(|data| {
@@ -328,9 +307,6 @@ impl App {
             .filter_map(Self::format_sync_age)
             .max_by_key(|(_, sort_key)| *sort_key)
             .map(|(display, _)| display);
-        // Local mail is served from the store regardless of sync state, so
-        // an in-flight delta or a failing provider must not read as "wait
-        // for me" — always surface how fresh the store actually is.
         if sync_statuses.iter().any(|sync| sync.sync_in_progress) {
             return match last_synced_age {
                 Some(age) => format!("syncing · synced {age}"),
@@ -394,8 +370,6 @@ impl App {
 
         let output = match source {
             BodySource::Plain => mxr_reader::clean(Some(raw), None, &self.reader_config()),
-            // Parsed in the HTML helper, off the event loop: until the text
-            // lands the view shows the tag strip, with no reader stats.
             BodySource::Html => return Self::render_html_body(raw, self.reader_config()),
             BodySource::Fallback => mxr_reader::clean(Some(raw), None, &self.reader_config()),
             BodySource::Snippet => unreachable!("snippet bodies bypass reader mode"),
@@ -864,9 +838,6 @@ mod tests {
         Some(chrono::Utc::now().to_rfc3339())
     }
 
-    /// The store serves mail regardless of sync state, so an in-flight
-    /// background delta must still tell the user how fresh their mail
-    /// already is — a bare "syncing" reads as "wait for me".
     #[test]
     fn syncing_with_prior_success_shows_freshness() {
         let statuses = vec![status(true, true, recent_success())];
@@ -876,8 +847,6 @@ mod tests {
         );
     }
 
-    /// Freshness comes from the most recent success across accounts even
-    /// while another account is mid-sync.
     #[test]
     fn multi_account_uses_newest_success_while_syncing() {
         let old = Some((chrono::Utc::now() - chrono::Duration::hours(3)).to_rfc3339());

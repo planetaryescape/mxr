@@ -1,12 +1,6 @@
 use super::*;
 
 impl App {
-    /// Close transient overlay modals when switching top-level tabs so a
-    /// picker/browser opened on one screen doesn't linger over another.
-    /// Confirmation flows (error modal, bulk confirm, unsubscribe
-    /// confirm, saved-search delete confirm) stay open — they guard
-    /// decisions that are still pending; queued dispatch state is also
-    /// left untouched.
     pub(super) fn close_transient_modals(&mut self) {
         self.modals.help_open = false;
         self.modals.help_query.clear();
@@ -282,11 +276,7 @@ impl App {
                 self.deliveries.loading = true;
                 self.pending_deliveries_refresh = true;
             }
-            // Command palette
             Action::SyncNow => {
-                // Coalesce only while the daemon has not answered this
-                // request. Once acknowledged, another click sends SyncAll
-                // again so the daemon can truthfully report Started or Joined.
                 if self.user_sync_acknowledgements_pending == 0 {
                     if !self.user_sync_pending {
                         self.user_sync_targets.clear();
@@ -296,11 +286,6 @@ impl App {
                     }
                     self.user_sync_pending = true;
                     self.user_sync_acknowledgements_pending += 1;
-                    // Background: the daemon acks as soon as the sync starts, so a
-                    // backfill that runs longer than the client's 60s IPC timeout
-                    // no longer times out the request. Progress arrives as
-                    // `OperationProgress` events and the list refreshes on
-                    // `SyncCompleted`.
                     self.queue_mutation(
                         Request::SyncAll,
                         MutationEffect::StatusOnly(String::new()),
@@ -308,9 +293,7 @@ impl App {
                     );
                 }
             }
-            // Message view
             Action::Noop => {}
-            // Intercepted in lib.rs before apply(); no-op if it somehow arrives here
             Action::CancelOutlookAuth => {}
             _ => unreachable!("action routed to wrong handler"),
         }

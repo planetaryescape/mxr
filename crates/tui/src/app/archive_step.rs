@@ -1,11 +1,6 @@
-//! `]` and `[` in the reader: archive the open conversation, then open the
-//! next or previous one, as the web reader does. The archive is the list's
-//! own (same request, bulk confirm and undo); the step waits for the daemon
-//! to finish it, so a refused or failed archive leaves the reader in place.
 
 use super::*;
 
-/// The messages an archive request acts on.
 pub(super) fn archive_request_ids(request: &Request) -> Option<&[MessageId]> {
     match request {
         Request::Mutation {
@@ -34,8 +29,6 @@ impl App {
         if message_ids.is_empty() {
             return;
         }
-        // Taken now: the archive may take this row out of the list, which
-        // moves every index after it.
         let neighbour = self.reader_rows().and_then(|(rows, index)| {
             let target = if forward {
                 index.checked_add(1)
@@ -77,7 +70,6 @@ impl App {
         }
     }
 
-    /// The bulk confirm queued the archive a `]` or `[` is waiting on.
     pub(super) fn adopt_archive_step(&mut self, id: MutationId, archived: &[MessageId]) {
         if let Some(step) = self.mailbox.archive_step.as_mut() {
             if step.mutation.is_none() && same_messages(&step.message_ids, archived) {
@@ -86,9 +78,6 @@ impl App {
         }
     }
 
-    /// The step waiting on mutation `id`, if any, and whether the reader
-    /// still showed its conversation. Called before the completion is
-    /// applied, which may open another conversation in the reader itself.
     pub(crate) fn take_archive_step(&mut self, id: MutationId) -> Option<(ArchiveStep, bool)> {
         if self.mailbox.archive_step.as_ref()?.mutation != Some(id) {
             return None;
@@ -102,14 +91,11 @@ impl App {
         Some((step, reader_on_it))
     }
 
-    /// Open the conversation the step was going to, once its archive is
-    /// done. Someone who moved on while it ran keeps where they went.
     pub(crate) fn finish_archive_step(&mut self, step: ArchiveStep, reader_on_it: bool) {
         if !reader_on_it {
             return;
         }
         let Some((rows, _)) = self.reader_rows() else {
-            // A mode's reader has no mail list here; n and N step it.
             self.apply(if step.forward {
                 Action::NextSearchResult
             } else {
@@ -141,8 +127,6 @@ impl App {
         }
     }
 
-    /// The list the reader was opened from and the row it shows, when the
-    /// reader sits beside a mail list.
     fn reader_rows(&self) -> Option<(Vec<MailListRow>, usize)> {
         match self.screen {
             Screen::Search => Some((

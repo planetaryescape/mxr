@@ -1,6 +1,3 @@
-//! Where the selection goes when the open row leaves its list: the next
-//! row still there, else the previous one, else nothing. The web client
-//! has the same rule (`apps/web/src/lib/listAdvance.ts`).
 
 /// The row to select after `removed` left the list. `before` is the list
 /// as it was, in display order; `still_there` says whether a row is in the

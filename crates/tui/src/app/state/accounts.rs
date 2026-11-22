@@ -40,8 +40,6 @@ pub struct AccountFormState {
     pub imap_password_ref: String,
     pub imap_password: String,
     pub imap_auth_required: bool,
-    /// Not editable in the form; carried through so saving an account does not
-    /// reset a loopback bridge to TLS or drop its certificate pin.
     pub imap_use_tls: bool,
     pub imap_tls_cert_sha256: Option<String>,
     pub smtp_host: String,
@@ -110,12 +108,9 @@ pub struct AccountsPageState {
     pub onboarding_modal_open: bool,
     pub new_account_draft: Option<AccountFormState>,
     pub resume_new_account_draft_prompt_open: bool,
-    /// The resume prompt's lit option: "Resume draft", or "Discard draft".
     pub resume_draft_choice: super::ConfirmChoice,
     pub form: AccountFormState,
-    /// In-flight Outlook device-code session; shown as overlay while user completes browser auth.
     pub active_auth_session: Option<mxr_protocol::AuthSessionData>,
-    /// Colour and tag editor for the selected account (blueprint 33).
     pub identity_editor: Option<AccountIdentityEditor>,
 }
 
@@ -125,8 +120,6 @@ pub enum IdentityField {
     Tag,
 }
 
-/// The identity editor on the Accounts page. A first Enter asks the daemon
-/// for a dry run; the next Enter, with nothing edited, saves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountIdentityEditor {
     pub account_key: String,
@@ -135,14 +128,11 @@ pub struct AccountIdentityEditor {
     pub tag: String,
     pub field: IdentityField,
     pub previewed: bool,
-    /// Set while a write is in flight: whether it is the dry run.
     pub in_flight_dry_run: Option<bool>,
-    /// The daemon's words for the last dry run or refusal.
     pub message: Option<String>,
 }
 
 impl AccountIdentityEditor {
-    /// Any edit invalidates a dry run, so the next Enter previews again.
     pub fn changed(&mut self) {
         self.previewed = false;
         self.message = None;
@@ -156,16 +146,8 @@ pub struct AccountsState {
     pub pending_test: Option<mxr_protocol::AccountConfigData>,
     pub pending_authorize: Option<(mxr_protocol::AccountConfigData, bool)>,
     pub pending_set_default: Option<String>,
-    /// Account awaiting completion of a StartAuthSession device-code flow.
     pub pending_auth_session_account: Option<mxr_protocol::AccountConfigData>,
-    /// Phase 2.3: pending account-repair dispatch. Mirrors the
-    /// `pending_save`/`pending_test` pattern; the dispatcher takes
-    /// it on the next tick and fires `Request::RepairAccountConfig`.
     pub pending_repair: Option<mxr_protocol::AccountConfigData>,
-    /// True when the set-default was triggered from sidebar account switching
-    /// (vs the Accounts tab). Used to trigger full state reset on completion.
     pub pending_switch: bool,
-    /// Key, colour, tag and whether this is the dry run, for the runner to
-    /// send as `SetAccountIdentity`.
     pub pending_identity: Option<(String, mxr_core::AccountColor, String, bool)>,
 }

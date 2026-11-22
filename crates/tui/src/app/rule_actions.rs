@@ -8,7 +8,6 @@ impl App {
             .page
             .selected_index
             .min(self.rules.page.rules.len().saturating_sub(1));
-        // The list can arrive after a draft preview starts; it does not own that preview.
         if !self.rules.draft_preview_active {
             self.refresh_selected_rule_panel();
         }
@@ -58,8 +57,6 @@ impl App {
                         }
                     }
                 }
-                // Deleting is destructive, so `#` only asks; the confirm
-                // in the rules screen's keys deletes.
                 if let Some(rule) = self.selected_rule() {
                     if let Some(rule_id) = rule["id"].as_str() {
                         let name = rule["name"].as_str().unwrap_or(rule_id).to_string();
@@ -176,10 +173,6 @@ impl App {
     }
 }
 
-/// Phase 2.4: client-side validation for rule form submits. Catches
-/// the cases the daemon would either silently accept (e.g. empty
-/// `shell:` command yielding a no-op rule) or reject far from the
-/// UX with a generic "Unsupported action" string.
 pub(crate) fn rule_form_validation_error(form: &RuleFormState) -> Option<String> {
     if form.name.trim().is_empty() {
         return Some("Rule name is required".into());

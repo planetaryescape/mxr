@@ -1,9 +1,3 @@
-//! Reading in the TUI: open the edition, read an item beside it, fetch its
-//! article only on `L`, keep it on Later, let go of one or everything
-//! shown after a preview, unsubscribe after a preview with the evidence,
-//! switch to the source's own text, highlight a paragraph, and open it in
-//! Marginalia. The daemon owns every band, rank and preview; this turns
-//! keys into requests.
 
 use super::input::plain_or_shift;
 use super::*;
@@ -11,10 +5,8 @@ use crate::app::state::{ReadingConfirm, ReadingRow, ReadingUnsubscribeTarget, Re
 use mxr_core::id::ThreadId;
 use mxr_protocol::{ModeDoneOutcomeData, ModeKindData, ReadingFetchData, ReadingItemDetailData};
 
-/// The mode id Reading's guide and its card are kept under.
 pub(crate) const READING_MODE: &str = mxr_protocol::READING_GUIDE.mode;
 
-/// What a row refers to, copied out so the page can change.
 struct Target {
     key: String,
     thread_id: ThreadId,
@@ -74,7 +66,6 @@ impl App {
         self.mailbox.pending_rail_refresh = true;
     }
 
-    /// The Reading lens owns the keyboard.
     pub(crate) fn reading_lens_focused(&self) -> bool {
         self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::Reading
@@ -93,7 +84,6 @@ impl App {
         self.selected_reading_row().map(Target::from)
     }
 
-    /// The runtime fetched the edition and the guide.
     pub(crate) fn set_reading_edition(
         &mut self,
         edition: mxr_protocol::ReadingEditionData,
@@ -112,8 +102,6 @@ impl App {
         }
     }
 
-    /// The item under the cursor, when the reader shows another one (or
-    /// none) and nothing is on its way: the runtime fetches it.
     pub(crate) fn reading_item_to_load(&mut self) -> Option<String> {
         if self.mailbox.mailbox_view != MailboxView::Reading {
             return None;
@@ -166,7 +154,6 @@ impl App {
         self.status_message = Some(format!("Couldn't open the item: {error}"));
     }
 
-    /// The article came back: show it, or why it couldn't be read.
     pub(crate) fn set_reading_article(&mut self, key: &str, fetch: ReadingFetchData) {
         let page = &mut self.mailbox.reading_page;
         let shown = page
@@ -201,15 +188,12 @@ impl App {
         self.status_message = Some(status);
     }
 
-    /// Refetch the edition, and the item in the reader, after a change.
     pub(crate) fn refresh_reading(&mut self) {
         let page = &mut self.mailbox.reading_page;
         page.pending_refresh = true;
-        // Refetch the open item too; its place in the text is kept.
         page.pending_item = page.reader.as_ref().map(|r| r.item.item_key.clone());
     }
 
-    /// Enter: read the item beside the list.
     fn reading_read(&mut self) {
         let Some(target) = self.reading_target() else {
             return;
@@ -236,8 +220,6 @@ impl App {
         );
     }
 
-    /// Esc in the reader: back to the edition, reporting the time read and
-    /// how far.
     fn reading_back(&mut self) {
         let page = &mut self.mailbox.reading_page;
         page.reader_focused = false;
@@ -261,7 +243,6 @@ impl App {
         );
     }
 
-    /// `L`: the article, fetched only now and only after naming the site.
     fn reading_article(&mut self) {
         let Some(target) = self.reading_target() else {
             return;
@@ -294,8 +275,6 @@ impl App {
         self.status_message = Some(format!("Fetching from {domain}\u{2026}"));
     }
 
-    /// Put an item on Later or take it off (`b`'s Later row). A link put
-    /// on Later has its article fetched, so it reads offline.
     pub(super) fn set_reading_later(
         &mut self,
         key: String,
@@ -326,7 +305,6 @@ impl App {
         }
     }
 
-    /// `e`: let go of the item's issue in Reading. Its links on Later stay.
     fn reading_let_go(&mut self) {
         let Some(target) = self.reading_target() else {
             return;
@@ -349,8 +327,6 @@ impl App {
         );
     }
 
-    /// `1` the edition, `2` Later: the tab, from the list or the reader.
-    /// Leaving the reader reports the time read, as Esc does.
     fn show_reading_tab(&mut self, later: bool) {
         if self.mailbox.reading_page.reader_focused {
             self.reading_back();
@@ -362,8 +338,6 @@ impl App {
         }
     }
 
-    /// `A`: ask the daemon what letting go of everything shown would do;
-    /// with that preview on screen, Enter lets go of exactly those.
     fn reading_let_go_all(&mut self) {
         let page = &mut self.mailbox.reading_page;
         if let Some(ReadingConfirm::LetGoAll { thread_ids, .. }) = page.confirm.take() {
@@ -397,7 +371,6 @@ impl App {
         self.status_message = Some("Checking what letting go would change\u{2026}".into());
     }
 
-    /// The daemon's dry run of letting go of everything shown.
     pub(crate) fn show_reading_let_go_preview(
         &mut self,
         thread_ids: &[ThreadId],
@@ -417,8 +390,6 @@ impl App {
         self.mailbox.reading_page.confirm = Some(ReadingConfirm::LetGoAll { thread_ids, items });
     }
 
-    /// The unsubscribe preview on screen, taken off it. None when the
-    /// confirm is something else.
     fn committed_unsubscribe(&mut self) -> Option<(ReadingUnsubscribeTarget, Option<String>)> {
         let page = &mut self.mailbox.reading_page;
         if !matches!(page.confirm, Some(ReadingConfirm::Unsubscribe { .. })) {
@@ -434,12 +405,8 @@ impl App {
         }
     }
 
-    /// `D`: preview unsubscribing from the item's source, with the
-    /// evidence. In that preview `a` unsubscribes and clears the source's
-    /// issues.
     fn reading_unsubscribe(&mut self) {
         if let Some((target, preview_token)) = self.committed_unsubscribe() {
-            // Only a preview the daemon answered with a token commits.
             let Some(preview_token) = preview_token else {
                 self.status_message =
                     Some("Nothing to unsubscribe with: preview again with D".into());
@@ -491,7 +458,6 @@ impl App {
         self.status_message = Some("Checking what unsubscribing would do\u{2026}".into());
     }
 
-    /// Enter or `u` commits the preview while leaving existing mail in place.
     fn reading_unsubscribe_only(&mut self) {
         let Some((target, preview_token)) = self.committed_unsubscribe() else {
             return;
@@ -513,14 +479,12 @@ impl App {
         );
     }
 
-    /// The daemon's dry run of the unsubscribe.
     pub(crate) fn show_reading_unsubscribe_preview(
         &mut self,
         mut target: ReadingUnsubscribeTarget,
         preview: mxr_protocol::UnsubscribePurgeResultData,
     ) {
         self.status_message = None;
-        // The method shown is the one the daemon would use now.
         target.method = mxr_protocol::ReadingUnsubscribeData::from(&preview.method);
         let preview_token = preview
             .preview_token
@@ -532,8 +496,6 @@ impl App {
         });
     }
 
-    /// `R`: the source's own text instead of the reader, remembered for
-    /// the source.
     fn reading_original(&mut self) {
         let Some(target) = self.reading_target() else {
             return;
@@ -583,17 +545,12 @@ impl App {
         );
     }
 
-    /// `"`: highlight the paragraph at the top of the reader. A terminal has
-    /// no text selection, so the paragraph you scrolled to is the passage;
-    /// the status line names it, and `3` lists it with `x` to remove it.
     fn reading_highlight(&mut self) {
         let page = &self.mailbox.reading_page;
         let Some(reader) = &page.reader else {
             self.status_message = Some("Open an item first: Enter reads it".into());
             return;
         };
-        // Before the article is fetched the reader shows a note about it,
-        // which is not the article's text.
         if page.view == ReadingView::Article && reader.article.is_none() {
             self.status_message = Some(format!(
                 "Fetch the article first: {} fetches it",
@@ -613,8 +570,6 @@ impl App {
             ReadingView::Article => "article",
             ReadingView::Issue => "issue",
         };
-        // The sender's layout splits its text its own way, so its numbering
-        // is not the daemon's: the quote alone finds the passage there.
         let paragraph = page
             .original_text
             .is_none()
@@ -635,9 +590,6 @@ impl App {
         );
     }
 
-    /// `M`: open the item in Marginalia. The daemon sends its text the
-    /// first time and only finds it after that; the runner opens the
-    /// browser at the address it answers with.
     fn reading_marginalia(&mut self) {
         let key = match &self.mailbox.reading_page.reader {
             Some(reader) if self.mailbox.reading_page.reader_focused => {
@@ -676,8 +628,6 @@ impl App {
         };
     }
 
-    /// Key handling for the Reading lens: its verbs, the reader's
-    /// scrolling, and the two previews.
     pub(super) fn reading_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let page = &self.mailbox.reading_page;
         if let Some(confirm) = &page.confirm {
@@ -729,7 +679,6 @@ impl App {
                     return None;
                 }
                 KeyCode::Esc | KeyCode::Left => return Some(Action::ReadingBack),
-                // `"` quotes the passage; h stays the move left it is elsewhere.
                 KeyCode::Char('"') if plain_or_shift(key.modifiers) => {
                     return Some(Action::ReadingHighlight)
                 }
@@ -749,7 +698,6 @@ impl App {
     }
 }
 
-/// The first words of a highlighted passage, for the status line.
 fn quote_opening(quote: &str) -> String {
     const WORDS: usize = 8;
     let line = crate::ui::sanitize::one_line(quote);

@@ -1,14 +1,11 @@
 use super::*;
 
-/// What the mail list is showing. A selection is only valid for the list it
-/// was made in, so a change to any part of this drops the selection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ListScope {
     screen: Screen,
     mailbox_view: MailboxView,
     active_label: Option<mxr_core::LabelId>,
     pending_label_fetch: Option<mxr_core::LabelId>,
-    /// Bumped by every mailbox filter change.
     mailbox_filter: u64,
     search_query: Option<String>,
 }
@@ -25,12 +22,8 @@ impl App {
         }
     }
 
-    /// Pattern keys select the flat list that mutations read: the search
-    /// results, or the plain message list with its pane focused.
     pub(super) fn pattern_select_applies(&self) -> bool {
         self.screen == Screen::Search
-            // From the sidebar and the reader too: both sit beside the list,
-            // and the web's `*` reaches the list from them the same way.
             || (self.screen == Screen::Mailbox
                 && matches!(
                     self.mailbox.mailbox_view,
@@ -38,8 +31,6 @@ impl App {
                 ))
     }
 
-    /// Without this, `*a` or `V` in one label and then `gs` would leave the
-    /// old selection behind, and archive would act on messages off screen.
     pub(super) fn drop_selection_on_view_change(&mut self, before: &ListScope) {
         if self.list_scope() == *before {
             return;

@@ -7,7 +7,6 @@ impl App {
                 self.queue_current_message_browser_open();
             }
 
-            // Phase 2: Reader mode
             Action::ToggleReaderMode => {
                 if self.mailbox.html_view {
                     self.status_message = Some("Switch to text view to use reading view".into());
@@ -49,7 +48,6 @@ impl App {
             Action::ToggleMessage => self.toggle_focused_message(),
             Action::ToggleAllMessages => self.toggle_all_messages(),
 
-            // Phase 2: Batch operations (A007)
             Action::AttachmentList => {
                 if self.mailbox.attachment_panel.visible {
                     self.close_attachment_panel();
@@ -82,7 +80,6 @@ impl App {
                 } else if self.mailbox.layout_mode == LayoutMode::FullScreen
                     && !self.view_draws_reader()
                 {
-                    // A mode has no split view: the reader stays full width.
                     self.status_message = Some("Esc goes back".into());
                 } else if self.mailbox.layout_mode == LayoutMode::FullScreen {
                     self.mailbox.layout_mode = LayoutMode::ThreePane;
@@ -111,10 +108,6 @@ impl App {
                             }
                         }
                         MailboxView::Owed => {
-                            // Owed lens has no per-row "open" affordance
-                            // for now; selecting a row just navigates within
-                            // the lens. (A future slice can wire enter →
-                            // navigate to the underlying thread.)
                         }
                         MailboxView::CalendarInvites => {
                             self.open_selected_invite_message();
@@ -143,7 +136,6 @@ impl App {
                         MailboxView::Reading => {
                             self.apply(Action::ReadingRead);
                         }
-                        // One conversation, already on screen.
                         MailboxView::Focus => {}
                     }
                 }
@@ -155,9 +147,6 @@ impl App {
 }
 
 impl App {
-    /// `Q`, as in the web reader: the reading and HTML views fold quoted
-    /// text until asked. Plain text is the sender's exact text, so it
-    /// already shows every quoted line.
     fn toggle_quotes(&mut self) {
         if !self.mailbox.html_view && !self.mailbox.reader_mode {
             self.status_message =
@@ -175,8 +164,6 @@ impl App {
         });
     }
 
-    /// `o`, as in the web reader: the focused message (`J`/`K`) folds to
-    /// its one header line, or opens again.
     fn toggle_focused_message(&mut self) {
         let Some(id) = self.focused_thread_envelope().map(|env| env.id.clone()) else {
             return;
@@ -185,15 +172,11 @@ impl App {
             "Message open".into()
         } else {
             self.mailbox.collapsed_messages.insert(id);
-            // `o` once opened the browser, so name `O`, which still does.
             "Message folded; o opens it, O opens it in the browser".into()
         });
         self.mailbox.scroll_to_focused_message = true;
     }
 
-    /// `;`, as in the web reader: open every message, or, when all are
-    /// open, fold all but the newest and the unread ones, which is where
-    /// the web reader starts.
     fn toggle_all_messages(&mut self) {
         let messages = &self.mailbox.viewed_thread_messages;
         if messages.is_empty() {

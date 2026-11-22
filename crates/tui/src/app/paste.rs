@@ -1,14 +1,8 @@
-//! Pasted text (bracketed paste, blueprint 35 "Terminal and browser keys").
-//! A paste types into the focused text field and is otherwise dropped, so
-//! pasted text can never run as shortcuts.
 
 use super::*;
 use ratatui::crossterm::event::KeyEvent;
 
 impl App {
-    /// Type `text` into the focused text field, or drop it when none has
-    /// the keys. Fields are single-line, so line breaks and tabs become
-    /// spaces rather than Enter (which would submit) or Tab (next field).
     pub fn handle_paste(&mut self, text: &str) {
         let text = text.replace("\r\n", "\n");
         let typed = text.chars().filter_map(|c| match c {
@@ -17,8 +11,6 @@ impl App {
             c => Some(c),
         });
         for c in typed {
-            // Checked per character: a field that closed must not let the
-            // rest of the paste reach the shortcuts behind it.
             if !self.text_input_focused() {
                 break;
             }
@@ -30,9 +22,6 @@ impl App {
         }
     }
 
-    /// The owner of the next key is a text field. Mirrors the order in
-    /// `handle_key_press`: the first owner that takes keys decides, so a
-    /// menu over a field keeps the paste out of both.
     pub(crate) fn text_input_focused(&self) -> bool {
         let modals = &self.modals;
         if modals.error.is_some() {
@@ -41,7 +30,6 @@ impl App {
         if modals.draft_options.visible {
             return modals.draft_options.active == DraftOptionsField::Instruction;
         }
-        // The identity tag takes letters; the colour field does not.
         if self
             .accounts
             .page
@@ -143,8 +131,6 @@ impl App {
             Screen::Rules => self.rules.page.form.visible && self.rules.page.form.active_field <= 3,
             Screen::Accounts => {
                 let page = &self.accounts.page;
-                // With single-key shortcuts off, a text field takes its
-                // letters without Enter first (see `handle_account_form_key`).
                 page.active_auth_session.is_none()
                     && !page.resume_new_account_draft_prompt_open
                     && page.form.visible

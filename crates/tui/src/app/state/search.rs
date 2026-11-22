@@ -42,10 +42,8 @@ pub struct SearchPageState {
     pub scores: HashMap<MessageId, f32>,
     pub triage_verdicts: HashMap<MessageId, String>,
     pub mode: SearchMode,
-    /// `None` takes the daemon's `[search] default_sort`.
     pub sort: Option<SortOrder>,
     pub has_more: bool,
-    /// Set while the list on screen came from the daemon's SQLite fallback.
     pub degraded: Option<mxr_protocol::SearchDegraded>,
     pub loading_more: bool,
     pub total_count: Option<u32>,

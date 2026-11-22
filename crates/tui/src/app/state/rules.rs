@@ -17,9 +17,6 @@ pub struct RuleFormState {
     pub priority: String,
     pub enabled: bool,
     pub active_field: usize,
-    /// Phase 2.4: surfaced to the user when the rule form rejects a
-    /// submit (empty `shell:` command, blank action, etc). Cleared
-    /// on the next successful interaction.
     pub validation_error: Option<String>,
 }
 
@@ -35,9 +32,7 @@ pub struct RulesPageState {
     pub status: Option<String>,
     pub refresh_pending: bool,
     pub form: RuleFormState,
-    /// The rule `#` asked to delete (id, name), waiting for its confirm.
     pub delete_confirm: Option<(String, String)>,
-    /// Which of that confirm's two options is lit.
     pub delete_choice: super::ConfirmChoice,
 }
 

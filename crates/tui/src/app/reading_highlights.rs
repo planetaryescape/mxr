@@ -1,14 +1,8 @@
-//! `H` in the reader: the item's highlights, to edit a note or remove one.
-//! The daemon decides what may change (a highlight made in Marginalia
-//! can't); this turns keys into `UpdateHighlight` and `RemoveHighlight`.
-//! Removing asks first, naming the exact highlight Enter will remove (by
-//! id, the same one the daemon's preview would name), and `u` undoes it.
 
 use super::*;
 use crate::app::state::{HighlightStep, HighlightsPanel};
 use mxr_protocol::ReadingHighlightData;
 
-/// The reason, shown instead of asking the daemon to refuse.
 const MADE_ELSEWHERE: &str = "Made in Marginalia; change it there";
 
 impl App {
@@ -28,8 +22,6 @@ impl App {
         page.highlights = Some(HighlightsPanel::default());
     }
 
-    /// The highlight the panel has selected, clamped: a refetch after a
-    /// removal may leave the index past the end.
     pub(crate) fn selected_highlight(&self) -> Option<&ReadingHighlightData> {
         let page = &self.mailbox.reading_page;
         let panel = page.highlights.as_ref()?;
@@ -37,7 +29,6 @@ impl App {
         highlights.get(panel.selected.min(highlights.len().checked_sub(1)?))
     }
 
-    /// Keys while the panel is open.
     pub(super) fn highlights_key(&mut self, key: crossterm::event::KeyEvent) {
         let Some(step) = self
             .mailbox
@@ -97,7 +88,6 @@ impl App {
                 self.set_step(step);
             }
             KeyCode::Char('u') => {
-                // The same undo as everywhere else; the panel stays open.
                 self.apply(Action::UndoLastMutation);
             }
             _ => {}

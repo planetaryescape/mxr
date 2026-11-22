@@ -38,7 +38,6 @@ pub fn write_private_file(path: &std::path::Path, contents: &[u8]) -> std::io::R
 mod tests {
     #![expect(
         clippy::unwrap_used,
-        clippy::panic,
         reason = "tests use panic and unwrap for direct fixture failures"
     )]
 

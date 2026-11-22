@@ -14,7 +14,6 @@
 
 #![expect(
     clippy::unwrap_used,
-    clippy::panic,
     reason = "tests use panic and unwrap for direct fixture failures"
 )]
 

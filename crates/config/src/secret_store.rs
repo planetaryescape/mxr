@@ -272,7 +272,6 @@ pub(crate) fn write_secrets_atomic(path: &Path, contents: &[u8]) -> io::Result<(
 mod tests {
     #![expect(
         clippy::unwrap_used,
-        clippy::panic,
         reason = "tests unwrap fixture setup and deliberately poison a lock"
     )]
 

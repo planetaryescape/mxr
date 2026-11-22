@@ -534,14 +534,3 @@ pub(super) async fn run_messages_for_test(
         .collect();
     run(state, plans).await
 }
-
-#[cfg(test)]
-pub(super) async fn resolve_with_gap_for_test(
-    state: &AppState,
-    items: &[DeskDoneItemData],
-    between: impl std::future::Future<Output = ()>,
-) -> HandlerResult {
-    let plans = plan(state, items).await?;
-    between.await;
-    run(state, plans).await
-}

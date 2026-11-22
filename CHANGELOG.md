@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.251](https://github.com/planetaryescape/mxr/compare/v0.6.250...v0.6.251) (2026-11-22)
+
+
+### Bug Fixes
+
+* **web:** wait for keys after reload before letting go of updates ([bdb75d3](https://github.com/planetaryescape/mxr/commit/bdb75d3c67d6893d1c4d7baf7c13f32be32fb83a))
+
+
+### Documentation
+
+* move code decisions out of comments into docs/code-decisions ([#1023](https://github.com/planetaryescape/mxr/issues/1023)) ([895411f](https://github.com/planetaryescape/mxr/commit/895411f5774bebaa87b842c275bdbce9ed281c7b))
+
 ## [0.6.250](https://github.com/planetaryescape/mxr/compare/v0.6.249...v0.6.250) (2026-11-22)
 
 

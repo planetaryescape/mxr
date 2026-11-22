@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn take_pending_undo_returns_and_clears() {
+    use crate::app::PendingUndo;
+    let mut app = App::new();
+    app.set_pending_undo(PendingUndo {
+        action: crate::app::UndoAction::Mutations(vec!["M1".into()]),
+        verb_past: "Trashed".into(),
+        count: 1,
+        applied_at: std::time::Instant::now(),
+    });
+
+    let taken = app.take_pending_undo().expect("must yield handle");
+    assert_eq!(
+        taken.action,
+        crate::app::UndoAction::Mutations(vec!["M1".to_string()])
+    );
+    assert!(
+        app.pending_undo.is_none(),
+        "second `u` must not see a handle"
+    );
+}
+
+#[test]
 fn analytics_unsubscribe_action_opens_confirm_modal_for_selected_row() {
     use crate::action::Action;
     use crate::app::AnalyticsView;

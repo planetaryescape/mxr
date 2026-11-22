@@ -72,6 +72,18 @@ fn plan(app: &App) -> AckPlanData {
 }
 
 #[test]
+fn a_second_e_before_the_next_page_arrives_sends_nothing_again() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('e'));
+    press(&mut app, KeyCode::Char('e'));
+    let dones = queued(&app)
+        .into_iter()
+        .filter(|request| matches!(request, Request::SetModeDone { .. }))
+        .count();
+    assert_eq!(dones, 1, "the page on screen is the one just done");
+}
+
+#[test]
 fn got_it_previews_counts_down_and_sends_exactly_that_text() {
     let mut app = messages_app(true);
     press(&mut app, KeyCode::Char('.'));

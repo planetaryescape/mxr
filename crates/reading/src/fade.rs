@@ -17,7 +17,6 @@ const SAME_SEND: Duration = Duration::hours(1);
 /// Where a source's window came from, for the why line and JSON.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowSource {
-    /// Twice the median gap between its issues.
     Cadence,
     /// Too few issues to know: the default.
     Default,
@@ -34,9 +33,7 @@ impl WindowSource {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceWindow {
-    /// How long an item from this source stays in the edition.
     pub window: Duration,
-    /// The median gap between issues, when there are two or more.
     pub median_gap: Option<Duration>,
     pub source: WindowSource,
 }
@@ -75,12 +72,10 @@ pub fn source_window(dates: &[DateTime<Utc>]) -> SourceWindow {
     }
 }
 
-/// When an item that arrived at `arrived` leaves the edition.
 pub fn expires_at(arrived: DateTime<Utc>, window: &SourceWindow) -> DateTime<Utc> {
     arrived + window.window
 }
 
-/// In its last day an item is in the Fading band.
 pub fn is_fading(now: DateTime<Utc>, expires_at: DateTime<Utc>) -> bool {
     now < expires_at && now >= expires_at - Duration::days(1)
 }

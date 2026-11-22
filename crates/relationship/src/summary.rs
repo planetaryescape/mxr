@@ -10,7 +10,6 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 const MAX_EXCERPTS: usize = 10;
-/// Total prompt ceiling (guard + task + delimiters + excerpts).
 const MAX_PROMPT_CHARS: usize = 12_000;
 const SUMMARY_TASK: &str = "Build an inspectable relationship profile from these email excerpts. Ground only in the excerpts. Do not infer facts, familiarity, meetings, or topics not present. Return strict JSON: {\"text\":\"<=200 token summary using tends-to phrasing\",\"known_topics\":[\"topic\"]}.";
 const TRUNCATION_NOTE: &str = "\n[...truncated...]\n";
@@ -22,7 +21,6 @@ struct SummaryResponse {
     known_topics: Vec<String>,
 }
 
-/// Names one contact in the background attempt ledger.
 pub(crate) fn attempt_key(account_id: &AccountId, email: &str) -> String {
     format!("{}:{}", account_id.as_str(), email.to_ascii_lowercase())
 }
@@ -69,9 +67,6 @@ pub async fn generate_relationship_summary(
     }
 
     let reader_config = ReaderConfig::default();
-    // Reserve the fixed prompt overhead (guard + task + wrapper delimiters +
-    // separators + the truncation note) so the wrapped prompt stays within
-    // MAX_PROMPT_CHARS. Excerpts are capped to what remains.
     let overhead = UNTRUSTED_MAIL_GUARD.len()
         + SUMMARY_TASK.len()
         + UNTRUSTED_MAIL_BEGIN.len()
@@ -100,16 +95,11 @@ pub async fn generate_relationship_summary(
             body.trim()
         ));
         if excerpts.len() > excerpt_budget {
-            // Byte-budget cut over arbitrary email bodies: must be
-            // boundary-safe or multi-byte content panics the worker.
             mxr_core::text::truncate_to_char_boundary(&mut excerpts, excerpt_budget);
             excerpts.push_str(TRUNCATION_NOTE);
             break;
         }
     }
-    // User-only prompt: lead with the injection guard, then the task, then
-    // the mail excerpts wrapped as untrusted content. Strict-JSON parsing
-    // is the boundary; the summary is stored, never actioned.
     let prompt = format!(
         "{UNTRUSTED_MAIL_GUARD}\n\n{SUMMARY_TASK}\n\n{}",
         wrap_untrusted_mail(&excerpts)
@@ -126,8 +116,6 @@ pub async fn generate_relationship_summary(
         Ok(response) => response,
         Err(LlmError::Disabled) => return Ok(false),
         Err(error @ LlmError::PrivacyBlocked(_)) => return Err(error.into()),
-        // Put off until the endpoint is back. The open breaker already
-        // warned once; skip instead of a WARN per contact.
         Err(error @ LlmError::CircuitOpen { .. }) => {
             feature_llm.record_background_failure(&attempt_key, &style.source_hash, &error);
             return Ok(false);
@@ -142,8 +130,6 @@ pub async fn generate_relationship_summary(
     if parsed.text.trim().is_empty() {
         return Ok(false);
     }
-    // Refused when mail it read was deleted while the model ran; the
-    // delete's re-enqueue rebuilds the summary from what is left.
     let written = store
         .upsert_contact_relationship_summary_if_sources_exist(
             &ContactRelationshipSummaryRecord {
@@ -331,7 +317,6 @@ mod tests {
             })
             .await
             .expect("style");
-        // No existing summary + a real message => the LLM is invoked.
         insert_message(&store, &account, "m1", now).await;
 
         let cap = std::sync::Arc::new(Capture::default());
@@ -350,8 +335,6 @@ mod tests {
             user.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
             "user-only prompt must lead with the injection guard"
         );
-        // The guard text quotes the marker strings, so use rfind to locate
-        // the real wrapper (the last occurrence of each marker).
         let begin = user
             .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
             .expect("begin marker present");

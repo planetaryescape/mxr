@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-/// Composable condition tree. Evaluated recursively.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Conditions {
@@ -12,7 +11,6 @@ pub enum Conditions {
     Field(FieldCondition),
 }
 
-/// Leaf-level condition against a single message field.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "field", rename_all = "snake_case")]
 pub enum FieldCondition {
@@ -56,11 +54,9 @@ pub enum FieldCondition {
     },
 }
 
-/// How to match the tri-state `LinkDensity` classification.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LinkDensityMatch {
-    /// `Some` or `Heavy` — any external link survived the deny-list filter.
     Any,
     /// Only `Heavy` — newsletter-shaped mail.
     Heavy,
@@ -68,7 +64,6 @@ pub enum LinkDensityMatch {
     None,
 }
 
-/// How to match a string field.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum StringMatch {
@@ -112,8 +107,6 @@ type RegexCache = std::sync::Mutex<std::collections::HashMap<String, Option<Arc<
 fn compiled_regex(pattern: &str) -> Option<Arc<regex::Regex>> {
     static CACHE: std::sync::OnceLock<RegexCache> = std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
-    // A poisoned lock still holds a usable map: a panic cannot leave a
-    // half-written entry behind, so the poison is not worth propagating.
     let mut cache = cache
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -182,7 +175,6 @@ impl StringMatch {
             .then_some(word)
     }
 
-    /// Evaluate this match against a haystack string.
     pub fn matches(&self, haystack: &str) -> bool {
         match self {
             Self::Exact(s) => haystack == s,
@@ -223,7 +215,6 @@ impl Conditions {
         }
     }
 
-    /// Recursively evaluate the condition tree against a message.
     pub fn evaluate(&self, msg: &dyn MessageView) -> bool {
         match self {
             Self::And { conditions } => conditions.iter().all(|c| c.evaluate(msg)),
@@ -250,8 +241,6 @@ impl FieldCondition {
             Self::IsStarred => msg.is_starred(),
             Self::HasUnsubscribe => msg.has_unsubscribe(),
             Self::BodyContains { pattern } => {
-                // Any part may satisfy the pattern: a rule anchored with
-                // `^...$` or an exact match is about one part's whole text.
                 msg.body_parts()
                     .is_some_and(|parts| parts.iter().any(|part| pattern.matches(part)))
             }
@@ -282,7 +271,6 @@ mod tests {
     use super::*;
     use crate::tests::*;
 
-    // -- StringMatch tests --
 
     #[test]
     fn exact_match_requires_full_equality() {
@@ -380,7 +368,6 @@ mod tests {
         assert!(!dotted.matches("see axb here"));
     }
 
-    // -- Condition composition tests --
 
     #[test]
     fn and_condition_short_circuits_on_false() {
@@ -409,12 +396,11 @@ mod tests {
         let cond = Conditions::Not {
             condition: Box::new(Conditions::Field(FieldCondition::IsStarred)),
         };
-        assert!(cond.evaluate(&newsletter_msg())); // not starred
+        assert!(cond.evaluate(&newsletter_msg()));
     }
 
     #[test]
     fn nested_conditions_evaluate_correctly() {
-        // (from matches *@substack.com AND has_unsub) OR is_starred
         let cond = Conditions::Or {
             conditions: vec![
                 Conditions::And {
@@ -437,7 +423,6 @@ mod tests {
         assert!(cond.evaluate(&newsletter_msg()));
     }
 
-    // -- Field condition tests --
 
     #[test]
     fn to_field_matches_any_recipient() {
@@ -462,7 +447,7 @@ mod tests {
 
     #[test]
     fn size_conditions_work() {
-        let msg = newsletter_msg(); // size 15000
+        let msg = newsletter_msg();
 
         let cond = FieldCondition::SizeGreaterThan { bytes: 10000 };
         assert!(cond.evaluate(&msg));
@@ -476,7 +461,7 @@ mod tests {
 
     #[test]
     fn date_conditions_work() {
-        let msg = newsletter_msg(); // date is Utc::now()
+        let msg = newsletter_msg();
         let past = chrono::Utc::now() - chrono::Duration::hours(1);
         let future = chrono::Utc::now() + chrono::Duration::hours(1);
 
@@ -514,5 +499,4 @@ mod tests {
         assert!(FieldCondition::HasAttachment.evaluate(&msg));
     }
 
-    // -- Serialization tests --
 }

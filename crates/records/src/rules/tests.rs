@@ -67,7 +67,6 @@ fn shipping_and_delivery_emails_are_stages_of_the_order() {
     )
     .expect("delivered");
     assert_eq!(delivered.stage, Stage::Delivered);
-    // A shipping note with nothing to file is an update, not a record.
     assert!(read_one("Your parcel is on its way", "Track it in the app.").is_none());
 }
 
@@ -86,8 +85,6 @@ fn receipts_statements_and_invoices_need_a_reference_or_an_amount() {
     )
     .expect("statement");
     assert_eq!(statement.kind, RecordKind::Statement);
-    // An account number names the account, not this bill: each bill is
-    // its own record, and they form a series.
     assert_eq!(statement.reference, None);
     assert_eq!(statement.account_ref.as_deref(), Some("A-99312"));
     assert!(field(&statement, FieldName::Reference).is_some());
@@ -208,7 +205,6 @@ fn past_days_read_with_or_without_a_year() {
         past_day("Friday 28 February", anchor),
         Some(day(2025, 2, 28))
     );
-    // A yearless day after the email is last year's.
     assert_eq!(past_day("12 December", anchor), Some(day(2024, 12, 12)));
     assert_eq!(past_day("2025-02-01", anchor), Some(day(2025, 2, 1)));
     assert_eq!(past_day("Friday", anchor), None);

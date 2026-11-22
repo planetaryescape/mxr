@@ -125,7 +125,6 @@ pub enum FieldValue {
     At(DateTime<Utc>),
 }
 
-/// One field read from one email, with its provenance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Found {
     pub field: FieldName,
@@ -134,7 +133,6 @@ pub struct Found {
     /// False for a value the user should confirm: anything a rule read for
     /// money or a date.
     pub checked: bool,
-    /// The words it was read from, verbatim, or how it was worked out.
     pub evidence: Option<String>,
 }
 
@@ -247,8 +245,6 @@ mod tests {
         assert!(!rule.checked);
         let schema = Found::money(Source::Schema, 100, "GBP", "1.00");
         assert!(schema.checked);
-        // Only schema.org or you check a value, text included: a title a
-        // rule read is unchecked too.
         let observed = day_at(NaiveDate::from_ymd_opt(2025, 3, 3).expect("day"));
         let rule_title = Found::text(FieldName::Title, Source::Rule, "XPS 14");
         assert!(!rule_title.checked);

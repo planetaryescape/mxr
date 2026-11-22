@@ -31,11 +31,8 @@ pub fn clean_for_voice(text: &str) -> String {
 pub struct WritingHabits {
     pub samples: usize,
     pub median_words: u32,
-    /// Most common opening line, with the recipient's name as `{name}`.
     pub greeting: Option<Habit>,
-    /// Share of messages that open with a greeting at all.
     pub greeting_rate: f64,
-    /// Most common closing (one or two short lines joined by a newline).
     pub sign_off: Option<Habit>,
     pub sign_off_rate: f64,
     pub contraction_rate: f64,
@@ -151,7 +148,6 @@ pub fn analyse(bodies: &[&str], names: &[&str]) -> WritingHabits {
 }
 
 impl WritingHabits {
-    /// Plain sentences for a prompt. Empty when there is nothing to go on.
     pub fn describe(&self) -> Vec<String> {
         if self.samples == 0 {
             return Vec::new();

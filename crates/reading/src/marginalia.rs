@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use url::Url;
 
-/// Marginalia refuses larger requests.
 pub const MAX_REQUEST_BYTES: usize = 2_000_000;
 const TIMEOUT: Duration = Duration::from_secs(30);
 /// Never an article: a GET on it answers 404 with a good token and 401
@@ -68,7 +67,6 @@ pub fn normalize_base_url(input: &str) -> Result<Url, MarginaliaError> {
     Ok(url)
 }
 
-/// An article to add, its HTML already extracted.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArticleIn {
@@ -85,7 +83,6 @@ pub struct ArticleIn {
 }
 
 impl ArticleIn {
-    /// The request body's size, to check before anything is sent.
     pub fn request_bytes(&self) -> usize {
         serde_json::to_vec(self).map_or(usize::MAX, |body| body.len())
     }
@@ -96,7 +93,6 @@ impl ArticleIn {
 pub struct SentArticle {
     pub article_id: String,
     pub read_url: String,
-    /// False when Marginalia already had it from an earlier send.
     pub created: bool,
 }
 
@@ -104,7 +100,6 @@ pub struct SentArticle {
 #[serde(rename_all = "camelCase")]
 pub struct Highlight {
     pub id: String,
-    /// `highlight` or `underline`.
     pub kind: String,
     pub text: String,
     pub paragraph_index: Option<u32>,
@@ -164,7 +159,6 @@ impl MarginaliaClient {
     fn http_error(&self, error: &reqwest::Error) -> MarginaliaError {
         MarginaliaError::Http {
             host: self.host(),
-            // without_url: the request URL can carry an article ID
             message: error.to_string(),
         }
     }
@@ -188,7 +182,6 @@ impl MarginaliaClient {
         }
     }
 
-    /// Checks the token without changing anything in the library.
     pub async fn verify(&self) -> Result<(), MarginaliaError> {
         match self.highlights(PROBE_ARTICLE_ID).await {
             Ok(_) | Err(MarginaliaError::NotFound) => Ok(()),
@@ -393,7 +386,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_read_url_off_the_connected_site_is_refused() {
-        // One fresh server per case: the mock answers whatever was mounted first.
         for case in 0..10 {
             let server = MockServer::start().await;
             let port = Url::parse(&server.uri()).unwrap().port().unwrap();
@@ -402,10 +394,8 @@ mod tests {
                 1 => "data:text/html,hi".to_string(),
                 2 => "file:///etc/passwd".to_string(),
                 3 => "https://evil.example/read/x".to_string(),
-                // Same host, other scheme or port: a different origin.
                 4 => format!("https://127.0.0.1:{port}/read/x"),
                 5 => format!("http://127.0.0.1:{}/read/x", port.wrapping_add(1)),
-                // Lookalikes that string-prefix checks would let through.
                 6 => format!("http://127.0.0.1:{port}@evil.example/read/x"),
                 7 => format!("http://127.0.0.1.evil.example:{port}/read/x"),
                 8 => "/read/x".to_string(),
@@ -446,8 +436,6 @@ mod tests {
         assert!(client
             .check_read_url("http://reader.example.com/r/1")
             .is_err());
-        // Strict: a rooted spelling is a different string the server could
-        // not need, so refuse it rather than reason about DNS.
         assert!(client
             .check_read_url("https://reader.example.com./r/1")
             .is_err());

@@ -168,7 +168,6 @@ async fn the_dell_orders_three_emails_are_one_record() {
         .expect("sources");
     let stages: Vec<&str> = sources.iter().map(|s| s.stage.as_str()).collect();
     assert_eq!(stages, vec!["confirmation", "shipped", "delivered"]);
-    // Scanning again changes nothing.
     let again = scan_messages(&fx.store, &cfg(), &ids).await.expect("scan");
     assert_eq!((again.filed, again.updated), (0, 0));
 }
@@ -349,7 +348,6 @@ async fn a_ticked_off_council_tax_bill_is_a_record_and_undo_unfiles_it() {
         .await
         .expect("unfile");
     assert!(fx.records().await.is_empty());
-    // A to-do that leaves nothing behind files nothing.
     let verify = TodoRecord {
         kind: "verify".into(),
         ..todo

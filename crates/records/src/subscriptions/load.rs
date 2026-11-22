@@ -15,7 +15,6 @@ pub struct Loaded {
     /// An issuer's one-offs in one mailbox don't count against another's
     /// subscription, even when both mailboxes pay that issuer.
     pub one_offs: HashMap<(AccountId, String), Vec<String>>,
-    /// The receipts and invoices it read, by id, for the clients' cards.
     pub records: HashMap<String, ArchiveRecord>,
 }
 
@@ -52,8 +51,6 @@ pub async fn load<Tz: TimeZone>(
     }
     let today = super::local_day(now, tz);
 
-    // A first pass finds the subscriptions; their senders' later mail is
-    // then read for cancellations, and the second pass applies them.
     let mut first: Vec<(&AccountId, &[ChargeInput], Detection)> = Vec::new();
     for (account, inputs) in by_account.values() {
         first.push((account, inputs, detect(inputs, &[], today, tz)));
@@ -122,7 +119,6 @@ async fn cancellations(
     let Some(since) = since else {
         return Ok(HashMap::new());
     };
-    // (account, sender) -> issuer key
     let mut issuer_by_sender: HashMap<(String, String), String> = HashMap::new();
     for (record_id, sender) in store.record_sender_emails(&members).await? {
         if let Some((account, issuer)) = issuer_of.get(record_id.as_str()) {
@@ -132,8 +128,6 @@ async fn cancellations(
     let mut senders: Vec<String> = issuer_by_sender.keys().map(|k| k.1.clone()).collect();
     senders.sort();
     senders.dedup();
-    // A day early: `since` is a midday-UTC day, and the email that ends it
-    // may have come that morning.
     let since = since - chrono::Duration::days(1);
     let mut out: HashMap<AccountId, Vec<CancellationInput>> = HashMap::new();
     for message in store.ending_mail_from_senders(&senders, since).await? {

@@ -17,7 +17,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 const MAX_EXCERPTS: usize = 12;
-/// Total prompt ceiling (guard + task + delimiters + excerpts).
 const MAX_PROMPT_CHARS: usize = 14_000;
 const COMMITMENTS_TASK: &str = "Extract only explicit open asks, promises, decisions, or follow-ups from these emails. Do not infer implied work. Return strict JSON: {\"commitments\":[{\"who_owes\":\"name/email\",\"what\":\"concrete obligation\",\"due\":\"the words in that message that say when, copied exactly, or null\",\"evidence_msg_id\":\"message id from input\",\"direction\":\"yours|theirs\"}]}. Use direction=yours when the account owner owes the contact, theirs when the contact owes the account owner. For due, copy the words as written, such as \"by Friday\" or \"next week\"; never work out a date yourself.";
 const TRUNCATION_NOTE: &str = "\n[...truncated...]\n";
@@ -63,7 +62,6 @@ pub async fn extract_commitments(
         .filter(|sample| !sample.is_list_sender)
         .take(MAX_EXCERPTS)
         .collect::<Vec<_>>();
-    // Nothing but list mail: an empty prompt can only waste a model call.
     if selected.is_empty() {
         return Ok(0);
     }
@@ -74,9 +72,6 @@ pub async fn extract_commitments(
         return Ok(0);
     }
     let reader_config = ReaderConfig::default();
-    // Reserve the fixed prompt overhead (guard + task + wrapper delimiters +
-    // separators + the truncation note) so the wrapped prompt stays within
-    // MAX_PROMPT_CHARS. Excerpts are capped to what remains.
     let overhead = UNTRUSTED_MAIL_GUARD.len()
         + COMMITMENTS_TASK.len()
         + UNTRUSTED_MAIL_BEGIN.len()
@@ -96,16 +91,11 @@ pub async fn extract_commitments(
             body.trim()
         ));
         if excerpts.len() > excerpt_budget {
-            // Byte-budget cut over arbitrary email bodies: must be
-            // boundary-safe or multi-byte content panics the worker.
             mxr_core::text::truncate_to_char_boundary(&mut excerpts, excerpt_budget);
             excerpts.push_str(TRUNCATION_NOTE);
             break;
         }
     }
-    // User-only prompt: lead with the injection guard, then the task, then
-    // the mail excerpts wrapped as untrusted content. Strict-JSON parsing
-    // plus the evidence_msg_id-must-match-a-sample check are the boundary.
     let prompt = format!(
         "{UNTRUSTED_MAIL_GUARD}\n\n{COMMITMENTS_TASK}\n\n{}",
         wrap_untrusted_mail(&excerpts)
@@ -122,8 +112,6 @@ pub async fn extract_commitments(
         Ok(response) => response,
         Err(LlmError::Disabled) => return Ok(0),
         Err(error @ LlmError::PrivacyBlocked(_)) => return Err(error.into()),
-        // Put off until the endpoint is back. The open breaker already
-        // warned once; skip instead of a WARN per contact.
         Err(error @ LlmError::CircuitOpen { .. }) => {
             feature_llm.record_background_failure(&attempt_key, &fingerprint, &error);
             return Ok(0);
@@ -134,7 +122,6 @@ pub async fn extract_commitments(
         }
     };
     let parsed = parse_commitments_response(&response.content)
-        // Lengths and finish_reason only: the reply can quote mail.
         .with_context(|| {
             format!(
                 "unparseable commitments reply ({} chars, finish_reason={:?})",
@@ -158,9 +145,6 @@ pub async fn extract_commitments(
         else {
             continue;
         };
-        // A promise of yours needs you as the speaker. The model reads
-        // "rejoin before Friday" in a gym's marketing as something you owe;
-        // only mail you sent can hold your promise.
         if commitment.direction == CommitmentDirection::Yours
             && sample.direction != MessageDirection::Outbound
         {
@@ -238,7 +222,6 @@ fn json_span(content: &str) -> &str {
     }
 }
 
-/// Changes when the set of messages the prompt is built from changes.
 fn samples_fingerprint(samples: &[&mxr_store::RelationshipMessageSample]) -> String {
     let mut hasher = Sha256::new();
     for sample in samples {
@@ -305,7 +288,6 @@ mod tests {
         responses: Mutex<Vec<String>>,
     }
 
-    /// A scripted response that fails as an endpoint that is down.
     const UNREACHABLE: &str = "<unreachable>";
 
     #[async_trait::async_trait]
@@ -361,8 +343,6 @@ mod tests {
         let inserted = extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
             .await
             .expect("first extract");
-        // Forced, as an explicit rebuild: same samples, so the background
-        // gate would otherwise skip it.
         let deduped = extract_commitments(&store, &llm, &account.id, "alice@example.com", true)
             .await
             .expect("second extract");
@@ -383,8 +363,6 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.expect("account");
         let thread_id = ThreadId::new();
-        // Marketing the model misreads as your promise ("rejoin before the
-        // 5th"), next to a promise you did make in a reply you sent.
         let marketing = insert_message(&store, &account, &thread_id, "offer", 0).await;
         let sent = insert_message_in(
             &store,
@@ -479,8 +457,6 @@ mod tests {
             user.contains(mxr_llm::UNTRUSTED_MAIL_GUARD),
             "user-only prompt must lead with the injection guard"
         );
-        // The guard text quotes the marker strings, so use rfind to locate
-        // the real wrapper (the last occurrence of each marker).
         let begin = user
             .rfind(mxr_llm::UNTRUSTED_MAIL_BEGIN)
             .expect("begin marker present");
@@ -502,8 +478,6 @@ mod tests {
         })))
     }
 
-    // SequenceLlm panics when called past its responses, so each test below
-    // proves a skipped extraction never reached the model.
 
     #[tokio::test]
     async fn background_extraction_skips_unchanged_samples_after_success() {
@@ -548,7 +522,6 @@ mod tests {
                 .expect("backing off: skipped"),
             0
         );
-        // An explicit rebuild still goes through.
         extract_commitments(&store, &llm, &account.id, "alice@example.com", true)
             .await
             .expect("forced");
@@ -562,8 +535,6 @@ mod tests {
         insert_message(&store, &account, &ThreadId::new(), "first", 0).await;
         let llm = sequence_llm(&[UNREACHABLE, UNREACHABLE, r#"{"commitments":[]}"#]);
 
-        // Each call reaches the model: an outage starts no backoff. With the
-        // old charging, the second call was skipped and returned Ok(0).
         for _ in 0..2 {
             extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
                 .await
@@ -622,7 +593,6 @@ mod tests {
     #[tokio::test]
     async fn due_words_resolve_against_when_the_evidence_was_written() {
         use chrono::{Datelike, TimeZone, Weekday};
-        // A Monday: "by Friday" written on a Friday would be ambiguous.
         let written = Utc.with_ymd_and_hms(2026, 9, 28, 12, 0, 0).unwrap();
         let due = extracted_due(
             "I will send the launch date by Friday.",
@@ -631,7 +601,6 @@ mod tests {
         )
         .await
         .expect("dated from the message's words");
-        // The Friday after the message, which is long past, not the coming one.
         assert_eq!(due.with_timezone(&Local).weekday(), Weekday::Fri);
         assert!(due > written && due <= written + chrono::Duration::days(8));
         assert!(due < Utc::now());
@@ -642,7 +611,6 @@ mod tests {
         let written = Utc::now() - chrono::Duration::days(2);
         let body = "I will send the launch date soon.";
         assert_eq!(extracted_due(body, written, "by Friday").await, None);
-        // A date the model worked out, in the old RFC 3339 shape.
         assert_eq!(
             extracted_due(body, written, "2026-10-09T17:00:00Z").await,
             None
@@ -652,7 +620,6 @@ mod tests {
     #[tokio::test]
     async fn a_date_resolved_from_the_emails_words_is_stored_as_words() {
         use chrono::TimeZone;
-        // A Monday: "by Friday" written on a Friday would be ambiguous.
         let written = Utc.with_ymd_and_hms(2026, 9, 28, 12, 0, 0).unwrap();
         let dated = extracted(
             "I will send the launch date by Friday.",
@@ -672,25 +639,21 @@ mod tests {
     #[tokio::test]
     async fn words_with_more_than_one_reading_leave_the_commitment_undated() {
         use chrono::TimeZone;
-        // Monday 28 September 2026 and Friday 2 October 2026, at midday UTC.
         let monday = Utc.with_ymd_and_hms(2026, 9, 28, 12, 0, 0).unwrap();
         let friday = Utc.with_ymd_and_hms(2026, 10, 2, 12, 0, 0).unwrap();
         for (what, body, due, written) in [
-            // Reads only "Friday": the "one week after" was dropped.
             (
                 "dropped words",
                 "I will send the launch date one week after Friday.",
                 "one week after Friday",
                 monday,
             ),
-            // A weekday named on its own weekday could mean today.
             (
                 "today's weekday",
                 "I will send the launch date by Friday.",
                 "by Friday",
                 friday,
             ),
-            // 15:00 or 03:00.
             (
                 "am or pm",
                 "I will send the launch date fri 3.",

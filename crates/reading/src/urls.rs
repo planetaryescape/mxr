@@ -32,7 +32,6 @@ const TRACKING_PARAMS: &[&str] = &[
     "elqtrack",
 ];
 
-/// Parameters a redirect uses to carry its destination.
 const REDIRECT_PARAMS: &[&str] = &[
     "url",
     "u",
@@ -115,7 +114,6 @@ pub fn link_idx(raw: &str) -> i64 {
         .max(1)
 }
 
-/// The host as people say it: `www.` dropped, lowercase.
 pub fn display_domain(url: &Url) -> String {
     let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
     host.strip_prefix("www.").unwrap_or(&host).to_string()

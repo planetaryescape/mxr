@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Actions a rule can perform on a matching message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuleAction {
@@ -28,7 +27,6 @@ pub enum RuleAction {
     Snooze {
         duration: SnoozeDuration,
     },
-    /// Run external command with message JSON on stdin.
     ShellHook {
         command: String,
     },

@@ -32,7 +32,6 @@ use std::collections::BTreeMap;
 pub use load::{load, Loaded};
 pub use product::is_cancellation;
 
-/// One receipt or invoice, as detection reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChargeInput {
     pub record_id: String,
@@ -40,17 +39,13 @@ pub struct ChargeInput {
     pub issuer_key: String,
     pub issuer: Option<String>,
     pub title: Option<String>,
-    /// The title came from schema.org or the user: a stated plan.
     pub title_stated: bool,
     pub amount_minor: Option<i64>,
     pub currency: Option<String>,
-    /// The ledger date.
     pub at: DateTime<Utc>,
-    /// Every money and date field came from schema.org or the user.
     pub checked: bool,
 }
 
-/// An email from an issuer's sender that says a subscription ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CancellationInput {
     pub issuer_key: String,
@@ -79,7 +74,6 @@ impl Cadence {
         }
     }
 
-    /// "a week", for "about a week apart".
     pub fn interval(self) -> &'static str {
         match self {
             Self::Weekly => "a week",
@@ -98,7 +92,6 @@ impl Cadence {
         }
     }
 
-    /// How far a charge may land from its expected day.
     fn tolerance_days(self) -> f64 {
         match self {
             Self::Weekly => 1.5,
@@ -108,7 +101,6 @@ impl Cadence {
         }
     }
 
-    /// How long after the expected day a charge counts as missed.
     pub fn grace_days(self) -> i64 {
         match self {
             Self::Weekly => 3,
@@ -155,9 +147,7 @@ impl Cadence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Status {
     Active,
-    /// The expected charge is past its grace period.
     Overdue,
-    /// Two cycles missed, or a cancellation email after the last charge.
     Ended,
 }
 
@@ -171,7 +161,6 @@ impl Status {
     }
 }
 
-/// One payment: a record, or a receipt and an invoice for the same charge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Charge {
     pub record_ids: Vec<String>,
@@ -189,7 +178,6 @@ impl Charge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PriceChange {
     pub day: NaiveDate,
-    /// The first charge at the new price.
     pub record_id: String,
     pub from_minor: i64,
     pub to_minor: i64,
@@ -203,25 +191,19 @@ pub struct Cancellation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Subscription {
-    /// `sub_` and a hash of the key: stable while the first charge stays.
     pub id: String,
     pub key: String,
     pub issuer_key: String,
     pub issuer: String,
-    /// The product as a key, empty when the amount tells it apart.
     pub product_key: String,
-    /// "Premium", when the title names it.
     pub product: Option<String>,
     pub product_stated: bool,
     pub cadence: Cadence,
     pub currency: Option<String>,
-    /// The newest charge's amount.
     pub amount_minor: Option<i64>,
     pub amount_checked: bool,
-    /// Oldest first.
     pub charges: Vec<Charge>,
     pub price_changes: Vec<PriceChange>,
-    /// Gaps of exactly one cycle, and of two (a missed charge between).
     pub single_gaps: u32,
     pub double_gaps: u32,
     pub status: Status,
@@ -238,21 +220,17 @@ impl Subscription {
     }
 
     pub fn last_charge(&self) -> &Charge {
-        // A subscription is never built with fewer than two charges.
         &self.charges[self.charges.len() - 1]
     }
 
-    /// Three or more charges; a yearly one seen twice is not yet.
     pub fn confirmed(&self) -> bool {
         self.charges.len() >= 3
     }
 
-    /// Every charge's date came from schema.org or the user.
     pub fn dates_checked(&self) -> bool {
         self.charges.iter().all(|c| c.checked)
     }
 
-    /// "Spotify Premium", or the issuer alone.
     pub fn title(&self) -> String {
         match &self.product {
             Some(product) => format!("{} {product}", self.issuer),
@@ -273,16 +251,13 @@ impl Subscription {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Detection {
-    /// Ended last, then by issuer and product.
     pub subscriptions: Vec<Subscription>,
     /// Per issuer with a subscription: its receipts and invoices that are
     /// not part of one.
     pub one_offs: BTreeMap<String, Vec<String>>,
 }
 
-/// Amounts within this fraction are the same price (card FX and rounding).
 const SAME_PRICE: f64 = 0.02;
-/// Charges this close with the same amount are one payment.
 const SAME_CHARGE_DAYS: i64 = 3;
 
 /// The day a charge happened in the user's zone. A day stored as midday
@@ -306,14 +281,12 @@ fn same_price(a: Option<i64>, b: Option<i64>) -> bool {
     }
 }
 
-/// A charge before chaining.
 #[derive(Debug, Clone)]
 struct Point<'a> {
     input: &'a ChargeInput,
     day: NaiveDate,
 }
 
-/// A run of charges at one cadence, before validation.
 #[derive(Debug, Clone)]
 struct Chain {
     cadence: Cadence,
@@ -331,12 +304,8 @@ pub fn detect<Tz: TimeZone>(
     today: NaiveDate,
     tz: &Tz,
 ) -> Detection {
-    // issuer -> (product key, currency) -> charges, ordered by day then id
-    // so the result never depends on the order records came in.
     type Bucket<'a> = BTreeMap<(String, String), Vec<Point<'a>>>;
     let mut by_issuer: BTreeMap<&str, Bucket<'_>> = BTreeMap::new();
-    // The newest charge names the issuer and the product; ties go to the
-    // larger record id, so the name never depends on input order.
     let mut names: BTreeMap<&str, (NaiveDate, &str, &str)> = BTreeMap::new();
     let mut products: BTreeMap<(&str, String), (NaiveDate, &str, String, bool)> = BTreeMap::new();
     for input in inputs {
@@ -440,7 +409,6 @@ pub fn detect<Tz: TimeZone>(
     out
 }
 
-/// Live ones first, then by issuer and product.
 fn sort(subscriptions: &mut [Subscription]) {
     subscriptions.sort_by(|a, b| {
         (a.status == Status::Ended)
@@ -486,13 +454,8 @@ fn bands<'a>(points: &[Point<'a>]) -> Vec<Vec<Point<'a>>> {
     out
 }
 
-/// Folds a receipt and an invoice for the same payment into one charge.
 fn collapse(points: &[Point<'_>]) -> Vec<Charge> {
     let mut out: Vec<Charge> = Vec::new();
-    // Against the point before it, not the charge's first point: a band's
-    // amount can drift a little from one payment to the next, so anchoring
-    // to the first would keep comparing later points against a price they
-    // never actually saw, and days apart would compound past the window.
     let mut previous: Option<&Point<'_>> = None;
     for point in points {
         let merges = previous.is_some_and(|previous| {
@@ -561,7 +524,6 @@ fn extract_chains(mut charges: Vec<Charge>) -> Vec<Chain> {
         });
         charges = rest;
     }
-    // What is left may be the first charge at a new price, for `stitch`.
     chains.extend(charges.into_iter().map(|charge| Chain {
         cadence: Cadence::Monthly,
         charges: vec![charge],
@@ -575,7 +537,6 @@ fn extract_chains(mut charges: Vec<Charge>) -> Vec<Chain> {
 /// Longest path through charges (sorted by day) where each step is one or
 /// two cycles: (cadence, indices, one-cycle gaps, two-cycle gaps).
 fn longest(charges: &[Charge], cadence: Cadence) -> Option<(Cadence, Vec<usize>, u32, u32)> {
-    // best[i] = (length, single gaps, double gaps, previous index)
     let mut best: Vec<(usize, u32, u32, Option<usize>)> = vec![(1, 0, 0, None); charges.len()];
     for i in 0..charges.len() {
         for j in 0..i {
@@ -598,7 +559,6 @@ fn longest(charges: &[Charge], cadence: Cadence) -> Option<(Cadence, Vec<usize>,
             }
         }
     }
-    // Ties go to the run that ends latest.
     let end = (0..charges.len()).max_by_key(|&i| (best[i].0, best[i].1, i))?;
     let (_, single, double, _) = best[end];
     let mut path = vec![end];
@@ -632,9 +592,6 @@ fn stitch(chains: Vec<Chain>) -> Vec<Chain> {
         let joined = out.iter_mut().rev().find(|prior| {
             prior.cadence == chain.cadence
                 && follows(prior, &chain, chain.cadence)
-                // Against the run's first charge, not its last: many small
-                // steps the same size as one real price change must not
-                // drift past it unnoticed (a shop's rising prices).
                 && modest_step(prior.charges[0].amount_minor, chain.charges[0].amount_minor)
         });
         match joined {
@@ -653,7 +610,6 @@ fn stitch(chains: Vec<Chain>) -> Vec<Chain> {
             None => out.push(chain),
         }
     }
-    // Lone charges in day order, each onto the run it continues.
     let mut lone = lone;
     lone.sort_by(|a, b| {
         a.charges[0]
@@ -682,14 +638,12 @@ fn stitch(chains: Vec<Chain>) -> Vec<Chain> {
     out
 }
 
-/// `next` starts a cycle or two after `prior` ends.
 fn follows(prior: &Chain, next: &Chain, cadence: Cadence) -> bool {
     let last = prior.charges[prior.charges.len() - 1].day;
     let first = next.charges[0].day;
     first > last && cadence.cycles((first - last).num_days()).is_some()
 }
 
-/// A price rise or cut a subscription plausibly makes: within 60%.
 fn modest_step(from: Option<i64>, to: Option<i64>) -> bool {
     match (from, to) {
         (Some(from), Some(to)) if from > 0 && to > 0 => {
@@ -705,7 +659,6 @@ fn valid(chain: &Chain, stated: bool) -> bool {
         Cadence::Yearly => chain.charges.len() >= 2 && chain.single >= 1,
         _ => chain.charges.len() >= 3 && chain.single >= 2,
     };
-    // One identical plan running alongside is allowed; more is a habit.
     let sparse = chain.crowd <= chain.charges.len();
     enough && sparse && chain.double <= chain.single && (stated || steady(&chain.charges))
 }
@@ -880,15 +833,12 @@ fn set_status(subscription: &mut Subscription, today: NaiveDate) {
 /// look: the lead time a renewal email would typically give.
 pub(crate) const RENEWAL_LEAD_DAYS: i64 = 14;
 
-/// Something about a subscription worth a look.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Signal {
-    /// The newest charge is at a new price.
     PriceChange {
         subscription_id: String,
         change: PriceChange,
     },
-    /// The expected charge didn't come within the grace period.
     MissedCharge {
         subscription_id: String,
         expected: NaiveDate,

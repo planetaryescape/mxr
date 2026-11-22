@@ -96,10 +96,7 @@ async fn main() -> anyhow::Result<()> {
         found.iter().filter(|s| s.status != Status::Ended).count()
     );
 
-    // The old rule: an issuer with three receipts, invoices or statements
-    // in three different months was a series.
     let records = store.list_archive_records(&RecordQuery::default()).await?;
-    // (account, issuer) -> (count, the (year, month) pairs seen).
     type SeriesCounts = BTreeMap<(String, String), (usize, BTreeSet<(i32, u32)>)>;
     let mut old: SeriesCounts = BTreeMap::new();
     let mut statement_issuers: BTreeSet<(String, String)> = BTreeSet::new();
@@ -141,7 +138,6 @@ async fn main() -> anyhow::Result<()> {
         groups.iter().filter(|g| g.kind == "series").count()
     );
 
-    // The new rule, written to the copy: series are statements only.
     for account in store.list_accounts().await? {
         mxr_records::pass::regroup(&store, &account.id, now).await?;
     }

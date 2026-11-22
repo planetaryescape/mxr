@@ -5,9 +5,7 @@
 pub const DEFAULT_WPM: u32 = 230;
 const MIN_WPM: u32 = 120;
 const MAX_WPM: u32 = 600;
-/// A finished item shorter than this says little about pace.
 const MIN_SAMPLE_WORDS: u32 = 150;
-/// Finished items needed before the pace is the reader's own.
 const MIN_SAMPLES: usize = 3;
 
 /// Whole minutes for `words`, never under one.
@@ -16,7 +14,6 @@ pub fn minutes(words: u32, wpm: u32) -> u32 {
     words.div_ceil(wpm).max(1)
 }
 
-/// Minutes left after reading `progress` (0 to 1) of `words`.
 pub fn minutes_left(words: u32, progress: f64, wpm: u32) -> u32 {
     let left = (f64::from(words) * (1.0 - progress.clamp(0.0, 1.0))).round();
     if left <= 0.0 {
@@ -67,10 +64,8 @@ mod tests {
     #[test]
     fn the_readers_pace_needs_three_real_reads_and_ignores_an_overnight_tab() {
         assert_eq!(reader_wpm(&[(1000, 240_000), (1000, 240_000)]), None);
-        // 250, 300 and an overnight tab (clamped to 120): median 250.
         let pace = reader_wpm(&[(1000, 240_000), (1500, 300_000), (1000, 36_000_000)]);
         assert_eq!(pace, Some(250));
-        // Short items don't count.
         assert_eq!(
             reader_wpm(&[(100, 10_000), (100, 10_000), (100, 10_000)]),
             None

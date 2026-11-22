@@ -2,7 +2,6 @@ use crate::RuleId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// A log entry for a rule execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleMatchEntry {
     pub rule_id: RuleId,

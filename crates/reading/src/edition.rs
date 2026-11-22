@@ -14,13 +14,9 @@ use crate::fade;
 use chrono::{DateTime, Duration, Utc};
 use std::cmp::Ordering;
 
-/// Lead items at the top of the first band.
 pub const LEAD_SLOTS: usize = 3;
-/// A source this new still earns a lead slot.
 pub const NEW_SOURCE_ISSUES: u32 = 3;
-/// The unsubscribe offer: at least this many recent issues...
 pub const UNSUBSCRIBE_MIN_ISSUES: u32 = 8;
-/// A visit ends after this long without opening Reading again.
 pub const VISIT_GAP: Duration = Duration::minutes(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -74,18 +70,13 @@ pub fn band(
 /// flag.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SourceStats {
-    /// Issues it sent in the window the counts cover.
     pub issues: u32,
-    /// Of those, opened (in mxr, or read elsewhere).
     pub opened: u32,
-    /// Of those, read to the end in mxr.
     pub finished: u32,
-    /// Every issue it ever sent that is still stored.
     pub total_issues: u32,
 }
 
 impl SourceStats {
-    /// Finished counts three times an open.
     pub fn affinity(&self) -> f64 {
         if self.issues == 0 {
             return 0.0;
@@ -97,7 +88,6 @@ impl SourceStats {
         self.total_issues <= NEW_SOURCE_ISSUES
     }
 
-    /// "You opened 0 of the last 11 issues."
     pub fn evidence(&self) -> String {
         if self.issues == 1 {
             return format!("You opened {} of its 1 issue", self.opened);
@@ -108,13 +98,11 @@ impl SourceStats {
         )
     }
 
-    /// The quiet "Unsubscribe?" offer: enough issues and none opened.
     pub const fn suggests_unsubscribe(&self) -> bool {
         self.issues >= UNSUBSCRIBE_MIN_ISSUES && self.opened == 0
     }
 }
 
-/// What ranking needs to know about one item.
 #[derive(Debug, Clone, Copy)]
 pub struct Rankable {
     pub arrived: DateTime<Utc>,
@@ -122,7 +110,6 @@ pub struct Rankable {
     pub new_source: bool,
 }
 
-/// Affinity first, then newest. Ties in affinity go to the newer item.
 pub fn by_affinity(a: &Rankable, b: &Rankable) -> Ordering {
     b.affinity
         .partial_cmp(&a.affinity)
@@ -153,9 +140,7 @@ pub fn rank<T>(items: &mut [T], key: impl Fn(&T) -> Rankable, lead: bool) -> usi
 /// here" stays the same through one sitting and moves on at the next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Visit {
-    /// The end of the previous visit: the band boundary.
     pub boundary: Option<DateTime<Utc>>,
-    /// The last time Reading was opened.
     pub last_seen: Option<DateTime<Utc>>,
 }
 

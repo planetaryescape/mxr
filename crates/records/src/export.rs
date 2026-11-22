@@ -7,7 +7,6 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-/// One record as an export row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExportRow {
     pub record_id: String,
@@ -19,9 +18,7 @@ pub struct ExportRow {
     pub currency: Option<String>,
     pub reference: Option<String>,
     pub checked: bool,
-    /// The money and date fields still to confirm.
     pub unchecked_fields: Vec<String>,
-    /// The record's best PDF, by filename.
     pub pdf: Option<String>,
     pub source_message_id: Option<String>,
 }
@@ -161,7 +158,6 @@ mod tests {
             .iter()
             .map(str::to_string)
             .collect();
-        // date kind issuer what amount currency reference checked unchecked pdf record source
         assert_eq!(cells[2], "'+cmd|' /C calc'!A0");
         assert_eq!(cells[3], "'-2+3");
         assert_eq!(cells[6], "'\tREF");
@@ -169,7 +165,6 @@ mod tests {
         assert_eq!(cells[9], "'@pdf");
         assert_eq!(cells[10], "'=HYPERLINK(\"http://x\")");
         assert_eq!(cells[11], "'@msg");
-        // A negative amount is a number mxr wrote, not mail text: it stays.
         assert_eq!(cells[4], "-5.00");
     }
 
@@ -185,7 +180,6 @@ mod tests {
         assert_eq!(preview.totals.get("GBP"), Some(&124_901));
         assert_eq!((preview.unchecked, preview.missing_pdfs), (1, 2));
         let csv = to_csv(&rows, &Utc).expect("csv");
-        // Header plus one line per previewed row.
         assert_eq!(csv.lines().count(), 1 + preview.rows as usize);
         assert!(csv.contains(
             "2025-03-03,receipt,\"Dell, Inc.\",\"XPS \"\"14\"\"\",1249.00,GBP,402-118,yes"

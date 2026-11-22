@@ -25,7 +25,6 @@ fn run(inputs: &[ChargeInput], today: NaiveDate) -> Detection {
     detect(inputs, &[], today, &London)
 }
 
-/// Monthly charges on `days` (year 2025, month = index + 1).
 fn monthly(issuer: &str, title: &str, minor: i64, days: &[u32]) -> Vec<ChargeInput> {
     days.iter()
         .enumerate()
@@ -133,10 +132,8 @@ fn a_price_change_that_sticks_is_kept_with_its_date_and_signalled() {
             to_minor: 1299,
         }]
     );
-    // The newest charge is at the old new price by now: no signal.
     assert!(signals(&found.subscriptions, day(2025, 6, 15)).is_empty());
 
-    // On the first charge at the new price, it is a signal.
     let found = run(&inputs[..5], day(2025, 5, 12));
     assert!(matches!(
         signals(&found.subscriptions, day(2025, 5, 12)).as_slice(),
@@ -147,7 +144,6 @@ fn a_price_change_that_sticks_is_kept_with_its_date_and_signalled() {
 #[test]
 fn a_missed_charge_is_overdue_after_the_grace_period_and_ended_after_two() {
     let inputs = monthly("Spotify", "Spotify Premium receipt", 1199, &[3, 3, 3, 3]);
-    // Expected 3 May; within a week it is still active.
     assert_eq!(
         run(&inputs, day(2025, 5, 9)).subscriptions[0].status,
         Status::Active
@@ -182,7 +178,6 @@ fn a_yearly_subscriptions_next_charge_within_two_weeks_is_a_renewal_signal() {
             day(2024, 10, 24),
         ),
     ];
-    // Due 24 Oct 2025; two weeks out is 10 Oct.
     let found = run(&inputs, day(2025, 10, 12));
     assert_eq!(
         found.subscriptions[0].next_expected,
@@ -210,7 +205,6 @@ fn one_missed_month_between_charges_still_counts() {
 
 #[test]
 fn two_products_from_one_issuer_are_two_subscriptions() {
-    // Named in the title.
     let mut inputs = monthly("Apple", "iCloud+ 200GB receipt", 299, &[1, 1, 1]);
     inputs.extend((0..3).map(|i| {
         charge(
@@ -235,7 +229,6 @@ fn two_products_from_one_issuer_are_two_subscriptions() {
         ]
     );
 
-    // No product in the title: the amounts tell them apart.
     let mut inputs = monthly("Google", "Google receipt", 159, &[2, 2, 2]);
     inputs.extend((0..3).map(|i| {
         charge(
@@ -330,8 +323,6 @@ fn a_cancellation_email_after_the_last_charge_ends_it() {
     assert_eq!(sub.status, Status::Ended);
     assert_eq!(sub.status_reason, "Cancellation email on 20 Mar 2025");
 
-    // A threat is not an ending, and an old cancellation doesn't end a
-    // subscription that started again.
     let found = detect(
         &inputs,
         &[
@@ -412,8 +403,6 @@ fn the_result_does_not_depend_on_storage_order() {
 
 #[test]
 fn a_late_evening_charge_counts_on_the_users_day() {
-    // 23:30 on 31 Mar in London is 22:30 UTC: still the 31st. 23:30 UTC
-    // on 30 Jun is 00:30 on 1 Jul in London (BST).
     let at = |y, m, d, h, min| {
         Utc.with_ymd_and_hms(y, m, d, h, min, 0)
             .single()
@@ -424,7 +413,6 @@ fn a_late_evening_charge_counts_on_the_users_day() {
         local_day(at(2025, 1, 31, 23, 30), &London),
         day(2025, 1, 31)
     );
-    // A day stored at midday UTC stays that day in any zone.
     assert_eq!(
         local_day(day_at(day(2025, 6, 30)), &chrono_tz::Pacific::Auckland),
         day(2025, 6, 30)
@@ -443,7 +431,6 @@ fn totals_are_per_currency_and_never_converted() {
         charge("y1", "Admiral", "Admiral receipt", 41_200, day(2024, 3, 20)),
         charge("y2", "Admiral", "Admiral receipt", 41_200, day(2025, 3, 20)),
     ]);
-    // Ended: not counted.
     inputs.extend(
         monthly("Old", "Old receipt", 500, &[1, 1, 1])
             .into_iter()
@@ -527,7 +514,6 @@ fn weekly_and_quarterly_cadences_are_found() {
 
 #[test]
 fn a_daily_habit_at_one_price_is_not_a_weekly_subscription() {
-    // A £3.20 coffee most weekdays for two months.
     let inputs: Vec<ChargeInput> = (0..60)
         .filter(|i| i % 7 < 5)
         .map(|i| {

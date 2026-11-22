@@ -964,6 +964,61 @@ async fn dispatch_export_search_json_is_valid() {
 }
 
 #[tokio::test]
+async fn dispatch_save_draft_to_server_falls_back_to_local_draft() {
+    let account_id = mxr_core::AccountId::new();
+    let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+    let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+    let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake;
+    let send_provider: Arc<dyn mxr_core::MailSendProvider> =
+        Arc::new(UnsupportedServerDraftProvider);
+    let state = Arc::new(
+        AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+            .await
+            .unwrap(),
+    );
+
+    let draft = mxr_core::types::Draft {
+        revision: Some(1),
+        id: mxr_core::DraftId::new(),
+        account_id,
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "test@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Local fallback".to_string(),
+        content: mxr_core::types::DraftContent::markdown("body".to_string()),
+        inline_assets: Vec::new(),
+        managed_attachments: None,
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::SaveDraftToServer {
+            draft: draft.clone(),
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    assert!(matches!(
+        resp.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { .. }
+        })
+    ));
+    assert!(state.store.get_draft(&draft.id).await.unwrap().is_some());
+}
+
+#[tokio::test]
 async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() {
     let account_id = mxr_core::AccountId::new();
     let account = crate::test_fixtures::test_account_with_id(account_id.clone());

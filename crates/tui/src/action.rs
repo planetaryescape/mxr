@@ -206,10 +206,6 @@ pub enum Action {
     ToggleMailListMode,
     SelectLabel(mxr_core::LabelId),
     SelectSavedSearch(String, mxr_core::SearchMode),
-    /// Jump to the Nth saved search (1-indexed) for keyboard-driven
-    /// power users. `0` clears any active saved-search filter and
-    /// returns to the default inbox view. Out-of-range indices are
-    /// no-ops.
     OpenSavedSearchByIndex(usize),
     FlagReplyLater,
     CancelAutoReminder,
@@ -256,9 +252,6 @@ pub enum Action {
     CloseStoredDraftsModal,
     StoredDraftsModalNext,
     StoredDraftsModalPrev,
-    /// Edit the selected stored draft in place via `$EDITOR`. The result
-    /// round-trips through `Request::UpdateDraft`, preserving the
-    /// draft's id instead of minting a new one.
     StoredDraftsModalEdit,
     StoredDraftsModalPreviewDelete,
     StoredDraftsModalPreviewCancelSchedule,

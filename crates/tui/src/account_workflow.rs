@@ -121,8 +121,6 @@ pub(crate) async fn run_account_save_workflow(
     Ok(result)
 }
 
-/// Run upsert + test after Outlook device-code auth already completed.
-/// Marks auth step as successful and proceeds with save + connectivity test.
 pub(crate) async fn run_post_auth_save_workflow(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     account: AccountConfigData,

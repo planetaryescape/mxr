@@ -1,4 +1,3 @@
-//! Real TCP reconnection fixtures pin a native session's original owner.
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -437,7 +436,7 @@ async fn failed_timeout_reconnect_then_safe_retry_closes_modal_and_refreshes_vie
                     };
                     if connection == 2 {
                         break;
-                    } // The timeout reconnect really fails.
+                    }
                     let data = match request {
                         Request::GetStatus => status(),
                         Request::GetArchiveWorkspace => ResponseData::ArchiveWorkspace {
@@ -450,8 +449,8 @@ async fn failed_timeout_reconnect_then_safe_retry_closes_modal_and_refreshes_vie
                                 if let Some(signal) = signal.take() {
                                     signal.send(()).unwrap();
                                     continue;
-                                } // Leave the first request unanswered.
-                                break; // The next safe read must recover through its request retry.
+                                }
+                                break;
                             }
                             ResponseData::Pong
                         }
@@ -489,7 +488,6 @@ async fn failed_timeout_reconnect_then_safe_retry_closes_modal_and_refreshes_vie
     first_ping_rx.await.unwrap();
     tokio::time::pause();
     tokio::time::advance(crate::ipc::IPC_REQUEST_TIMEOUT + std::time::Duration::from_secs(1)).await;
-    // Let the real TCP reconnect handshake run on wall-clock time.
     tokio::time::resume();
     assert!(first
         .await

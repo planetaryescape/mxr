@@ -1,8 +1,3 @@
-//! The terminal around the TUI: ratatui's raw mode and alternate screen,
-//! plus bracketed paste and, where the terminal supports it, unambiguous
-//! escape codes (blueprint 35, "Terminal and browser keys"). Every way out
-//! restores all of it: quit, an error, a handoff to another program, and a
-//! panic.
 
 use ratatui::crossterm::event::{
     DisableBracketedPaste, EnableBracketedPaste, KeyboardEnhancementFlags,
@@ -14,7 +9,6 @@ use std::panic::PanicHookInfo;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Once, OnceLock};
 
-/// The flags were pushed and must be popped on the way out.
 static ENHANCED: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn init() -> ratatui::DefaultTerminal {
@@ -54,7 +48,6 @@ fn push_enhancement(
     matches!(supported(), Ok(true)) && push().is_ok()
 }
 
-/// Undo what `init` added to ratatui's setup.
 fn disable_extras() {
     if ENHANCED.swap(false, Ordering::SeqCst) {
         let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
@@ -78,8 +71,6 @@ pub(crate) fn suspend_process() {
 #[cfg(not(unix))]
 pub(crate) fn suspend_process() {}
 
-/// Restores the terminal when dropped, so an error that ends the run
-/// early leaves the shell usable too.
 pub(crate) struct RestoreOnDrop;
 
 impl Drop for RestoreOnDrop {
@@ -88,9 +79,6 @@ impl Drop for RestoreOnDrop {
     }
 }
 
-/// ratatui's own hook restores raw mode and the screen; this one, run
-/// before it, turns off what `init` added. Installed once, since every
-/// re-init after a handoff would otherwise add another layer.
 fn install_panic_hook() {
     static HOOK: Once = Once::new();
     HOOK.call_once(|| {
@@ -137,14 +125,12 @@ mod tests {
             push
         ));
         assert_eq!(pushes.get(), 1, "pushed without a yes");
-        // A failed push is not recorded, so the way out pops nothing.
         assert!(!push_enhancement(
             || Ok(true),
             || Err(io::Error::other("closed"))
         ));
     }
 
-    // Counts teardown and previous-hook calls on the panicking thread.
     thread_local! {
         static HOOK_CALLS: Cell<u32> = const { Cell::new(0) };
     }

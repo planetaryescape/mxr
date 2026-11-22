@@ -1,15 +1,3 @@
-//! HTML parses kept off the TUI's event loop.
-//!
-//! Showing a message takes parses that run in the HTML helper process: the
-//! reader's text render, the quote split and the styled render. The loop used
-//! to wait for each, so a hostile message held the whole TUI until the
-//! helper's 5 s timeout. Once [`install`] has a way to wake the loop, an answer
-//! that is not cached is worked out on a thread of its own. The caller waits up
-//! to [`FIRST_WAIT`], which ordinary mail beats, then draws its stand-in, and
-//! the loop is woken to draw again when the answer lands.
-//!
-//! Without an install (unit tests, and any use outside the running app) the
-//! answer is worked out inline, as before.
 
 use std::any::{Any, TypeId};
 use std::collections::hash_map::DefaultHasher;
@@ -18,22 +6,14 @@ use std::hash::{Hash, Hasher};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Duration;
 
-/// How long a frame waits for a new answer before drawing the stand-in. Long
-/// enough that a normal message never flashes its stand-in, short enough that
-/// a hostile one costs a keypress a barely noticeable pause.
 const FIRST_WAIT: Duration = Duration::from_millis(50);
 
-/// Answers kept. A thread view asks for one per message per frame, so this
-/// covers a long thread and the messages either side of it.
 const CACHED: usize = 64;
 
 type Answer = Arc<dyn Any + Send + Sync>;
 
 static INSTALLED: OnceLock<Deferred> = OnceLock::new();
 
-/// From now on, answers are worked out off the calling thread, and `wake` is
-/// called when one lands after its caller stopped waiting. Only the first
-/// install counts.
 pub(crate) fn install(wake: impl Fn() + Send + Sync + 'static) {
     let _ = INSTALLED.set(Deferred::new(wake, FIRST_WAIT));
 }
@@ -70,7 +50,6 @@ impl Cache {
         }
         while self.order.len() > CACHED {
             if let Some(oldest) = self.order.pop_front() {
-                // An evicted pending answer is stored again when it lands.
                 self.slots.remove(&oldest);
             }
         }
@@ -133,13 +112,11 @@ impl Deferred {
             .spawn(move || {
                 let answer: Answer = Arc::new(compute());
                 shared.cache().insert(key, Slot::Ready(answer));
-                // The caller stopped waiting: wake the loop to draw again.
                 if done_tx.send(()).is_err() {
                     (shared.wake)();
                 }
             });
         if spawned.is_err() {
-            // Asked again on the next frame.
             self.shared.cache().slots.remove(&key);
             return None;
         }
@@ -199,8 +176,6 @@ mod tests {
             "{:?}",
             started.elapsed()
         );
-        // While it is being worked out, asking again neither waits nor starts
-        // a second parse.
         assert!(deferred.answer(&"slow", || 4_u32).is_none());
         woke.recv_timeout(Duration::from_secs(10)).expect("woken");
         assert_eq!(wakes.load(Ordering::SeqCst), 1);

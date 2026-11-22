@@ -4,21 +4,14 @@ use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 
-/// Parsed keybinding configuration.
 #[derive(Debug, Clone)]
 pub struct KeybindingConfig {
     pub mail_list: HashMap<KeyBinding, String>,
     pub message_view: HashMap<KeyBinding, String>,
     pub thread_view: HashMap<KeyBinding, String>,
-    // Explicit keys and retired defaults must not reach hardcoded fallbacks.
     overrides: [HashSet<KeyBinding>; 3],
-    /// The `[now]`, `[todo]` and other mode sections, keyed by the key
-    /// definition's action ids, with `[actions]` folded in.
     pub modes: mxr_keymap::ModeRemaps,
-    /// False when `keys.toml` turns single-character shortcuts off
-    /// (`single_keys = false`, WCAG 2.1.4).
     pub single_keys: bool,
-    /// The definition with `[actions]` applied, when it has any.
     remapped: Option<mxr_keymap::Keymap>,
 }
 
@@ -33,15 +26,12 @@ impl ViewContext {
 }
 
 impl KeybindingConfig {
-    /// The key definition as this person has it: `[actions]` applied.
     pub(crate) fn keymap(&self) -> &mxr_keymap::Keymap {
         self.remapped
             .as_ref()
             .unwrap_or_else(|| mxr_keymap::defaults())
     }
 
-    /// Use `keymap` as the definition, so a test can choose which moves
-    /// are announced rather than depend on which this release still has.
     #[cfg(test)]
     pub(crate) fn set_keymap(&mut self, keymap: mxr_keymap::Keymap) {
         self.remapped = Some(keymap);
@@ -86,8 +76,6 @@ impl KeybindingConfig {
         if aliases.peek().is_none() {
             return false;
         }
-        // The mail router accepts #/! with any modifier. Other aliases must
-        // resolve to the retired action, not merely share its character.
         if matches!(press.code, KeyCode::Char('#' | '!')) {
             return true;
         }
@@ -116,8 +104,6 @@ impl KeybindingConfig {
         self.key_displays(context, action).into_iter().next()
     }
 
-    /// Every key bound to `action` in `context`, the person's own first,
-    /// then shortest.
     pub(crate) fn key_displays(&self, context: ViewContext, action: &Action) -> Vec<String> {
         let mut matches: Vec<_> = self
             .bindings(context)
@@ -186,7 +172,6 @@ impl KeybindingConfig {
     }
 }
 
-/// A single key or key combination.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KeyBinding {
     pub keys: Vec<KeyPress>,
@@ -220,7 +205,6 @@ impl KeyPress {
     }
 }
 
-/// View context for resolving keybindings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewContext {
     MailList,
@@ -228,7 +212,6 @@ pub enum ViewContext {
     ThreadView,
 }
 
-/// Parse a key string like "Ctrl-p", "gg", "G", "/", "Enter" into a KeyBinding.
 pub fn parse_key_string(s: &str) -> Result<KeyBinding, String> {
     if s.is_empty() || s.chars().any(char::is_control) {
         return Err("Empty or control-character binding".into());
@@ -292,7 +275,6 @@ pub fn parse_key_string(s: &str) -> Result<KeyBinding, String> {
     Ok(KeyBinding { keys })
 }
 
-/// Resolve a key sequence to an action name.
 pub fn resolve_action(
     config: &KeybindingConfig,
     context: ViewContext,
@@ -310,10 +292,8 @@ pub fn resolve_action(
     map.get(&binding).cloned()
 }
 
-/// Map action name strings to Action enum variants.
 pub fn action_from_name(name: &str) -> Option<Action> {
     match name {
-        // Navigation (vim-native)
         "move_down" | "scroll_down" | "next_message" => Some(Action::MoveDown),
         "move_up" | "scroll_up" | "prev_message" => Some(Action::MoveUp),
         "jump_top" => Some(Action::JumpTop),
@@ -333,7 +313,6 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "clear_selection" => Some(Action::ClearSelection),
         "help" => Some(Action::Help),
         "toggle_mail_list_mode" => Some(Action::ToggleMailListMode),
-        // Email actions (Gmail-native A005)
         "compose" => Some(Action::Compose),
         "reply" => Some(Action::Reply),
         "reply_all" => Some(Action::ReplyAll),
@@ -363,7 +342,6 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "pattern_select_unread" => Some(Action::PatternSelect(PatternKind::Unread)),
         "pattern_select_starred" => Some(Action::PatternSelect(PatternKind::Starred)),
         "pattern_select_thread" => Some(Action::PatternSelect(PatternKind::Thread)),
-        // mxr-specific
         "unsubscribe" => Some(Action::Unsubscribe),
         "snooze" => Some(Action::Snooze),
         "flag_reply_later" => Some(Action::FlagReplyLater),
@@ -396,7 +374,6 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "activity_next" => Some(Action::ActivityModalNext),
         "activity_prev" => Some(Action::ActivityModalPrev),
         "activity_toggle_pause" => Some(Action::ActivityTogglePause),
-        // Go-to navigation (A005)
         "go_inbox" => Some(Action::GoToInbox),
         "go_starred" => Some(Action::GoToStarred),
         "go_sent" => Some(Action::GoToSent),
@@ -446,7 +423,6 @@ pub fn action_from_name(name: &str) -> Option<Action> {
     }
 }
 
-/// Format a keybinding for display.
 pub fn format_keybinding(kb: &KeyBinding) -> String {
     kb.keys
         .iter()
@@ -487,8 +463,6 @@ pub fn format_keybinding(kb: &KeyBinding) -> String {
         .join("")
 }
 
-/// Shortest formatted key chord bound to [`Action`] in `context`, from the
-/// default bindings.
 #[cfg(test)]
 pub(crate) fn primary_key_display(context: ViewContext, action: &Action) -> Option<String> {
     shown_keybindings().primary_key_display(context, action)
@@ -602,9 +576,6 @@ fn action_display_name(action: &str) -> String {
     }
 }
 
-/// Everything in `keys.toml` that mxr can't use, as sentences: malformed
-/// TOML, unknown sections or actions, keys a terminal can't send, and
-/// sections the loader ignores because one key starts another.
 pub fn check_keys_toml(text: &str) -> Vec<String> {
     let table: toml::Table = match text.parse() {
         Ok(table) => table,
@@ -674,7 +645,6 @@ pub fn check_keys_toml(text: &str) -> Vec<String> {
     problems
 }
 
-/// Raw TOML structure for keys.toml
 #[derive(Debug, Deserialize)]
 pub struct KeysToml {
     #[serde(default)]
@@ -685,7 +655,6 @@ pub struct KeysToml {
     pub thread_view: HashMap<String, String>,
 }
 
-/// Load keybinding config from keys.toml, falling back to defaults.
 pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
     let keys_path = config_dir.join("keys.toml");
     let text = std::fs::read_to_string(&keys_path).ok();
@@ -733,7 +702,6 @@ pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
                 })
                 .collect();
             entries.sort_by_key(|(key, _)| format_keybinding(key));
-            // Reject ambiguous user prefixes rather than choosing by HashMap order.
             if entries.iter().enumerate().any(|(i, (key, name))| {
                 !name.is_empty()
                     && entries.iter().enumerate().any(|(j, (other, other_name))| {
@@ -744,8 +712,6 @@ pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
                 continue;
             }
             map.retain(|key, name| {
-                // Scroll and next-message names deliberately share an Action,
-                // but are distinct reader operations and must retain their keys.
                 let retired = entries
                     .iter()
                     .any(|(_, user_name)| same_binding_action(name, user_name))
@@ -771,10 +737,6 @@ pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
     config
 }
 
-/// Put `[actions]` keys into the mail list and reader sections, under the
-/// person's own entries there: each action's new keys run the name its
-/// default key ran in that table, so the merge below retires the defaults
-/// exactly as a hand-written `[mail_list]` entry would.
 fn fold_action_keys(
     user: &mut KeysToml,
     actions: &std::collections::BTreeMap<String, Vec<String>>,
@@ -829,9 +791,6 @@ fn fold_action_keys(
     }
 }
 
-/// A definition key as `parse_key_string` reads it: `g x` → `gx`,
-/// `Ctrl+d` and `Mod+d` → `Ctrl-d`, `ArrowUp` → `Up`. `None` for a sequence
-/// the TUI's tables can't hold.
 fn legacy_key(key: &str) -> Option<String> {
     let chords: Vec<&str> = key.split(' ').collect();
     if chords.len() > 1 {
@@ -858,8 +817,6 @@ fn legacy_key(key: &str) -> Option<String> {
     )
 }
 
-/// True for a key, as the TUI shows keys (`gx`, `Ctrl-d`, `Esc`), that the
-/// single-key switch turns off: a character typed on its own.
 pub(crate) fn is_character_shortcut(key: &str) -> bool {
     const NAMED: [&str; 18] = [
         "Esc",
@@ -908,11 +865,7 @@ fn same_binding_action(left: &str, right: &str) -> bool {
     }
 }
 
-// Mail list defaults — Gmail-native scheme (A005). Module-level so tests
-// can assert the table has no duplicate keys before HashMap insertion
-// silently drops one of the colliding entries.
 const ML_DEFAULTS: &[(&str, &str)] = &[
-    // Navigation (vim-native)
     ("j", "move_down"),
     ("k", "move_up"),
     ("gg", "jump_top"),
@@ -927,7 +880,6 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("q", "quit_view"),
     ("?", "help"),
     ("Escape", "back"),
-    // Email actions (Gmail-native A005)
     ("c", "compose"),
     ("r", "reply"),
     ("a", "reply_all"),
@@ -946,18 +898,14 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("l", "apply_label"),
     ("v", "move_to_label"),
     ("x", "toggle_select"),
-    // Pattern select (`*` then a letter), Gmail-style
     ("*a", "pattern_select_all"),
     ("*n", "pattern_select_none"),
     ("*r", "pattern_select_read"),
     ("*u", "pattern_select_unread"),
     ("*s", "pattern_select_starred"),
     ("*t", "pattern_select_thread"),
-    // mxr-specific
     ("D", "unsubscribe"),
-    // Not now (D173): Later or a time, one picker.
     ("b", "snooze"),
-    // Wake undoes it, in Snoozed (blueprint 35).
     ("w", "wake"),
     ("t", "create_todo"),
     ("O", "open_in_browser"),
@@ -971,7 +919,6 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("@", "toggle_assistant"),
     ("Tab", "switch_panes"),
     ("F", "toggle_fullscreen"),
-    // Gmail go-to (A005)
     ("gi", "go_inbox"),
     ("gs", "go_starred"),
     ("gt", "go_sent"),
@@ -984,8 +931,6 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("ga", "go_all_mail"),
     ("gl", "go_label"),
     ("gL", "open_logs"),
-    // Draft assist, draft for sender, commitments and voice profile are
-    // palette only. g + a capital opens a tool (blueprint 35, D166).
     ("gA", "open_analytics"),
     ("gR", "open_tab_3"),
     ("gC", "open_tab_4"),
@@ -1000,9 +945,7 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("gF", "open_focus"),
 ];
 
-// Message view defaults
 const MV_DEFAULTS: &[(&str, &str)] = &[
-    // The next or previous conversation in the list (blueprint 35's n/N).
     ("n", "next_search_result"),
     ("N", "prev_search_result"),
     ("Ctrl-d", "page_down"),
@@ -1052,9 +995,7 @@ const MV_DEFAULTS: &[(&str, &str)] = &[
     ("gA", "open_analytics"),
 ];
 
-// Thread view defaults
 const TV_DEFAULTS: &[(&str, &str)] = &[
-    // The next or previous conversation in the list (blueprint 35's n/N).
     ("n", "next_search_result"),
     ("N", "prev_search_result"),
     ("Ctrl-d", "page_down"),
@@ -1103,9 +1044,6 @@ const TV_DEFAULTS: &[(&str, &str)] = &[
     ("gA", "open_analytics"),
 ];
 
-/// The default tables, built once. Help, the hint bar and every palette
-/// command read them, so rebuilding per lookup parsed every key string
-/// over a hundred times each time the palette was created.
 pub(crate) fn shown_keybindings() -> &'static KeybindingConfig {
     static SHOWN: std::sync::LazyLock<KeybindingConfig> =
         std::sync::LazyLock::new(default_keybindings);
@@ -1291,7 +1229,6 @@ mod tests {
 
     #[test]
     fn primary_key_display_resolves_per_context() {
-        // Compose is bound in the mail list but not the thread view.
         assert_eq!(
             primary_key_display(ViewContext::MailList, &Action::Compose),
             Some("c".to_string())
@@ -1300,7 +1237,6 @@ mod tests {
             primary_key_display(ViewContext::ThreadView, &Action::Compose),
             None
         );
-        // The HTML toggle exists only in message/thread views.
         assert_eq!(
             primary_key_display(ViewContext::MailList, &Action::ToggleHtmlView),
             None
@@ -1317,9 +1253,6 @@ mod tests {
         assert_eq!(bindings, vec![("Enter/o".to_string(), "Open".to_string())]);
     }
 
-    /// HashMap insertion makes a duplicate key in the default tables a
-    /// silent last-one-wins bug (the `ga` open_activity/go_all_mail
-    /// collision shipped exactly this way). Catch it at the source table.
     #[test]
     fn default_tables_have_no_duplicate_keys() {
         for (name, table) in [

@@ -4,7 +4,6 @@ use mxr_protocol::{Request, Response, ResponseData};
 use std::path::Path;
 use tokio::sync::mpsc;
 
-/// Saving or scheduling the retained file must prepare the same canonical edit as Send.
 pub(crate) async fn prepare_reviewed_compose(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     mut draft: Draft,
@@ -58,8 +57,6 @@ pub(crate) async fn prepare_reviewed_compose(
     }
     let (draft, mut identity) =
         crate::send_recovery::prepare_reviewed_send(bg, draft, identity).await?;
-    // A new file has no local row yet. SaveDraft is idempotent for an already
-    // prepared canonical row, and returns the authoritative initial revision.
     let draft = match ipc_call(bg, Request::SaveDraft { draft }).await? {
         Response::Ok {
             data: ResponseData::Draft { draft },

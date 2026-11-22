@@ -274,26 +274,6 @@ impl ModeCache {
     }
 
     #[cfg(test)]
-    pub(super) fn age(&self, by: Duration) {
-        for entry in self.entries.lock().iter_mut() {
-            entry.built = entry.built.checked_sub(by).unwrap_or(entry.built);
-            entry.started = entry.started.checked_sub(by).unwrap_or(entry.started);
-        }
-    }
-
-    #[cfg(test)]
-    pub(super) fn len(&self) -> usize {
-        self.entries.lock().len()
-    }
-
-    #[cfg(test)]
-    pub(super) fn previous_hour(&self) {
-        for entry in self.entries.lock().iter_mut() {
-            entry.hour -= 1;
-        }
-    }
-
-    #[cfg(test)]
     pub(super) fn hold_write(&self, held: bool) {
         self.write_in_flight.store(held, Ordering::Release);
     }

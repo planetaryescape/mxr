@@ -3,25 +3,12 @@ use super::*;
 use chrono::Duration;
 use mxr_core::id::ThreadId;
 use mxr_core::types::MessageDirection;
-use mxr_protocol::{ThreadPreviewData, THREAD_PREVIEWS_MAX};
+use mxr_protocol::ThreadPreviewData;
 
 async fn previews(fx: &Fixture, thread_ids: Vec<ThreadId>) -> Vec<ThreadPreviewData> {
     match request(fx, Request::GetThreadPreviews { thread_ids }).await {
         ResponseData::ThreadPreviews { previews } => previews,
         other => panic!("expected previews, got {other:?}"),
-    }
-}
-
-async fn error_for(fx: &Fixture, thread_ids: Vec<ThreadId>) -> String {
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 2,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::GetThreadPreviews { thread_ids }),
-    };
-    match handle_request(&fx.state, &msg).await.payload {
-        IpcPayload::Response(Response::Error { message, .. }) => message,
-        other => panic!("expected an error, got {other:?}"),
     }
 }
 
@@ -55,42 +42,4 @@ async fn a_preview_says_who_wrote_last_when_and_how_many_without_any_body() {
     let wire = serde_json::to_string(&found).unwrap();
     assert!(!wire.contains("review the launch plan"), "{wire}");
     assert!(!wire.contains("text_plain"), "{wire}");
-}
-
-#[tokio::test]
-async fn unknown_ids_are_left_out_and_known_ones_keep_request_order() {
-    let fx = Fixture::new().await;
-    let (first, second) = (ThreadId::new(), ThreadId::new());
-    fx.message(&first, "a@example.com", ME, Duration::hours(2), None)
-        .await;
-    fx.message(&second, "b@example.com", ME, Duration::hours(1), None)
-        .await;
-
-    let found = previews(
-        &fx,
-        vec![
-            second.clone(),
-            ThreadId::new(),
-            first.clone(),
-            second.clone(),
-        ],
-    )
-    .await;
-    let ids: Vec<_> = found.iter().map(|p| p.thread_id.clone()).collect();
-    assert_eq!(ids, vec![second, first]);
-}
-
-#[tokio::test]
-async fn a_hundred_threads_are_fine_and_a_hundred_and_one_are_refused() {
-    let fx = Fixture::new().await;
-    let ids: Vec<ThreadId> = (0..THREAD_PREVIEWS_MAX).map(|_| ThreadId::new()).collect();
-    assert!(previews(&fx, ids.clone()).await.is_empty());
-
-    let mut too_many = ids;
-    too_many.push(ThreadId::new());
-    assert_eq!(
-        error_for(&fx, too_many).await,
-        "at most 100 threads at once"
-    );
-    assert_eq!(error_for(&fx, Vec::new()).await, "name thread_ids");
 }

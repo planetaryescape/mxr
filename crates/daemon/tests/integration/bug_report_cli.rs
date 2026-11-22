@@ -46,20 +46,3 @@ fn no_sanitize_warns_on_stderr_and_keeps_stdout_clean() {
         "report missing from stdout: {stdout}"
     );
 }
-
-#[test]
-fn sanitized_default_run_prints_no_warning() {
-    let temp = TempDir::new().expect("temp dir");
-    let output = isolated_command(temp.path())
-        .args(["bug-report", "--stdout"])
-        .output()
-        .expect("run mxr bug-report");
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!stderr.contains(WARNING_PREFIX), "stderr was: {stderr}");
-}

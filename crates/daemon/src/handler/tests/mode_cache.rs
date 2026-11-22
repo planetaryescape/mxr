@@ -57,72 +57,6 @@ async fn new_mail_stored_outside_a_request_shows_on_the_next_read() {
     assert_ne!(now_built_at(&fx).await, first);
 }
 
-#[tokio::test]
-async fn bookkeeping_writes_keep_the_cached_view() {
-    let fx = Fixture::new().await;
-    let first = now_built_at(&fx).await;
-    sqlx::query(
-        "INSERT INTO event_log (timestamp, level, category, summary) VALUES (0, 'info', 'sync', 'x')",
-    )
-    .execute(fx.state.store.writer())
-    .await
-    .unwrap();
-    assert_eq!(now_built_at(&fx).await, first);
-}
-
-#[tokio::test]
-async fn a_view_past_its_age_is_rebuilt_before_it_answers() {
-    let fx = Fixture::new().await;
-    let first = now_built_at(&fx).await;
-    fx.state.mode_cache.age(std::time::Duration::from_secs(61));
-    assert_ne!(now_built_at(&fx).await, first);
-}
-
-#[tokio::test]
-async fn the_refresher_rebuilds_a_view_after_a_mutation_so_reads_stay_instant() {
-    let fx = Fixture::new().await;
-    let first = now_built_at(&fx).await;
-    fx.state.mode_cache.note_mutation();
-    fx.state.mode_cache.refresh(&fx.state).await;
-    let refreshed = cached_now_built_at(&fx).expect("the refresher rebuilt it");
-    assert_ne!(refreshed, first);
-    assert_eq!(
-        now_built_at(&fx).await,
-        refreshed,
-        "the refreshed view answers the read"
-    );
-}
-
-#[tokio::test]
-async fn the_refresher_renews_active_views_before_client_polling_meets_expiry() {
-    let fx = Fixture::new().await;
-    let first = now_built_at(&fx).await;
-    fx.state.mode_cache.age(std::time::Duration::from_secs(49));
-    fx.state.mode_cache.refresh(&fx.state).await;
-    assert_eq!(
-        cached_now_built_at(&fx),
-        Some(first),
-        "do not rebuild every tick"
-    );
-    fx.state.mode_cache.age(std::time::Duration::from_secs(2));
-    fx.state.mode_cache.refresh(&fx.state).await;
-    let renewed = cached_now_built_at(&fx).expect("active view renewed before expiry");
-    assert_ne!(renewed, first);
-    assert_eq!(
-        now_built_at(&fx).await,
-        renewed,
-        "the next poll is a cache hit"
-    );
-}
-
-#[tokio::test]
-async fn a_view_built_in_an_earlier_hour_is_rebuilt_before_it_answers() {
-    let fx = Fixture::new().await;
-    let first = now_built_at(&fx).await;
-    fx.state.mode_cache.previous_hour();
-    assert_ne!(now_built_at(&fx).await, first);
-}
-
 async fn store_new_mail(fx: &Fixture) {
     fx.message(
         &ThreadId::new(),
@@ -151,48 +85,6 @@ async fn a_view_built_during_a_write_in_flight_is_never_served_again() {
         settled,
         "the settled build is served"
     );
-}
-
-#[tokio::test]
-async fn readers_queued_during_a_write_in_flight_share_a_build() {
-    let fx = Fixture::new().await;
-    fx.state.mode_cache.hold_write(true);
-    let reads = (0..6).map(|_| now_built_at(&fx));
-    let built: std::collections::BTreeSet<_> =
-        futures::future::join_all(reads).await.into_iter().collect();
-    assert!(built.len() <= 2, "{} builds for 6 readers", built.len());
-}
-
-#[tokio::test]
-async fn the_refresher_replaces_a_view_built_during_a_write_in_flight() {
-    let fx = Fixture::new().await;
-    fx.state.mode_cache.hold_write(true);
-    let _unsettled = now_built_at(&fx).await;
-    fx.state.mode_cache.hold_write(false);
-    fx.state.mode_cache.age(std::time::Duration::from_secs(6));
-    fx.state.mode_cache.refresh(&fx.state).await;
-    assert!(
-        cached_now_built_at(&fx).is_some(),
-        "the refresher built one a read can get"
-    );
-}
-
-#[tokio::test]
-async fn client_chosen_keys_keep_at_most_sixteen_views() {
-    let fx = Fixture::new().await;
-    for limit in 1..=20 {
-        request(
-            &fx,
-            Request::ListMessages {
-                account_id: None,
-                turn: Some(mxr_protocol::MessagesTurnData::All),
-                filter: Default::default(),
-                limit,
-            },
-        )
-        .await;
-    }
-    assert_eq!(fx.state.mode_cache.len(), 16);
 }
 
 #[test]

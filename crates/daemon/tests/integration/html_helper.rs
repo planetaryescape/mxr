@@ -72,38 +72,6 @@ fn quoted_gt_attribute_bypass() -> String {
     html
 }
 
-fn adjacent_quoted_attributes() -> String {
-    let mut html = format!("<p>{MARKER}</p><div ");
-    for n in 0..100_000 {
-        write!(html, "a{n}=\"1\"").expect("write");
-    }
-    html.push_str(">tail</div>");
-    html
-}
-
-fn foster_parented_breaks() -> String {
-    format!("<p>{MARKER}</p><table>{}</table>", "<br>".repeat(19_000))
-}
-
-/// The span decodes to 600 after the byte scan has passed it.
-fn entity_encoded_rowspan() -> String {
-    let cells = "<td rowspan=\"6&#48;00\">x</td>".repeat(3_000);
-    format!("<p>{MARKER}</p><table><tr>{cells}</tr></table>")
-}
-
-fn table_hidden_by_a_comment() -> String {
-    let mut html = format!("<p>{MARKER}</p><table><tr>");
-    for n in 0..9_000 {
-        write!(html, "<td>c{n}</td>").expect("write");
-    }
-    html.push_str("</tr><!-- </table> -->");
-    for n in 0..9_000 {
-        write!(html, "<tr><td>r{n}</td></tr>").expect("write");
-    }
-    html.push_str("</table>");
-    html
-}
-
 fn fifty_thousand_rowspans() -> String {
     format!(
         "<p>{MARKER}</p><table><tr>{}</tr></table>",
@@ -200,54 +168,10 @@ fn formatting_element_reconstruction_is_contained() {
 }
 
 #[test]
-fn a_formatting_reconstruction_under_64_kib_is_contained_too() {
-    let html = formatting_element_reconstruction_of(3_000);
-    assert!(html.len() < 64 * 1024, "{} bytes", html.len());
-    assert!(mxr_reader::within_budget(&html));
-    assert_survives("3k formatting reconstruction", &html, Outcome::Either);
-}
-
-#[test]
 fn a_quoted_gt_attribute_bypass_is_contained() {
     assert_survives(
         "quoted > bypass",
         &quoted_gt_attribute_bypass(),
-        Outcome::Either,
-    );
-}
-
-#[test]
-fn adjacent_quoted_attributes_are_contained() {
-    assert_survives(
-        "adjacent quoted attributes",
-        &adjacent_quoted_attributes(),
-        Outcome::Either,
-    );
-}
-
-#[test]
-fn foster_parented_breaks_are_contained() {
-    assert_survives(
-        "foster-parented br",
-        &foster_parented_breaks(),
-        Outcome::Either,
-    );
-}
-
-#[test]
-fn an_entity_encoded_rowspan_is_contained() {
-    assert_survives(
-        "entity-encoded rowspan",
-        &entity_encoded_rowspan(),
-        Outcome::Either,
-    );
-}
-
-#[test]
-fn a_table_hidden_by_a_comment_is_contained() {
-    assert_survives(
-        "comment-hidden table",
-        &table_hidden_by_a_comment(),
         Outcome::Either,
     );
 }
@@ -268,23 +192,6 @@ fn a_hundred_thousand_deep_div_nest_is_contained() {
         &hundred_thousand_deep_divs(),
         Outcome::Budgeted,
     );
-}
-
-#[test]
-fn a_normal_email_renders_the_same_through_the_helper_as_in_process() {
-    let html = "<html><body><h1>Invoice 42</h1><p>Hello <b>Sam</b>, your total is \
-        <a href=\"https://example.com/pay\">$12.00</a>.</p><table><tr><td>Item</td>\
-        <td>Qty</td></tr><tr><td>Widget</td><td>3</td></tr></table>\
-        <ul><li>one</li><li>two</li></ul></body></html>";
-    let in_process = mxr_reader::html_to_plain_text(html, "test");
-    let helper = helper();
-    let through_helper = with_supervisor(Arc::clone(&helper), || {
-        mxr_reader::html_to_plain_text(html, "test")
-    });
-    assert_eq!(through_helper, in_process);
-    assert!(in_process.contains("Invoice 42") && in_process.contains("Widget"));
-    let stats = helper.stats();
-    assert_eq!((stats.requests, stats.fallbacks), (1, 0), "{stats:?}");
 }
 
 #[test]

@@ -153,9 +153,6 @@ pub(crate) use account_config::{config_account_id, list_account_configs, repair_
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };
-#[cfg(test)]
-pub(crate) use mutations::send_stored_draft;
-
 pub(crate) use mutations::{
     drain_search_reindex_pending, reconcile_provider_drafts, send_stored_draft_reviewed_locked,
 };

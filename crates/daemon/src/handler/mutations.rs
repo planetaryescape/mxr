@@ -4375,22 +4375,6 @@ pub(super) async fn list_scheduled_sends(
     Ok(ResponseData::ScheduledSends { sends })
 }
 
-#[cfg(test)]
-pub(crate) async fn send_stored_draft(
-    state: &AppState,
-    draft_id: &mxr_core::DraftId,
-    override_safety_token: Option<&str>,
-) -> HandlerResult {
-    let _draft_guard = state.acquire_draft_operation(draft_id).await;
-    let draft = state
-        .store
-        .get_draft(draft_id)
-        .await?
-        .ok_or("Draft not found")?;
-    let identity = mxr_core::SendIdentity::for_draft(&draft);
-    send_stored_draft_locked(state, draft_id, &identity, override_safety_token, false).await
-}
-
 pub(crate) async fn send_stored_draft_reviewed(
     state: &AppState,
     draft_id: &mxr_core::DraftId,

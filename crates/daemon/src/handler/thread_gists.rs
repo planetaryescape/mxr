@@ -148,16 +148,6 @@ impl GistQueue {
                 *until > now && hash.as_deref().is_none_or(|hash| hash == content_hash)
             })
     }
-
-    #[cfg(test)]
-    pub(crate) fn snapshot(&self) -> (Vec<ThreadId>, Vec<ThreadId>, usize) {
-        let state = self.inner.lock();
-        (
-            state.pending.iter().cloned().collect(),
-            state.in_flight.iter().cloned().collect(),
-            state.writers,
-        )
-    }
 }
 
 fn back_off(state: &mut QueueState, id: &ThreadId, hash: Option<String>, until: Instant) {

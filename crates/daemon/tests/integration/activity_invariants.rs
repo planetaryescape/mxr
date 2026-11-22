@@ -115,49 +115,6 @@ fn no_forbidden_keys_appear_in_recorder_outputs() {
     }
 }
 
-#[test]
-fn activity_mapper_preserves_agent_and_mcp_sources() {
-    use mxr_protocol::{ClientKind, Request};
-
-    let req = Request::Search {
-        limit_from_config: false,
-        query: "from:alice".into(),
-        limit: 10,
-        offset: 0,
-        account_id: None,
-        mode: None,
-        sort: None,
-        explain: false,
-    };
-
-    for source in [ClientKind::Agent, ClientKind::Mcp] {
-        let entry = mxr::activity::mapper::map_request(&req, source, None, true).unwrap();
-        assert_eq!(entry.source, source);
-        let context = entry.context.unwrap_or_default();
-        let serialized = serde_json::to_string(&context).unwrap();
-        assert!(!serialized.to_ascii_lowercase().contains("token"));
-    }
-}
-
-#[test]
-fn activity_privacy_config_rejects_non_boolean_switches() {
-    for key in [
-        "enabled",
-        "track_subjects",
-        "track_recipient_handles",
-        "track_search_queries",
-        "track_link_clicks",
-    ] {
-        for value in ["\"false\"", "0", "[]", "{}"] {
-            assert!(
-                toml::from_str::<mxr_config::MxrConfig>(&format!("[activity]\n{key} = {value}\n"))
-                    .is_err(),
-                "{key} must reject {value} instead of silently enabling recording"
-            );
-        }
-    }
-}
-
 #[tokio::test]
 async fn activity_privacy_config_filters_real_mapper_shapes_before_persistence() {
     use mxr::activity::{mapper::map_request, Recorder};

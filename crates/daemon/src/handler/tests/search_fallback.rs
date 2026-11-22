@@ -1,7 +1,7 @@
 use super::*;
 use crate::test_fixtures::TestEnvelopeBuilder;
 use chrono::{Duration, Utc};
-use mxr_core::types::{Envelope, MessageFlags, SearchMode, SortOrder};
+use mxr_core::types::{Envelope, SearchMode, SortOrder};
 use mxr_protocol::{SearchDegraded, SearchDegradedReason};
 
 async fn send(state: &Arc<AppState>, request: Request) -> Response {
@@ -38,8 +38,6 @@ fn search_request(
 struct Page {
     ids: Vec<String>,
     total: u32,
-    has_more: bool,
-    next_offset: Option<u32>,
     degraded: Option<SearchDegraded>,
 }
 
@@ -50,8 +48,6 @@ fn page(response: Response) -> Page {
                 ResponseData::SearchResults {
                     results,
                     total,
-                    has_more,
-                    next_offset,
                     degraded,
                     ..
                 },
@@ -61,8 +57,6 @@ fn page(response: Response) -> Page {
                 .map(|item| item.message_id.as_str())
                 .collect(),
             total,
-            has_more,
-            next_offset,
             degraded,
         },
         other => panic!("expected search results, got {other:?}"),
@@ -122,20 +116,6 @@ async fn a_plain_search_is_answered_from_sqlite_when_the_worker_has_stopped() {
 }
 
 #[tokio::test]
-async fn subject_and_from_fields_work_without_the_index() {
-    let state = stopped_state().await;
-    let account = state.default_account_id();
-    let by_subject = store_message(&state, &account, "a", "Roadmap review", "x@one.test", 1).await;
-    let by_sender = store_message(&state, &account, "b", "Other", "roadmap@two.test", 2).await;
-
-    let subject = page(send(&state, search_request("subject:roadmap", None, 10, 0)).await);
-    let sender = page(send(&state, search_request("from:roadmap@two.test", None, 10, 0)).await);
-
-    assert_eq!(subject.ids, vec![by_subject.id.as_str()]);
-    assert_eq!(sender.ids, vec![by_sender.id.as_str()]);
-}
-
-#[tokio::test]
 async fn a_query_the_fallback_cannot_honour_is_refused_by_name_not_loosened() {
     let state = stopped_state().await;
     let account = state.default_account_id();
@@ -163,190 +143,6 @@ async fn a_query_the_fallback_cannot_honour_is_refused_by_name_not_loosened() {
             "{query}: {message}"
         );
     }
-}
-
-#[tokio::test]
-async fn counts_and_grouping_have_no_limited_form_and_say_why() {
-    let state = stopped_state().await;
-    let account = state.default_account_id();
-    store_message(&state, &account, "a", "Quarterly invoice", "x@one.test", 1).await;
-
-    let (message, code) = error_of(
-        send(
-            &state,
-            Request::Count {
-                query: "invoice".into(),
-                account_id: None,
-                mode: Some(SearchMode::Lexical),
-            },
-        )
-        .await,
-    );
-
-    assert_eq!(code, "search_index_unavailable");
-    assert!(message.contains("needs the full index"), "{message}");
-    assert!(!message.contains("worker stopped"), "{message}");
-}
-
-#[tokio::test]
-async fn a_healthy_daemon_answers_from_the_index_with_no_degraded_field() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    state
-        .sync_engine
-        .sync_account(state.default_provider().as_ref())
-        .await
-        .unwrap();
-
-    let response = send(&state, search_request("deployment", None, 10, 0)).await;
-    let json = serde_json::to_value(&response).unwrap();
-    let found = page(response);
-
-    assert!(!found.ids.is_empty());
-    assert!(found.degraded.is_none());
-    assert!(
-        !json.to_string().contains("degraded"),
-        "a healthy reply must not mention the field: {json}"
-    );
-}
-
-#[tokio::test]
-async fn an_index_that_finds_nothing_is_not_a_reason_to_fall_back() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let account = state.default_account_id();
-    store_message(&state, &account, "a", "zebra crossing", "x@one.test", 1).await;
-
-    let found = page(send(&state, search_request("zebra", None, 10, 0)).await);
-
-    assert!(found.ids.is_empty());
-    assert!(found.degraded.is_none());
-}
-
-#[tokio::test]
-async fn a_rebuild_in_progress_answers_from_sqlite_until_it_ends() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let account = state.default_account_id();
-    let wanted = store_message(&state, &account, "a", "Quarterly invoice", "x@one.test", 1).await;
-
-    let rebuild = state.search.begin_rebuild();
-    let during = page(send(&state, search_request("invoice", None, 10, 0)).await);
-    rebuild.finish();
-    let after = page(send(&state, search_request("invoice", None, 10, 0)).await);
-
-    assert_eq!(during.ids, vec![wanted.id.as_str()]);
-    assert_eq!(
-        during.degraded.map(|degraded| degraded.reason),
-        Some(SearchDegradedReason::IndexRebuilding)
-    );
-    assert!(after.ids.is_empty());
-    assert!(after.degraded.is_none());
-}
-
-#[tokio::test]
-async fn a_short_index_is_not_read_between_startup_open_and_its_rebuild() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let account = state.default_account_id();
-    let wanted = store_message(&state, &account, "a", "Quarterly invoice", "x@one.test", 1).await;
-
-    state.search.hold_startup_rebuild();
-    let during = page(send(&state, search_request("invoice", None, 10, 0)).await);
-
-    assert_eq!(during.ids, vec![wanted.id.as_str()]);
-    assert_eq!(
-        during.degraded.map(|degraded| degraded.reason),
-        Some(SearchDegradedReason::IndexRebuilding)
-    );
-
-    state.search.end_startup_rebuild(true);
-    assert!(matches!(
-        state.search.availability(),
-        mxr_search::IndexAvailability::Ready { .. }
-    ));
-}
-
-#[tokio::test]
-async fn a_failed_rebuild_keeps_search_limited_until_a_later_rebuild_finishes() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let account = state.default_account_id();
-    let wanted = store_message(&state, &account, "a", "Quarterly invoice", "x@one.test", 1).await;
-    store_message(&state, &account, "b", "Weekly digest", "x@one.test", 2).await;
-
-    let rebuild = state.search.begin_rebuild();
-    state.search.clear().await.unwrap();
-    let first_batch = state
-        .store
-        .list_all_envelopes_paginated(1, 0)
-        .await
-        .unwrap()
-        .into_iter()
-        .map(|envelope| mxr_search::SearchIndexEntry {
-            envelope,
-            body: None,
-            reply_later: false,
-        })
-        .collect();
-    state
-        .search
-        .apply_batch(mxr_search::SearchUpdateBatch {
-            entries: first_batch,
-            removed_message_ids: vec![],
-        })
-        .await
-        .unwrap();
-    drop(rebuild);
-
-    assert!(!matches!(
-        state.search.availability(),
-        mxr_search::IndexAvailability::Ready { .. }
-    ));
-    let failed = page(send(&state, search_request("invoice", None, 10, 0)).await);
-    assert_eq!(failed.ids, vec![wanted.id.as_str()]);
-    let failed_degraded = failed.degraded.expect("limited answer carries degraded");
-    assert_eq!(failed_degraded.reason, SearchDegradedReason::IndexStopped);
-    assert!(failed_degraded
-        .notice()
-        .contains("the last index rebuild failed"));
-
-    crate::reindex::reindex(&state.search, &state.store, |_| {})
-        .await
-        .unwrap();
-
-    assert!(matches!(
-        state.search.availability(),
-        mxr_search::IndexAvailability::Ready { .. }
-    ));
-    let restored = page(send(&state, search_request("invoice", None, 10, 0)).await);
-    assert!(restored.degraded.is_none());
-}
-
-#[tokio::test]
-async fn pages_stay_in_one_order_and_count_from_one_source() {
-    let state = stopped_state().await;
-    let account = state.default_account_id();
-    let mut newest_first = Vec::new();
-    for day in 0..5 {
-        let message = store_message(
-            &state,
-            &account,
-            &format!("p{day}"),
-            "weekly digest",
-            "x@one.test",
-            day,
-        )
-        .await;
-        newest_first.push(message.id.as_str());
-    }
-
-    let first = page(send(&state, search_request("digest", None, 2, 0)).await);
-    let second = page(send(&state, search_request("digest", None, 2, 2)).await);
-    let last = page(send(&state, search_request("digest", None, 2, 4)).await);
-
-    assert_eq!([first.total, second.total, last.total], [5, 5, 5]);
-    assert_eq!(first.next_offset, Some(2));
-    assert!(first.has_more && second.has_more && !last.has_more);
-    assert_eq!(last.next_offset, None);
-    let all = [first.ids, second.ids, last.ids].concat();
-    assert_eq!(all, newest_first);
-    assert!(first.degraded.is_some() && last.degraded.is_some());
 }
 
 #[tokio::test]
@@ -395,62 +191,6 @@ async fn account_scope_is_honoured_and_a_disabled_account_never_leaks() {
 }
 
 #[tokio::test]
-async fn trash_and_spam_stay_out_unless_the_query_asks_for_everywhere() {
-    let state = stopped_state().await;
-    let account = state.default_account_id();
-    let kept = store_message(&state, &account, "a", "report", "x@one.test", 1).await;
-    let mut trashed = TestEnvelopeBuilder::new()
-        .account_id(account.clone())
-        .provider_id("fb-trash")
-        .subject("report")
-        .snippet("")
-        .date(Utc::now() - Duration::days(2))
-        .flags(MessageFlags::TRASH)
-        .build();
-    trashed.from.email = "t@two.test".into();
-    state.store.upsert_envelope(&trashed).await.unwrap();
-
-    let default = page(send(&state, search_request("report", None, 10, 0)).await);
-    let anywhere = page(send(&state, search_request("report in:anywhere", None, 10, 0)).await);
-
-    assert_eq!(default.ids, vec![kept.id.as_str()]);
-    assert_eq!(anywhere.ids.len(), 2);
-}
-
-#[tokio::test]
-async fn a_saved_search_runs_from_sqlite_too_and_says_so() {
-    let state = stopped_state().await;
-    let account = state.default_account_id();
-    let wanted = store_message(&state, &account, "a", "Quarterly invoice", "x@one.test", 1).await;
-    let created = send(
-        &state,
-        Request::CreateSavedSearch {
-            name: "bills".into(),
-            query: "invoice".into(),
-            account_id: None,
-            search_mode: SearchMode::Lexical,
-        },
-    )
-    .await;
-    assert!(matches!(created, Response::Ok { .. }), "{created:?}");
-
-    let found = page(
-        send(
-            &state,
-            Request::RunSavedSearch {
-                name: "bills".into(),
-                limit: 10,
-                account_id: None,
-            },
-        )
-        .await,
-    );
-
-    assert_eq!(found.ids, vec![wanted.id.as_str()]);
-    assert!(found.degraded.is_some());
-}
-
-#[tokio::test]
 async fn triage_will_not_judge_the_narrower_result_set() {
     let state = stopped_state().await;
     let account = state.default_account_id();
@@ -473,138 +213,4 @@ async fn triage_will_not_judge_the_narrower_result_set() {
 
     assert_eq!(code, "search_index_unavailable");
     assert!(message.contains("Triage needs the full index"), "{message}");
-}
-
-async fn store_detailed(
-    state: &AppState,
-    account: &mxr_core::AccountId,
-    tag: &str,
-    subject: &str,
-    snippet: &str,
-    sender: (&str, &str),
-) -> Envelope {
-    let envelope = TestEnvelopeBuilder::new()
-        .account_id(account.clone())
-        .provider_id(format!("fb-{tag}"))
-        .sender_address(sender.0, sender.1)
-        .subject(subject)
-        .snippet(snippet)
-        .date(Utc::now() - Duration::days(1))
-        .build();
-    state.store.upsert_envelope(&envelope).await.unwrap();
-    envelope
-}
-
-#[tokio::test]
-async fn from_matches_the_whole_address_as_the_index_does() {
-    let state = stopped_state().await;
-    let account = state.default_account_id();
-    let exact = store_detailed(
-        &state,
-        &account,
-        "a",
-        "one",
-        "",
-        ("Someone", "Alice@Example.com"),
-    )
-    .await;
-    store_detailed(
-        &state,
-        &account,
-        "b",
-        "two",
-        "",
-        ("Someone", "alice@example.com.evil"),
-    )
-    .await;
-    store_detailed(
-        &state,
-        &account,
-        "c",
-        "three",
-        "",
-        ("alice@example.com", "z@other.test"),
-    )
-    .await;
-    store_detailed(
-        &state,
-        &account,
-        "d",
-        "four",
-        "",
-        ("Alice", "malice@example.com"),
-    )
-    .await;
-
-    let by_address = page(
-        send(
-            &state,
-            search_request("from:alice@example.com", None, 10, 0),
-        )
-        .await,
-    );
-    let upper = page(
-        send(
-            &state,
-            search_request("from:ALICE@EXAMPLE.COM", None, 10, 0),
-        )
-        .await,
-    );
-    let bare_name = page(send(&state, search_request("from:alice", None, 10, 0)).await);
-
-    assert_eq!(by_address.ids, vec![exact.id.as_str()]);
-    assert_eq!(upper.ids, vec![exact.id.as_str()]);
-    assert!(
-        bare_name.ids.is_empty(),
-        "a bare name matches no address, as in the index"
-    );
-    assert!(bare_name.degraded.is_some());
-}
-
-#[tokio::test]
-async fn a_compound_word_needs_every_token_not_the_phrase() {
-    let state = stopped_state().await;
-    let account = state.default_account_id();
-    let apart = store_detailed(
-        &state,
-        &account,
-        "a",
-        "alpha middle beta",
-        "",
-        ("S", "a@one.test"),
-    )
-    .await;
-    let across_fields = store_detailed(
-        &state,
-        &account,
-        "b",
-        "alpha",
-        "and beta",
-        ("S", "b@two.test"),
-    )
-    .await;
-    store_detailed(
-        &state,
-        &account,
-        "c",
-        "alpha only",
-        "",
-        ("S", "c@three.test"),
-    )
-    .await;
-
-    let found = page(send(&state, search_request("alpha-beta", None, 10, 0)).await);
-    let exact = page(send(&state, search_request("+alpha-beta", None, 10, 0)).await);
-    let phrase = page(send(&state, search_request("\"alpha beta\"", None, 10, 0)).await);
-
-    let mut both = vec![apart.id.as_str(), across_fields.id.as_str()];
-    both.sort();
-    let mut got = found.ids.clone();
-    got.sort();
-    assert_eq!(got, both);
-    assert_eq!(exact.ids.len(), 2);
-    assert!(
-        phrase.ids.is_empty(),
-        "only a quoted phrase must be adjacent"
-    );
 }

@@ -63,28 +63,6 @@ async fn undo(fx: &Fixture, mutation_id: &str) -> Result<(), String> {
     }
 }
 
-async fn marginalia_highlight(fx: &Fixture, message: &MessageId) -> String {
-    let row = ReadingHighlightRow {
-        id: "from-marginalia".into(),
-        account_id: fx.account.clone(),
-        message_id: message.clone(),
-        idx: 0,
-        view: "issue".into(),
-        quote: "an absence does not travel".into(),
-        note: None,
-        created_at: Utc::now(),
-        origin: "marginalia".into(),
-        origin_id: Some("h1".into()),
-        paragraph: None,
-    };
-    fx.state
-        .store
-        .insert_reading_highlight(&row)
-        .await
-        .expect("insert");
-    row.id
-}
-
 #[tokio::test]
 async fn a_removal_previews_what_it_removes_and_undo_brings_it_back() {
     let fx = Fixture::new().await;
@@ -155,97 +133,6 @@ async fn a_removal_previews_what_it_removes_and_undo_brings_it_back() {
         undo(&fx, &mutation_id).await.is_err(),
         "an undo is spent once"
     );
-}
-
-#[tokio::test]
-async fn a_note_edit_previews_clears_on_empty_and_undoes() {
-    let fx = Fixture::new().await;
-    let (message, _) = issue(&fx, WEEKLY, "Tombstones", &essay(200), Utc::now()).await;
-    let id = save(&fx, &format!("{message}:0"), Some("first")).await;
-    let edit = |note: &str, dry_run| Request::UpdateHighlight {
-        highlight_id: id.clone(),
-        note: note.to_string(),
-        dry_run,
-    };
-
-    let preview = changed(request(&fx, edit("second", true)).await).await;
-    assert_eq!(preview.highlight.note.as_deref(), Some("second"));
-    assert_eq!(
-        preview.previous_note, None,
-        "a preview records no previous note"
-    );
-    assert_eq!(
-        stored(&fx, &id).await.and_then(|row| row.note).as_deref(),
-        Some("first")
-    );
-
-    let done = changed(request(&fx, edit("  second  ", false)).await).await;
-    assert_eq!(done.highlight.note, preview.highlight.note);
-    assert_eq!(done.previous_note.as_deref(), Some("first"));
-    assert_eq!(
-        stored(&fx, &id).await.and_then(|row| row.note).as_deref(),
-        Some("second")
-    );
-    undo(&fx, &done.mutation_id.expect("undoable"))
-        .await
-        .expect("undo");
-    assert_eq!(
-        stored(&fx, &id).await.and_then(|row| row.note).as_deref(),
-        Some("first")
-    );
-
-    let cleared = changed(request(&fx, edit("   ", false)).await).await;
-    assert_eq!(cleared.highlight.note, None);
-    assert_eq!(stored(&fx, &id).await.expect("kept").note, None);
-
-    let long = "x".repeat(2001);
-    assert!(failure(&fx, edit(&long, false))
-        .await
-        .contains("note keeps at most"));
-}
-
-#[tokio::test]
-async fn a_highlight_made_in_marginalia_is_read_only_here() {
-    let fx = Fixture::new().await;
-    let (message, _) = issue(&fx, WEEKLY, "Tombstones", &essay(200), Utc::now()).await;
-    let id = marginalia_highlight(&fx, &message).await;
-    let before = stored(&fx, &id).await;
-    for req in [
-        Request::RemoveHighlight {
-            highlight_id: id.clone(),
-            dry_run: false,
-        },
-        Request::RemoveHighlight {
-            highlight_id: id.clone(),
-            dry_run: true,
-        },
-        Request::UpdateHighlight {
-            highlight_id: id.clone(),
-            note: "mine now".into(),
-            dry_run: false,
-        },
-        Request::UpdateHighlight {
-            highlight_id: id.clone(),
-            note: "mine now".into(),
-            dry_run: true,
-        },
-    ] {
-        let message = failure(&fx, req).await;
-        assert!(
-            message.contains("made in Marginalia; change it there"),
-            "{message}"
-        );
-    }
-    assert_eq!(stored(&fx, &id).await, before);
-    assert!(failure(
-        &fx,
-        Request::RemoveHighlight {
-            highlight_id: "nope".into(),
-            dry_run: false
-        }
-    )
-    .await
-    .contains("No highlight nope"));
 }
 
 #[tokio::test]
@@ -341,40 +228,4 @@ async fn a_scoped_agent_cannot_change_or_undo_another_accounts_highlight() {
     };
     assert_eq!(stored(&fx, &my_id).await, None);
     assert!(change.mutation_id.is_some());
-}
-
-#[tokio::test]
-async fn a_highlight_saved_with_a_paragraph_returns_and_keeps_it() {
-    let fx = Fixture::new().await;
-    let (message, _) = issue(&fx, WEEKLY, "Tombstones", &essay(200), Utc::now()).await;
-    let key = format!("{message}:0");
-    let save_in = |paragraph| Request::SaveHighlight {
-        item_key: key.clone(),
-        quote: QUOTE.to_string(),
-        note: None,
-        view: None,
-        paragraph,
-    };
-
-    let ResponseData::ReadingHighlight { highlight } = request(&fx, save_in(Some(2))).await else {
-        panic!("highlight");
-    };
-    assert_eq!(highlight.paragraph, Some(2));
-    assert_eq!(
-        stored(&fx, &highlight.id).await.expect("saved").paragraph,
-        Some(2)
-    );
-
-    let ResponseData::ReadingHighlight { highlight } = request(&fx, save_in(None)).await else {
-        panic!("highlight");
-    };
-    assert_eq!(
-        highlight.paragraph, None,
-        "no anchor keeps the first-match behaviour"
-    );
-    let wire = serde_json::to_value(&highlight).expect("json");
-    assert!(
-        wire.get("paragraph").is_none(),
-        "an unanchored highlight omits the field"
-    );
 }

@@ -21,7 +21,6 @@ async function edition(page: Page): Promise<Edition> {
   return (await bridge<{ edition: Edition }>(page, "/api/v1/mail/reading")).edition;
 }
 
-/** The demo's Reading mail is extracted on the first edition; wait for it. */
 async function waitForEdition(page: Page): Promise<Edition> {
   let answer: Edition | undefined;
   await expect
@@ -67,8 +66,6 @@ test("Unsubscribe commits exactly the daemon's preview, for both choices", async
         previewToken = preview.result.preview_token;
         await route.fulfill({ response });
       } else {
-        // The outbound unsubscribe is irreversible; daemon tests use FakeProvider.
-        // Here we check each button's real request against the real daemon preview.
         commits.push({ preview_token: request.preview_token, archive: request.archive });
         await route.fulfill({
           json: {

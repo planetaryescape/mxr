@@ -12,8 +12,6 @@ import { openApp, restartDaemon, stopDaemon } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-// Recovery waits on the daemon's own restart plus one probe (at most 8s
-// apart, with jitter), so it gets a wider window than a normal assertion.
 const RECOVERY_MS = 30_000;
 
 function daemonBanner(page: Page) {
@@ -24,7 +22,6 @@ function inlineComposer(page: Page) {
   return page.locator("#inline-composer-slot [data-compose-surface]");
 }
 
-/** A value on `window` survives only if the page was never reloaded. */
 async function markPage(page: Page): Promise<void> {
   await page.evaluate(() => {
     (window as Window & { mxrNoReload?: boolean }).mxrNoReload = true;
@@ -44,7 +41,6 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
     if (request.url().includes("/api/")) requests.push(request.url());
   });
 
-  // Choose and open Messages' first conversation, then load the inbox.
   await openApp(page, "/messages");
   await expect(page).toHaveURL(/\/messages$/);
   await expect(page.getByTestId("messages-row").first()).toBeVisible();
@@ -56,7 +52,6 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
   const openedPerson = await page.getByTestId("person-name").textContent();
   await pressSequence(page, "g", "i");
   await expect(page).toHaveURL(/\/m\/inbox$/);
-  // Messages' rows can linger for a frame after the route changes.
   await expect(page.getByRole("heading", { level: 1, name: "Inbox", exact: true })).toBeVisible();
   await expect.poll(async () => (await renderedRowIds(page)).length).toBeGreaterThan(1);
   const [first, second] = await renderedRowIds(page);
@@ -72,11 +67,9 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
     await expect(
       daemonBanner(page).getByRole("button", { name: "Copy start command" }),
     ).toBeVisible();
-    // One banner: the recovery card's "protocol upgrade" text is only for a mismatch.
     await expect(page.locator("[data-offline-banner]")).toHaveCount(1);
     await expect(page.getByText("Recovery status unavailable")).toHaveCount(0);
 
-    // The inbox stays on screen and the cursor still moves.
     await expect(rowById(page, first!)).toBeVisible();
     await expectCursorOn(page, first!);
     await page.keyboard.press("j");
@@ -84,15 +77,12 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
     await page.keyboard.press("k");
     await expectCursorOn(page, first!);
 
-    // Archive is refused up front: the row stays, and the toast says why.
     await page.keyboard.press("e");
     await expect(page.getByText("Can't archive while mxr is unavailable")).toBeVisible();
     await expect(page.getByText("Nothing changed. Try again once it's back.")).toBeVisible();
     await expect(rowById(page, first!)).toBeVisible();
     await expect(page.getByText(/^Archived/)).toHaveCount(0);
 
-    // A g-jump back to Messages leaves the person closed. Opening that row
-    // explicitly still shows the conversation from cache while offline.
     await pressSequence(page, "g", "m");
     await expect(page).toHaveURL(/\/messages/);
     await expect(page.getByTestId("messages-row").first()).toBeVisible();
@@ -104,7 +94,6 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
     await pressSequence(page, "g", "i");
     await expect(rowById(page, first!)).toBeVisible();
 
-    // No retry storm: a few seconds down costs a handful of probes.
     const before = requests.length;
     await page.waitForTimeout(5_000);
     expect(requests.length - before).toBeLessThanOrEqual(4);
@@ -121,7 +110,6 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
   });
   expect(await pageWasNotReloaded(page)).toBe(true);
 
-  // Actions work again: archive, then undo to leave the mailbox as it was.
   await expectCursorOn(page, first!);
   await page.keyboard.press("e");
   await expect(rowById(page, first!)).toHaveCount(0);
@@ -153,7 +141,6 @@ test("a reply typed while the daemon is stopped keeps its text and saves once it
   try {
     await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
     await page.keyboard.type(" Written while it was stopped.");
-    // Past the autosave debounce: nothing could save, the text is all there.
     await page.waitForTimeout(4_000);
     await expect(inlineComposer(page).getByText(/Not saved: mxr is unavailable/)).toBeVisible();
     await expect(body).toContainText("Written before the stop. Written while it was stopped.");

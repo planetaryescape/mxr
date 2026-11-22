@@ -6,7 +6,6 @@ function composer(page: Page) {
   return page.getByRole("dialog", { name: "New message" });
 }
 
-/** The body editor is CodeMirror in vim mode: enter insert mode, type, leave. */
 async function typeBody(page: Page, text: string) {
   await composer(page).locator(".cm-content").click();
   await page.keyboard.press("i");
@@ -34,9 +33,6 @@ test("a sent message appears in Sent after the undo window", async ({ page }) =>
   await expect(page.getByText(/^Sending in \d+s/)).toBeVisible();
   await expect(page.getByText(/To alice@example\.com, from alex@demo\.mxr\.local/)).toBeVisible();
   expect((await sendResponse).ok()).toBe(true);
-  // The composer owns the keyboard until the app has handled the send's
-  // response and closed it; a "g" typed before that is dropped, and "t" alone
-  // goes nowhere.
   await expect(composer(page)).toHaveCount(0);
 
   await page.keyboard.press("g");

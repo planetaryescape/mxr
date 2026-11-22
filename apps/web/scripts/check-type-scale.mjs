@@ -1,29 +1,13 @@
 #!/usr/bin/env node
-/*
- * Type rule: font sizes come from the scale in src/styles/tokens.css
- * (text-2xs … text-xl). A pixel or rem size in a class string is a second
- * scale, and the drift it lets in is what the scale exists to stop. This
- * flags `text-[13px]`, `md:text-[12.5px]` and `text-[1.1rem]`. It leaves
- * `text-[length:var(--…)]` (density tokens) and `text-[var(--…)]` alone.
- *
- * Files on ALLOWLIST may keep a literal size, each with the reason here.
- * Keep the list short: a token is the default, an entry is the exception.
- *
- * Run directly, it checks src and exits 1 with file:line for each finding.
- * check-type-scale.test.mjs feeds it fixtures.
- */
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-/** Relative to src/. A directory entry covers every file below it. */
 export const ALLOWLIST = new Map([]);
 
-/** A literal size: a number with px or rem, inside `text-[...]`, after a class boundary. */
 const LITERAL = /(?<![\w-])text-\[\s*\d*\.?\d+\s*(?:px|rem)\s*\]/g;
 
-/** Findings in a TSX source: `{ line, message }`. */
 export function checkScript(text) {
   const findings = [];
   for (const match of text.matchAll(LITERAL)) {
@@ -33,7 +17,6 @@ export function checkScript(text) {
   return findings;
 }
 
-/** True when `rel` (relative to src/) is covered by an allowlist entry. */
 export function allowed(rel, list = ALLOWLIST) {
   for (const entry of list.keys()) {
     if (rel === entry || rel.startsWith(`${entry}/`)) return true;

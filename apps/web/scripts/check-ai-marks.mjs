@@ -1,16 +1,4 @@
 #!/usr/bin/env node
-/*
- * No icon stands for AI (D141, docs/blueprint/27 "Iconography"). A model
- * feature is named for what it does, with a task icon if the slot needs one;
- * who wrote the output is shown in words by ModelMark (D136). This flags, in
- * src:
- *   - an import of Sparkles, Sparkle, WandSparkles or BotMessageSquare from
- *     lucide-react (also as `Sparkles as X`, or the Icon / Lucide variants);
- *   - the sparkle emoji.
- *
- * Run directly, it checks src and exits 1 with file:line for each finding.
- * check-ai-marks.test.mjs feeds it fixtures.
- */
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -21,7 +9,6 @@ const IMPORT = /import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+["']lucide-react(?:\/[
 
 const lineOf = (text, index) => text.slice(0, index).split("\n").length;
 
-/** Findings in a TS/TSX source: `{ line, message }`. */
 export function checkScript(text) {
   const findings = [];
   for (const match of text.matchAll(IMPORT)) {

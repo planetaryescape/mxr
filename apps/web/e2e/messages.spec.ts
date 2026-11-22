@@ -14,7 +14,6 @@ interface MessagesAnswer {
   messages: { your_turn: Row[]; pinned: Row[]; recent: Row[]; quiet: Row[] };
 }
 
-/** Whether the daemon's attention view (Messages' default) still holds `thread`. */
 async function needsAttention(page: Page, thread: string): Promise<boolean> {
   const { messages } = await bridge<MessagesAnswer>(page, "/api/v1/mail/people?limit=500");
   return [...messages.your_turn, ...messages.pinned, ...messages.recent, ...messages.quiet].some(
@@ -27,8 +26,6 @@ test("done in Messages takes the conversation out of attention, and u brings it 
 }) => {
   const { person, thread, messageIds } = await freshReplyRequest(page);
   try {
-    // Keys are live only after the deferred action catalog lands (#940); this
-    // journey is keyboard-first, so wait for that answer before pressing.
     const keysReady = page.waitForResponse(
       (response) => response.url().includes("/api/v1/platform/keymap"),
       { timeout: 20_000 },
@@ -41,12 +38,9 @@ test("done in Messages takes the conversation out of attention, and u brings it 
     await page.keyboard.press("e");
     await expect.poll(() => needsAttention(page, thread), { timeout: 15_000 }).toBe(false);
 
-    // The toast's words depend on what was left open ("Undone", "Restored: …");
-    // the daemon's answer is the check.
     await page.keyboard.press("u");
     await expect.poll(() => needsAttention(page, thread), { timeout: 15_000 }).toBe(true);
   } finally {
-    // Specs share one mailbox: leave no new turn behind for the others.
     await archiveViaBridge(page, messageIds);
   }
 });
@@ -70,7 +64,6 @@ test("on a phone, Back from a reply saves it as a Draft on the person's row, and
     await page.keyboard.type(words);
 
     await page.getByRole("button", { name: "Back to the people" }).click();
-    // The people, not a sheet over them: the reply closed, saved.
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const preview = row.getByTestId("row-preview");
     await expect(preview).toHaveAttribute("data-kind", "draft", { timeout: 15_000 });

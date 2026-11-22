@@ -3,7 +3,6 @@ import { expect, test } from "@playwright/test";
 import { openApp } from "./helpers/state";
 
 test.beforeEach(async ({ page }) => {
-  // These threads exist only in the fixtures, including their local mode metadata.
   await page.route(
     /\/api\/v1\/mail\/modes\/membership\?thread_id=thread-html(?:&.*)?$/,
     async (route) => {
@@ -98,9 +97,7 @@ test("HTML mail renders in a sandbox without scripts, trackers stripped and remo
   await expect(help).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(help).toBeHidden();
-  // Tracking pixels are stripped; other remote images wait for consent.
   await expect(body.getByAltText("tracking pixel")).toHaveCount(0);
-  // A blocked image is a small inline note, not an empty box its size.
   await expect(body.getByAltText("newsletter image")).toHaveCount(0);
   const note = body.locator(".mxr-image-blocked");
   await expect(note).toHaveText("Image blocked");

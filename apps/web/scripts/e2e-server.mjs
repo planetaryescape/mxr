@@ -16,14 +16,10 @@ const bridgePort = Number(process.env.MXR_E2E_BRIDGE_PORT ?? "17777");
 const controlPort = Number(process.env.MXR_E2E_CONTROL_PORT ?? String(bridgePort + 1));
 const bridgeUrl = `http://127.0.0.1:${bridgePort}`;
 const controlUrl = `http://127.0.0.1:${controlPort}`;
-// Overridable so the suite can run next to a dev stack that already owns 5173.
 const appPort = Number(process.env.MXR_E2E_APP_PORT ?? "5173");
 const appUrl = `http://127.0.0.1:${appPort}`;
 const token = process.env.MXR_E2E_BRIDGE_TOKEN ?? "mxr-e2e-token";
 const once = process.argv.includes("--once");
-// "preview" serves a production build (vite build, then vite preview, still
-// proxying /api to the e2e bridge). The speed gate runs there: React's
-// development build adds work that users never pay for.
 const appMode = process.env.MXR_E2E_APP_MODE === "preview" ? "preview" : "dev";
 
 let owned;
@@ -116,19 +112,11 @@ type = "fake"
   );
 }
 
-// "HH:MM" local time, a minute ago.
 function startupCut() {
   const at = new Date(Date.now() - 60_000);
   return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 }
 
-/**
- * A daemon whose bridge port is taken keeps running without its bridge, and
- * the health check below then passes against whatever holds the port: often
- * another worktree's e2e daemon, which takes the same token. The whole suite
- * would run against that daemon's mailbox, and stopping ours would never take
- * the bridge offline. Refuse to start instead.
- */
 async function assertPortFree(port, label, variable) {
   await new Promise((resolvePort, reject) => {
     const probe = createTcpServer();
@@ -146,8 +134,6 @@ async function assertPortFree(port, label, variable) {
 }
 
 function startDaemon() {
-  // CLI builds land in target-cli/ (.cargo/config.toml isolates them from
-  // rust-analyzer's target/); CI sets MXR_E2E_BIN to the same path.
   const bin = resolve(process.env.MXR_E2E_BIN ?? join(repoRoot, "target-cli/debug/mxr"));
   if (!existsSync(bin)) {
     throw new Error(`missing mxr binary at ${bin}; run cargo build -p mxr or set MXR_E2E_BIN`);
@@ -162,14 +148,7 @@ function startDaemon() {
         MXR_DATA_DIR: join(runtimeDir, "data"),
         MXR_SOCKET_PATH: join(runtimeDir, "run", "mxr.sock"),
         MXR_FAKE_DATASET: "demo",
-        // The account uses the demo's own address so sent mail syncs as
-        // outbound (the desk's owed and waiting lanes need it). That makes it
-        // the personal demo profile, which keeps 55% of this count: 166, the
-        // same generated threads as before plus Reading's 26 newsletters and
-        // the seeded Updates mail.
         MXR_FAKE_MESSAGE_COUNT: "302",
-        // Specs drop messages and sync failures here (crates/provider-fake
-        // spool.rs); e2e/helpers/spool.ts writes them.
         MXR_FAKE_SPOOL_DIR: join(runtimeDir, "spool"),
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -183,8 +162,6 @@ function startDaemon() {
     .on("close", () => {});
 }
 
-// The daemon's output is drained (a full pipe would stall it) and its tail
-// kept, so an unexpected exit says why instead of just "signal=SIGABRT".
 const daemonTail = [];
 function keepTail(stream) {
   stream?.setEncoding("utf8");
@@ -267,8 +244,6 @@ function startVite() {
       stdio: "inherit",
     });
   }
-  // vite preview's proxy defaults to the dev server's, so /api still
-  // reaches this bridge.
   return owned.spawn(
     "vite",
     "sh",
@@ -321,11 +296,6 @@ async function seedMailbox() {
   await dismissEveryHint();
 }
 
-/**
- * Hints show once per profile, and every spec shares this daemon. Starting
- * with all of them dismissed keeps a hint from landing in a spec's layout
- * or taking its Esc.
- */
 async function dismissEveryHint() {
   const { guides } = await fetchJson("/api/v1/mail/modes/guide");
   const ids = new Set(guides.flatMap((guide) => guide.hints.map((hint) => hint.id)));

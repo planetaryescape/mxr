@@ -10,7 +10,6 @@ import { OwnedProcesses, cleanupManifest } from "./e2e-owned-processes.mjs";
 let owned;
 let root;
 afterEach(async () => {
-  // Test-owned fallback only, so the red-phase orphan cannot leak a port.
   if (owned)
     for (const child of owned.state.children) {
       try {

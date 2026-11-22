@@ -1,27 +1,4 @@
 #!/usr/bin/env node
-/*
- * Motion rule (rubric B2, DESIGN.md): durations come from the motion tokens
- * in src/styles/tokens.css, and only transform and opacity move. oxlint
- * can't see Tailwind class strings, inline styles or CSS, so this checks:
- *
- * - Tailwind classes: no transition-colors, transition-all or bare
- *   `transition`; a transition-[…] list only names transform or opacity;
- *   no numeric or arbitrary duration-*; no ease-in (ease-in-out is fine);
- *   arbitrary properties ([transition:…], [animation:…]) follow the CSS
- *   rule below.
- * - Inline styles (`transition: "…"`, `animationDuration: 200`): the CSS
- *   rule below.
- * - CSS (outside tokens.css): no literal time in a transition or animation
- *   declaration, and transitions only name transform or opacity.
- * - Keyboard instant (D101, docs/blueprint/27 "Motion"): a component that
- *   receives a `via: "pointer" | "key"` prop (LampVia, LeaveVia, OpenVia) may start a
- *   transition or animation only for a pointer, or for a row `leaving` (whose
- *   fold the caller already decided with `foldsFor`). Repeated keys never
- *   animate.
- *
- * Run directly, it checks src and exits 1 with file:line for each finding.
- * check-motion.test.mjs feeds it fixtures.
- */
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -29,7 +6,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const MOVING = new Set(["opacity", "transform", "translate", "scale", "rotate", "none"]);
 
-/** A class token: bounded by quotes, backticks, whitespace or line ends. */
 const token = (body) => new RegExp(`(?:^|["'\`\\s])(${body})(?=["'\`\\s]|$)`, "g");
 
 const CLASS_RULES = [
@@ -44,7 +20,6 @@ const CLASS_RULES = [
   { pattern: token("[\\w:-]*?ease-in"), message: "no ease-in on UI: use ease-out" },
 ];
 
-/** Blank out comments, keeping line numbers. */
 function stripComments(text, lineComments) {
   let out = text.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, " "));
   if (lineComments) out = out.replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
@@ -53,10 +28,6 @@ function stripComments(text, lineComments) {
 
 const lineOf = (text, index) => text.slice(0, index).split("\n").length;
 
-/**
- * Problems with one transition or animation declaration (kebab-case name),
- * as messages. Times must come from tokens: `var(--motion-…)`.
- */
 export function declarationProblems(name, value) {
   const problems = [];
   if (/^(transition|animation)(-duration|-delay)?$/.test(name)) {
@@ -78,7 +49,6 @@ export function declarationProblems(name, value) {
 
 const kebab = (name) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 
-/** Findings in a TS/TSX source: `{ line, message }`. */
 export function checkScript(text) {
   const findings = [];
   const code = stripComments(text, true);
@@ -92,7 +62,6 @@ export function checkScript(text) {
       at(match.index, `${match[0]}: only transform and opacity move`);
     }
   }
-  // Tailwind arbitrary properties: [transition:color_200ms], [animation-duration:1s].
   for (const match of code.matchAll(
     /\[((?:transition|animation)(?:-property|-duration|-delay)?):([^\]]+)\]/g,
   )) {
@@ -100,7 +69,6 @@ export function checkScript(text) {
       at(match.index, problem);
     }
   }
-  // Inline styles: transition: "opacity 200ms", animationDuration: "1s" or 200.
   for (const match of code.matchAll(
     /\b((?:transition|animation)(?:Property|Duration|Delay)?)\s*:\s*(?:(["'`])([^"'`]*)\2|(\d[\d.]*)\b)/g,
   )) {
@@ -115,17 +83,11 @@ export function checkScript(text) {
   return findings;
 }
 
-/** A class that starts motion: a transition or an animation (tw-animate's `animate-in`, a fold). */
 const STARTS_MOTION = token(
   "[\\w:-]*?(?:transition(?:-[\\w[\\],-]+)?|animate-[\\w-]+|row-fold|todo-fold|assistant-arrive)",
 );
-/** What makes it fine: the pointer did it, or the row is already leaving. */
 const POINTER_ONLY = /via\s*(?:===\s*["']pointer["']|!==\s*["']key["'])|\bleaving\b/;
 
-/**
- * Findings in a component that takes a `via` prop: motion classes not guarded
- * by the pointer, within the same or the two lines above.
- */
 export function checkKeyboardInstant(text) {
   const code = stripComments(text, true);
   if (!/\b(?:LampVia|LeaveVia|OpenVia)\b/.test(code)) return [];
@@ -144,11 +106,9 @@ export function checkKeyboardInstant(text) {
   return findings;
 }
 
-/** Findings in a stylesheet: `{ line, message }`. */
 export function checkStyles(text) {
   const findings = [];
   const css = stripComments(text, false);
-  // Declarations: `name: value` up to the next ; { or }.
   for (const match of css.matchAll(/([\w-]+)\s*:\s*([^;{}]+)/g)) {
     for (const message of declarationProblems(match[1], match[2])) {
       findings.push({ line: lineOf(css, match.index), message });

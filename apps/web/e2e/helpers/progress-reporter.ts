@@ -1,6 +1,5 @@
 import type { Reporter, TestCase, TestResult } from "@playwright/test/reporter";
 
-/** CI's GitHub annotations do not show passing progress or a currently stuck test. */
 export default class ProgressReporter implements Reporter {
   onTestBegin(test: Pick<TestCase, "titlePath">, result: Pick<TestResult, "retry">): void {
     console.info(

@@ -1,12 +1,4 @@
 #!/usr/bin/env node
-//
-// Generate TypeScript types from the bridge OpenAPI 3.1 spec.
-//
-// Spec source: the mxr-web dump_openapi_spec example, built through the queue.
-// Output is committed so the SPA build does not need a Rust toolchain.
-//
-// Run after touching crates/protocol or crates/web routes:
-//   npm run gen:types
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";

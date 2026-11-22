@@ -21,7 +21,6 @@ interface Desk {
   people_new: { rows: AttentionRow[] };
 }
 
-/** Each mutating spec owns its request, not a turn another spec may answer. */
 export async function freshReplyRequest(
   page: Page,
 ): Promise<{ person: string; thread: string; messageIds: string[] }> {

@@ -4,12 +4,6 @@ import { deliver, failSyncs, restoreSyncs } from "./helpers/spool";
 import { bridge, bridgeAuth, openApp, readE2EState } from "./helpers/state";
 import type { Arrival } from "../src/features/freshness/copy";
 
-/*
- * The freshness indicator: when the newest mail arrived and how sync is
- * doing, on every page, with the last arrivals one click away. Mail and
- * sync failures come from the fake provider's spool.
- */
-
 interface FreshnessReply {
   freshness: {
     newest_message_at?: string | null;
@@ -21,12 +15,10 @@ const shotsDir = process.env.MXR_FRESHNESS_SHOTS;
 
 async function shot(page: Page, name: string) {
   if (!shotsDir) return;
-  // Let overlays finish fading in.
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${shotsDir}/${name}.png` });
 }
 
-/** Run a sync through the bridge and wait for it to finish, failed or not. */
 async function syncNow(page: Page) {
   await page.request.post(`${readE2EState().bridgeUrl}/api/v1/mail/sync`, {
     headers: bridgeAuth(),
@@ -37,7 +29,6 @@ function statusBar(page: Page) {
   return page.getByRole("contentinfo");
 }
 
-/** The visible indicator: the status bar's, or the topbar's on a phone. */
 function trigger(page: Page) {
   return page.getByTestId("freshness-trigger").filter({ visible: true });
 }
@@ -46,12 +37,10 @@ test.describe("desktop", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   test("a new message updates the indicator and the popover live", async ({ page }) => {
-    // A page with no lit row, so the status bar keeps its full freshness words.
     await openApp(page, "/rules");
     await expect(trigger(page)).toBeVisible();
     await trigger(page).click();
     const subject = `Freshness check ${Date.now()}`;
-    // Out of the inbox on arrival, so it changes no other spec's lists.
     deliver({
       from: "Status Robot <status@robots.example>",
       to: "alex@demo.mxr.local",

@@ -1,13 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
 
-/*
- * The keydown-to-paint gate (e2e/speed.spec.ts) against a production build.
- * React's development build captures an owner stack for each element
- * (Error() plus console.createTask for the first 10,000 after a second's
- * pause), which adds 10 to 15 ms to an open that users never pay. Every
- * other spec stays on the dev server (playwright.config.ts): large-list's
- * coverage gate reads /src/ script URLs.
- */
 const appUrl = `http://127.0.0.1:${process.env.MXR_E2E_APP_PORT ?? "5173"}`;
 
 export default defineConfig({
@@ -20,8 +12,6 @@ export default defineConfig({
   use: {
     baseURL: appUrl,
     trace: "on-first-retry",
-    // The production build registers the PWA service worker, which would
-    // answer requests the specs stub with page.route.
     serviceWorkers: "block",
     launchOptions: process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {},
   },
@@ -32,7 +22,6 @@ export default defineConfig({
     url: appUrl,
     reuseExistingServer: false,
     timeout: 180_000,
-    // See playwright.config.ts: lets e2e-server stop its own process groups.
     gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
   },
 });

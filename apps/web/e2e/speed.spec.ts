@@ -8,7 +8,6 @@ import { freshWaitingConversations } from "./helpers/waiting-request";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-/** Presses per key, capped by the rows on screen: `j` past the last row changes nothing. */
 const PRESSES = 20;
 const MIN_PRESSES = 10;
 
@@ -19,11 +18,9 @@ type KeyPaintSamples = {
   e?: number[];
 };
 
-/** Keep requests in flight so the probe measures the client while work is pending. */
 async function holdMutations(page: Page): Promise<void> {
   const hold = () => new Promise<void>(() => {});
   await page.route("**/api/v1/mail/mutations/star", hold);
-  // On the desk, e is Done.
   await page.route("**/api/v1/mail/desk/done", hold);
 }
 
@@ -60,7 +57,6 @@ for (const path of ["/desk", "/m/inbox"]) {
         k: await measureKey(page, "k", presses, { change: "cursor-moves" }),
         s: await measureKey(page, "s", presses, { change: "star-toggles" }),
       };
-      // Inbox Archive now opens a reviewed native confirmation and waits for the durable outcome.
       if (path === "/desk")
         samples.e = await measureKey(page, "e", presses, { change: "row-leaves" });
       const result = report(path, samples);
@@ -77,7 +73,6 @@ test("the lamp moves under budget on 5,000 people (spike S4)", async ({ page }) 
   await openApp(page, "/messages");
   await expect(page.locator("[data-lit='true']")).toHaveCount(0);
   await expect(page.getByTestId("messages-row").first()).toBeVisible();
-  // The first press lights the first row; measure from the second.
   await page.keyboard.press("j");
   await expect(page.locator("[data-lit='true']")).toHaveCount(1);
   await installKeyToPaintProbe(page);
@@ -85,14 +80,12 @@ test("the lamp moves under budget on 5,000 people (spike S4)", async ({ page }) 
   const up = await measureKey(page, "k", PRESSES, { change: "lamp-moves" });
   const result = report("/messages (5,000 people)", { j: down, k: up });
   for (const value of Object.values(result)) expect(value).toBeLessThan(KEY_TO_PAINT_P95_MS);
-  // Exactly one row is lit after all that.
   await expect(page.locator("[data-lit='true']")).toHaveCount(1);
 });
 
 test("opening a cached conversation paints under budget", async ({ page }) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
-  // Open and close each of the first rows once, so their threads are cached.
   for (let row = 0; row < PRESSES; row += 1) {
     await page.keyboard.press("Enter");
     await expect(threadMessages(page).first()).toBeVisible();
@@ -122,7 +115,6 @@ test("a key that doesn't paint its change fails the probe instead of timing an e
   await openList(page, "/m/inbox");
   await installKeyToPaintProbe(page);
   await holdMutations(page);
-  // s stars the row; it never moves the cursor.
   await expect(measureKey(page, "s", 1, { change: "cursor-moves" })).rejects.toThrow(
     /1 of 1 presses never painted "cursor-moves"/,
   );

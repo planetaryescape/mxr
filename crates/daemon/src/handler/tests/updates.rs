@@ -7,7 +7,7 @@
 use super::desk::{request, Fixture, ME};
 use super::*;
 use crate::handler::updates::{self, LetGo};
-use chrono::{DateTime, Duration, FixedOffset, Utc};
+use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::{DeliveryId, MessageId, ThreadId};
 use mxr_core::types::{Envelope, MessageDirection};
 use mxr_protocol::{
@@ -15,8 +15,10 @@ use mxr_protocol::{
 };
 use mxr_updates::Cuts;
 
-fn utc() -> FixedOffset {
-    FixedOffset::east_opt(0).unwrap()
+/// The zone the daemon itself reads `request`s in. A fixed UTC here put the
+/// cuts in a different local day than the handler on any non-UTC host.
+fn utc() -> chrono::Local {
+    chrono::Local
 }
 
 /// A clock two hours after a default cut that is at least three hours in

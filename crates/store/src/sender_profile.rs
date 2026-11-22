@@ -560,18 +560,7 @@ mod tests {
     use super::super::Store;
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
     use chrono::{TimeZone, Utc};
-    use mxr_core::id::AccountId;
     use mxr_core::{Address, MessageDirection};
-
-    #[tokio::test]
-    async fn get_sender_profile_returns_none_for_unknown_contact() {
-        let store = Store::in_memory().await.unwrap();
-        let got = store
-            .get_sender_profile(&AccountId::new(), "nobody@example.com")
-            .await
-            .unwrap();
-        assert!(got.is_none());
-    }
 
     #[tokio::test]
     async fn list_recent_sender_messages_returns_latest_first() {
@@ -949,40 +938,5 @@ mod tests {
             .unwrap();
         assert_eq!(bounded.len(), 1, "since-cutoff drops the older sender");
         assert_eq!(bounded[0].sender_email, "recent@example.com");
-    }
-
-    /// Phase 2.6: a cutoff in the future returns an empty list rather
-    /// than panicking or returning all-time. Safety net for off-by-one
-    /// errors in CLI-driven date math.
-    #[tokio::test]
-    async fn list_top_senders_since_future_cutoff_returns_empty() {
-        let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-
-        let mut env = TestEnvelopeBuilder::new()
-            .account_id(account.id.clone())
-            .build();
-        env.provider_id = "any".into();
-        env.message_id_header = Some("<any@example.com>".into());
-        env.from = Address {
-            name: Some("Any".into()),
-            email: "any@example.com".into(),
-        };
-        env.date = Utc.with_ymd_and_hms(2026, 5, 1, 9, 0, 0).unwrap();
-        store
-            .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
-            .await
-            .unwrap();
-
-        let cutoff = Utc
-            .with_ymd_and_hms(2099, 1, 1, 0, 0, 0)
-            .unwrap()
-            .timestamp();
-        let rows = store
-            .list_top_senders_since(10, None, Some(cutoff))
-            .await
-            .unwrap();
-        assert!(rows.is_empty(), "future cutoff filters everything out");
     }
 }

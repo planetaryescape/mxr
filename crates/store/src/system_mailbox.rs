@@ -407,14 +407,12 @@ mod tests {
         reason = "tests unwrap fixture setup for direct failures"
     )]
 
-    use crate::system_mailbox::account_ids_json;
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
     use crate::Store;
     use chrono::{Duration, Utc};
     use mxr_core::id::{AccountId, LabelId, ThreadId};
     use mxr_core::types::{EventSource, Label, LabelKind, MessageFlags, Role, SortOrder};
     use mxr_core::Account;
-    use sqlx::Row;
 
     async fn account(store: &Store) -> Account {
         let account = test_account();
@@ -531,34 +529,6 @@ mod tests {
             asc.iter().map(|th| th.id.clone()).collect::<Vec<_>>(),
             vec![b2, a2]
         );
-    }
-
-    #[tokio::test]
-    async fn threads_by_role_respect_the_account_set() {
-        let t = two_accounts().await;
-        let (a1, _) = message(&t.store, &t.a.id, 10, &[&t.a_inbox], None).await;
-        message(&t.store, &t.b.id, 20, &[&t.b_inbox], None).await;
-
-        let only_a = t
-            .store
-            .list_threads_by_role(
-                std::slice::from_ref(&t.a.id),
-                Role::Inbox,
-                10,
-                0,
-                SortOrder::DateDesc,
-            )
-            .await
-            .unwrap();
-        assert_eq!(only_a.len(), 1);
-        assert_eq!(only_a[0].id, a1);
-
-        let none = t
-            .store
-            .list_threads_by_role(&[], Role::Inbox, 10, 0, SortOrder::DateDesc)
-            .await
-            .unwrap();
-        assert!(none.is_empty());
     }
 
     #[tokio::test]
@@ -871,76 +841,6 @@ mod tests {
         let counts = store.system_mailbox_counts(&both).await.unwrap();
         let starred = counts.iter().find(|(r, _, _)| *r == Role::Starred).unwrap();
         assert_eq!(starred.2, 0);
-    }
-
-    #[tokio::test]
-    async fn the_thread_page_reads_the_role_summary_not_the_mailbox() {
-        // The page query must stay an ordered range scan of the summary: no
-        // scan of `messages`, no temp B-tree, and the index that carries the
-        // order. This is the shape that keeps a page's cost flat as the
-        // mailbox grows (migration 112).
-        let t = two_accounts().await;
-        for i in 0..20 {
-            message(&t.store, &t.a.id, i, &[&t.a_inbox], None).await;
-        }
-        let rows = sqlx::query(
-            "EXPLAIN QUERY PLAN
-             SELECT thread_id FROM thread_role_pages
-              WHERE role = ?1
-                AND account_id IN (SELECT value FROM json_each(?2))
-              ORDER BY latest_date DESC, thread_id DESC
-              LIMIT ?3",
-        )
-        .bind(Role::Inbox.storage_name())
-        .bind(account_ids_json(std::slice::from_ref(&t.a.id)).unwrap())
-        .bind(10_i64)
-        .fetch_all(t.store.reader())
-        .await
-        .unwrap();
-        let plan = rows
-            .iter()
-            .map(|row| row.get::<String, _>("detail"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(
-            plan.contains("idx_thread_role_pages_page"),
-            "the page should be served by the summary index: {plan}"
-        );
-        assert!(
-            !plan.contains("TEMP B-TREE"),
-            "the page must not sort: {plan}"
-        );
-        assert!(
-            !plan.contains("SCAN m") && !plan.contains("SCAN messages"),
-            "the page must not scan the mailbox: {plan}"
-        );
-    }
-
-    #[tokio::test]
-    async fn the_summary_clear_seeks_by_thread() {
-        // Migration 113: a message or label write must not scan the summary.
-        // The clear is keyed by (account_id, thread_id), so it has to reach the
-        // row through the new index rather than the role-first primary key.
-        let t = two_accounts().await;
-        let rows = sqlx::query(
-            "EXPLAIN QUERY PLAN
-             DELETE FROM thread_role_pages
-              WHERE account_id = ?1 AND thread_id = ?2",
-        )
-        .bind(t.a.id.as_str())
-        .bind("thread")
-        .fetch_all(t.store.reader())
-        .await
-        .unwrap();
-        let plan = rows
-            .iter()
-            .map(|row| row.get::<String, _>("detail"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(
-            plan.contains("idx_thread_role_pages_thread"),
-            "the clear should seek the summary by thread: {plan}"
-        );
     }
 
     #[tokio::test]

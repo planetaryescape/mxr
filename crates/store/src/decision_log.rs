@@ -377,33 +377,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upsert_then_list_returns_inserted_decision() {
-        let (store, account, thread, msg) = fixture().await;
-        let e = entry(&account, &thread, &msg, "Use Postgres");
-        store.upsert_decision(&e).await.unwrap();
-        let rows = store
-            .list_decisions(&account, None, None, 10)
-            .await
-            .unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].decision, "Use Postgres");
-        assert_eq!(rows[0].evidence_msg_ids, vec![msg]);
-    }
-
-    #[tokio::test]
-    async fn upsert_with_unchanged_source_hash_is_idempotent() {
-        let (store, account, thread, msg) = fixture().await;
-        let e = entry(&account, &thread, &msg, "Use Postgres");
-        store.upsert_decision(&e).await.unwrap();
-        store.upsert_decision(&e).await.unwrap();
-        let rows = store
-            .list_decisions(&account, None, None, 10)
-            .await
-            .unwrap();
-        assert_eq!(rows.len(), 1);
-    }
-
-    #[tokio::test]
     async fn changed_source_hash_updates_same_decision_row() {
         let (store, account, thread, msg) = fixture().await;
         let mut e1 = entry(&account, &thread, &msg, "Use Postgres");

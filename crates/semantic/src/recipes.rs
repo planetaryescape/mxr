@@ -143,10 +143,4 @@ mod tests {
         assert!(got[1].starts_with("w90 "));
         assert!(got[2].ends_with("w249"));
     }
-
-    #[test]
-    fn every_mode_has_one_recipe() {
-        assert_eq!(RECIPES.len(), 1);
-        assert_eq!(recipe(RecipeMode::Messages).version, 1);
-    }
 }

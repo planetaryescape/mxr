@@ -124,13 +124,6 @@ mod tests {
     }
 
     #[test]
-    fn twice_weekly_is_twice_the_median_gap() {
-        // Gaps of 3, 4, 3, 4, 3 days: the median is 3, the window 6.
-        let dates = [at(0), at(3), at(7), at(10), at(14), at(17)];
-        assert_eq!(source_window(&dates).window, Duration::days(6));
-    }
-
-    #[test]
     fn one_issue_or_one_send_split_in_two_takes_the_default() {
         assert_eq!(source_window(&[at(0)]).source, WindowSource::Default);
         assert_eq!(

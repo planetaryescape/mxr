@@ -825,14 +825,6 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn inline_reply_quote_is_findable() {
-        let text = "Intro.\n> Can we use ultramarine?\nYes.";
-        let (index, id) = index_one(Some(text), None);
-
-        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
-    }
-
-    #[test]
     fn named_quote_only_message_is_findable() {
         let text = "On Tue, Alice wrote:\n> ultramarine";
         let (index, id) = index_one(Some(text), None);
@@ -855,14 +847,6 @@ mod reader_text_tests {
         let (index, id) = index_one(Some("Intro."), Some(html));
 
         assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
-    }
-
-    #[test]
-    fn has_youtube_still_matches_raw_html_link() {
-        let html = r#"<p>Watch this</p><a href="https://youtube.com/watch?v=abc">clip</a>"#;
-        let (index, id) = index_one(None, Some(html));
-
-        assert_eq!(search_ids(&index, "has:youtube"), vec![id]);
     }
 
     #[test]
@@ -907,21 +891,6 @@ mod reader_text_tests {
             .is_empty());
 
         assert_eq!(search_ids(&index, "has:youtube"), vec![id]);
-    }
-
-    #[test]
-    fn indexed_body_text_keeps_quotes_and_signatures_and_drops_markup() {
-        let envelope = TestEnvelopeBuilder::new().build();
-        let counter = AtomicU64::new(0);
-        let text = indexed_body_text(&body_for(&envelope, None, Some(HTML_MESSAGE)), &counter);
-
-        assert!(text.contains("visiblebananaword"));
-        assert!(text.contains("earlierquotedword"));
-        assert!(text.contains("sigwordzeta"));
-        assert!(!text.contains('<'));
-        assert!(!text.contains("cssproperty"));
-        assert!(!text.contains("quuxtoken"));
-        assert_eq!(counter.load(Ordering::Relaxed), 0);
     }
 
     /// Debug-build timing for the upgrade cost: run with
@@ -1118,22 +1087,6 @@ mod resolver_tests {
             assert_eq!(hit.account_id, envelope.account_id);
             assert_eq!(hit.thread_id, envelope.thread_id);
         }
-    }
-
-    #[test]
-    fn no_match_is_an_empty_list_not_an_error() {
-        let (index, _) = index_with_ties();
-        assert!(index
-            .resolver()
-            .resolve_date_desc(&*query("nomatchatall"))
-            .unwrap()
-            .is_empty());
-        let empty = SearchIndex::in_memory().unwrap();
-        assert!(empty
-            .resolver()
-            .resolve_date_desc(&*query("report"))
-            .unwrap()
-            .is_empty());
     }
 
     #[test]

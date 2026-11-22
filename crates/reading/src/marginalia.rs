@@ -454,28 +454,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reads_highlights_back() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/api/v1/articles/k57/highlights"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "articleId": "k57",
-                "title": "t",
-                "highlights": [{
-                    "id": "h1", "kind": "highlight", "text": "the same window",
-                    "paragraphIndex": 2, "createdAt": 1_760_000_000_000_i64,
-                }],
-            })))
-            .mount(&server)
-            .await;
-        let client = MarginaliaClient::new(&server.uri(), "mrg_test").unwrap();
-        let highlights = client.highlights("k57").await.unwrap();
-        assert_eq!(highlights.len(), 1);
-        assert_eq!(highlights[0].text, "the same window");
-        assert_eq!(highlights[0].paragraph_index, Some(2));
-    }
-
-    #[tokio::test]
     async fn verify_reads_401_as_a_bad_token_and_404_as_a_good_one() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))

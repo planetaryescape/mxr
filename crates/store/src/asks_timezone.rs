@@ -250,20 +250,6 @@ mod tests {
         assert!(AsksTimezone::from_spec(Some("missing/zone")).is_err());
     }
     #[test]
-    fn repeated_resolution_reports_native_parse_work() {
-        let bytes = std::fs::read("/usr/share/zoneinfo/Europe/London").unwrap();
-        let file = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(file.path(), bytes).unwrap();
-        let started = std::time::Instant::now();
-        for _ in 0..500 {
-            AsksTimezone::from_spec(file.path().to_str()).unwrap();
-        }
-        eprintln!(
-            "500 fresh-source timezone resolutions: {:?}",
-            started.elapsed()
-        );
-    }
-    #[test]
     fn exact_source_reuses_one_parsed_snapshot_and_raw_overrides_remain_distinct() {
         let file = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(

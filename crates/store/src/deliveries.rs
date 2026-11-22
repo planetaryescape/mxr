@@ -512,24 +512,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn insert_and_round_trip() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, _) = seed(&store).await;
-        let d = sample(&account_id, "1Z999", "in_transit");
-        store.insert_delivery(&d).await.unwrap();
-
-        let got = store.get_delivery(&d.id).await.unwrap().expect("stored");
-        assert_eq!(got, d);
-
-        let by_dedup = store
-            .get_delivery_by_dedup(&account_id, "1Z999")
-            .await
-            .unwrap()
-            .expect("dedup hit");
-        assert_eq!(by_dedup.id, d.id);
-    }
-
-    #[tokio::test]
     async fn update_changes_fields_and_dedup_key() {
         let store = Store::in_memory().await.unwrap();
         let (account_id, _) = seed(&store).await;

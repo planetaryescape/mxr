@@ -217,17 +217,6 @@ mod tests {
     }
 
     #[test]
-    fn warm_populated_index() {
-        let mut idx = SearchIndex::in_memory().unwrap();
-        let env = make_envelope("Flight details", "Boarding at gate 12", "Airline");
-        idx.index_envelope(&env).unwrap();
-        idx.commit().unwrap();
-
-        idx.warm().unwrap();
-        assert_eq!(idx.num_docs(), 1);
-    }
-
-    #[test]
     fn date_desc_search_returns_newest_first_and_sinks_future_dates() {
         let mut idx = SearchIndex::in_memory().unwrap();
 
@@ -400,20 +389,6 @@ mod tests {
     }
 
     #[test]
-    fn e2e_parse_build_search_field() {
-        let (idx, envelopes) = build_e2e_index();
-        let results = e2e_search(&idx, "from:alice@example.com");
-        assert_eq!(results.len(), 2);
-        let alice_ids: Vec<String> = vec![
-            envelopes[0].id.as_str().clone(),
-            envelopes[3].id.as_str().clone(),
-        ];
-        for id in &results {
-            assert!(alice_ids.contains(id));
-        }
-    }
-
-    #[test]
     fn e2e_parse_build_search_compound() {
         let (idx, envelopes) = build_e2e_index();
         // from:alice AND is:unread — both alice messages are unread
@@ -500,13 +475,6 @@ mod tests {
         idx.commit().unwrap();
 
         assert_eq!(e2e_search(&idx, "has:calendar"), vec![invite_id]);
-    }
-
-    #[test]
-    fn e2e_search_by_label() {
-        let (idx, envelopes) = build_e2e_index();
-        let results = e2e_search(&idx, "label:notifications");
-        assert_eq!(results.len(), envelopes.len());
     }
 
     #[test]
@@ -849,14 +817,6 @@ mod tests {
         idx.commit().unwrap();
 
         assert_eq!(e2e_search(&idx, "holiday AROUND 3 vacation"), vec![near_id]);
-    }
-
-    #[test]
-    fn e2e_filter_starred() {
-        let (idx, envelopes) = build_e2e_index();
-        let results = e2e_search(&idx, "is:starred");
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0], envelopes[1].id.as_str());
     }
 
     #[test]

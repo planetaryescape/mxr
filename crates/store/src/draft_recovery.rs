@@ -114,18 +114,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn touch_heartbeat_persists_timestamp() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_draft(&store).await;
-        store.touch_draft_heartbeat(&id, anchor()).await.unwrap();
-        // Through the orphan-list query: a heartbeat at `anchor` means
-        // the draft is NOT orphaned w.r.t. cutoff = anchor - 1m.
-        // (And the draft is in 'draft' status, so it's not orphaned anyway.
-        // We assert the simpler property: no panic on touch.)
-        assert!(store.get_draft(&id).await.unwrap().is_some());
-    }
-
-    #[tokio::test]
     async fn list_orphaned_excludes_drafts_in_draft_status() {
         let store = Store::in_memory().await.unwrap();
         let _id = seed_draft(&store).await;

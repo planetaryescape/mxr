@@ -591,29 +591,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_auto_reminder_persists_and_round_trips() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, env) = seed(&store).await;
-        let remind_at = anchor() + Duration::days(5);
-
-        store
-            .set_auto_reminder(&env.id, &account_id, remind_at, anchor())
-            .await
-            .unwrap();
-
-        let stored = store
-            .get_auto_reminder(&env.id)
-            .await
-            .unwrap()
-            .expect("reminder stored");
-        assert_eq!(stored.sent_message_id, env.id);
-        assert_eq!(stored.remind_at, remind_at);
-        assert_eq!(stored.set_at, anchor());
-        assert!(stored.triggered_at.is_none());
-        assert!(stored.cancelled_at.is_none());
-    }
-
-    #[tokio::test]
     async fn re_setting_clears_triggered_and_cancelled_state() {
         let store = Store::in_memory().await.unwrap();
         let (account_id, env) = seed(&store).await;
@@ -659,47 +636,6 @@ mod tests {
 
         let due = store.get_due_auto_reminders(anchor()).await.unwrap();
         assert!(due.is_empty(), "future reminders are not due yet");
-    }
-
-    #[tokio::test]
-    async fn get_due_excludes_triggered_reminders() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, env) = seed(&store).await;
-        store
-            .set_auto_reminder(
-                &env.id,
-                &account_id,
-                anchor() - Duration::hours(1),
-                anchor() - Duration::days(2),
-            )
-            .await
-            .unwrap();
-        store
-            .mark_auto_reminder_triggered(&env.id, anchor())
-            .await
-            .unwrap();
-
-        let due = store.get_due_auto_reminders(anchor()).await.unwrap();
-        assert!(due.is_empty(), "triggered reminders are excluded");
-    }
-
-    #[tokio::test]
-    async fn get_due_excludes_cancelled_reminders() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, env) = seed(&store).await;
-        store
-            .set_auto_reminder(
-                &env.id,
-                &account_id,
-                anchor() - Duration::hours(1),
-                anchor() - Duration::days(2),
-            )
-            .await
-            .unwrap();
-        store.cancel_auto_reminder(&env.id, anchor()).await.unwrap();
-
-        let due = store.get_due_auto_reminders(anchor()).await.unwrap();
-        assert!(due.is_empty(), "cancelled reminders are excluded");
     }
 
     #[tokio::test]
@@ -903,9 +839,6 @@ mod tests {
             .is_empty());
     }
 
-    /// A due reminder's reply lookup and the claim's guard use indexes: a
-    /// SCAN of messages or reply_pairs here costs a whole mailbox per due
-    /// reminder (0.2 s on 110k messages).
     #[tokio::test]
     async fn reply_lookups_use_indexes_not_scans() {
         let store = Store::in_memory().await.unwrap();

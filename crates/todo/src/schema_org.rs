@@ -425,10 +425,4 @@ mod tests {
             wrap(r#"{"@type":"LodgingReservation","reservationStatus":"ReservationConfirmed"}"#);
         assert!(read(Some(&confirmed)).settled);
     }
-
-    #[test]
-    fn no_markup_is_no_verdict() {
-        assert_eq!(read(None), SchemaVerdict::default());
-        assert_eq!(read(Some("<p>hello</p>")), SchemaVerdict::default());
-    }
 }

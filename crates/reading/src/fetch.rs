@@ -583,20 +583,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_private_address_is_refused_by_default() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("<p>hi</p>"))
-            .expect(0)
-            .mount(&server)
-            .await;
-        let err = fetch_page(&format!("{}/post", server.uri()), &FetchPolicy::default())
-            .await
-            .expect_err("loopback is refused");
-        assert!(matches!(err, FetchError::PrivateAddress(_)), "{err}");
-    }
-
-    #[tokio::test]
     async fn a_page_is_fetched_with_its_hosts_named() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))

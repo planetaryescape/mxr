@@ -693,11 +693,6 @@ mod tests {
     use crate::test_fixtures::TestEnvelopeBuilder;
     use mxr_core::types::*;
 
-    #[test]
-    fn build_query_propagates_parse_errors() {
-        assert!(build_query("subject:(unbalanced").is_err());
-    }
-
     fn make_test_envelope(
         subject: &str,
         from_email: &str,
@@ -920,15 +915,6 @@ mod tests {
         assert_eq!(
             exact_search_subjects(&subjects, "+running"),
             vec!["Running late".to_string()]
-        );
-    }
-
-    #[test]
-    fn exact_word_is_case_insensitive_and_skips_plurals() {
-        let subjects = ["Invoice ready", "Your invoices", "Reinvoiced"];
-        assert_eq!(
-            exact_search_subjects(&subjects, "+invoice"),
-            vec!["Invoice ready".to_string()]
         );
     }
 

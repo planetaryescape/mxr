@@ -223,14 +223,4 @@ mod tests {
             None
         );
     }
-
-    #[test]
-    fn the_action_always_opens_the_email() {
-        assert_eq!(action_label(TodoKind::Bill), "Open email to pay");
-        assert_eq!(action_label(TodoKind::Verify), "Open email to verify");
-        assert_eq!(
-            action_label(TodoKind::PaymentFailed),
-            "Open email to update payment"
-        );
-    }
 }

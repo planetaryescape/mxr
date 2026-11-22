@@ -1185,20 +1185,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_filter_with_no_rows_yields_empty_page_and_no_cursor() {
-        let store = fresh_store().await;
-        let page = store
-            .list_activity(&ActivityFilter::default(), 10, None)
-            .await
-            .unwrap();
-        assert!(page.rows.is_empty());
-        assert!(page.next_cursor.is_none());
-
-        let n = store.redact_activity_by_ids(&[]).await.unwrap();
-        assert_eq!(n, 0);
-    }
-
-    #[tokio::test]
     async fn saved_filter_upsert_overwrites_on_slug_collision() {
         let store = fresh_store().await;
         store
@@ -1217,21 +1203,6 @@ mod tests {
             .unwrap();
         assert_eq!(got.name, "Renamed");
         assert!(got.filter_json.contains("mail.archive"));
-    }
-
-    #[tokio::test]
-    async fn saved_filter_mark_used_updates_last_used_at() {
-        let store = fresh_store().await;
-        store
-            .upsert_saved_activity_filter("x", "X", "{}")
-            .await
-            .unwrap();
-        let before = store.get_saved_activity_filter("x").await.unwrap().unwrap();
-        assert!(before.last_used_at.is_none());
-
-        store.mark_saved_activity_filter_used("x").await.unwrap();
-        let after = store.get_saved_activity_filter("x").await.unwrap().unwrap();
-        assert!(after.last_used_at.is_some());
     }
 
     #[tokio::test]

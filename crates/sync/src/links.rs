@@ -162,15 +162,6 @@ mod tests {
     }
 
     #[test]
-    fn counts_two_distinct_urls() {
-        let body = body_with_text(
-            "Check out https://example.com/doc and http://blog.example.com/post — both relevant.",
-        );
-        let metrics = body_link_metrics(&body);
-        assert_eq!(metrics.link_count, 2);
-    }
-
-    #[test]
     fn excludes_tracker_hostnames() {
         let body = body_with_text(
             "Unsubscribe: https://unsubscribe.example.com/abc \

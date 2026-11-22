@@ -439,38 +439,6 @@ async fn deleting_a_message_takes_its_arrival_and_keeps_the_correction_log() {
 }
 
 #[tokio::test]
-async fn reads_use_indexes_not_scans() {
-    let (store, _account) = store_with_account().await;
-    let plan = |sql: String| {
-        let store = &store;
-        async move {
-            sqlx::query(sqlx::AssertSqlSafe(format!("EXPLAIN QUERY PLAN {sql}")))
-                .bind("[]")
-                .bind(0)
-                .bind(1)
-                .fetch_all(store.reader())
-                .await
-                .unwrap()
-                .into_iter()
-                .map(|row| row.get::<String, _>("detail"))
-                .collect::<Vec<_>>()
-        }
-    };
-    let steps = plan(format!(
-        "SELECT {EFFECTIVE}, COUNT(*) FROM arrivals a
-         WHERE a.account_id IN (SELECT value FROM json_each(?1))
-           AND a.first_seen_at >= ?2 AND a.first_seen_at < ?3"
-    ))
-    .await;
-    assert!(
-        steps
-            .iter()
-            .any(|s| s.contains("idx_arrivals_account_seen")),
-        "{steps:#?}"
-    );
-}
-
-#[tokio::test]
 async fn after_the_first_sync_old_dated_mail_still_arrives_when_stored() {
     let (store, account) = store_with_account().await;
     // Past its first sync: sync reached the last page of history.

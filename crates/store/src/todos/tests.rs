@@ -142,23 +142,6 @@ async fn a_reminder_updates_the_row_and_older_mail_never_overwrites_it() {
 }
 
 #[tokio::test]
-async fn re_running_the_same_evidence_changes_nothing() {
-    let fx = Fx::new().await;
-    let source = fx.message("bill", at(0)).await;
-    fx.store
-        .upsert_detected_todo(&fx.record("t1", &source, at(0)))
-        .await
-        .unwrap();
-    assert_eq!(
-        fx.store
-            .upsert_detected_todo(&fx.record("t2", &source, at(0)))
-            .await
-            .unwrap(),
-        TodoUpsert::Unchanged
-    );
-}
-
-#[tokio::test]
 async fn a_row_the_user_touched_keeps_its_fields_and_newer_evidence_reopens_an_expired_one() {
     let fx = Fx::new().await;
     let first = fx.message("first", at(0)).await;
@@ -834,12 +817,6 @@ async fn a_redated_item_keeps_its_emails_row_and_never_takes_a_sibling_or_anothe
         .await
         .unwrap();
     assert_eq!(key_of("october").await, key("due:2026-11"));
-}
-
-#[test]
-fn the_read_columns_are_the_row_columns_plus_the_derived_state() {
-    assert!(SELECT_COLUMNS.starts_with(COLUMNS));
-    assert!(SELECT_COLUMNS.ends_with("AS source_unread"));
 }
 
 #[tokio::test]

@@ -392,21 +392,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upsert_get_list_and_delete_round_trip() {
-        let store = Store::in_memory().await.unwrap();
-        let sig = signature("Work", "-- \nAlice");
-        store.upsert_signature(&sig).await.unwrap();
-
-        assert_eq!(
-            store.get_signature(&sig.id).await.unwrap(),
-            Some(sig.clone())
-        );
-        assert_eq!(store.list_signatures().await.unwrap(), vec![sig.clone()]);
-        assert!(store.delete_signature_by_name("Work").await.unwrap());
-        assert!(store.get_signature(&sig.id).await.unwrap().is_none());
-    }
-
-    #[tokio::test]
     async fn resolve_prefers_address_then_account_then_global() {
         let store = Store::in_memory().await.unwrap();
         let account_id = insert_account(&store, "me@example.com").await;

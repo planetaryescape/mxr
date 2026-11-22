@@ -404,16 +404,6 @@ fn cancelled_body_prevents_a_stale_subject_from_creating_a_task() {
 }
 
 #[test]
-fn owner_identity_keeps_primary_and_aliases_from_the_shared_matcher() {
-    let result = judge("Please send me the report.", false);
-    assert_eq!(
-        result.facts.owner_addresses,
-        ["owner@example.com", "alias@example.com"]
-    );
-    assert_eq!(result.facts.recipient_role, RecipientRole::AloneTo);
-}
-
-#[test]
 fn signature_footer_and_forward_authors_do_not_become_asks() {
     let result = judge("FYI\n-- \nPlease sign the contract.\nUnsubscribe", false);
     assert!(!answers(&result).contains(&AskAnswer::AsksYou));

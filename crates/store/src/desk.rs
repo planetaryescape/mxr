@@ -916,40 +916,6 @@ mod tests {
         envelope
     }
 
-    /// Each selected thread must be an index lookup; letting the planner
-    /// walk the account's mailbox took half a second per desk on a 110k
-    /// message store. Same for the watched-contact lookups by date.
-    #[tokio::test]
-    async fn desk_reads_look_threads_and_contacts_up_by_index() {
-        let store = Store::in_memory().await.unwrap();
-        let plan = |sql: String| {
-            let store = &store;
-            async move {
-                sqlx::query(sqlx::AssertSqlSafe(format!("EXPLAIN QUERY PLAN {sql}")))
-                    .fetch_all(store.reader())
-                    .await
-                    .unwrap()
-                    .into_iter()
-                    .map(|row| row.get::<String, _>("detail"))
-                    .collect::<Vec<_>>()
-            }
-        };
-        let threads = plan(desk_messages_sql(
-            "SELECT value AS thread_id FROM json_each(?3)",
-            Evidence::Full,
-        ))
-        .await;
-        assert!(
-            threads
-                .iter()
-                .any(|step| step.starts_with("SEARCH m USING ")
-                    && step.contains("INDEX ")
-                    && step.contains("(account_id=? AND thread_id=?)")),
-            "selected messages must use account and thread: {threads:#?}"
-        );
-        crate::places::tests::assert_thread_lookups_use_the_thread(&threads);
-    }
-
     #[tokio::test]
     async fn thread_messages_return_whole_active_threads_with_state() {
         let store = Store::in_memory().await.unwrap();

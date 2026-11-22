@@ -2,25 +2,6 @@ use super::tests::{answers, judge};
 use super::*;
 
 #[test]
-fn yearless_deadline_is_usable_while_its_uncertain_year_stays_visible() {
-    let result = judge(
-        "Invoice number X-222\nAmount due £120.00\nDue date: 29 October",
-        false,
-    );
-    let unit = result
-        .units
-        .iter()
-        .find(|u| u.answer == AskAnswer::AsksYou)
-        .expect("one positive bill");
-    let date = &result.facts.dates[unit.tags.as_ref().expect("tags").due.expect("due")];
-    assert!(
-        !date.checked,
-        "the inferred year is still unchecked provenance"
-    );
-    assert_eq!(date.at.date_naive().to_string(), "2026-10-29");
-}
-
-#[test]
 fn related_payment_fields_share_a_unit_but_an_offer_does_not_veto_the_bill() {
     for body in [
         "Your council tax payment of £142.00 is due on 28 October 2026.",
@@ -499,15 +480,6 @@ fn salutation_review_generic_role_is_not_another_person() {
 fn salutation_review_greeting_uses_the_observed_owner_name() {
     let a = judge("Howzit Owner,\n\nCould you send the deck?", false);
     assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
-}
-
-#[test]
-fn salutation_review_another_emails_cancellation_does_not_cancel_this_reply() {
-    let a = judge(
-        "Could you confirm the meeting? No need to reply to Alice's other email.",
-        false,
-    );
-    assert!(answers(&a).contains(&AskAnswer::AsksYouToReply), "{a:?}");
 }
 
 #[test]

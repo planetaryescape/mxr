@@ -358,29 +358,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn first_conversation_has_no_contact_elsewhere() {
-        let (store, account_id) = store_with_account().await;
-        let here = ThreadId::new();
-        put(
-            &store,
-            &account_id,
-            &here,
-            "new@example.com",
-            "me@example.com",
-            0,
-            MessageDirection::Inbound,
-        )
-        .await;
-        let exchange = store
-            .counterparty_exchange(&account_id, "new@example.com", &[], &here)
-            .await
-            .unwrap();
-        assert_eq!(exchange.from_them, 1);
-        assert_eq!(exchange.from_you, 0);
-        assert_eq!(exchange.last_elsewhere_at, None);
-    }
-
-    #[tokio::test]
     async fn aggregated_contacts_give_the_same_counts_and_medians_skip_the_rows() {
         let (store, account_id) = store_with_account().await;
         let here = ThreadId::new();

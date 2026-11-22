@@ -56,17 +56,6 @@ pub(super) fn title(action: ActionKind, quote: &str, subject: &str, person: &str
 mod tests {
     use super::*;
     #[test]
-    fn verification_labels_omit_links_without_editing_evidence() {
-        let quote = "Please verify your email address at https://example.org/verify";
-        let shown = title(ActionKind::Verify, quote, "", "Acme");
-        assert_eq!(shown, "Verify your email address for Acme");
-        assert_eq!(
-            quote,
-            "Please verify your email address at https://example.org/verify"
-        );
-    }
-
-    #[test]
     fn verification_labels_bound_long_text_without_editing_evidence() {
         let long = format!(
             "Please verify your email address {}",

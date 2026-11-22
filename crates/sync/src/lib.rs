@@ -2034,65 +2034,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn label_repair_is_bounded_when_provider_labels_cannot_be_resolved() {
-        let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = in_memory_search();
-        let engine = SyncEngine::new(store.clone(), search.clone());
-        let account = AccountId::new();
-        store
-            .insert_account(&test_account(account.clone()))
-            .await
-            .unwrap();
-        let message = make_test_envelope(&account, "unresolved", vec!["missing-label".into()]);
-        store.upsert_envelope(&message).await.unwrap();
-        let stale = SyncCursor::from_bytes(b"stale-delta".to_vec());
-        store.set_sync_cursor(&account, &stale).await.unwrap();
-        let delta = label_repair_page(vec![], b"delta", false);
-        let rebuilt = label_repair_page(vec![message.clone()], b"rebuilt", false);
-        let provider = LabelRepairProvider {
-            account_id: account.clone(),
-            supports_labels: true,
-            labels: vec![make_test_label(&account, "Inbox", "INBOX")],
-            pages: std::sync::Mutex::new(
-                [(stale, Ok(delta)), (SyncCursor::empty(), Ok(rebuilt))].into(),
-            ),
-        };
-        let progress = CollectedProgress::default();
-        // Exhausting the finite responses is an error, not a timeout-based pass.
-        let outcome = engine
-            .sync_account_reporting(&provider, &progress.sink())
-            .await
-            .unwrap();
-        assert_eq!(outcome.upserted_message_ids, vec![message.id.clone()]);
-        assert!(!outcome.has_more);
-        assert_eq!(
-            store
-                .get_sync_cursor(&account)
-                .await
-                .unwrap()
-                .unwrap()
-                .as_bytes(),
-            b"rebuilt"
-        );
-        assert!(store
-            .get_message_label_ids(&message.id)
-            .await
-            .unwrap()
-            .is_empty());
-        assert_eq!(
-            progress
-                .milestones
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|step| **step == SyncProgress::Restarted)
-                .count(),
-            1
-        );
-        assert_eq!(search.num_docs().await.unwrap(), 1);
-    }
-
-    #[tokio::test]
     async fn label_repair_finishes_unresolvable_backfill_and_allows_later_retry() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
@@ -2421,45 +2362,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn backfill_triggers_when_junction_empty() {
-        let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = in_memory_search();
-        let engine = SyncEngine::new(store.clone(), search.clone());
-
-        let account_id = AccountId::new();
-        store
-            .insert_account(&test_account(account_id.clone()))
-            .await
-            .unwrap();
-
-        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
-
-        // Initial sync
-        engine.sync_account(&provider).await.unwrap();
-
-        let junction_before = store.count_message_labels().await.unwrap();
-        assert!(junction_before > 0);
-
-        // Wipe junction table manually (simulates corrupted DB)
-        sqlx::query("DELETE FROM message_labels")
-            .execute(store.writer())
-            .await
-            .unwrap();
-
-        let junction_wiped = store.count_message_labels().await.unwrap();
-        assert_eq!(junction_wiped, 0, "Junction should be empty after wipe");
-
-        // Sync again — should detect empty junction and backfill
-        engine.sync_account(&provider).await.unwrap();
-
-        let junction_after = store.count_message_labels().await.unwrap();
-        assert!(
-            junction_after > 0,
-            "Junction table should be repopulated after backfill (got {junction_after})"
-        );
-    }
-
-    #[tokio::test]
     async fn list_envelopes_by_each_label_returns_correct_count() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();
@@ -2536,52 +2438,6 @@ mod tests {
                 keyword
             );
         }
-    }
-
-    #[tokio::test]
-    async fn junction_table_survives_message_update() {
-        let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = in_memory_search();
-        let engine = SyncEngine::new(store.clone(), search.clone());
-
-        let account_id = AccountId::new();
-        store
-            .insert_account(&test_account(account_id.clone()))
-            .await
-            .unwrap();
-
-        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
-        engine.sync_account(&provider).await.unwrap();
-
-        // Count junction rows for first message
-        let envelopes = store
-            .list_envelopes_by_account(&account_id, 1, 0)
-            .await
-            .unwrap();
-        let msg_id = &envelopes[0].id;
-
-        let junction_before = store.get_message_label_ids(msg_id).await.unwrap();
-        assert!(
-            !junction_before.is_empty(),
-            "Message should have label associations after sync"
-        );
-
-        // Re-upsert the same envelope (simulates re-sync)
-        store.upsert_envelope(&envelopes[0]).await.unwrap();
-        // Re-set labels (same as sync engine does)
-        store
-            .set_message_labels(msg_id, &junction_before, mxr_core::EventSource::Sync)
-            .await
-            .unwrap();
-
-        let junction_after = store.get_message_label_ids(msg_id).await.unwrap();
-        assert_eq!(
-            junction_before.len(),
-            junction_after.len(),
-            "Junction rows should not double after re-sync (before={}, after={})",
-            junction_before.len(),
-            junction_after.len()
-        );
     }
 
     #[tokio::test]

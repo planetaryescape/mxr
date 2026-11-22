@@ -5367,7 +5367,6 @@ dependencies = [
  "mail-query",
  "mxr-core",
  "mxr-reader",
- "proptest",
  "serde",
  "tantivy",
  "tempfile",

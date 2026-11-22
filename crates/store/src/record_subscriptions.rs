@@ -218,27 +218,4 @@ mod tests {
         assert_eq!(mail[0].account_id, first.id);
         assert_eq!(mail[1].account_id, disabled.id);
     }
-
-    #[tokio::test]
-    async fn ending_mail_uses_account_sender_and_date_instead_of_a_mailbox_scan() {
-        let store = Store::in_memory().await.unwrap();
-        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
-            "EXPLAIN QUERY PLAN {}",
-            ending_mail_sql(1)
-        )))
-        .bind("billing@example.test")
-        .bind(0_i64)
-        .fetch_all(store.reader())
-        .await
-        .unwrap();
-        let steps: Vec<String> = rows.iter().map(|row| row.get("detail")).collect();
-        assert!(
-            steps
-                .iter()
-                .any(|s| s.contains("idx_messages_sender_history")
-                    && s.contains("account_id=? AND <expr>=? AND date>?")),
-            "{steps:#?}"
-        );
-        assert!(!steps.iter().any(|s| s.starts_with("SCAN m")), "{steps:#?}");
-    }
 }

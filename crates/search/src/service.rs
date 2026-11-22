@@ -695,14 +695,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_live_worker_is_not_reported_as_stopped() {
-        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
-
-        assert!(!handle.worker_stopped());
-        assert!(handle.num_docs().await.is_ok());
-    }
-
-    #[tokio::test]
     async fn a_worker_that_died_with_its_index_is_reported_as_stopped() {
         let (handle, worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
 

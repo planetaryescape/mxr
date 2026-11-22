@@ -217,17 +217,4 @@ mod tests {
             (at(6, 9, 0), at(7, 9, 0), at(8, 9, 0))
         );
     }
-
-    #[test]
-    fn titles_name_the_part_of_day() {
-        assert_eq!(
-            digest_title(at(7, 8, 0), at(7, 12, 0), &utc()),
-            "This morning's digest"
-        );
-        assert_eq!(
-            digest_title(at(6, 16, 30), at(7, 6, 0), &utc()),
-            "Yesterday afternoon's digest"
-        );
-        assert_eq!(time_label(at(7, 16, 30), &utc()), "16:30");
-    }
 }

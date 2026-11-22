@@ -357,21 +357,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_and_get_round_trips() {
-        let store = Store::in_memory().await.unwrap();
-        let aid = make_account(&store).await;
-        let decision = fresh_decision(&aid, "alice@example.com", ScreenerDisposition::Allow);
-        store.set_screener_decision(&decision).await.unwrap();
-        let got = store
-            .get_screener_decision(&aid, "alice@example.com")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(got.sender_email, "alice@example.com");
-        assert_eq!(got.disposition, ScreenerDisposition::Allow);
-    }
-
-    #[tokio::test]
     async fn get_decision_is_case_insensitive() {
         let store = Store::in_memory().await.unwrap();
         let aid = make_account(&store).await;

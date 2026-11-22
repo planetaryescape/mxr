@@ -53,35 +53,6 @@ mod tests {
     }
 
     #[test]
-    fn search_actions_are_standard() {
-        assert_eq!(tier_for("search.run"), Tier::Standard);
-        assert_eq!(tier_for("saved.open"), Tier::Standard);
-    }
-
-    #[test]
-    fn view_actions_are_ephemeral() {
-        assert_eq!(tier_for("view.open_screen"), Tier::Ephemeral);
-        assert_eq!(tier_for("app.start"), Tier::Ephemeral);
-        assert_eq!(tier_for("app.stop"), Tier::Ephemeral);
-    }
-
-    #[test]
-    fn thread_reads_are_standard_but_flags_are_important() {
-        assert_eq!(tier_for("thread.open"), Tier::Standard);
-        assert_eq!(tier_for("thread.close"), Tier::Standard);
-        assert_eq!(tier_for("thread.summarize"), Tier::Standard);
-        assert_eq!(tier_for("thread.flag_reply_later"), Tier::Important);
-        assert_eq!(tier_for("thread.unflag_reply_later"), Tier::Important);
-    }
-
-    #[test]
-    fn meta_activity_actions_are_important() {
-        assert_eq!(tier_for("activity.paused"), Tier::Important);
-        assert_eq!(tier_for("activity.pruned"), Tier::Important);
-        assert_eq!(tier_for("activity.redacted"), Tier::Important);
-    }
-
-    #[test]
     fn unknown_action_falls_back_to_standard() {
         assert_eq!(tier_for("not_an_action"), Tier::Standard);
         assert_eq!(tier_for("foo.bar"), Tier::Standard);

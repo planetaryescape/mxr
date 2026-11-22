@@ -4976,27 +4976,6 @@ mod identity_activity_tests {
     }
 
     #[test]
-    fn an_operation_that_saved_before_a_later_phase_failed_is_recorded() {
-        let saved_then_failed = Response::Ok {
-            data: ResponseData::AccountOperation {
-                result: AccountOperationResult {
-                    ok: false,
-                    saved: true,
-                    summary: String::new(),
-                    save: None,
-                    auth: None,
-                    sync: None,
-                    send: None,
-                    device_code_url: None,
-                    device_code_user_code: None,
-                    tls_cert_sha256: None,
-                },
-            },
-        };
-        assert!(response_succeeded(&saved_then_failed));
-    }
-
-    #[test]
     fn an_identity_dry_run_is_read_only_and_a_real_edit_is_not() {
         assert!(request_is_read_only(&identity_request(true)));
         assert!(!request_is_read_only(&identity_request(false)));

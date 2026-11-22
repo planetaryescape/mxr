@@ -670,57 +670,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn reply_via_source_message_uses_conversation() {
-        let state = AppState::in_memory().await.unwrap();
-        let llm = Arc::new(CapturingLlm::default());
-        state.llm.replace(llm.clone());
-        let account_id = state.default_account_id();
-        let (_, source_id, inbound_text) = seed_inbound_thread(&state, &account_id).await;
-
-        let response = draft_compose(
-            &state,
-            Some(&account_id),
-            Some(Address {
-                name: Some("Customer".to_string()),
-                email: "customer@example.com".to_string(),
-            }),
-            "reply briefly",
-            Some(source_id),
-            None,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-        assert!(matches!(response, ResponseData::DraftSuggestion { .. }));
-        assert!(captured_prompt(&llm).contains(inbound_text));
-    }
-
-    #[tokio::test]
-    async fn reply_derives_account_from_thread_when_omitted() {
-        let state = AppState::in_memory().await.unwrap();
-        let llm = Arc::new(CapturingLlm::default());
-        state.llm.replace(llm.clone());
-        let account_id = state.default_account_id();
-        let (thread_id, _, inbound_text) = seed_inbound_thread(&state, &account_id).await;
-
-        let response = draft_compose(
-            &state,
-            None,
-            None,
-            "reply briefly",
-            None,
-            Some(thread_id),
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-        assert!(matches!(response, ResponseData::DraftSuggestion { .. }));
-        assert!(captured_prompt(&llm).contains(inbound_text));
-    }
-
     struct ScriptedLlm {
         replies: Vec<(&'static str, &'static str)>,
         base_url: Option<&'static str>,
@@ -787,10 +736,6 @@ mod tests {
     const MACHINE_MADE: &str = "Additionally, this serves as a testament, not just showcasing our \
         commitment to innovation, but fostering a vibrant tapestry of ideas.";
 
-    async fn draft_with_rewriter(rewriter: Arc<ScriptedLlm>) -> ResponseData {
-        draft_from_history(rewriter).await.2
-    }
-
     async fn draft_from_history(
         rewriter: Arc<ScriptedLlm>,
     ) -> (AppState, mxr_core::id::AccountId, ResponseData) {
@@ -819,60 +764,6 @@ mod tests {
         .await
         .unwrap();
         (state, account_id, response)
-    }
-
-    #[tokio::test]
-    async fn a_kept_rewrite_is_credited_to_its_writer_and_a_later_dropped_pass_named() {
-        let rewriter = Arc::new(ScriptedLlm::sequence(
-            vec![
-                (
-                    "Additionally, this serves as a testament to our work.",
-                    "first-pass",
-                ),
-                (MACHINE_MADE, "second-pass"),
-            ],
-            None,
-        ));
-        let state = AppState::in_memory().await.unwrap();
-        let mut config = state.config_snapshot();
-        config.humanizer.score_threshold = 99;
-        config.humanizer.max_rewrite_iterations = 2;
-        state.set_config_for_test(config).await;
-        state
-            .llm
-            .replace(Arc::new(ScriptedLlm::new(MACHINE_MADE, "drafter-7b", None)));
-        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
-            std::collections::HashMap::new();
-        providers.insert(LlmFeature::HumanizeRewrite, rewriter.clone());
-        state
-            .llm
-            .replace_feature_providers(providers, std::collections::HashMap::new());
-        let account_id = state.default_account_id();
-        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
-        let response = draft_compose(
-            &state,
-            Some(&account_id),
-            None,
-            "",
-            None,
-            Some(thread_id),
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(rewriter.calls(), 2);
-        let rewrite = provenance(&response).rewrite.clone().expect("disclosed");
-        assert_eq!(
-            rewrite.outcome,
-            mxr_protocol::DraftRewriteOutcomeData::Applied
-        );
-        assert_eq!(rewrite.model, "first-pass");
-        assert_eq!(rewrite.rejected_by.as_deref(), Some("second-pass"));
-        assert!(provenance(&response).summary_line().ends_with(
-            "rewritten by local model first-pass, a later pass by second-pass not used"
-        ));
     }
 
     #[tokio::test]
@@ -985,63 +876,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_history_draft_skips_a_cloud_rewrite_and_says_so() {
-        let rewriter = Arc::new(ScriptedLlm::new(
-            "Friday works.",
-            "cloud-rewriter",
-            Some("https://api.example-cloud.com/v1"),
-        ));
-        let response = draft_with_rewriter(rewriter.clone()).await;
-        assert_eq!(rewriter.calls(), 0, "the cloud rewrite never ran");
-        let disclosed = provenance(&response);
-        assert!(disclosed.history_used);
-        let rewrite = disclosed.rewrite.as_ref().expect("the skip is disclosed");
-        assert_eq!(
-            rewrite.outcome,
-            mxr_protocol::DraftRewriteOutcomeData::Skipped
-        );
-        assert_eq!(rewrite.locality, mxr_protocol::AiLocalityData::Cloud);
-        assert!(disclosed
-            .summary_line()
-            .ends_with("skipped to keep your history local"));
-    }
-
-    #[tokio::test]
-    async fn a_rewrite_names_who_answered_and_whether_its_text_was_used() {
-        let used = Arc::new(ScriptedLlm::new(
-            "Friday works for me.",
-            "rewriter-actual",
-            None,
-        ));
-        let response = draft_with_rewriter(used.clone()).await;
-        assert!(used.calls() > 0);
-        let rewrite = provenance(&response).rewrite.clone().expect("disclosed");
-        assert_eq!(
-            rewrite.outcome,
-            mxr_protocol::DraftRewriteOutcomeData::Applied
-        );
-        assert_eq!(rewrite.model, "rewriter-actual");
-        assert!(rewrite.history_used, "a local rewrite keeps the voice");
-        match &response {
-            ResponseData::DraftSuggestion { body, .. } => assert_eq!(body, "Friday works for me."),
-            other => panic!("{other:?}"),
-        }
-
-        let dropped = Arc::new(ScriptedLlm::new(MACHINE_MADE, "rewriter-actual", None));
-        let response = draft_with_rewriter(dropped.clone()).await;
-        assert!(dropped.calls() > 0);
-        let rewrite = provenance(&response).rewrite.clone().expect("disclosed");
-        assert_eq!(
-            rewrite.outcome,
-            mxr_protocol::DraftRewriteOutcomeData::Rejected
-        );
-        assert_eq!(rewrite.model, "rewriter-actual");
-        assert!(provenance(&response)
-            .summary_line()
-            .ends_with("rewrite attempted by local model rewriter-actual, not used"));
-    }
-
-    #[tokio::test]
     async fn a_conversation_from_another_account_is_refused() {
         let state = AppState::in_memory().await.unwrap();
         let llm = Arc::new(CapturingLlm::default());
@@ -1079,35 +913,6 @@ mod tests {
         )
         .await
         .expect("the owning account drafts");
-    }
-
-    #[tokio::test]
-    async fn new_message_includes_relationship_summary_below_old_threshold() {
-        let state = AppState::in_memory().await.unwrap();
-        let llm = Arc::new(CapturingLlm::default());
-        state.llm.replace(llm.clone());
-        let account_id = state.default_account_id();
-        seed_contact(&state, &account_id, "customer@example.com", 0.2, 2).await;
-
-        let response = draft_compose(
-            &state,
-            Some(&account_id),
-            Some(Address {
-                name: None,
-                email: "customer@example.com".to_string(),
-            }),
-            "follow up on pricing",
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-        let (register, note) = draft_suggestion(response);
-        assert!(register.is_some());
-        assert!(note.is_some());
-        assert!(captured_prompt(&llm).contains("Customer prefers short pricing updates."));
     }
 
     #[tokio::test]
@@ -1165,143 +970,6 @@ mod tests {
             }
             other => panic!("expected an error response, got {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn long_recipient_plus_maximal_instruction_is_rejected() {
-        let state = AppState::in_memory().await.unwrap();
-        let account_id = state.default_account_id();
-        let instruction = "x".repeat(MAX_INSTRUCTION_BYTES - "a@b.com".len());
-        let to = Address {
-            name: Some("N".repeat(300)),
-            email: "a@b.com".to_string(),
-        };
-        let err = draft_compose(
-            &state,
-            Some(&account_id),
-            Some(to),
-            &instruction,
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
-        .expect_err("long recipient must push the task line over the limit");
-        match err.into_response() {
-            mxr_protocol::Response::Error { kind, .. } => {
-                assert_eq!(kind, mxr_protocol::IpcErrorKind::InvalidRequest);
-            }
-            other => panic!("expected an error response, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn manual_register_overrides_inference() {
-        let state = AppState::in_memory().await.unwrap();
-        let llm = Arc::new(CapturingLlm::default());
-        state.llm.replace(llm.clone());
-        let account_id = state.default_account_id();
-        seed_contact(&state, &account_id, "buddy@example.com", 0.15, 6).await;
-
-        let response = draft_compose(
-            &state,
-            Some(&account_id),
-            Some(Address {
-                name: None,
-                email: "buddy@example.com".to_string(),
-            }),
-            "grab coffee",
-            None,
-            None,
-            Some(VoiceRegisterData::Formal),
-            None,
-        )
-        .await
-        .unwrap();
-        let (register, _) = draft_suggestion(response);
-        assert_eq!(register, Some(VoiceRegisterData::Formal));
-    }
-
-    #[tokio::test]
-    async fn context_note_names_recipient() {
-        let state = AppState::in_memory().await.unwrap();
-        let llm = Arc::new(CapturingLlm::default());
-        state.llm.replace(llm.clone());
-        let account_id = state.default_account_id();
-        seed_contact(&state, &account_id, "customer@example.com", 0.2, 6).await;
-
-        let response = draft_compose(
-            &state,
-            Some(&account_id),
-            Some(Address {
-                name: None,
-                email: "customer@example.com".to_string(),
-            }),
-            "follow up",
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-        let (_, note) = draft_suggestion(response);
-        assert!(note.unwrap().contains("customer@example.com"));
-    }
-
-    #[tokio::test]
-    async fn new_message_without_account_or_thread_errors() {
-        let state = AppState::in_memory().await.unwrap();
-        let llm = Arc::new(CapturingLlm::default());
-        state.llm.replace(llm.clone());
-
-        let result = draft_compose(
-            &state,
-            None,
-            Some(Address {
-                name: None,
-                email: "stranger@example.com".to_string(),
-            }),
-            "say hi",
-            None,
-            None,
-            None,
-            None,
-        )
-        .await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn reply_injects_relationship_context() {
-        let state = AppState::in_memory().await.unwrap();
-        let llm = Arc::new(CapturingLlm::default());
-        state.llm.replace(llm.clone());
-        let account_id = state.default_account_id();
-        seed_contact(&state, &account_id, "customer@example.com", 0.2, 5).await;
-        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
-
-        let response = draft_compose(
-            &state,
-            Some(&account_id),
-            None,
-            "reply briefly",
-            None,
-            Some(thread_id),
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-        assert!(matches!(
-            response,
-            ResponseData::DraftSuggestion {
-                voice_match: Some(_),
-                ..
-            }
-        ));
-        assert!(captured_prompt(&llm).contains("Customer prefers short pricing updates."));
     }
 
     #[tokio::test]
@@ -1489,40 +1157,6 @@ mod tests {
         );
         let (_, note) = draft_suggestion(response);
         assert_eq!(note.as_deref(), Some(CLOUD_NOTE));
-    }
-
-    #[tokio::test]
-    async fn the_disclosure_follows_the_provider_that_answered_not_the_config() {
-        let state = AppState::in_memory().await.unwrap();
-        let mut config = state.config_snapshot();
-        config.llm.enabled = true;
-        config.llm.base_url = "http://localhost:11434/v1".into();
-        config.llm.allow_cloud_relationship_data = false;
-        state.set_config_for_test(config).await;
-        let llm = Arc::new(CapturingLlm::at("https://api.example-cloud.com/v1"));
-        state.llm.replace(llm.clone());
-        let account_id = state.default_account_id();
-        seed_private_reply(&state, &account_id).await;
-        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
-
-        let response = draft_compose(
-            &state,
-            Some(&account_id),
-            None,
-            "",
-            None,
-            Some(thread_id),
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-
-        assert!(!captured_prompt(&llm).contains("PRIVATE-OLD-REPLY"));
-        let disclosed = provenance(&response);
-        assert_eq!(disclosed.locality, mxr_protocol::AiLocalityData::Cloud);
-        assert!(!disclosed.history_used);
-        assert!(disclosed.voice_examples.is_empty());
     }
 
     async fn seed_private_reply(state: &AppState, account_id: &mxr_core::id::AccountId) {

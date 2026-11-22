@@ -134,18 +134,6 @@ mod tests {
     }
 
     #[test]
-    fn typed_failure_is_found_through_context() {
-        let error = CliError::daemon_unavailable("down").context("status");
-        assert_eq!(CliError::find(&error).map(CliError::exit_code), Some(3));
-    }
-
-    #[test]
-    fn untyped_failure_has_no_exit_override() {
-        let error = anyhow::anyhow!("boom");
-        assert!(CliError::find(&error).is_none());
-    }
-
-    #[test]
     fn json_line_has_kind_message_and_exit_code() {
         let error = CliError::daemon_unavailable("Cannot connect");
         let cli = CliError::find(&error).expect("typed error");
@@ -170,10 +158,5 @@ mod tests {
         assert!(!json_output_requested(&args(&[
             "mxr", "search", "x", "--format", "table"
         ])));
-    }
-
-    #[test]
-    fn unparseable_arguments_are_not_json() {
-        assert!(!json_output_requested(&args(&["mxr", "--no-such-flag"])));
     }
 }

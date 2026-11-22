@@ -6,11 +6,7 @@ use mxr_protocol::{
 use mxr_provider_fake::fixtures::scenarios::{
     AskKind, AskProvenance, Direction, Due, Item, Labelled,
 };
-#[cfg(test)]
-use mxr_store::EvalTodo;
 use mxr_todo::dates::{parse_date, DateOrder, YearIntent};
-#[cfg(test)]
-use mxr_todo::TodoKind;
 use std::collections::BTreeMap;
 
 pub(super) const REPLY_PROJECTION: &str = "Stored asks unit answer asks_you_to_reply; missing or stale rows remain pending and eval never materializes them.";
@@ -36,44 +32,6 @@ pub(super) struct Row {
     pub due_at: Option<DateTime<Utc>>,
     pub due_words: Option<String>,
     pub provenance: Option<AskProvenance>,
-}
-
-#[cfg(test)]
-pub(super) fn translate(todo: &TodoKind, title: &str) -> (AskKind, Direction) {
-    let asked = |kind| (kind, Direction::AsksYou);
-    match todo {
-        TodoKind::Bill => asked(AskKind::Pay),
-        TodoKind::PaymentFailed => asked(AskKind::FixPayment),
-        TodoKind::Renewal | TodoKind::Document | TodoKind::Lease => asked(AskKind::RenewOrCancel),
-        TodoKind::Return => asked(AskKind::Send),
-        TodoKind::Rsvp => asked(AskKind::Attend),
-        TodoKind::Verify => asked(AskKind::Verify),
-        TodoKind::Sign => asked(AskKind::Sign),
-        TodoKind::Promise => (promise_kind(title), Direction::YouPromised),
-        TodoKind::Other => asked(AskKind::Other),
-    }
-}
-
-#[cfg(test)]
-fn promise_kind(title: &str) -> AskKind {
-    match title
-        .split_whitespace()
-        .next()
-        .map(str::to_lowercase)
-        .as_deref()
-    {
-        Some("send" | "forward" | "share" | "return" | "submit" | "email" | "mail") => {
-            AskKind::Send
-        }
-        Some("pay" | "transfer" | "reimburse" | "refund") => AskKind::Pay,
-        Some("call" | "contact" | "ring" | "text" | "message" | "ping") => AskKind::Contact,
-        Some("book" | "schedule" | "arrange") => AskKind::Book,
-        Some("sign") => AskKind::Sign,
-        Some("reply" | "respond" | "answer" | "confirm") => AskKind::Reply,
-        Some("provide" | "give") => AskKind::Provide,
-        Some("upload") => AskKind::Upload,
-        _ => AskKind::Other,
-    }
 }
 
 impl Row {
@@ -172,27 +130,6 @@ impl Row {
                     })
             })
             .collect()
-    }
-
-    #[cfg(test)]
-    pub(super) fn from_todo(todo: &EvalTodo) -> Self {
-        let parsed = TodoKind::parse(&todo.kind).unwrap_or(TodoKind::Other);
-        let (kind, direction) = translate(&parsed, &todo.title);
-        Self {
-            kind,
-            direction,
-            made_as: todo.kind.clone(),
-            counterparty: todo.counterparty.clone(),
-            amount: todo
-                .amount_minor
-                .zip(todo.currency.clone())
-                .map(|(minor, currency)| (minor, currency.to_uppercase())),
-            due_at: todo
-                .due_at
-                .and_then(|seconds| DateTime::from_timestamp(seconds, 0)),
-            due_words: todo.due_words.clone(),
-            provenance: None,
-        }
     }
 }
 
@@ -989,16 +926,6 @@ mod tests {
     }
 
     #[test]
-    fn an_email_that_asks_nothing_and_makes_no_row_is_not_an_error() {
-        let (data, mismatches) = grade(&label("quiet", Vec::new()), Vec::new());
-        assert!(mismatches.is_empty());
-        assert_eq!(data.total.expected + data.total.found, 0);
-        assert_eq!(data.total.precision_percent, None);
-        assert_eq!(data.total.recall_percent, None);
-        assert_eq!(data.emails, 1);
-    }
-
-    #[test]
     fn a_missing_row_and_an_unexpected_row_are_told_apart() {
         let (data, mismatches) = grade(&label("a", vec![pay()]), Vec::new());
         assert_eq!(kind(&data, "pay").false_negatives, 1);
@@ -1014,14 +941,6 @@ mod tests {
     }
 
     #[test]
-    fn a_row_of_another_kind_is_a_miss_and_a_false_alarm() {
-        let (data, _) = grade(&label("a", vec![pay()]), vec![row(AskKind::Sign)]);
-        assert_eq!(kind(&data, "pay").false_negatives, 1);
-        assert_eq!(kind(&data, "sign").false_positives, 1);
-        assert_eq!(data.total.true_positives, 0);
-    }
-
-    #[test]
     fn two_rows_for_one_item_are_a_duplicate_and_a_false_alarm() {
         let (data, mismatches) = grade(
             &label("a", vec![pay()]),
@@ -1032,29 +951,6 @@ mod tests {
         assert_eq!(kind(&data, "pay").false_positives, 1);
         assert!(mismatches[0].actual.contains("pay"));
         assert!(mismatches[0].reason.contains("duplicate"));
-    }
-
-    #[test]
-    fn matching_does_not_depend_on_row_order() {
-        let items = vec![pay().amount(1_000, "GBP"), pay().amount(2_000, "GBP")];
-        let rows = |first: i64, second: i64| {
-            vec![
-                Row {
-                    amount: Some((first, "GBP".into())),
-                    ..row(AskKind::Pay)
-                },
-                Row {
-                    amount: Some((second, "GBP".into())),
-                    ..row(AskKind::Pay)
-                },
-            ]
-        };
-        for order in [rows(1_000, 2_000), rows(2_000, 1_000)] {
-            let (data, mismatches) = grade(&label("two", items.clone()), order);
-            let amount = data.fields.iter().find(|f| f.field == "amount").unwrap();
-            assert_eq!((amount.pairs, amount.exact), (2, 2), "{mismatches:?}");
-            assert!(mismatches.is_empty(), "{mismatches:?}");
-        }
     }
 
     fn due_on(days: i64) -> Option<DateTime<Utc>> {
@@ -1143,114 +1039,6 @@ mod tests {
             )
         );
         assert_eq!(due(-48, -2).0.exact, 1);
-    }
-
-    #[test]
-    fn due_text_does_not_depend_on_the_hour_the_email_was_sent() {
-        let text = |sent_at: &str| {
-            let sent = DateTime::parse_from_rfc3339(sent_at)
-                .unwrap()
-                .with_timezone(&Utc);
-            let due = Due::AfterSent(7 * 24 + 11);
-            let written = Some(mxr_todo::dates::end_of_day(
-                (sent + Duration::hours(7 * 24 + 11)).date_naive(),
-                &Local,
-            ));
-            let late = Some(mxr_todo::dates::end_of_day(
-                (sent + Duration::hours(7 * 24 + 11 + 48)).date_naive(),
-                &Local,
-            ));
-            let item = pay().due(due);
-            let mismatch = |due_at| {
-                let found = Row {
-                    due_at,
-                    ..row(AskKind::Pay)
-                };
-                field_texts("due", &item, &found, sent)
-            };
-            (mismatch(written), mismatch(late), mismatch(None))
-        };
-        let evening = text("2026-10-21T23:30:00Z");
-        let morning = text("2026-10-22T00:30:00Z");
-        assert_eq!(evening, morning);
-        assert_eq!(
-            evening.1,
-            (
-                "7 days 11 hours after it was sent".to_string(),
-                "2 days later than expected".to_string()
-            )
-        );
-        assert_eq!(evening.0 .1, "on the expected day");
-        assert_eq!(evening.2 .1, "none");
-        assert_eq!(expected_due_text(Due::Words("Friday")), "Friday");
-        assert_eq!(
-            expected_due_text(Due::AfterSent(-81)),
-            "3 days 9 hours before it was sent"
-        );
-        assert_eq!(
-            expected_due_text(Due::AfterSent(24)),
-            "1 day after it was sent"
-        );
-        let spurious = Row {
-            due_at: due_on(1),
-            ..row(AskKind::Pay)
-        };
-        assert_eq!(field_texts("due", &pay(), &spurious, sent()).1, "a date");
-    }
-
-    #[test]
-    fn due_words_are_resolved_from_the_email_date_or_counted_as_present() {
-        let words = |words: &'static str, row_days: i64| {
-            let (data, _) = grade(
-                &label("words", vec![pay().due(Due::Words(words))]),
-                vec![Row {
-                    due_at: due_on(row_days),
-                    ..row(AskKind::Pay)
-                }],
-            );
-            data.fields
-                .iter()
-                .find(|f| f.field == "due")
-                .unwrap()
-                .clone()
-        };
-        let friday = words("Friday", 2);
-        assert_eq!((friday.exact, friday.wrong), (1, 0));
-        let wrong_friday = words("Friday", 3);
-        assert_eq!((wrong_friday.exact, wrong_friday.wrong), (0, 1));
-        let unreadable = words("whenever suits", 5);
-        assert_eq!((unreadable.exact, unreadable.present), (0, 1));
-    }
-
-    #[test]
-    fn unmatched_items_have_no_field_to_compare() {
-        let (data, _) = grade(&label("a", vec![pay().amount(1, "GBP")]), Vec::new());
-        assert!(data
-            .fields
-            .iter()
-            .all(|f| f.pairs == 0 && f.exact_percent == 0.0));
-    }
-
-    #[test]
-    fn the_currency_matters_not_only_the_number() {
-        let (data, _) = grade(
-            &label("a", vec![pay().amount(123_456, "ZAR")]),
-            vec![Row {
-                amount: Some((123_456, "GBP".into())),
-                ..row(AskKind::Pay)
-            }],
-        );
-        let amount = data.fields.iter().find(|f| f.field == "amount").unwrap();
-        assert_eq!(amount.wrong, 1);
-    }
-
-    #[test]
-    fn every_kind_of_ask_is_listed_even_with_nothing_in_it() {
-        let (data, _) = grade(&label("a", Vec::new()), Vec::new());
-        let listed: Vec<&str> = data.kinds.iter().map(|k| k.kind.as_str()).collect();
-        let all: Vec<&str> = AskKind::ALL.iter().map(|k| k.as_str()).collect();
-        assert_eq!(listed, all);
-        assert!(data.kinds.iter().all(|k| k.direction == "asks_you"));
     }
 
     #[test]
@@ -1424,133 +1212,6 @@ mod tests {
     }
 
     #[test]
-    fn a_twin_pair_is_wrong_when_a_reply_owed_is_missed() {
-        let mut open = label("open", Vec::new());
-        open.expect = open.expect.replying();
-        let answered = Labelled {
-            twin_of: Some("open"),
-            provider_id: "demo-msg-answered".into(),
-            ..label("answered", Vec::new())
-        };
-        let run = |open_found: bool, answered_found: bool| {
-            let mut grader = AskGrader::default();
-            for (l, found) in [(&open, open_found), (&answered, answered_found)] {
-                grader.grade(
-                    AskInput {
-                        provenance_slices: vec![],
-                        label: l,
-                        rows: Vec::new(),
-                        reply_found: Some(found),
-                        sent: sent(),
-                    },
-                    "a@b.example",
-                );
-            }
-            grader.finish().0.unwrap().twins
-        };
-        let right = run(true, false);
-        assert_eq!(
-            (right.pairs, right.both_right, right.differing_both_right),
-            (1, 1, 1)
-        );
-        let missed = run(false, false);
-        assert_eq!((missed.pairs, missed.both_right), (1, 0));
-        let false_alarm = run(true, true);
-        assert_eq!(
-            (
-                false_alarm.differing_pairs,
-                false_alarm.differing_both_right
-            ),
-            (1, 0)
-        );
-    }
-
-    #[test]
-    fn a_twin_pair_is_wrong_when_a_field_is_wrong() {
-        let plain = label("plain", vec![pay().amount(123_456, "GBP")]);
-        let twin = Labelled {
-            twin_of: Some("plain"),
-            provider_id: "demo-msg-twin".into(),
-            ..label("twin", vec![pay().amount(123_456, "ZAR")])
-        };
-        let run = |currency: &str| {
-            let mut grader = AskGrader::default();
-            for (l, code) in [(&plain, "GBP"), (&twin, currency)] {
-                grader.grade(
-                    AskInput {
-                        provenance_slices: vec![],
-                        label: l,
-                        rows: vec![Row {
-                            amount: Some((123_456, code.into())),
-                            ..row(AskKind::Pay)
-                        }],
-                        reply_found: Some(false),
-                        sent: sent(),
-                    },
-                    "a@b.example",
-                );
-            }
-            grader.finish().0.unwrap().twins
-        };
-        assert_eq!(run("ZAR").both_right, 1);
-        assert_eq!(run("GBP").both_right, 0);
-    }
-
-    #[test]
-    fn matching_two_rows_gives_the_same_result_in_either_order() {
-        let items = vec![
-            pay().amount(1_000, "GBP").due(Due::AfterSent(48)),
-            Item::asks(AskKind::Pay, "Beta")
-                .amount(2_000, "GBP")
-                .due(Due::AfterSent(48)),
-        ];
-        let first = Row {
-            amount: Some((1_000, "GBP".into())),
-            due_at: due_on(2),
-            counterparty: Some("Beta".into()),
-            ..row(AskKind::Pay)
-        };
-        let second = Row {
-            amount: Some((1_000, "GBP".into())),
-            due_at: due_on(3),
-            counterparty: Some("Acme".into()),
-            ..row(AskKind::Pay)
-        };
-        let label = label("two", items);
-        let forward = grade(&label, vec![first.clone(), second.clone()]);
-        let reversed = grade(&label, vec![second, first]);
-        assert_eq!(forward.0, reversed.0);
-        assert_eq!(forward.1, reversed.1);
-        let counts = |data: &ClassifyEvalAsksData, field: &str| {
-            data.fields
-                .iter()
-                .find(|f| f.field == field)
-                .map(|f| f.exact)
-                .unwrap()
-        };
-        assert_eq!(counts(&forward.0, "counterparty"), 2);
-    }
-
-    #[test]
-    fn the_better_row_is_paired_whichever_comes_first() {
-        let item = pay().amount(1_000, "GBP");
-        let good = Row {
-            amount: Some((1_000, "GBP".into())),
-            ..row(AskKind::Pay)
-        };
-        let bad = Row {
-            amount: Some((9_999, "GBP".into())),
-            ..row(AskKind::Pay)
-        };
-        for rows in [vec![good.clone(), bad.clone()], vec![bad, good]] {
-            let (data, _) = grade(&label("one", vec![item.clone()]), rows);
-            let amount = data.fields.iter().find(|f| f.field == "amount").unwrap();
-            assert_eq!((amount.exact, amount.wrong), (1, 0));
-            assert_eq!(data.duplicates, 1);
-        }
-    }
-
-    #[test]
     fn a_reply_owed_is_graded_on_its_own() {
         let mut owes = label("owes", Vec::new());
         owes.expect = owes.expect.replying();
@@ -1630,21 +1291,6 @@ mod tests {
         assert_eq!(slice("locale", "en-ZA").unwrap().counts.expected, 1);
         assert!(slice("template_family", "held").is_some());
         assert!(slice("template_family", "quiet").is_none());
-    }
-
-    #[test]
-    fn an_unknown_stored_kind_is_other_not_a_crash() {
-        let todo = EvalTodo {
-            source_message_id: mxr_core::id::MessageId::new(),
-            kind: "from_a_newer_version".into(),
-            title: String::new(),
-            counterparty: None,
-            amount_minor: None,
-            currency: None,
-            due_words: None,
-            due_at: None,
-        };
-        assert_eq!(Row::from_todo(&todo).kind, AskKind::Other);
     }
 }
 

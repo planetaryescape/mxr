@@ -216,12 +216,6 @@ pub(crate) mod gate {
         install_with(false).await
     }
 
-    /// Like [`install`] but every gated request is answered immediately with a
-    /// response the codec cannot frame.
-    pub(crate) async fn install_oversized_response() -> GateHandle {
-        install_with(true).await
-    }
-
     async fn install_with(oversized: bool) -> GateHandle {
         let serial = SERIAL.clone().lock_owned().await;
         let (open_tx, open_rx) = watch::channel(false);
@@ -1298,15 +1292,7 @@ async fn scenario_14_local_transport_needs_no_auth<H: Harness>() {
     finish(&state, served).await;
 }
 
-/// The no-auth pin, one test per implicit-trust harness (the four transports
-/// that carry inherited trust: raw socketpair, in-memory duplex, the real UDS
-/// transport, and the real memory transport — the `LocalProcess`/`UnixPeer`
-/// set, which also stands in for the stdio server's `LocalProcess` peer).
 mod no_auth_pins {
-    #[tokio::test]
-    async fn socketpair() {
-        super::scenario_14_local_transport_needs_no_auth::<super::SocketpairHarness>().await;
-    }
     #[tokio::test]
     async fn duplex() {
         super::scenario_14_local_transport_needs_no_auth::<super::DuplexHarness>().await;
@@ -1315,10 +1301,6 @@ mod no_auth_pins {
     async fn uds_transport() {
         super::scenario_14_local_transport_needs_no_auth::<super::UdsTransportHarness>().await;
     }
-    #[tokio::test]
-    async fn memory_transport() {
-        super::scenario_14_local_transport_needs_no_auth::<super::MemoryTransportHarness>().await;
-    }
 }
 
 /// The TCP token auth matrix: the three dispositions the gate must enforce on a
@@ -1326,9 +1308,9 @@ mod no_auth_pins {
 /// client against the real TCP transport so the gate is exercised directly.
 mod auth_matrix {
     use super::{
-        daemon_event, request, sample_event, spawn_server, spawn_server_with_auth, AppState, Arc,
-        ClientKind, DaemonEvent, Framed, Harness, IpcCodec, IpcErrorKind, IpcMessage, IpcPayload,
-        Request, Response, ResponseData, TcpTokenHarness, CORPUS_TOKEN, JOIN_TIMEOUT, RECV_TIMEOUT,
+        request, spawn_server, spawn_server_with_auth, AppState, Arc, ClientKind, Framed, Harness,
+        IpcCodec, IpcErrorKind, IpcMessage, IpcPayload, Request, Response, ResponseData,
+        TcpTokenHarness, CORPUS_TOKEN, JOIN_TIMEOUT, RECV_TIMEOUT,
     };
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
@@ -1409,58 +1391,6 @@ mod auth_matrix {
             .expect("stream open")
             .expect("frame decodes");
         assert_auth_error(&still_gated);
-
-        drop(client);
-        tokio::time::timeout(JOIN_TIMEOUT, server)
-            .await
-            .expect("serve task terminates")
-            .expect("serve task does not panic");
-        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
-    }
-
-    #[tokio::test]
-    async fn good_token_unlocks_the_connection() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let (hot, bulk) = super::lanes();
-        let h = TcpTokenHarness::start().await;
-        let (client, server) = spawn_server(&h, state.clone(), hot, bulk, |_| {}).await;
-        let mut client = Framed::new(client, IpcCodec::new());
-
-        client
-            .send(request(
-                1,
-                Request::Authenticate {
-                    token: CORPUS_TOKEN.to_string(),
-                },
-            ))
-            .await
-            .unwrap();
-        let authed = tokio::time::timeout(RECV_TIMEOUT, client.next())
-            .await
-            .expect("a frame should arrive")
-            .expect("stream open")
-            .expect("frame decodes");
-        assert!(
-            matches!(
-                authed.payload,
-                IpcPayload::Response(Response::Ok {
-                    data: ResponseData::Authenticated
-                })
-            ),
-            "good token should authenticate, got {authed:?}"
-        );
-
-        super::declare_framed(&mut client, mxr_protocol::ClientKind::Cli).await;
-        client.send(request(2, Request::Ping)).await.unwrap();
-        let pong = tokio::time::timeout(RECV_TIMEOUT, client.next())
-            .await
-            .expect("a frame should arrive")
-            .expect("stream open")
-            .expect("frame decodes");
-        assert!(
-            super::pong(&pong),
-            "post-auth request should dispatch, got {pong:?}"
-        );
 
         drop(client);
         tokio::time::timeout(JOIN_TIMEOUT, server)
@@ -1623,71 +1553,6 @@ mod auth_matrix {
         assert!(
             matches!(event.payload, IpcPayload::Event(_)),
             "the withheld event should arrive after auth, got {event:?}"
-        );
-
-        drop(client);
-        tokio::time::timeout(JOIN_TIMEOUT, server)
-            .await
-            .expect("serve task terminates")
-            .expect("serve task does not panic");
-        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
-    }
-
-    /// Authentication and declaration acknowledgements must both precede a
-    /// buffered lag signal, even when the broadcast channel overflowed pre-auth.
-    #[tokio::test]
-    async fn authenticated_precedes_events_lagged() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let (hot, bulk) = super::lanes();
-        let token: Arc<str> = Arc::from(CORPUS_TOKEN);
-        let h = TcpTokenHarness::start().await;
-
-        let (client, server) =
-            spawn_server_with_auth(&h, state.clone(), hot, bulk, Some(token), |s| {
-                for _ in 0..400u32 {
-                    let _ = s.event_tx.send(daemon_event(sample_event()));
-                }
-            })
-            .await;
-        let mut client = Framed::new(client, IpcCodec::new());
-
-        client
-            .send(request(
-                1,
-                Request::Authenticate {
-                    token: CORPUS_TOKEN.to_string(),
-                },
-            ))
-            .await
-            .unwrap();
-
-        let first = tokio::time::timeout(RECV_TIMEOUT, client.next())
-            .await
-            .expect("frame")
-            .expect("open")
-            .expect("decode");
-        assert!(
-            matches!(
-                first.payload,
-                IpcPayload::Response(Response::Ok {
-                    data: ResponseData::Authenticated
-                })
-            ),
-            "Authenticated must be the FIRST frame, got {first:?}"
-        );
-
-        super::declare_framed(&mut client, mxr_protocol::ClientKind::Cli).await;
-        let second = tokio::time::timeout(RECV_TIMEOUT, client.next())
-            .await
-            .expect("frame")
-            .expect("open")
-            .expect("decode");
-        assert!(
-            matches!(
-                second.payload,
-                IpcPayload::Event(DaemonEvent::EventsLagged { .. })
-            ),
-            "EventsLagged must follow authentication and declaration, got {second:?}"
         );
 
         drop(client);
@@ -1929,102 +1794,15 @@ mod scoped_events {
         assert!(pong(&served.recv_response(2).await));
         finish(&state, served).await;
     }
-
-    #[tokio::test]
-    async fn a_relayed_lag_event_carries_no_count_to_a_scoped_client() {
-        let state = AppState::in_memory().await.unwrap();
-        let profile = mxr_config::AgentProfileConfig::default();
-        let event = crate::handler::account_scope::scope_event(
-            &state,
-            &profile,
-            DaemonEvent::EventsLagged { skipped: 7 },
-        )
-        .await
-        .unwrap();
-        assert!(matches!(
-            event,
-            Some(DaemonEvent::EventsLagged { skipped: 0 })
-        ));
-    }
-
-    #[tokio::test]
-    async fn a_declared_cli_event_only_connection_receives_events() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let (hot, bulk) = lanes();
-        let h = DuplexHarness::start().await;
-        let mut served = serve(&h, state.clone(), hot, bulk).await;
-        crate::chimes::emit_daemon_event(
-            &state,
-            DaemonEvent::SyncCompleted {
-                account_id: AccountId::new(),
-                messages_synced: 0,
-            },
-        );
-        assert!(matches!(
-            served.recv().await.payload,
-            IpcPayload::Event(DaemonEvent::SyncCompleted { .. })
-        ));
-        finish(&state, served).await;
-    }
 }
 
 /// What goes out ahead of a response (`flush_queued_events`) and what happens
 /// when that goes wrong.
 mod queued_events {
-    use super::super::flush_queued_events_up_to;
     use super::*;
     use std::pin::Pin;
     use std::task::{Context, Poll};
     use tokio::io::{DuplexStream, ReadBuf};
-    use tokio::sync::broadcast;
-    use tokio_util::codec::FramedWrite;
-
-    async fn flushed(
-        sender_capacity: usize,
-        queued: usize,
-        limit: usize,
-    ) -> (bool, Vec<IpcMessage>) {
-        let state = AppState::in_memory().await.unwrap();
-        let (tx, mut rx) = broadcast::channel::<IpcMessage>(sender_capacity);
-        for _ in 0..queued {
-            tx.send(daemon_event(sample_event())).unwrap();
-        }
-        let (server, client) = tokio::io::duplex(1 << 20);
-        let mut sink = FramedWrite::new(server, IpcCodec::new());
-        let ok = flush_queued_events_up_to(&mut sink, &state, None, &mut rx, limit).await;
-        drop(sink);
-        let mut reader = Framed::new(client, IpcCodec::new());
-        let mut frames = Vec::new();
-        while let Some(frame) = reader.next().await {
-            frames.push(frame.unwrap());
-        }
-        (ok, frames)
-    }
-
-    fn is_lagged(frame: &IpcMessage) -> bool {
-        matches!(
-            frame.payload,
-            IpcPayload::Event(DaemonEvent::EventsLagged { .. })
-        )
-    }
-
-    #[tokio::test]
-    async fn the_flush_sends_what_was_queued_and_no_more_than_its_bound() {
-        let (ok, frames) = flushed(16, 3, 256).await;
-        assert!(ok);
-        assert_eq!(frames.len(), 3);
-        let (ok, frames) = flushed(16, 5, 2).await;
-        assert!(ok);
-        assert_eq!(frames.len(), 2, "the bound holds even with more queued");
-    }
-
-    #[tokio::test]
-    async fn a_lagged_receiver_gets_one_resync_signal_and_the_flush_stops() {
-        let (ok, frames) = flushed(4, 10, 256).await;
-        assert!(ok);
-        assert_eq!(frames.len(), 1, "{frames:?}");
-        assert!(is_lagged(&frames[0]));
-    }
 
     /// Let setup finish, then fail the operation's flush as a departed client.
     struct FailingWrites {

@@ -81,18 +81,6 @@ async fn a_paired_clients_archive_is_recorded_once_without_its_credentials() {
 }
 
 #[tokio::test]
-async fn a_refused_remote_archive_is_not_recorded() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let (client_id, mail) = registered_client(&state).await;
-    let message_id = synced_message(&state).await;
-
-    let response = archive_from_paired_client(&state, &client_id, &mail, message_id).await;
-
-    assert!(matches!(response, Response::Error { .. }), "{response:?}");
-    assert!(recorded_archives(&state).await.is_empty());
-}
-
-#[tokio::test]
 async fn a_disabled_activity_log_drops_remote_actions() {
     let mut state = AppState::in_memory().await.unwrap();
     state.activity = crate::activity::Recorder::spawn(

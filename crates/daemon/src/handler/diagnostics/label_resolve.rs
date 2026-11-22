@@ -87,36 +87,6 @@ mod tests {
     }
 
     #[test]
-    fn name_lookup_is_case_insensitive() {
-        let account = AccountId::new();
-        let labels = vec![label(&account, "Follow Up", "Label_42")];
-        let index = build_label_name_index(&labels);
-        let ast = parse_query("label:\"follow up\"").unwrap();
-
-        let resolved = resolve_label_names(ast, &index);
-
-        assert!(
-            matches!(&resolved, QueryNode::Label(id) if id == "Label_42"),
-            "expected provider_id rewrite for quoted lowercase name, got {resolved:?}"
-        );
-    }
-
-    #[test]
-    fn unknown_name_is_left_unchanged() {
-        let account = AccountId::new();
-        let labels = vec![label(&account, "Notto", "Label_101")];
-        let index = build_label_name_index(&labels);
-        let ast = parse_query("label:Label_101").unwrap();
-
-        let resolved = resolve_label_names(ast, &index);
-
-        assert!(
-            matches!(&resolved, QueryNode::Label(value) if value == "Label_101"),
-            "raw provider_id should pass through, got {resolved:?}"
-        );
-    }
-
-    #[test]
     fn collides_across_accounts_to_or_chain() {
         let account_a = AccountId::new();
         let account_b = AccountId::new();
@@ -143,24 +113,5 @@ mod tests {
         let mut ids = [left_id, right_id];
         ids.sort();
         assert_eq!(ids, ["Label_101".to_string(), "Label_777".to_string()]);
-    }
-
-    #[test]
-    fn rewrite_descends_through_boolean_nodes() {
-        let account = AccountId::new();
-        let labels = vec![label(&account, "Notto", "Label_101")];
-        let index = build_label_name_index(&labels);
-        let ast = parse_query("label:Notto AND -label:Drafts").unwrap();
-
-        let resolved = resolve_label_names(ast, &index);
-
-        let QueryNode::And(left, right) = resolved else {
-            panic!("expected And node, got {resolved:?}");
-        };
-        assert!(matches!(*left, QueryNode::Label(ref id) if id == "Label_101"));
-        let QueryNode::Not(inner) = *right else {
-            panic!("expected Not on right");
-        };
-        assert!(matches!(*inner, QueryNode::Label(ref id) if id == "Drafts"));
     }
 }

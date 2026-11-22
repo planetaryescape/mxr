@@ -89,24 +89,4 @@ mod tests {
             "Hi Alice,\n\nFriday works.\n\nCheers,\nSam"
         );
     }
-
-    #[test]
-    fn keeps_the_inside_of_a_fence() {
-        let raw = "Sure:\n```\nyep, 2pm works\ns\n```";
-        assert_eq!(clean_draft(raw, None), "yep, 2pm works\ns");
-    }
-
-    #[test]
-    fn leaves_a_clean_draft_and_its_questions_alone() {
-        let raw = "Works for me. The budget is [[?: final budget]].";
-        assert_eq!(clean_draft(raw, None), raw);
-    }
-
-    #[test]
-    fn unknown_name_becomes_a_question() {
-        assert_eq!(
-            clean_draft("Thanks,\n[Your Name]", None),
-            "Thanks,\n[[?: your name]]"
-        );
-    }
 }

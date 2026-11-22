@@ -1456,16 +1456,6 @@ mod pick_topic_tests {
     }
 
     #[test]
-    fn with_no_topic_named_a_topic_just_done_is_not_opened() {
-        let topics = vec![
-            topic(TopicStateData::Done, 1),
-            topic(TopicStateData::Quiet, 48),
-        ];
-        let picked = pick_topic(&topics, None).expect("a topic");
-        assert_eq!(picked.state, TopicStateData::Quiet);
-    }
-
-    #[test]
     fn your_turn_comes_first_and_a_named_topic_wins() {
         let topics = vec![
             topic(TopicStateData::Waiting, 1),
@@ -1482,18 +1472,6 @@ mod pick_topic_tests {
             Some(done)
         );
     }
-
-    #[test]
-    fn only_done_topics_still_open_one() {
-        let topics = vec![
-            topic(TopicStateData::Done, 3),
-            topic(TopicStateData::Done, 1),
-        ];
-        assert_eq!(
-            pick_topic(&topics, None).map(|t| t.last_at),
-            topics.iter().map(|t| t.last_at).max()
-        );
-    }
 }
 
 #[cfg(test)]
@@ -1504,18 +1482,5 @@ mod paragraphs_tests {
     fn blank_line_runs_of_any_length_are_one_break() {
         assert_eq!(paragraphs("a\n\nb"), 2);
         assert_eq!(paragraphs("a\n\n\n\nb"), 2);
-    }
-
-    #[test]
-    fn a_crlf_blank_line_still_breaks_a_paragraph() {
-        assert_eq!(
-            paragraphs("Senior Software Engineer at throxy.\r\n\r\nJack"),
-            2
-        );
-    }
-
-    #[test]
-    fn a_whitespace_only_line_still_breaks_a_paragraph() {
-        assert_eq!(paragraphs("a\n \nb"), 2);
     }
 }

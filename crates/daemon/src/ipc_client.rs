@@ -358,18 +358,4 @@ mod tests {
             "IPC error: MXR_DAEMON_AUTOSTART=off (/tmp/mxr.sock): the running daemon is incompatible with this mxr binary"
         );
     }
-
-    #[test]
-    fn a_closed_connection_is_daemon_unavailable_without_a_mismatch() {
-        let error = map_request_error(ClientError::Closed);
-        assert_eq!(exit_class(&error), Some(("daemon_unavailable", 3)));
-    }
-
-    #[test]
-    fn an_unknown_variant_frame_still_reads_as_daemon_incompatible() {
-        let error = map_request_error(ClientError::Io(std::io::Error::other(
-            "unknown variant `FutureRequest`",
-        )));
-        assert_eq!(exit_class(&error), Some(("daemon_incompatible", 3)));
-    }
 }

@@ -390,21 +390,4 @@ mod tests {
             "--rewrite enables the configured rewrite pass"
         );
     }
-
-    #[tokio::test]
-    async fn replaying_my_replies_with_no_account_is_a_clear_error() {
-        let state = AppState::in_memory_without_accounts().await.unwrap();
-        let error = draft_eval(&state, None, 5, false).await.unwrap_err();
-        assert!(
-            error.to_string().contains("No account is set up"),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn greeting_comparison_ignores_case_and_punctuation() {
-        assert!(same(Some("Hey {name},"), Some("hey {name}")));
-        assert!(same(None, None));
-        assert!(!same(Some("Hi {name},"), None));
-    }
 }

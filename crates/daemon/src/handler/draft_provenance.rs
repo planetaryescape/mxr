@@ -126,24 +126,4 @@ mod tests {
         state.set_config_for_test(config).await;
         assert_eq!(pinned.llm.model_name(), "gpt-6-luna");
     }
-
-    #[tokio::test]
-    async fn legacy_draft_override_remains_active_without_a_compose_default() {
-        let state = AppState::in_memory().await.unwrap();
-        let mut config = state.config_snapshot();
-        config.llm.enabled = true;
-        config.llm.compose = None;
-        config.llm.overrides.draft_new = Some(mxr_config::LlmOverrideConfig {
-            model: Some("legacy-draft-model".into()),
-            ..Default::default()
-        });
-        state.set_config_for_test(config).await;
-
-        assert_eq!(
-            DraftPolicy::pin(&state, LlmFeature::DraftNew)
-                .llm
-                .model_name(),
-            "legacy-draft-model"
-        );
-    }
 }

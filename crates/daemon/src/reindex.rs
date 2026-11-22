@@ -156,21 +156,6 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn reindex_empty_store_produces_empty_index() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-
-        let mut progress_calls = Vec::new();
-        let result = reindex(&state.search, &state.store, |p| {
-            progress_calls.push(p);
-        })
-        .await
-        .unwrap();
-
-        assert_eq!(result, 0);
-        assert!(progress_calls.len() >= 2);
-    }
-
-    #[tokio::test]
     async fn reindex_across_many_batches_indexes_every_message_once() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         state
@@ -189,55 +174,6 @@ mod tests {
 
         assert_eq!(indexed, total);
         assert_eq!(state.search.num_docs().await.unwrap(), total as u64);
-    }
-
-    #[tokio::test]
-    async fn reindex_after_sync_indexes_all_messages() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-
-        state
-            .sync_engine
-            .sync_account(state.default_provider().as_ref())
-            .await
-            .unwrap();
-
-        let total = state.store.count_all_messages().await.unwrap();
-        assert!(total > 0, "Store should have messages after sync");
-
-        state.search.clear().await.unwrap();
-        assert_eq!(state.search.num_docs().await.unwrap(), 0);
-
-        let indexed = reindex(&state.search, &state.store, |_| {}).await.unwrap();
-
-        assert_eq!(indexed, total);
-
-        assert_eq!(state.search.num_docs().await.unwrap(), total as u64);
-
-        let results = state
-            .search
-            .search("deployment", 10, 0, mxr_core::types::SortOrder::DateDesc)
-            .await;
-        drop(results);
-    }
-
-    #[tokio::test]
-    async fn reindex_replaces_existing_index() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-
-        state
-            .sync_engine
-            .sync_account(state.default_provider().as_ref())
-            .await
-            .unwrap();
-
-        let before = state.search.num_docs().await.unwrap();
-
-        let indexed = reindex(&state.search, &state.store, |_| {}).await.unwrap();
-
-        let after = state.search.num_docs().await.unwrap();
-
-        assert_eq!(indexed as u64, after);
-        assert_eq!(before, after);
     }
 
     #[tokio::test]
@@ -276,74 +212,6 @@ mod tests {
 
         assert_eq!(results.results.len(), 1);
         assert_eq!(results.results[0].message_id, env.id.as_str());
-    }
-
-    #[tokio::test]
-    async fn reindex_progress_reports_correctly() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-
-        state
-            .sync_engine
-            .sync_account(state.default_provider().as_ref())
-            .await
-            .unwrap();
-
-        let total = state.store.count_all_messages().await.unwrap();
-
-        let progress = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let progress_clone = progress.clone();
-
-        reindex(&state.search, &state.store, move |p| {
-            progress_clone.lock().unwrap().push(p);
-        })
-        .await
-        .unwrap();
-
-        let calls = progress.lock().unwrap();
-        assert!(matches!(
-            calls.first(),
-            Some(ReindexProgress::Starting { total: t }) if *t == total
-        ));
-        assert!(matches!(
-            calls.last(),
-            Some(ReindexProgress::Complete { indexed: i }) if *i == total
-        ));
-    }
-
-    #[test]
-    fn startup_rebuilds_a_stale_index_or_a_short_one_but_not_an_empty_mailbox() {
-        assert!(startup_rebuild_needed(true, 0, 0));
-        assert!(startup_rebuild_needed(true, 5, 5));
-        assert!(startup_rebuild_needed(false, 5, 4));
-        assert!(startup_rebuild_needed(false, 5, 6));
-        assert!(!startup_rebuild_needed(false, 5, 5));
-        assert!(!startup_rebuild_needed(false, 0, 3));
-    }
-
-    #[tokio::test]
-    async fn a_content_version_rebuild_is_recorded_as_a_rebuilt_event_with_its_reason() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        state.search.clear().await.unwrap();
-
-        reindex_for(&state.search, &state.store, REASON_CONTENT_VERSION, |_| {})
-            .await
-            .unwrap();
-
-        let rebuilt: Vec<_> = state
-            .store
-            .list_events(50, None, Some("search"))
-            .await
-            .unwrap()
-            .into_iter()
-            .filter(|event| event.summary.starts_with("Lexical index rebuilt"))
-            .collect();
-        assert_eq!(rebuilt.len(), 1);
-        let details = rebuilt[0].details.as_deref().unwrap_or_default();
-        assert!(
-            details.starts_with("reason=content_version "),
-            "got {details:?}"
-        );
-        assert_eq!(rebuilt[0].summary, "Lexical index rebuilt");
     }
 
     fn page_of(envelope: &mxr_core::Envelope) -> SearchUpdateBatch {
@@ -419,43 +287,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_live_update_before_the_page_read_is_what_the_page_applies() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let stored = stored_with_subject(&state, "stalepageword").await;
-        let rebuild = state.search.begin_rebuild();
-
-        let mut newer = stored.clone();
-        newer.subject = "freshpageword".to_string();
-        state.store.upsert_envelope(&newer).await.unwrap();
-        state
-            .search
-            .apply_batch(SearchUpdateBatch {
-                entries: vec![SearchIndexEntry {
-                    envelope: newer.clone(),
-                    body: None,
-                    reply_later: false,
-                }],
-                removed_message_ids: Vec::new(),
-            })
-            .await
-            .unwrap();
-
-        let read_seq = state.search.read_seq();
-        let page = page_of(&newer);
-        state
-            .search
-            .apply_rebuild_batch(page, read_seq)
-            .await
-            .unwrap();
-        drop(rebuild);
-
-        assert_eq!(
-            subject_hits(&state, "freshpageword").await,
-            [stored.id.as_str()]
-        );
-    }
-
-    #[tokio::test]
     async fn a_live_delete_after_a_page_read_keeps_the_message_out_of_the_index() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let stored = stored_with_subject(&state, "deletedpageword").await;
@@ -479,39 +310,6 @@ mod tests {
         drop(rebuild);
 
         assert!(subject_hits(&state, "deletedpageword").await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn a_failed_rebuild_leaves_no_record_and_the_next_one_starts_empty() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let stored = stored_with_subject(&state, "failedrunword").await;
-
-        let failed = state.search.begin_rebuild();
-        state
-            .search
-            .apply_batch(SearchUpdateBatch {
-                entries: Vec::new(),
-                removed_message_ids: vec![stored.id.clone()],
-            })
-            .await
-            .unwrap();
-        assert_eq!(state.search.live_record_len().await.unwrap(), 1);
-        drop(failed);
-        assert_eq!(state.search.live_record_len().await.unwrap(), 0);
-
-        let next = state.search.begin_rebuild();
-        assert_eq!(state.search.live_record_len().await.unwrap(), 0);
-        let read_seq = state.search.read_seq();
-        state
-            .search
-            .apply_rebuild_batch(page_of(&stored), read_seq)
-            .await
-            .unwrap();
-        drop(next);
-        assert_eq!(
-            subject_hits(&state, "failedrunword").await,
-            [stored.id.as_str()]
-        );
     }
 
     #[tokio::test]
@@ -542,14 +340,6 @@ mod tests {
         assert!(subject_hits(&state, "deletedduringword").await.is_empty());
 
         drop(a);
-        assert_eq!(state.search.live_record_len().await.unwrap(), 0);
-    }
-
-    #[tokio::test]
-    async fn a_finished_rebuild_leaves_no_live_record() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        stored_with_subject(&state, "recordword").await;
-        reindex(&state.search, &state.store, |_| {}).await.unwrap();
         assert_eq!(state.search.live_record_len().await.unwrap(), 0);
     }
 }

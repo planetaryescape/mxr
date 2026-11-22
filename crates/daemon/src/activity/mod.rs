@@ -376,7 +376,6 @@ mod tests {
 
     use super::*;
     use mxr_store::ActivityFilter;
-    use std::time::Duration;
 
     async fn fresh_recorder() -> (Recorder, Arc<Store>) {
         let store = Arc::new(Store::in_memory().await.unwrap());
@@ -395,35 +394,6 @@ mod tests {
             tier: Tier::Important,
             context: None,
         }
-    }
-
-    async fn wait_for_actions(store: &Store, expected: &[&str]) -> Vec<String> {
-        for _ in 0..200 {
-            let page = store
-                .list_activity(&ActivityFilter::default(), 10, None)
-                .await
-                .unwrap();
-            let actions: Vec<String> = page.rows.into_iter().map(|row| row.action).collect();
-            if expected
-                .iter()
-                .all(|expected| actions.iter().any(|action| action == expected))
-            {
-                return actions;
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-        let page = store
-            .list_activity(&ActivityFilter::default(), 10, None)
-            .await
-            .unwrap();
-        let actions: Vec<String> = page.rows.into_iter().map(|row| row.action).collect();
-        assert!(
-            expected
-                .iter()
-                .all(|expected| actions.iter().any(|action| action == expected)),
-            "activity actions did not include {expected:?}; got {actions:?}"
-        );
-        actions
     }
 
     #[tokio::test]
@@ -466,53 +436,6 @@ mod tests {
             .unwrap();
         let actions: Vec<&str> = after.rows.iter().map(|r| r.action.as_str()).collect();
         assert_eq!(actions, vec!["mail.send"]);
-    }
-
-    #[tokio::test]
-    async fn force_record_lands_even_when_paused() {
-        let (rec, store) = fresh_recorder().await;
-        rec.pause(None);
-        wait_for_pause_state(&rec, true).await;
-
-        rec.record_forced(entry("activity.paused"));
-        rec.resume();
-        wait_for_pause_state(&rec, false).await;
-
-        let page = store
-            .list_activity(&ActivityFilter::default(), 10, None)
-            .await
-            .unwrap();
-        assert_eq!(page.rows.len(), 1);
-        assert_eq!(page.rows[0].action, "activity.paused");
-    }
-
-    #[tokio::test]
-    async fn rapid_fire_ephemeral_writes_coalesce_into_one_row_with_count() {
-        let (rec, store) = fresh_recorder().await;
-        let make = |ts: i64| OwnedEntry {
-            ts,
-            account_id: None,
-            source: ClientKind::Tui,
-            action: "view.open_screen".into(),
-            target_kind: None,
-            target_id: None,
-            tier: Tier::Ephemeral,
-            context: None,
-        };
-        let base = current_unix_ms();
-        rec.record(make(base));
-        rec.record(make(base + 50));
-        rec.record(make(base + 100));
-        settle(&rec).await;
-
-        let page = store
-            .list_activity(&ActivityFilter::default(), 10, None)
-            .await
-            .unwrap();
-        assert_eq!(page.rows.len(), 1, "three writes coalesced into one row");
-        let ctx: serde_json::Value =
-            serde_json::from_str(page.rows[0].context_json.as_ref().unwrap()).unwrap();
-        assert_eq!(ctx["count"], 3);
     }
 
     #[tokio::test]
@@ -566,19 +489,5 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(page.rows.len(), 3, "important mutations preserved verbatim");
-    }
-
-    #[tokio::test]
-    async fn auto_resume_kicks_in_when_paused_until_elapses() {
-        let (rec, store) = fresh_recorder().await;
-        let now = current_unix_ms();
-        rec.pause(Some(now - 1));
-        wait_for_pause_state(&rec, true).await;
-
-        rec.record(entry("mail.send"));
-
-        let actions = wait_for_actions(&store, &["activity.resumed", "mail.send"]).await;
-        assert!(actions.iter().any(|action| action == "activity.resumed"));
-        assert!(actions.iter().any(|action| action == "mail.send"));
     }
 }

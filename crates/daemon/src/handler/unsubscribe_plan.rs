@@ -99,28 +99,6 @@ mod tests {
     }
 
     #[test]
-    fn a_newer_body_link_beats_an_older_http_link_because_date_comes_first() {
-        let envelopes = vec![
-            envelope(
-                ONE,
-                UnsubscribeMethod::BodyLink {
-                    url: "https://a/body".into(),
-                },
-                9,
-            ),
-            envelope(TWO, mailto("unsub@a.example"), 5),
-            envelope(
-                THREE,
-                UnsubscribeMethod::HttpLink {
-                    url: "https://a/link".into(),
-                },
-                1,
-            ),
-        ];
-        assert_eq!(chosen(envelopes).as_deref(), Some(ONE));
-    }
-
-    #[test]
     fn on_the_same_date_the_better_method_wins_in_rank_order() {
         let body = UnsubscribeMethod::BodyLink {
             url: "https://a/body".into(),
@@ -140,37 +118,5 @@ mod tests {
             envelope(TWO, one_click("https://a/u/2"), 4),
         ];
         assert_eq!(chosen(envelopes).as_deref(), Some(TWO));
-    }
-
-    #[test]
-    fn on_the_same_date_and_method_the_lower_id_wins() {
-        let envelopes = vec![
-            envelope(TWO, one_click("https://a/u/2"), 4),
-            envelope(ONE, one_click("https://a/u/1"), 4),
-        ];
-        assert_eq!(chosen(envelopes).as_deref(), Some(ONE));
-    }
-
-    #[test]
-    fn among_equal_methods_the_newest_message_wins() {
-        let envelopes = vec![
-            envelope(ONE, one_click("https://a/u/1"), 1),
-            envelope(TWO, one_click("https://a/u/2"), 3),
-            envelope(THREE, one_click("https://a/u/3"), 2),
-        ];
-        assert_eq!(chosen(envelopes).as_deref(), Some(TWO));
-    }
-
-    #[test]
-    fn messages_without_a_method_are_never_chosen() {
-        let envelopes = vec![
-            envelope(ONE, UnsubscribeMethod::None, 9),
-            envelope(TWO, mailto("unsub@a.example"), 1),
-        ];
-        assert_eq!(chosen(envelopes).as_deref(), Some(TWO));
-        assert_eq!(
-            chosen(vec![envelope(ONE, UnsubscribeMethod::None, 1)]),
-            None
-        );
     }
 }

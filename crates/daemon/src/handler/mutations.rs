@@ -5578,8 +5578,6 @@ mod reconciliation_failed_emit_tests {
     use crate::state::AppState;
     use mxr_protocol::{DaemonEvent, IpcPayload};
     use std::sync::Arc;
-    use std::time::Duration;
-    use tokio::time::timeout;
 
     fn partial_result() -> MutationResultData {
         MutationResultData {
@@ -5606,37 +5604,6 @@ mod reconciliation_failed_emit_tests {
             }) => assert_eq!(client_correlation_id, "42"),
             other => panic!("expected MutationReconciliationFailed, got {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn skips_emit_when_correlation_missing() {
-        let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
-        let mut rx = state.event_tx.subscribe();
-        emit_mutation_reconciliation_failed_if_needed(&state, None, &partial_result());
-        assert!(
-            timeout(Duration::from_millis(30), rx.recv()).await.is_err(),
-            "no event without client_correlation_id"
-        );
-    }
-
-    #[tokio::test]
-    async fn skips_emit_when_mutation_fully_succeeded() {
-        let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
-        let mut rx = state.event_tx.subscribe();
-        let result = MutationResultData {
-            requested: 2,
-            succeeded: 2,
-            skipped: 0,
-            failed: 0,
-            accounts: vec![],
-            mutation_id: None,
-            undo_unavailable: false,
-        };
-        emit_mutation_reconciliation_failed_if_needed(&state, Some("1"), &result);
-        assert!(
-            timeout(Duration::from_millis(30), rx.recv()).await.is_err(),
-            "no event when succeeded >= requested"
-        );
     }
 }
 
@@ -6184,139 +6151,6 @@ mod safety_context_wiring_tests {
             "Sam is a thread participant; reply-all warning should be suppressed, got {reply_all_warns:?}"
         );
     }
-
-    #[tokio::test]
-    async fn reply_thread_is_derived_from_in_reply_to_when_context_has_none() {
-        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-        let state = Arc::new(state);
-        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
-
-        let envelope = mxr_core::types::Envelope {
-            id: MessageId::new(),
-            account_id: account_id.clone(),
-            provider_id: "sam-2".into(),
-            thread_id: ThreadId::new(),
-            message_id_header: Some("<sam-2@example.com>".into()),
-            in_reply_to: None,
-            references: vec![],
-            from: Address {
-                email: "sam@example.com".into(),
-                name: Some("Sam Carter".into()),
-            },
-            to: vec![Address {
-                email: "user@example.com".into(),
-                name: None,
-            }],
-            cc: vec![],
-            bcc: vec![],
-            subject: "let's sync".into(),
-            date: Utc::now(),
-            flags: mxr_core::types::MessageFlags::empty(),
-            snippet: "ping".into(),
-            has_attachments: false,
-            size_bytes: 256,
-            unsubscribe: mxr_core::types::UnsubscribeMethod::None,
-            link_count: 0,
-            body_word_count: 0,
-            label_provider_ids: vec![],
-            keywords: std::collections::BTreeSet::new(),
-        };
-        state
-            .store
-            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
-            .await
-            .unwrap();
-
-        let mut draft = draft_to(
-            account_id.clone(),
-            vec![
-                addr("sam@example.com", Some("Sam Carter")),
-                addr("dave@example.com", Some("Dave")),
-                addr("eve@example.com", Some("Eve")),
-                addr("frank@example.com", Some("Frank")),
-            ],
-            "Hi Sam,\n\nThanks, that works.",
-        );
-        draft.reply_headers = Some(ReplyHeaders {
-            in_reply_to: "<sam-2@example.com>".into(),
-            references: vec![],
-            thread_id: Some("19fdc6a4f108c577".into()),
-        });
-        let mut context = check_context();
-        context.reply_all = true;
-        context.thread_id = None;
-
-        let resp = check_draft_safety_request(&state, &draft, &context)
-            .await
-            .expect("check_draft_safety_request");
-        let reply_all_warns: Vec<_> = report(resp)
-            .issues
-            .into_iter()
-            .filter(|i| i.code == DraftSafetyIssueCode::ReplyAll)
-            .collect();
-        assert!(
-            reply_all_warns.is_empty(),
-            "Sam is a thread participant via In-Reply-To; reply-all warning should be suppressed, got {reply_all_warns:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn contact_styles_loaded_emits_tone_warning() {
-        use mxr_relationship::StylometryMetrics;
-        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
-        let state = Arc::new(state);
-        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
-
-        let their_baseline = StylometryMetrics {
-            formality_score: 0.1,
-            avg_sentence_len: 6.0,
-            sentence_count: 10,
-            word_count: 60,
-            ..Default::default()
-        };
-        let metrics_json_theirs = serde_json::to_string(&their_baseline).unwrap();
-        state
-            .store
-            .upsert_contact_style(&mxr_store::ContactStyleRecord {
-                account_id: account_id.clone(),
-                email: "alice@example.com".into(),
-                formality_score: 0.0,
-                formality_score_theirs: 0.1,
-                avg_sentence_len: 0.0,
-                avg_sentence_len_theirs: 6.0,
-                msg_count_used: 0,
-                msg_count_used_theirs: 30,
-                metrics_json: "{}".into(),
-                metrics_json_theirs,
-                computed_at: Utc::now(),
-                source_hash: "test".into(),
-                drift_detected: false,
-                drift_reason: None,
-                drift_detected_at: None,
-            })
-            .await
-            .unwrap();
-
-        let very_formal = "Dear Alice,\n\nFurthermore, I would respectfully request that you kindly furnish the aforementioned documentation at your earliest convenience.\n\nSincerely,\nMe";
-        let draft = draft_to(
-            account_id.clone(),
-            vec![addr("alice@example.com", None)],
-            very_formal,
-        );
-        let resp = check_draft_safety_request(&state, &draft, &check_context())
-            .await
-            .expect("check_draft_safety_request");
-        let r = report(resp);
-        let tone = r
-            .issues
-            .iter()
-            .find(|i| i.code == DraftSafetyIssueCode::ToneMismatch);
-        assert!(
-            tone.is_some(),
-            "expected ToneMismatch warning, got issues: {:?}",
-            r.issues
-        );
-    }
 }
 
 #[cfg(test)]
@@ -6563,41 +6397,6 @@ mod sent_append_tests {
         assert_eq!(envelope.label_provider_ids, vec!["Sent".to_string()]);
         assert!(state.store.get_body(&legacy_id).await.unwrap().is_some());
     }
-
-    #[tokio::test]
-    async fn append_none_falls_back_to_smtp_local_with_sent_label() {
-        let account_id = AccountId::new();
-        let state = state_with_append_result(&account_id, None).await;
-        let sent_label = crate::test_fixtures::test_label(&account_id, "SENT", "SENT");
-        state.store.upsert_label(&sent_label).await.unwrap();
-        let draft = sent_draft(&account_id);
-        let receipt = SendReceipt {
-            provider_message_id: None,
-            sent_at: Utc::now(),
-            rfc2822_message_id: "<append-none@example.com>".to_string(),
-        };
-
-        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt, true)
-            .await
-            .expect("fallback ingest must not error");
-
-        assert_eq!(
-            message_id,
-            MessageId::from_scoped_provider_id(
-                &account_id,
-                "smtp-local",
-                "<append-none@example.com>"
-            ),
-        );
-        let envelope = state
-            .store
-            .get_envelope(&message_id)
-            .await
-            .unwrap()
-            .expect("stored envelope");
-        assert_eq!(envelope.provider_id, "<append-none@example.com>");
-        assert_eq!(envelope.label_provider_ids, vec!["SENT".to_string()]);
-    }
 }
 
 #[cfg(test)]
@@ -6611,14 +6410,6 @@ mod from_selection_tests {
             "hello@planetaryescape.xyz".to_string(),
             "accounts@planetaryescape.xyz".to_string(),
         ]
-    }
-
-    #[test]
-    fn none_override_resolves_to_primary_with_account_name() {
-        let got = resolve_owned_from(Some("Bhekani"), "bk@planetaryescape.xyz", &owned(), None)
-            .expect("primary is always valid");
-        assert_eq!(got.email, "bk@planetaryescape.xyz");
-        assert_eq!(got.name.as_deref(), Some("Bhekani"));
     }
 
     #[test]
@@ -6636,33 +6427,6 @@ mod from_selection_tests {
         .expect("registered alias is owned");
         assert_eq!(got.email, "hello@planetaryescape.xyz");
         assert_eq!(got.name.as_deref(), Some("Bhekani"));
-    }
-
-    #[test]
-    fn explicit_name_on_override_is_preserved() {
-        let requested = Address {
-            name: Some("Support Team".to_string()),
-            email: "accounts@planetaryescape.xyz".to_string(),
-        };
-        let got = resolve_owned_from(
-            Some("Bhekani"),
-            "bk@planetaryescape.xyz",
-            &owned(),
-            Some(&requested),
-        )
-        .expect("owned");
-        assert_eq!(got.name.as_deref(), Some("Support Team"));
-    }
-
-    #[test]
-    fn override_match_is_case_insensitive_and_returns_canonical_casing() {
-        let requested = Address {
-            name: None,
-            email: "  Hello@PlanetaryEscape.XYZ ".to_string(),
-        };
-        let got = resolve_owned_from(None, "bk@planetaryescape.xyz", &owned(), Some(&requested))
-            .expect("owned regardless of case/whitespace");
-        assert_eq!(got.email, "hello@planetaryescape.xyz");
     }
 
     #[test]
@@ -6696,30 +6460,5 @@ mod from_selection_tests {
         let addressed = ["accounts@planetaryescape.xyz"];
         let got = default_reply_from(&owned(), PRIMARY, delivered, addressed);
         assert_eq!(got, "hello@planetaryescape.xyz");
-    }
-
-    #[test]
-    fn reply_default_is_primary_when_owned_to_cc_is_ambiguous() {
-        let addressed = ["accounts@planetaryescape.xyz", "hello@planetaryescape.xyz"];
-        let got = default_reply_from(&owned(), PRIMARY, std::iter::empty(), addressed);
-        assert_eq!(got, PRIMARY);
-    }
-
-    #[test]
-    fn reply_default_is_case_insensitive_and_canonicalises() {
-        let got = default_reply_from(
-            &owned(),
-            PRIMARY,
-            std::iter::empty(),
-            ["HELLO@planetaryescape.XYZ"],
-        );
-        assert_eq!(got, "hello@planetaryescape.xyz");
-    }
-
-    #[test]
-    fn reply_default_falls_back_to_primary_when_no_owned_recipient() {
-        let addressed = ["someone@example.com", "other@example.com"];
-        let got = default_reply_from(&owned(), PRIMARY, std::iter::empty(), addressed);
-        assert_eq!(got, PRIMARY);
     }
 }

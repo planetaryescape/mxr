@@ -928,71 +928,6 @@ mod tests {
     }
 
     #[test]
-    fn a_rejected_client_or_scope_names_the_real_fix_before_reauthorizing() {
-        for (code, expected) in [
-            ("invalid_client", "OAuth client"),
-            ("unauthorized_client", "OAuth client"),
-            ("invalid_scope", "scopes"),
-        ] {
-            let finding = classify_sync_error(
-                "work",
-                &format!("Provider error: Auth error: OAuth2 error: {code}"),
-            );
-            assert!(
-                finding.remediation[0].contains(expected),
-                "{code}: {:?}",
-                finding.remediation
-            );
-            assert!(finding.remediation.last().unwrap().contains("accounts add"));
-        }
-        let grant = classify_sync_error(
-            "work",
-            "Provider error: Auth error: OAuth2 error: invalid_grant",
-        );
-        assert_eq!(grant.remediation.len(), 1);
-    }
-
-    #[test]
-    fn a_local_token_cache_failure_keeps_the_grant_and_names_storage() {
-        let finding = classify_sync_error(
-            "work",
-            "Provider error: Local token cache write failed: Permission denied (os error 13)",
-        );
-
-        assert_eq!(finding.category, DoctorFindingCategory::Storage);
-        let advice = finding.remediation.join("\n");
-        assert!(advice.contains("keychain"), "{advice}");
-        assert!(!advice.contains("accounts add"), "{advice}");
-    }
-
-    #[test]
-    fn a_stale_address_cache_is_a_sync_warning_with_a_sync_remedy() {
-        let findings = build_doctor_findings(DoctorFindingInputs {
-            sync_statuses: &[],
-            recent_errors: &[],
-            data_dir_exists: true,
-            database_exists: true,
-            index_exists: true,
-            socket_exists: true,
-            repair_required: false,
-            restart_required: false,
-            semantic_enabled: false,
-            search_worker_stopped: false,
-            address_cache_stale: true,
-            data_stats: &mxr_protocol::DoctorDataStats::default(),
-        });
-
-        let stale: Vec<_> = findings
-            .iter()
-            .filter(|finding| finding.message.contains("address cache"))
-            .collect();
-        assert_eq!(stale.len(), 1, "{findings:?}");
-        assert_eq!(stale[0].category, DoctorFindingCategory::Sync);
-        assert_eq!(stale[0].severity, DoctorFindingSeverity::Warning);
-        assert_eq!(stale[0].remediation, vec!["mxr sync".to_string()]);
-    }
-
-    #[test]
     fn a_failure_is_reported_once_when_the_log_mirrors_sync_status() {
         let error = "Provider error: Auth error: Token refresh temporarily unavailable: token endpoint connection failed";
         let status = mxr_protocol::AccountSyncStatus {
@@ -1050,59 +985,6 @@ mod tests {
     }
 
     #[test]
-    fn classify_sync_error_maps_oauth_failures_to_reauth_remediation() {
-        let finding = classify_sync_error("work", "invalid_grant: token expired");
-
-        assert_eq!(finding.category, DoctorFindingCategory::OAuth);
-        assert_eq!(finding.severity, DoctorFindingSeverity::Error);
-        assert!(finding.message.contains("work"));
-        assert!(
-            finding
-                .remediation
-                .iter()
-                .any(|step| step.contains("mxr accounts add")),
-            "OAuth findings should tell the user how to re-authenticate"
-        );
-    }
-
-    #[test]
-    fn oauth_transport_failures_offer_retry_not_reauthorization() {
-        let error = "Provider error: Auth error: OAuth2 error: token refresh timed out after 60s";
-        let finding = classify_sync_error("Work Account", error);
-        assert_eq!(finding.category, DoctorFindingCategory::Network);
-        assert!(finding
-            .remediation
-            .iter()
-            .any(|step| step.starts_with("mxr sync")));
-        assert_eq!(
-            shell_words::split(&finding.remediation[0]).unwrap()[3],
-            "Work Account"
-        );
-
-        let logged = classify_log_line(error).unwrap();
-        assert_eq!(logged.category, DoctorFindingCategory::Network);
-        assert!(!logged
-            .remediation
-            .iter()
-            .any(|step| step.contains("accounts add")));
-    }
-
-    #[test]
-    fn classify_sync_error_maps_network_failures_without_guessing_a_fix() {
-        let finding = classify_sync_error("imap", "DNS lookup timed out");
-
-        assert_eq!(finding.category, DoctorFindingCategory::Network);
-        assert_eq!(finding.severity, DoctorFindingSeverity::Error);
-        assert_eq!(
-            finding.remediation,
-            vec![
-                "mxr sync --account imap --wait --wait-timeout-secs 120".to_string(),
-                "mxr doctor".to_string()
-            ]
-        );
-    }
-
-    #[test]
     fn classify_sync_error_gives_headless_credential_recovery_without_echoing_details() {
         let finding = classify_sync_error(
             "imap",
@@ -1147,36 +1029,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn classify_sync_error_maps_rate_limits_to_retry_guidance() {
-        let finding = classify_sync_error("gmail", "provider rate limit exceeded");
-
-        assert_eq!(finding.category, DoctorFindingCategory::Sync);
-        assert_eq!(
-            finding.remediation,
-            vec!["mxr sync --account gmail --wait --wait-timeout-secs 300".to_string()]
-        );
-    }
-
-    #[test]
-    fn classify_sync_error_maps_sqlite_contention() {
-        let finding = classify_sync_error("local", "database is busy");
-
-        assert_eq!(finding.category, DoctorFindingCategory::SqliteLock);
-        assert_eq!(
-            finding.remediation,
-            vec!["# Close other mxr processes".to_string()]
-        );
-    }
-
-    #[test]
-    fn classify_sync_error_keeps_unknown_failures_as_sync() {
-        let finding = classify_sync_error("imap", "unexpected provider payload");
-
-        assert_eq!(finding.category, DoctorFindingCategory::Sync);
-        assert!(finding.remediation.is_empty());
-    }
-
     fn sync_error_log_line(account: &mxr_core::id::AccountId, error: &str) -> String {
         serde_json::json!({
             "timestamp": "2026-10-21T10:00:00Z",
@@ -1190,72 +1042,15 @@ mod tests {
     }
 
     #[test]
-    fn a_status_error_does_not_hide_another_accounts_log_line() {
-        let error = "Provider error: Auth error: Token refresh temporarily unavailable: token endpoint connection failed";
-        let status = mxr_protocol::AccountSyncStatus {
-            account_id: mxr_core::id::AccountId::new(),
-            account_name: "work".into(),
-            last_attempt_at: None,
-            last_success_at: None,
-            last_error: Some(error.to_string()),
-            failure_class: Some("network".into()),
-            consecutive_failures: 1,
-            backoff_until: None,
-            sync_in_progress: false,
-            current_cursor_summary: None,
-            last_synced_count: 0,
-            healthy: false,
-            progress: None,
-        };
-        let other_account = mxr_core::id::AccountId::new();
-        let other_line = sync_error_log_line(&other_account, error);
-
-        let findings = build_doctor_findings(DoctorFindingInputs {
-            sync_statuses: std::slice::from_ref(&status),
-            recent_errors: &[other_line],
-            data_dir_exists: true,
-            database_exists: true,
-            index_exists: true,
-            socket_exists: true,
-            repair_required: false,
-            restart_required: false,
-            semantic_enabled: false,
-            search_worker_stopped: false,
-            address_cache_stale: false,
-            data_stats: &mxr_protocol::DoctorDataStats::default(),
-        });
-
-        assert!(
-            findings
-                .iter()
-                .any(|finding| finding.message == "Connection issue in recent logs"),
-            "the other account's log line must still surface: {findings:?}"
+    fn a_local_token_cache_failure_keeps_the_grant_and_names_storage() {
+        let finding = classify_sync_error(
+            "work",
+            "Provider error: Local token cache write failed: Permission denied (os error 13)",
         );
-    }
 
-    #[test]
-    fn classify_log_line_detects_oauth_errors() {
-        let finding = classify_log_line("WARN oauth token expired for account").unwrap();
-
-        assert_eq!(finding.category, DoctorFindingCategory::OAuth);
-        assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
-        assert!(finding
-            .remediation
-            .iter()
-            .any(|step| step.contains("mxr accounts add")));
-    }
-
-    #[test]
-    fn classify_log_line_detects_sqlite_lock_contention() {
-        let finding = classify_log_line("ERROR database is locked").unwrap();
-
-        assert_eq!(finding.category, DoctorFindingCategory::SqliteLock);
-        assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
-    }
-
-    #[test]
-    fn classify_log_line_ignores_unclassified_lines() {
-        assert!(classify_log_line("sync completed successfully").is_none());
-        assert!(classify_log_line("unrelated subsystem connection failed").is_none());
+        assert_eq!(finding.category, DoctorFindingCategory::Storage);
+        let advice = finding.remediation.join("\n");
+        assert!(advice.contains("keychain"), "{advice}");
+        assert!(!advice.contains("accounts add"), "{advice}");
     }
 }

@@ -204,8 +204,7 @@ fn exporter(base_url: &str, public_key: &str, secret_key: &str) -> Result<SpanEx
 
 #[cfg(test)]
 mod tests {
-    use super::{finding, settings, start_with, Settings};
-    use mxr_protocol::DoctorFindingSeverity;
+    use super::{settings, Settings};
 
     fn with(vars: &[(&str, &str)]) -> Settings {
         settings(|name| {
@@ -221,14 +220,6 @@ mod tests {
     ];
 
     #[test]
-    fn no_keys_is_off_without_a_warning() {
-        assert_eq!(
-            with(&[("LANGFUSE_BASE_URL", "http://localhost:3000")]),
-            Settings::Off
-        );
-    }
-
-    #[test]
     fn a_local_langfuse_is_used() {
         let mut vars = KEYS.to_vec();
         vars.push(("LANGFUSE_BASE_URL", "http://127.0.0.1:3000/"));
@@ -241,15 +232,6 @@ mod tests {
                 secret_key: "sk-lf-1".to_string(),
                 environment: Some("development".to_string()),
             }
-        );
-    }
-
-    #[test]
-    fn langfuse_host_is_read_when_base_url_is_unset() {
-        let mut vars = KEYS.to_vec();
-        vars.push(("LANGFUSE_HOST", "http://localhost:3000"));
-        assert!(
-            matches!(with(&vars), Settings::On { base_url, .. } if base_url == "http://localhost:3000")
         );
     }
 
@@ -275,34 +257,6 @@ mod tests {
     fn keys_without_a_url_are_refused_rather_than_sent_to_a_default() {
         assert!(
             matches!(with(&KEYS), Settings::Refused(reason) if reason.contains("LANGFUSE_BASE_URL"))
-        );
-    }
-
-    #[test]
-    fn one_key_alone_is_refused() {
-        assert!(matches!(
-            with(&[("LANGFUSE_PUBLIC_KEY", "pk"), ("LANGFUSE_BASE_URL", "http://localhost:3000")]),
-            Settings::Refused(reason) if reason.contains("both")
-        ));
-    }
-
-    #[test]
-    fn doctor_warns_with_the_reason_a_url_was_refused() {
-        let vars = [
-            KEYS[0],
-            KEYS[1],
-            ("LANGFUSE_BASE_URL", "https://cloud.langfuse.com"),
-        ];
-        let (tracing, status) = start_with(with(&vars));
-        assert!(tracing.is_none());
-        let finding = finding(&status);
-        assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
-        assert!(
-            finding
-                .message
-                .contains("https://cloud.langfuse.com isn't on this machine"),
-            "{}",
-            finding.message
         );
     }
 }

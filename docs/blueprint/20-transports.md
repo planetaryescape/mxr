@@ -227,7 +227,7 @@ Evaluate `tokio-listener` (TCP/UDS/stdio/sd_fds/vsock in one dependency) at the 
 ### Known follow-ups
 
 - **5d — in-process web bridge (deferred).** Q5's daemon-hosted bridge over an in-memory `Connector` (skip the socket round-trip to itself) is a latency-only win with no behavior change. Deferred because it requires rethreading `mxr-web`'s ~50 `socket_path` call sites onto a `Connector`; the landing seam is the two connect points in `crates/web/src/lib.rs` (`ipc_request_with_id`, `bridge_events`). See D054.
-- **Phase-4 UDS `stop_accepting` test flake.** `uds::tests::stop_accepting_refuses_new_connections_but_defers_unlink` passes in isolation but can fail under heavy parallel test load: after `stop_accepting` drops the `UnixListener`, a racing `connect` can momentarily complete into the kernel's not-yet-drained backlog before the socket fully closes, so the expected `ConnectionRefused` does not always arrive on the first attempt. A timing artifact of the test's single-attempt assertion, not a transport-contract bug (the socket *is* closed; the refusal is merely not instantaneous). Follow-up: make the test's post-`stop_accepting` connect assertion tolerant of a brief window (retry-until-refused with a bound, or accept an immediate-EOF connection), mirroring how `run_transport_conformance` already tolerates a post-stop connection that immediately EOFs.
+- **Phase-4 UDS `stop_accepting` test flake (closed 2026-11-22).** The flaky `uds::tests::stop_accepting_refuses_new_connections_but_defers_unlink` was removed in the test cull. `conformance::tests::uds_transport_conforms` covers the same contract: after `stop_accepting`, accept fails without hanging and a late connection reads as EOF (`crates/transport/src/conformance.rs`).
 
 ---
 

@@ -40,12 +40,12 @@ Paths are relative to the repository root.
 ### Owned-address matching folds ASCII case only
 **Chosen**: ASCII-only folding for From validation and reply membership.
 **Rejected**: Unicode folding: one spelling would be dropped and the other would stop validating as a sender.
-**Where**: crates/core/src/lib.rs `owned_addresses_always_include_a_primary_passed_in`
+**Where**: crates/core/src/lib.rs `owned_addresses_match_ignoring_case_and_whitespace_and_keep_primary_first`
 
 ### The owned-address set fails closed: a failed rebuild keeps the old sets and the readiness gate reads false
 **Chosen**: Sync writes Unknown direction when the gate is closed; a pass that began while current keeps answering from its set.
 **Rejected**: Writing Inbound or a guess from a stale set.
-**Where**: crates/core/src/lib.rs `stale_lookup_still_answers_from_the_held_set_for_a_pass_already_running`; crates/core/src/lib.rs `sync_cursor_round_trips_arbitrary_bytes`
+**Where**: crates/core/src/lib.rs `stale_account_address_lookup_reads_as_not_loaded_until_replaced`
 
 ### Natural-time input is rewritten with ASCII-only normalisation so byte offsets stay identical
 **Chosen**: Spans computed on the normalised text index straight into what the user typed.
@@ -70,7 +70,7 @@ Paths are relative to the repository root.
 ### A draft body is HTML or markdown, never both, and a text alternative needs an HTML document
 **Chosen**: A payload carrying both bodies is rejected, even when body_markdown is empty; body_text without body_html is rejected; markdown_source is None for HTML drafts; markdown drafts always emit body_markdown, even empty.
 **Rejected**: Precedence rules (ignore an empty markdown key, fall through to empty markdown, empty-string fallback): each silently drops a body or makes safety checks analyse nothing, which is how the wrong message gets sent. Omitting the key on an empty markdown body would break legacy clients that read it unconditionally.
-**Where**: crates/core/src/types.rs `deserialize<D:`; crates/core/src/types.rs `itself`; crates/core/src/types.rs `legacy_payload_without_html_keys_deserialises_as_markdown`; crates/core/src/types.rs `body_text_alongside_markdown_is_also_rejected`; crates/core/src/types.rs `analysis_text_prefers_the_supplied_alternative`; crates/core/src/types.rs `byte_len_measures_the_authored_body_not_the_alternative`; crates/core/src/types.rs `draft_fixture`; crates/core/src/types.rs `SendIdentity`
+**Where**: crates/core/src/types.rs `deserialize<D:`; crates/core/src/types.rs `itself`; crates/core/src/types.rs `legacy_payload_without_html_keys_deserialises_as_markdown`; crates/core/src/types.rs `carrying_both_bodies_is_rejected_rather_than_resolved_by_precedence`; crates/core/src/types.rs `markdown_draft_carries_body_markdown_at_the_top_level`; crates/core/src/types.rs `draft_fixture`; crates/core/src/types.rs `SendIdentity`
 
 ### SyncCursor has a custom Debug that hides the payload
 **Chosen**: Logs stay bounded; use provider.describe_cursor for a richer view.
@@ -85,7 +85,7 @@ Paths are relative to the repository root.
 ### New wire fields are optional and skipped when empty, so older peers keep decoding
 **Chosen**: Additive fields default when missing and are omitted at their default; an older daemon ignores unknown keys and reads the fallback field it always read.
 **Rejected**: Required fields or always-emitted fields: they would break older clients and daemons across a protocol bump.
-**Where**: crates/protocol/src/lib.rs `variant`; crates/protocol/src/lib.rs `PreLabelRoleRequest`; crates/protocol/src/lib.rs `with`; crates/protocol/src/lib.rs `list_threads_and_list_labels_gain_their_fields_compatibly`; crates/protocol/src/lib.rs `get_desk_defaults_and_desk_response_shape`; crates/protocol/src/lib.rs `account_summary_identity_round_trips`; crates/protocol/src/lib.rs `BeforeRevise`; crates/protocol/src/search_degraded.rs `a_daemon_notice_replaces_the_generic_one_and_older_clients_ignore_it`; crates/protocol/src/types/assistant.rs `an_older_daemon_fails_a_step_rows_request_it_does_not_know`
+**Where**: crates/protocol/src/lib.rs `variant`; crates/protocol/src/lib.rs `PreLabelRoleRequest`; crates/protocol/src/lib.rs `with`; crates/protocol/src/lib.rs `legacy_status_response_defaults_new_fields`; crates/protocol/src/lib.rs `account_scoped_requests_deserialize_legacy_payloads`; crates/protocol/src/lib.rs `BeforeRevise`; crates/protocol/src/search_degraded.rs `a_daemon_notice_replaces_the_generic_one_and_older_clients_ignore_it`; crates/protocol/src/types/assistant.rs `an_older_daemon_fails_a_step_rows_request_it_does_not_know`
 
 ### An unknown account colour slot degrades one account, not the whole accounts list
 **Chosen**: A daemon that knows a slot this build does not yields an unknown colour for that account only.

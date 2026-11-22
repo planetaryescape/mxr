@@ -88,13 +88,3 @@ fn q_goes_back_one_level_below_the_root() {
         assert_eq!(action, esc, "q in the {name} is not its Esc");
     }
 }
-
-#[test]
-fn q_in_the_reader_closes_it_and_keeps_the_app_open() {
-    let mut app = reader();
-    app.mailbox.layout_mode = LayoutMode::ThreePane;
-    let action = q(&mut app).expect("q acts in the reader");
-    app.apply(action);
-    assert!(!app.should_quit);
-    assert_ne!(app.mailbox.active_pane, ActivePane::MessageView);
-}

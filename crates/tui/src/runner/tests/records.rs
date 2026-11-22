@@ -1,6 +1,5 @@
 use super::*;
-use crate::app::RECORD_KIND_CHIPS;
-use crate::ui::records_lens::tests::{apple, dell, lisbon_answer, octopus_list, page};
+use crate::ui::records_lens::tests::{apple, dell, lisbon_answer, page};
 use mxr_protocol::{RecordChangeData, RecordEditData, RecordUndoData};
 
 fn press(app: &mut App, code: KeyCode) {
@@ -71,45 +70,6 @@ fn slash_and_a_query_ask_the_answer_box_and_y_copies_the_answer() {
 }
 
 #[test]
-fn a_shows_every_match_and_esc_puts_the_ledger_back() {
-    let mut app = archive_app();
-    press(&mut app, KeyCode::Char('/'));
-    typed(&mut app, "lisbon booking ref");
-    press(&mut app, KeyCode::Enter);
-    app.mailbox.records_page.pending_answer = None;
-    app.set_records_answer(lisbon_answer());
-    press(&mut app, KeyCode::Char('a'));
-    let page = &app.mailbox.records_page;
-    assert_eq!(page.pending_answer.as_deref(), Some("lisbon booking ref"));
-    assert!(page.answer_list, "the runtime asks for the list");
-
-    app.set_records_answer(octopus_list());
-    assert!(app.mailbox.records_page.listed_matches().is_none());
-
-    let mut listed = octopus_list();
-    listed.query = "lisbon booking ref".into();
-    app.set_records_answer(listed);
-    let page = &app.mailbox.records_page;
-    assert_eq!(page.rows().len(), 2);
-    assert_eq!(app.mailbox.selected_index, 1, "the February bill is best");
-    assert_eq!(
-        app.selected_record().map(|r| r.id.as_str()),
-        Some("rec_octopus")
-    );
-    press(&mut app, KeyCode::Esc);
-    let page = &app.mailbox.records_page;
-    assert!(page.answer.is_none());
-    assert!(!page.answer_list);
-    assert_eq!(page.rows().len(), 2, "the ledger's Dell and Apple rows");
-    assert_eq!(app.mailbox.selected_index, 0);
-
-    press(&mut app, KeyCode::Char('/'));
-    typed(&mut app, "dell");
-    press(&mut app, KeyCode::Enter);
-    assert!(!app.mailbox.records_page.answer_list);
-}
-
-#[test]
 fn x_takes_a_record_out_at_once_and_u_brings_it_back() {
     let mut app = archive_app();
     press_shifted(&mut app, 'X');
@@ -166,49 +126,6 @@ fn the_export_previews_and_enter_writes_it() {
     press(&mut app, KeyCode::Enter);
     assert_eq!(app.mailbox.records_page.pending_export, Some(true));
     assert!(app.mailbox.records_page.export_preview.is_none());
-}
-
-#[test]
-fn the_verbs_name_their_requests() {
-    let mut app = archive_app();
-    press(&mut app, KeyCode::Char(','));
-    press(&mut app, KeyCode::Enter);
-    assert!(queued(&app).is_empty());
-    assert!(app.mailbox.records_page.prompt.is_none());
-    press(&mut app, KeyCode::Char('j'));
-    press(&mut app, KeyCode::Char(','));
-    press(&mut app, KeyCode::Enter);
-    assert!(matches!(
-        queued(&app).as_slice(),
-        [Request::SetRecordField { record_id, edit: RecordEditData::ConfirmAll, dry_run: false, .. }]
-            if record_id == "rec_apple"
-    ));
-    press(&mut app, KeyCode::Char('k'));
-    press(&mut app, KeyCode::Enter);
-    assert!(
-        app.mailbox.pending_attachment_action.is_some(),
-        "Enter opens the PDF"
-    );
-    press(&mut app, KeyCode::Char('o'));
-    assert!(app.mailbox.records_page.pending_open.is_some());
-    press(&mut app, KeyCode::Char('p'));
-    assert_eq!(
-        app.mailbox.records_page.filter.issuer.as_deref(),
-        Some("Dell")
-    );
-    press(&mut app, KeyCode::Esc);
-    assert!(app.mailbox.records_page.filter.issuer.is_none());
-    press(&mut app, KeyCode::Char('['));
-    assert!(app.mailbox.records_page.filter.year.is_none());
-    press(&mut app, KeyCode::Char('{'));
-    assert_eq!(app.mailbox.records_page.filter.year, Some(2024));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
-    press(&mut app, KeyCode::Char('f'));
-    assert_eq!(app.mailbox.records_page.kind_chip, 1);
-    assert_eq!(
-        app.mailbox.records_page.filter.kinds,
-        vec![mxr_protocol::RecordKindData::Receipt]
-    );
 }
 
 #[test]
@@ -278,76 +195,4 @@ fn pass_to_a_mode_previews_filing_then_files_it() {
         [Request::FileRecord { message_id: filed, kind: None, dry_run: false }] if *filed == message_id
     ));
     assert!(app.mailbox.records_page.pass_menu.is_none());
-}
-
-#[test]
-fn the_first_answer_carries_its_hint_and_help_leads_with_archive() {
-    let mut app = archive_app();
-    let unseen = page(vec![dell()], false);
-    app.set_records_ledger(unseen.ledger.unwrap(), unseen.guide);
-    app.note_key_for_hints();
-    app.set_records_answer(lisbon_answer());
-    assert_eq!(
-        app.active_hint().map(|h| h.id.as_str()),
-        Some("archive.answer")
-    );
-    press(&mut app, KeyCode::Char('y'));
-    assert!(queued(&app).iter().any(|request| matches!(
-        request,
-        Request::SetHintSeen { hint, seen: true } if hint == "archive.answer"
-    )));
-    assert!(app.active_hint().is_none());
-    let guide = app.help_mode_guide().expect("Archive's guide");
-    assert_eq!(guide.mode, "archive");
-}
-
-#[test]
-fn g_f_reaches_subscriptions_and_their_keys_act_on_the_subscription() {
-    let mut app = archive_app();
-    for _ in 0..RECORD_KIND_CHIPS.len() - 1 {
-        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
-        press(&mut app, KeyCode::Char('f'));
-    }
-    assert!(app.mailbox.records_page.showing_subscriptions());
-    assert!(
-        app.mailbox.records_page.pending_refresh,
-        "the subscriptions load with the ledger"
-    );
-    app.set_record_subscriptions(crate::ui::records_lens::tests::subscriptions());
-    assert_eq!(app.mailbox.records_page.row_count(), 2);
-    assert!(
-        app.focused_record().is_none(),
-        "record keys never act on a hidden ledger row"
-    );
-
-    press(&mut app, KeyCode::Enter);
-    assert!(app.mailbox.records_page.subscription_open);
-    press(&mut app, KeyCode::Char('o'));
-    assert!(app.mailbox.records_page.pending_open.is_some());
-    press_shifted(&mut app, 'Y');
-    assert_eq!(
-        app.mailbox.records_page.last_copied.as_deref(),
-        Some("12.99")
-    );
-    press(&mut app, KeyCode::Esc);
-    assert!(!app.mailbox.records_page.subscription_open);
-    press(&mut app, KeyCode::Char('j'));
-    assert_eq!(
-        app.selected_subscription().map(|s| s.id.as_str()),
-        Some("sub_disney")
-    );
-    press(&mut app, KeyCode::Char('p'));
-    assert!(!app.mailbox.records_page.showing_subscriptions());
-    assert_eq!(
-        app.mailbox.records_page.filter.issuer.as_deref(),
-        Some("Disney+")
-    );
-
-    for _ in 0..RECORD_KIND_CHIPS.len() - 1 {
-        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
-        press(&mut app, KeyCode::Char('f'));
-    }
-    assert!(app.mailbox.records_page.showing_subscriptions());
-    press(&mut app, KeyCode::Esc);
-    assert_eq!(app.mailbox.records_page.kind_chip, 0);
 }

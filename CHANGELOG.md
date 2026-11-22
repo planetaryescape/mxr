@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.250](https://github.com/planetaryescape/mxr/compare/v0.6.249...v0.6.250) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update url to 2.5.9 for RUSTSEC-2026-0592 ([#1012](https://github.com/planetaryescape/mxr/issues/1012)) ([52dbeed](https://github.com/planetaryescape/mxr/commit/52dbeeddae17f21652dcd2e1565dfeefb7f1cc74))
+
+
+### Documentation
+
+* record the flaky updates let-go e2e ([#1015](https://github.com/planetaryescape/mxr/issues/1015)) ([e8e7a08](https://github.com/planetaryescape/mxr/commit/e8e7a081764bf6a1b15c3545fdc0e9656a671464))
+
 ## [0.6.249](https://github.com/planetaryescape/mxr/compare/v0.6.248...v0.6.249) (2026-11-22)
 
 

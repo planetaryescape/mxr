@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Rebuild relationship profiles for many contacts at once
+
+Usage: mxr relationships <COMMAND>
+
+Commands:
+  rebuild  Rebuild the profile and summary of every contact with mail in the last --since days, backfilled mail included
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help

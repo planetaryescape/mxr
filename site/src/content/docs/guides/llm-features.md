@@ -22,6 +22,7 @@ override values inherit from the base config. Each feature has its own guide:
 | `mxr decisions rebuild` | [Archive intelligence](/guides/archive-intelligence/#the-decision-log--mxr-decisions) | extract explicit decisions from threads |
 | `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from the local thread transcript or relationship baseline |
 | delivery extraction | [Deliveries](/guides/deliveries/) | confirm a shortlisted email is a real shipment, extract merchant / carrier / items / ETA |
+| relationship summaries, `mxr relationships rebuild` | [this page](#background-ai-skips-the-mail-your-first-sync-downloaded) | your recent mail with a contact → an inspectable summary of how you work together |
 | row and reader gists | [Clear the desk](/guides/now/#see-what-each-row-asks) | one line on what a conversation is about and what it asks of you, with the ask quoted from the message |
 | `mxr triage` | [CLI: `mxr triage`](/reference/cli/triage/) | sort search results into action, FYI and routine with the summarize model, caching a verdict per message |
 
@@ -335,6 +336,48 @@ mxr llm status --format json
 the model switches without a restart. Nothing watches `config.toml`: a hand
 edit applies on `mxr restart`, or with the next `mxr config set llm.<key>`.
 
+## Background AI skips the mail your first sync downloaded
+
+The first sync of an account downloads the whole mailbox. mxr keeps all of it,
+but background AI never sends that old mail to the model. Background AI runs
+only on mail that arrives live: mail a later sync stores for the first time.
+A ten-year mailbox costs no model calls when you add it.
+
+Three jobs follow this rule:
+
+| Job | Mail that arrived live | Mail from the first sync |
+|---|---|---|
+| Delivery confirmation | The model confirms a shortlisted parcel email | The heuristic result stands |
+| Relationship summaries | A contact gets a summary once mail with them arrives live. The summary reads your recent mail with them, older mail included | No summary. The local voice and style profile still builds |
+| To-do "looks resolved" checks | The model checks a later email against your open to-dos | The local rules still run |
+
+Mail mxr stored before this rule shipped counts as first-sync mail, except
+mail that already raised a live alert. A re-sync after the provider resets
+mxr's sync position counts as first-sync mail too. A restored backup keeps
+what each message had.
+
+Ask for older mail when you want it. Each command has a dry run that counts
+the model calls first:
+
+```bash
+mxr relationships rebuild --since 30 --dry-run   # contacts with mail in the last 30 days
+mxr relationships rebuild --since 30
+mxr profile alice@example.com --rebuild          # one contact
+mxr deliveries scan --since-days 90 --dry-run
+mxr deliveries scan --since-days 90
+mxr decisions rebuild --since 180                # the decision log, which has no background job
+```
+
+`mxr llm status` says what background AI held back since the daemon started:
+
+```text
+background AI: live mail only; backfilled mail excluded (held back since daemon start: relationship_summary 412, delivery_extraction 37, todo_resolution 9)
+```
+
+The counts are distinct contacts, messages and to-do checks. `--format json`
+carries `background_live_only: true` and `backfill_held`, one
+`{ "job", "inputs" }` entry per job.
+
 ## Background work waits out an endpoint outage
 
 Relationship summaries, commitments, delivery confirmation, row gists and
@@ -390,7 +433,7 @@ subscription.
 | `mxr summarize`, `mxr draft-assist`, `mxr draft` and `mxr draft refine` | When you run them | The thread the command works on. Stored relationship summaries of the people in it only with `llm.allow_cloud_relationship_data = true` |
 | `mxr triage` | When you run it | Each message it sorts |
 | Row gists | In the background, for conversations from people that a client shows, and for automated mail while the web app's Updates page or `mxr briefing gists THREAD_ID... --generate --automated` asks | That conversation's messages. Newsletters and mailing lists are never sent. With `llm.allow_cloud_relationship_data = true`, also a line counting your history with the sender (messages, usual reply time, last contact) |
-| Delivery confirmation | After sync, for mail the local heuristic shortlisted as shipping | That message's sender, subject and cleaned body |
+| Delivery confirmation | After sync, for mail that [arrived live](#background-ai-skips-the-mail-your-first-sync-downloaded) and that the local heuristic shortlisted as shipping, and when you run `mxr deliveries scan` | That message's sender, subject and cleaned body |
 | Relationship summaries, commitments, answer coverage, briefings, decisions, `mxr ask` | In the background or on demand | Nothing: these are refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true` |
 | Drafts | When you ask for one | The conversation being drafted. Your other emails and habits only with `llm.allow_cloud_relationship_data = true` |
 | The [assistant](/guides/assistant/) | When you send it a message | Your message, what you have open, and the mail it reads while answering (search results, threads, drafts). Refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true`, since it reads across your mailbox |

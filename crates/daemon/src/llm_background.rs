@@ -151,7 +151,7 @@ pub(crate) async fn rerun_deferred(state: &AppState, features: &[LlmFeature]) {
             messages = messages.len(),
             "re-scanning deliveries put off while the LLM endpoint was out"
         );
-        crate::handler::deliveries::scan_messages(state, &messages).await;
+        crate::handler::deliveries::rescan_put_off(state, &messages).await;
     }
 }
 
@@ -252,6 +252,17 @@ mod tests {
                 fetched_at: chrono::Utc::now(),
                 metadata: mxr_core::types::MessageMetadata::default(),
             })
+            .await
+            .unwrap();
+        state
+            .store
+            .record_message_arrival(
+                &id,
+                &envelope.account_id,
+                "orders@mail.acme.com",
+                &mxr_core::ArrivalEvidence::default(),
+                true,
+            )
             .await
             .unwrap();
 

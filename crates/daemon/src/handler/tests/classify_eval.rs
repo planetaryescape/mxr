@@ -157,6 +157,7 @@ pub(super) async fn authenticate_demo_payment_alerts(
                         message_fingerprint: Some(stored_id.to_string()),
                         is_live: false,
                     },
+                    false,
                 )
                 .await
                 .unwrap();
@@ -193,6 +194,7 @@ pub(super) async fn authenticate_demo_payment_alerts(
                     message_fingerprint: Some(msg_id.to_string()),
                     is_live: true,
                 },
+                false,
             )
             .await
             .unwrap();

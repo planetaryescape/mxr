@@ -238,7 +238,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=114).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=115).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -299,6 +299,13 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
         sqlx::raw_sql("DROP TABLE message_arrivals; DROP TABLE alert_todo_claims;")
             .execute(expected.writer())
             .await?;
+    }
+    if (111..115).contains(&manifest.schema_version) {
+        sqlx::raw_sql(
+            "DROP INDEX idx_message_arrivals_arrived_live; ALTER TABLE message_arrivals DROP COLUMN arrived_live;",
+        )
+        .execute(expected.writer())
+        .await?;
     }
     let bundle_has_thread_role_pages: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'thread_role_pages')",
@@ -622,7 +629,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=114).contains(&version) {
+    if !(80..=115).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [

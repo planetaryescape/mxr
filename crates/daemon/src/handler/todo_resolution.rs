@@ -2,6 +2,7 @@ use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::MessageId;
 use mxr_core::types::MessageFlags;
+use mxr_llm::BackfillHeldJob;
 use mxr_protocol::TodoResolutionData;
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{
@@ -176,6 +177,12 @@ pub(super) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
                         continue;
                     }
                     match state.store.todo_resolution_input(&task.id, &row.id).await {
+                        Ok(Some(_)) if !arrived_live(state, &row.id).await => {
+                            state.llm.record_backfill_hold(
+                                BackfillHeldJob::TodoResolution,
+                                &format!("{}:{}", task.id, row.id),
+                            );
+                        }
                         Ok(Some(input)) => {
                             if let Err(error) = state
                                 .store
@@ -211,6 +218,20 @@ pub(super) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
             }
         }
     }
+}
+
+/// Only a later email that arrived live is checked against an open to-do by
+/// the model; backfilled mail gets the rules alone. A failed lookup holds
+/// the check back.
+async fn arrived_live(state: &AppState, message_id: &MessageId) -> bool {
+    state
+        .store
+        .message_arrived_live(message_id)
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(message = %message_id, %error, "to-do resolution could not read the arrival");
+            false
+        })
 }
 
 async fn offer_resolution(

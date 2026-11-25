@@ -625,6 +625,11 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Rebuild relationship profiles for many contacts at once.
+    Relationships {
+        #[command(subcommand)]
+        action: RelationshipsAction,
+    },
     /// Find people who have answered similar questions before.
     /// Either give the message id of the question OR a free-text
     /// query; the daemon ranks answerers (not askers).
@@ -4129,6 +4134,30 @@ pub enum DecisionsAction {
     /// scripts can branch on presence.
     Show {
         id: String,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum RelationshipsAction {
+    /// Rebuild the profile and summary of every contact with mail in the
+    /// last --since days, backfilled mail included.
+    ///
+    /// Background AI summarises a contact only once mail with them arrives
+    /// live, never from the mail the first sync downloaded. This sends the
+    /// older contacts' mail to your model, one call per contact whose
+    /// summary is missing or stale. Run --dry-run first to see how many.
+    Rebuild {
+        #[arg(long)]
+        account: Option<String>,
+        /// Window in days: contacts with mail in it are rebuilt.
+        #[arg(long = "since", default_value_t = 30)]
+        since_days: u32,
+        /// Count the contacts and model calls without writing or calling
+        /// the model.
+        #[arg(long)]
+        dry_run: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },

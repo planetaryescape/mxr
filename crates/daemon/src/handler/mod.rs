@@ -450,6 +450,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         Request::RebuildAnalytics
         | Request::RebuildDecisionLog { .. }
         | Request::RebuildRelationshipProfile { .. }
+        | Request::RebuildRelationshipProfiles { .. }
         | Request::RebuildUserVoice { .. }
         | Request::RecomputeLinkCounts
         | Request::RefreshContacts
@@ -1513,6 +1514,19 @@ async fn dispatch(
         }
         Request::RebuildRelationshipProfile { account_id, email } => {
             relationship_profile::rebuild_relationship_profile(state, account_id, email).await
+        }
+        Request::RebuildRelationshipProfiles {
+            account_id,
+            since_days,
+            dry_run,
+        } => {
+            relationship_profile::rebuild_relationship_profiles(
+                state,
+                account_id.as_ref(),
+                *since_days,
+                *dry_run,
+            )
+            .await
         }
         Request::ListCommitments {
             account_id,
@@ -2872,6 +2886,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SetSignatureDefault { .. }
         | Request::ClearSignatureDefault { .. }
         | Request::RebuildRelationshipProfile { .. }
+        | Request::RebuildRelationshipProfiles { .. }
         | Request::ResolveCommitment { .. }
         | Request::RecordPromise { .. }
         | Request::SetTodoState { .. }
@@ -3126,6 +3141,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListSenders { .. } => "list_senders",
         Request::GetRelationshipProfile { .. } => "get_relationship_profile",
         Request::RebuildRelationshipProfile { .. } => "rebuild_relationship_profile",
+        Request::RebuildRelationshipProfiles { .. } => "rebuild_relationship_profiles",
         Request::ListCommitments { .. } => "list_commitments",
         Request::ResolveCommitment { .. } => "resolve_commitment",
         Request::GetUserVoice { .. } => "get_user_voice",
@@ -3335,6 +3351,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::BackfillCalendarInvites { account_id }
         | Request::ListDeliveries { account_id, .. }
         | Request::ScanDeliveries { account_id, .. }
+        | Request::RebuildRelationshipProfiles { account_id, .. }
         | Request::GetTodoRunway { account_id, .. }
         | Request::ListTodos { account_id, .. }
         | Request::ListRecordSubscriptions { account_id }

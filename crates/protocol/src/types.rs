@@ -178,6 +178,10 @@ fn default_suggest_recipients_limit() -> u32 {
     5
 }
 
+fn default_relationship_rebuild_since_days() -> u32 {
+    30
+}
+
 fn default_expert_limit() -> u32 {
     5
 }
@@ -230,6 +234,26 @@ pub struct LlmStatusSnapshot {
     /// own health.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_paused_until: Option<chrono::DateTime<chrono::Utc>>,
+    /// Background model work runs only on mail that arrived live, never on
+    /// mail the initial backfill downloaded; commands you run reach older
+    /// mail. False from a daemon older than this rule.
+    #[serde(default)]
+    pub background_live_only: bool,
+    /// Inputs each background job held back because their mail was
+    /// backfilled, since the daemon started.
+    #[serde(default)]
+    pub backfill_held: Vec<LlmBackfillHeldData>,
+}
+
+/// How many inputs one background job held back from the model because
+/// their mail was backfilled.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LlmBackfillHeldData {
+    /// `relationship_summary`, `delivery_extraction` or `todo_resolution`.
+    pub job: String,
+    /// Distinct contacts, messages or to-do checks held back.
+    pub inputs: u64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -1595,6 +1619,19 @@ pub enum Request {
     RebuildRelationshipProfile {
         account_id: AccountId,
         email: String,
+    },
+    /// Rebuild the relationship profile, summary included, of every
+    /// contact with mail in the last `since_days` days, backfilled mail
+    /// included. Background work summarises only contacts whose mail arrived
+    /// live; this is how older contacts get one. `dry_run` counts the
+    /// contacts and model calls without writing or calling the model.
+    RebuildRelationshipProfiles {
+        #[serde(default)]
+        account_id: Option<AccountId>,
+        #[serde(default = "default_relationship_rebuild_since_days")]
+        since_days: u32,
+        #[serde(default)]
+        dry_run: bool,
     },
     ListCommitments {
         account_id: AccountId,
@@ -3216,6 +3253,7 @@ impl Request {
             | Self::ListSenders { .. }
             | Self::GetRelationshipProfile { .. }
             | Self::RebuildRelationshipProfile { .. }
+            | Self::RebuildRelationshipProfiles { .. }
             | Self::ListCommitments { .. }
             | Self::ResolveCommitment { .. }
             | Self::GetUserVoice { .. }
@@ -4080,6 +4118,10 @@ pub enum ResponseData {
     },
     DeliveryScan {
         summary: DeliveryScanSummary,
+    },
+    /// Returned by `Request::RebuildRelationshipProfiles`.
+    RelationshipRebuild {
+        summary: RelationshipRebuildSummary,
     },
     Signatures {
         signatures: Vec<SignatureData>,
@@ -5030,6 +5072,7 @@ impl ResponseData {
             | Self::Deliveries { .. }
             | Self::Delivery { .. }
             | Self::DeliveryScan { .. }
+            | Self::RelationshipRebuild { .. }
             | Self::Signatures { .. }
             | Self::SignatureData { .. }
             | Self::SignatureDefaults { .. }
@@ -5704,6 +5747,21 @@ pub struct DeliveryData {
     pub message_ids: Vec<MessageId>,
 }
 
+/// Result of a `RebuildRelationshipProfiles` run.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RelationshipRebuildSummary {
+    /// Contacts with mail in the window.
+    pub contacts: u32,
+    /// Contacts whose mail went to the model, or on a dry run would go on a
+    /// working endpoint.
+    pub model_calls: u32,
+    /// Contacts whose rebuild failed.
+    pub errors: u32,
+    /// Whether this was a preview (no writes, no model calls).
+    pub dry_run: bool,
+}
+
 /// Result of a `ScanDeliveries` run.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -5716,6 +5774,10 @@ pub struct DeliveryScanSummary {
     pub updated: u32,
     /// Candidates handed to the LLM for confirmation.
     pub shortlisted: u32,
+    /// Messages this scan sent to the model, or on a dry run would send.
+    /// Background scans of synced mail report none here.
+    #[serde(default)]
+    pub model_calls: u32,
     /// Whether this was a preview (no writes).
     pub dry_run: bool,
 }

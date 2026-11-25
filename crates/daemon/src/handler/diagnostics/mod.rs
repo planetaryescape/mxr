@@ -1011,6 +1011,16 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
             .llm
             .background_paused_until()
             .map(chrono::DateTime::<chrono::Utc>::from),
+        background_live_only: true,
+        backfill_held: state
+            .llm
+            .backfill_holds()
+            .into_iter()
+            .map(|(job, inputs)| mxr_protocol::LlmBackfillHeldData {
+                job: job.key().to_string(),
+                inputs,
+            })
+            .collect(),
     };
     Ok(ResponseData::LlmStatus { snapshot })
 }

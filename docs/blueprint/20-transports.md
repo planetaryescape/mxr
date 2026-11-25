@@ -26,7 +26,7 @@ HTTP bridge (mxr-web): REST + WS + SPA gateway — consumes a Connector; NOT a S
 
 Three principles, each with a decision-log entry:
 
-- **Frozen protocol.** `IpcMessage` / `Request` / `ResponseData` / `DaemonEvent` and `IpcCodec` framing (4-byte length prefix, JSON body, 16 MiB cap — `crates/protocol/src/codec.rs`) are identical on every transport. `IPC_PROTOCOL_VERSION` is `32` (`crates/protocol/src/lib.rs`) and does not move per transport. From protocol 29 onward, clients decode unrecognised daemon events as `DaemonEvent::Unknown`. Original workspace ownership introduced protocol 11. Category-rule request/response variants require protocol 10 because older peers reject unknown enum variants; immutable draft attachments introduced protocol 9 and to-do resolution introduced protocol 8. The ecosystem premium is on the protocol, not transport pluggability (the Podman/varlink regret — see D052, D055).
+- **Frozen protocol.** `IpcMessage` / `Request` / `ResponseData` / `DaemonEvent` and `IpcCodec` framing (4-byte length prefix, JSON body, 16 MiB cap — `crates/protocol/src/codec.rs`) are identical on every transport. `IPC_PROTOCOL_VERSION` is `33` (`crates/protocol/src/lib.rs`) and does not move per transport. From protocol 29 onward, clients decode unrecognised daemon events as `DaemonEvent::Unknown`. Original workspace ownership introduced protocol 11. Category-rule request/response variants require protocol 10 because older peers reject unknown enum variants; immutable draft attachments introduced protocol 9 and to-do resolution introduced protocol 8. The ecosystem premium is on the protocol, not transport pluggability (the Podman/varlink regret — see D052, D055).
 - **Byte-stream-level abstraction.** An adapter produces a connected `AsyncRead + AsyncWrite` stream plus peer/auth evidence — nothing more. Not a typed-RPC `Transport` (tarpc), which would exclude curl/jq/scripts/non-Rust agents against mxr's CLI-first JSON shape (D055).
 - **HTTP is a gateway.** `mxr-web` translates REST/WS into the same `Request` enum and *uses* a client transport; it is not a `ServerTransport`. Discovery measured it: ~100 lines transport plumbing, ~5,500 lines presentation (D052).
 
@@ -102,7 +102,7 @@ Docker's precedent — a small scheme names an endpoint. `MXR_DAEMON_ADDR` (`DAE
 - `tcp://<host:port>` — loopback + token (§4).
 - `cmd://<command line>` — spawn-and-pipe; argv whitespace-split, no shell quoting.
 
-CLI, native TUI and stdio MCP resolve one `SelectedDaemonTarget` per session. Their initial, dedicated and reconnect connections retain that target. TCP authenticates before client declaration and status; the complete remote connect/auth/declaration/status handshake has a five-second bound. Remote peers must report exactly protocol 32; package versions and build IDs may differ. Per-operation capability checks still apply. Missing, older or newer protocol identities fail before ordinary requests, with no local fallback or remote restart.
+CLI, native TUI and stdio MCP resolve one `SelectedDaemonTarget` per session. Their initial, dedicated and reconnect connections retain that target. TCP authenticates before client declaration and status; the complete remote connect/auth/declaration/status handshake has a five-second bound. Remote peers must report exactly protocol 33; package versions and build IDs may differ. Per-operation capability checks still apply. Missing, older or newer protocol identities fail before ordinary requests, with no local fallback or remote restart.
 
 The TUI captures its original workspace owner once before loading mail. Background, dedicated, archive-preview and reply-prewarm connections retain that owner; a failed initial capture stays unavailable until explicit reopen. Pending private work keeps its existing owner after reconnect or recovery-generation changes. An empty client account configuration does not suppress remote mailbox loading.
 
@@ -135,7 +135,7 @@ After token authentication where required, send this framed IPC message
 (`Cli`, `Tui`, `Web`, `Agent` and `Mcp` all use the same common client setup):
 
 ```json
-{"id":1,"source":"mcp","payload":{"type":"Request","cmd":"DeclareClient","kind":"mcp","protocol_version":32}}
+{"id":1,"source":"mcp","payload":{"type":"Request","cmd":"DeclareClient","kind":"mcp","protocol_version":33}}
 ```
 
 The daemon sends an `Ack` with the same id before any event. Both kind fields

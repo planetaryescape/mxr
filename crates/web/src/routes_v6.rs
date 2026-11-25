@@ -1656,6 +1656,41 @@ async fn rebuild_relationship_profile(
 }
 
 #[derive(Debug, Deserialize)]
+struct RebuildRelationshipsBody {
+    #[serde(default)]
+    account_id: Option<String>,
+    #[serde(default)]
+    since_days: Option<u32>,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn rebuild_relationship_profiles(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<RebuildRelationshipsBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = body
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::RebuildRelationshipProfiles {
+            account_id,
+            since_days: body.since_days.unwrap_or(30),
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
 struct CommitmentsQuery {
     #[serde(default)]
     token: Option<String>,
@@ -3276,6 +3311,10 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/contacts/autocomplete", get(contacts_autocomplete))
         .route("/relationship", get(get_relationship_profile))
         .route("/relationship/rebuild", post(rebuild_relationship_profile))
+        .route(
+            "/relationships/rebuild",
+            post(rebuild_relationship_profiles),
+        )
         .route("/commitments", get(list_commitments))
         .route(
             "/commitments/{commitment_id}/resolve",

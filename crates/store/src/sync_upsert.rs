@@ -85,6 +85,7 @@ impl super::Store {
                     upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;
                 let first_inbox: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM labels WHERE account_id=? AND role='inbox' AND id IN (SELECT value FROM json_each(?)))")
                     .bind(upsert.envelope.account_id.as_str()).bind(crate::encode_json(&upsert.label_ids)?).fetch_one(&mut *tx).await?;
+                let arrived_live = upsert.arrival.is_live && !stored.existed;
                 upsert.arrival.is_live &= !stored.existed
                     && first_inbox
                     && upsert.direction == MessageDirection::Inbound
@@ -102,6 +103,7 @@ impl super::Store {
                     &upsert.envelope.account_id,
                     &upsert.envelope.from.email,
                     &upsert.arrival,
+                    arrived_live,
                 )
                 .await?;
                 replace_message_labels_tx(
@@ -265,6 +267,47 @@ mod tests {
                 .expect("arrival")
                 .expect("stored")
                 .is_live
+        );
+    }
+
+    /// Background model work keys off `arrived_live`: any mail a live page
+    /// stores first, read or outside the Inbox included. A backfilled message
+    /// stays backfill when a later live page refetches it.
+    #[tokio::test]
+    async fn only_mail_a_live_page_stores_first_arrived_live() {
+        let account = test_account();
+        let store = Store::in_memory().await.expect("synthetic store");
+        store.insert_account(&account).await.expect("account");
+
+        let mut backfilled = [upsert(&account, 1, vec![])];
+        store
+            .apply_sync_upserts(&mut backfilled)
+            .await
+            .expect("backfill page");
+        backfilled[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut backfilled)
+            .await
+            .expect("live refetch");
+        let backfilled_id = &backfilled[0].envelope.id;
+        assert!(!store.message_arrived_live(backfilled_id).await.unwrap());
+
+        let mut read_outside_inbox = [upsert(&account, 2, vec![])];
+        read_outside_inbox[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut read_outside_inbox)
+            .await
+            .expect("live page");
+        let live_id = &read_outside_inbox[0].envelope.id;
+        assert!(store.message_arrived_live(live_id).await.unwrap());
+        assert!(
+            !store
+                .message_arrival(live_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_live,
+            "read mail outside the Inbox is no live alert"
         );
     }
 

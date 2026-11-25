@@ -5,7 +5,7 @@ use mxr_core::id::{AccountId, DeliveryId, MessageId};
 use mxr_core::types::{MessageFlags, UnsubscribeMethod};
 use mxr_deliveries::lifecycle::ApplyOutcome;
 use mxr_deliveries::{detect, extract, lifecycle, Decision, DeliverySignal, DetectInput};
-use mxr_llm::LlmFeature;
+use mxr_llm::{BackfillHeldJob, LlmFeature};
 use mxr_protocol::{DeliveryData, DeliveryItemData, DeliveryScanSummary, ResponseData};
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{Delivery, DeliveryListFilter};
@@ -74,9 +74,35 @@ pub(super) async fn scan_deliveries(
     Ok(ResponseData::DeliveryScan { summary })
 }
 
+/// Scan newly synced mail. Only mail that arrived live goes to the model;
+/// backfilled mail gets the heuristic alone until `mxr deliveries scan`.
 pub(crate) async fn scan_messages(
     state: &AppState,
     message_ids: &[MessageId],
+) -> DeliveryScanSummary {
+    scan_synced(state, message_ids, LlmScope::LiveOnly).await
+}
+
+/// Scan again mail an endpoint outage put off. Each was already allowed to
+/// reach the model, by arriving live or by an explicit scan.
+pub(crate) async fn rescan_put_off(
+    state: &AppState,
+    message_ids: &[MessageId],
+) -> DeliveryScanSummary {
+    scan_synced(state, message_ids, LlmScope::Any).await
+}
+
+/// Which mail a scan may send to the model.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LlmScope {
+    LiveOnly,
+    Any,
+}
+
+async fn scan_synced(
+    state: &AppState,
+    message_ids: &[MessageId],
+    scope: LlmScope,
 ) -> DeliveryScanSummary {
     let cfg = state.config_snapshot();
     let mut summary = DeliveryScanSummary::default();
@@ -85,7 +111,7 @@ pub(crate) async fn scan_messages(
     }
     let llm_enabled = cfg.llm.enabled;
     for message_id in message_ids {
-        match scan_one(state, message_id, llm_enabled, false, false).await {
+        match scan_one(state, message_id, llm_enabled, false, false, scope).await {
             Ok(outcome) => summary_add(&mut summary, outcome),
             Err(error) => {
                 tracing::warn!(message = %message_id, %error, "delivery scan failed");
@@ -102,7 +128,7 @@ async fn scan_recent(
     dry_run: bool,
 ) -> Result<DeliveryScanSummary, String> {
     let cfg = state.config_snapshot();
-    let llm_enabled = cfg.llm.enabled && !dry_run;
+    let llm_enabled = cfg.llm.enabled;
     let since = Utc::now() - Duration::days(i64::from(since_days));
     let ids = state
         .store
@@ -114,7 +140,7 @@ async fn scan_recent(
         ..Default::default()
     };
     for message_id in &ids {
-        match scan_one(state, message_id, llm_enabled, dry_run, true).await {
+        match scan_one(state, message_id, llm_enabled, dry_run, true, LlmScope::Any).await {
             Ok(outcome) => summary_add(&mut summary, outcome),
             Err(error) => {
                 tracing::warn!(message = %message_id, %error, "delivery backfill scan failed");
@@ -130,6 +156,7 @@ struct ScanOutcome {
     created: u32,
     updated: u32,
     shortlisted: u32,
+    model_calls: u32,
 }
 
 async fn scan_one(
@@ -138,6 +165,7 @@ async fn scan_one(
     llm_enabled: bool,
     dry_run: bool,
     force_llm: bool,
+    scope: LlmScope,
 ) -> Result<ScanOutcome, String> {
     let mut outcome = ScanOutcome::default();
     let Some(envelope) = state
@@ -185,9 +213,22 @@ async fn scan_one(
     if signal.decision == Decision::ShortlistLlm {
         if dry_run {
             outcome.shortlisted = 1;
+            outcome.model_calls = u32::from(llm_enabled);
             return Ok(outcome);
         }
-        if llm_enabled {
+        let held = llm_enabled
+            && scope == LlmScope::LiveOnly
+            && !state
+                .store
+                .message_arrived_live(message_id)
+                .await
+                .map_err(|e| e.to_string())?;
+        if held {
+            state
+                .llm
+                .record_backfill_hold(BackfillHeldJob::DeliveryExtraction, &message_id.as_str());
+        } else if llm_enabled {
+            outcome.model_calls = u32::from(force_llm);
             let runtime = state.llm.for_feature(LlmFeature::DeliveryExtraction);
             signal = extract::enrich(
                 &runtime,
@@ -273,6 +314,7 @@ fn summary_add(summary: &mut DeliveryScanSummary, outcome: ScanOutcome) {
     summary.created += outcome.created;
     summary.updated += outcome.updated;
     summary.shortlisted += outcome.shortlisted;
+    summary.model_calls += outcome.model_calls;
 }
 
 fn parse_filter(filter: Option<&str>) -> DeliveryListFilter {

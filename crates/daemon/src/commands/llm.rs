@@ -2,9 +2,9 @@ use crate::cli::{LlmAction, LlmKeyAction, OutputFormat};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
-    LlmEndpointStatusData, LlmFeatureStatusData, LlmKeyChangeData, LlmKeySourceData,
-    LlmKeyStatusData, LlmProviderData, LlmRouteStateData, LlmRouteStatusData, LlmStatusSnapshot,
-    Request, Response, ResponseData,
+    LlmBackfillHeldData, LlmEndpointStatusData, LlmFeatureStatusData, LlmKeyChangeData,
+    LlmKeySourceData, LlmKeyStatusData, LlmProviderData, LlmRouteStateData, LlmRouteStatusData,
+    LlmStatusSnapshot, Request, Response, ResponseData,
 };
 use std::io::{IsTerminal, Read};
 
@@ -141,6 +141,9 @@ fn render_status(snapshot: &LlmStatusSnapshot, format: OutputFormat) -> anyhow::
                     until.with_timezone(&chrono::Local).format("%H:%M")
                 );
             }
+            if snapshot.enabled && snapshot.background_live_only {
+                println!("{}", backfill_line(&snapshot.backfill_held));
+            }
             if snapshot.enabled {
                 print!("{}", features_table(&snapshot.features));
                 if snapshot
@@ -154,6 +157,19 @@ fn render_status(snapshot: &LlmStatusSnapshot, format: OutputFormat) -> anyhow::
         }
     }
     Ok(())
+}
+
+/// Background jobs skip backfilled mail; say so, and how much they held back.
+fn backfill_line(held: &[LlmBackfillHeldData]) -> String {
+    let counts = held
+        .iter()
+        .map(|row| format!("{} {}", row.job, row.inputs))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "background AI: live mail only; backfilled mail excluded (held back since daemon start: {})",
+        if counts.is_empty() { "none" } else { &counts }
+    )
 }
 
 fn features_table(features: &[LlmFeatureStatusData]) -> String {

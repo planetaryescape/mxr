@@ -5592,6 +5592,21 @@
         }
       }
     },
+    "/api/v1/mail/relationships/rebuild": {
+      "post": {
+        "tags": [],
+        "summary": "Rebuild relationship profiles for every contact with recent mail, or count them on a dry run",
+        "operationId": "mail_relationships_rebuild",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/reminders": {
       "post": {
         "tags": [],
@@ -15470,6 +15485,12 @@
             "type": "boolean",
             "description": "Whether this was a preview (no writes)."
           },
+          "model_calls": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages this scan sent to the model, or on a dry run would send.\nBackground scans of synced mail report none here.",
+            "minimum": 0
+          },
           "scanned": {
             "type": "integer",
             "format": "int32",
@@ -18766,6 +18787,26 @@
           }
         }
       },
+      "LlmBackfillHeldData": {
+        "type": "object",
+        "description": "How many inputs one background job held back from the model because\ntheir mail was backfilled.",
+        "required": [
+          "job",
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Distinct contacts, messages or to-do checks held back.",
+            "minimum": 0
+          },
+          "job": {
+            "type": "string",
+            "description": "`relationship_summary`, `delivery_extraction` or `todo_resolution`."
+          }
+        }
+      },
       "LlmConfigData": {
         "type": "object",
         "required": [
@@ -19352,6 +19393,17 @@
           },
           "api_key_present": {
             "type": "boolean"
+          },
+          "backfill_held": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmBackfillHeldData"
+            },
+            "description": "Inputs each background job held back because their mail was\nbackfilled, since the daemon started."
+          },
+          "background_live_only": {
+            "type": "boolean",
+            "description": "Background model work runs only on mail that arrived live, never on\nmail the initial backfill downloaded; commands you run reach older\nmail. False from a daemon older than this rule."
           },
           "background_paused_until": {
             "type": [
@@ -25773,6 +25825,40 @@
           }
         }
       },
+      "RelationshipRebuildSummary": {
+        "type": "object",
+        "description": "Result of a `RebuildRelationshipProfiles` run.",
+        "required": [
+          "contacts",
+          "model_calls",
+          "errors",
+          "dry_run"
+        ],
+        "properties": {
+          "contacts": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Contacts with mail in the window.",
+            "minimum": 0
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Whether this was a preview (no writes, no model calls)."
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Contacts whose rebuild failed.",
+            "minimum": 0
+          },
+          "model_calls": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Contacts whose mail went to the model, or on a dry run would go on a\nworking endpoint.",
+            "minimum": 0
+          }
+        }
+      },
       "RelationshipWatchEntryData": {
         "type": "object",
         "required": [
@@ -30954,6 +31040,39 @@
               },
               "email": {
                 "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Rebuild the relationship profile, summary included, of every\ncontact with mail in the last `since_days` days, backfilled mail\nincluded. Background work summarises only contacts whose mail arrived\nlive; this is how older contacts get one. `dry_run` counts the\ncontacts and model calls without writing or calling the model.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RebuildRelationshipProfiles"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "since_days": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
             }
           },
@@ -36853,6 +36972,25 @@
               },
               "summary": {
                 "$ref": "#/components/schemas/DeliveryScanSummary"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::RebuildRelationshipProfiles`.",
+            "required": [
+              "summary",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RelationshipRebuild"
+                ]
+              },
+              "summary": {
+                "$ref": "#/components/schemas/RelationshipRebuildSummary"
               }
             }
           },

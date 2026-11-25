@@ -20,6 +20,7 @@ pub(super) fn project(
         snapshot.policy_key = None;
         snapshot.fallback_error = None;
         snapshot.background_paused_until = None;
+        snapshot.backfill_held.clear();
         return;
     }
     if snapshot.fallback_error.is_some() {

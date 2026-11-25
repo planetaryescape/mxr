@@ -42,7 +42,30 @@ impl LlmProvider for CountedModel {
     }
 }
 
+/// Later mail that arrived live, so the model checks it against open to-dos.
 async fn ambiguous_pairs(
+    messages: usize,
+    tasks: usize,
+) -> (Fixture, Arc<CountedModel>, Vec<MessageId>) {
+    let (fx, model, ids) = ambiguous_backfilled_pairs(messages, tasks).await;
+    for id in &ids {
+        fx.state
+            .store
+            .record_message_arrival(
+                id,
+                &fx.account,
+                "bills@example.com",
+                &mxr_core::ArrivalEvidence::default(),
+                true,
+            )
+            .await
+            .unwrap();
+    }
+    (fx, model, ids)
+}
+
+/// Later mail the initial backfill downloaded: it has no arrival marked live.
+async fn ambiguous_backfilled_pairs(
     messages: usize,
     tasks: usize,
 ) -> (Fixture, Arc<CountedModel>, Vec<MessageId>) {
@@ -179,6 +202,28 @@ async fn sync_makes_zero_model_calls_and_ticks_eventually_drain_every_pair() {
         assert_eq!(model.calls.load(Ordering::SeqCst), queued);
         println!("resolution bounded: messages={messages} tasks={tasks} sync_calls=0 sync_ms={sync_ms} total_calls={queued} max_batch_calls=4 elapsed_ms={}", started.elapsed().as_millis());
     }
+}
+
+#[tokio::test]
+async fn backfilled_mail_queues_no_model_checks_and_counts_each_pair_held_once() {
+    let (fx, model, ids) = ambiguous_backfilled_pairs(3, 2).await;
+    todos::scan_messages(&fx.state, &ids).await;
+    todos::scan_messages(&fx.state, &ids).await;
+    assert_eq!(
+        fx.state
+            .store
+            .todo_resolution_queue_counts(Utc::now())
+            .await
+            .unwrap(),
+        (0, 0)
+    );
+    assert!(!drain(&fx, Utc::now()).await);
+    assert_eq!(model.calls.load(Ordering::SeqCst), 0);
+    assert!(fx
+        .state
+        .llm
+        .backfill_holds()
+        .contains(&(mxr_llm::BackfillHeldJob::TodoResolution, 6)));
 }
 
 #[tokio::test]

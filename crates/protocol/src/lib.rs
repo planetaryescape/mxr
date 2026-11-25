@@ -30,6 +30,9 @@
 //! Protocol 32 requires `DeclareClient` before ordinary requests or events.
 //! Token transports authenticate first. Declaration selects one cooperative
 //! client kind for the connection lifetime; it does not authenticate a process.
+//!
+//! Protocol 33 adds `RebuildRelationshipProfiles`, the bulk relationship
+//! rebuild for contacts whose mail was backfilled.
 
 mod archive;
 mod codec;
@@ -49,7 +52,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 32;
+pub const IPC_PROTOCOL_VERSION: u32 = 33;
 
 #[cfg(test)]
 mod tests {

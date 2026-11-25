@@ -81,14 +81,17 @@ See [Updates](/guides/updates/).
 
 ## Backfill existing mail
 
-Detection only sees new mail going forward. Catch up on what's already in your store, previewing first:
+The heuristic checks every synced message, including the mail your first sync
+downloaded. The model confirms only mail that arrived after that first sync,
+so a shortlisted parcel email from your backfill keeps its heuristic result.
+To have the model check older mail, scan it, previewing first:
 
 ```bash
 # Preview only — no writes, no LLM calls:
 mxr deliveries scan --since-days 90 --dry-run
 ```
 
-What you get: `{ "scanned": 941, "created": 23, "updated": 0, "shortlisted": 44, "dry_run": true }` — how many messages were examined, how many deliveries a real run would create, and how many would be sent to the LLM.
+What you get: `{ "scanned": 941, "created": 23, "updated": 0, "shortlisted": 44, "model_calls": 44, "dry_run": true }` — how many messages were examined, how many deliveries a real run would create, how many candidates are shortlisted, and how many of them a real run would send to the model (none while `llm.enabled` is off). A real run reports the model calls it made in the same field.
 
 Then run it for real (the LLM step makes it slower over wide windows, so it streams to completion rather than timing out):
 

@@ -56,4 +56,6 @@ Decision D194 in `docs/blueprint/15-decision-log.md` records the rule.
 
 Proof: `crates/daemon/src/loops/live_only_inference_tests.rs` drives two backfill pages and one live page through the sync loop with a counting model: zero calls through the backfill, then one delivery call and one relationship call for the live mail. `crates/daemon/src/handler/tests/backfill_on_demand.rs` checks that the relationship rebuild and the delivery scan each make exactly the calls their dry runs predicted. `backfilled_mail_queues_no_model_checks_and_counts_each_pair_held_once` covers to-do resolution.
 
-Left open: `llm.backfill_window_days` is not built. A restored backup from before schema 115 counts all its mail as backfill. To-do checks already queued before the upgrade still drain.
+A backup from before schema 115 gets the same repair as the migration: rows marked `is_live` count as arrived live. Relationship summaries an outage put off re-run as rebuilds, so an explicit rebuild of a backfilled contact is not held back on retry.
+
+Left open: `llm.backfill_window_days` is not built. To-do checks already queued before the upgrade still drain.

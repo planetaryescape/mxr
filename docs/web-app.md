@@ -626,7 +626,7 @@ Check this behavior without adding another browser spec:
 
 ```bash
 cd apps/web
-agent-work run -- npm test -- src/features/modes/rowSeen.test.tsx src/features/todo/TodoRow.test.tsx src/features/updates/UpdateLineRow.test.tsx
+agent-work run -- npm test -- src/features/todo/TodoRow.test.tsx src/features/updates/UpdateLineRow.test.tsx
 ```
 
 Those component tests cover opening and delayed refreshes. The existing

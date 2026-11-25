@@ -22,8 +22,8 @@ or mounting their hosts there.
 Before `fetchAccounts` returns, `accounts.data` is undefined and
 `noAccounts` is false, so the first render takes the full-shell branch
 (`apps/web/src/components/AppShell.tsx:99-105,158`). The zero-account frame
-appears after the empty result arrives. `AppShell.test.tsx:98-106` waits for
-that switch. Consider keeping the frame neutral while the first account query
+appears after the empty result arrives. The test that waited for
+that switch (`AppShell.test.tsx`) was removed in the 2026-11-22 test cull. Consider keeping the frame neutral while the first account query
 is pending.
 
 ## The no-account frame omits connection status

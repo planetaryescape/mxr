@@ -305,7 +305,6 @@ cargo test -p mxr activity::
 cargo test -p mxr commands::activity::
 cargo test -p mxr handler::activity::
 cargo test -p mxr-tui activity_modal_tests
-cargo test -p mxr-tui --test snapshots diagnostics_page_snapshot
 
 # Integration tests
 cargo test -p mxr --test integration activity_invariants::

@@ -356,17 +356,19 @@ mail that already raised a live alert. A re-sync after the provider resets
 mxr's sync position counts as first-sync mail too. A restored backup keeps
 what each message had.
 
-Ask for older mail when you want it. Each command has a dry run that counts
-the model calls first:
+Ask for older mail when you want it. `--dry-run` counts the model calls a
+real run would make, and writes nothing:
 
 ```bash
 mxr relationships rebuild --since 30 --dry-run   # contacts with mail in the last 30 days
 mxr relationships rebuild --since 30
-mxr profile alice@example.com --rebuild          # one contact
 mxr deliveries scan --since-days 90 --dry-run
 mxr deliveries scan --since-days 90
-mxr decisions rebuild --since 180                # the decision log, which has no background job
 ```
+
+Two more commands run without a preview: `mxr profile alice@example.com
+--rebuild` rebuilds one contact, and `mxr decisions rebuild --since 180`
+builds the decision log, which has no background job.
 
 `mxr llm status` says what background AI held back since the daemon started:
 

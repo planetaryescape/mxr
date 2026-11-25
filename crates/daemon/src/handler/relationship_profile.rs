@@ -1,4 +1,4 @@
-use super::HandlerResult;
+use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_llm::LlmFeature;
@@ -42,7 +42,19 @@ pub(super) async fn rebuild_relationship_profiles(
     since_days: u32,
     dry_run: bool,
 ) -> HandlerResult {
-    let since = chrono::Utc::now() - chrono::Duration::days(i64::from(since_days));
+    let since = chrono::Duration::try_days(i64::from(since_days))
+        .and_then(|window| chrono::Utc::now().checked_sub_signed(window))
+        .ok_or_else(|| {
+            HandlerError::InvalidRequest(format!("--since {since_days} days is too long"))
+        })?;
+    if let Some(reason) = state
+        .llm
+        .feature_block_reason(LlmFeature::RelationshipSummary)
+    {
+        return Err(HandlerError::InvalidRequest(format!(
+            "relationship summaries can't use the configured model: {reason}"
+        )));
+    }
     let message_ids = state
         .store
         .list_message_ids_since(since, account_id)
@@ -52,11 +64,7 @@ pub(super) async fn rebuild_relationship_profiles(
         .relationship_contacts_for_messages(&message_ids)
         .await?;
     let config = state.config_snapshot();
-    let model_usable = config.llm.enabled
-        && state
-            .llm
-            .feature_block_reason(LlmFeature::RelationshipSummary)
-            .is_none();
+    let model_usable = config.llm.enabled;
     let mut summary = RelationshipRebuildSummary {
         contacts: u32::try_from(contacts.len()).unwrap_or(u32::MAX),
         dry_run,
@@ -72,7 +80,10 @@ pub(super) async fn rebuild_relationship_profiles(
             continue;
         }
         match state.relationship.rebuild_contact(account_id, email).await {
-            Ok(sent) => summary.model_calls += u32::from(sent),
+            Ok(run) => {
+                summary.model_calls += u32::from(run.sent);
+                summary.errors += u32::from(run.failed);
+            }
             Err(error) => {
                 tracing::warn!(%error, "relationship rebuild failed for one contact");
                 summary.errors += 1;

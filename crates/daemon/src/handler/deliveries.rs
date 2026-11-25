@@ -228,9 +228,8 @@ async fn scan_one(
                 .llm
                 .record_backfill_hold(BackfillHeldJob::DeliveryExtraction, &message_id.as_str());
         } else if llm_enabled {
-            outcome.model_calls = u32::from(force_llm);
             let runtime = state.llm.for_feature(LlmFeature::DeliveryExtraction);
-            signal = extract::enrich(
+            let enriched = extract::enrich(
                 &runtime,
                 &message_id.as_str(),
                 force_llm,
@@ -245,6 +244,8 @@ async fn scan_one(
                 signal,
             )
             .await;
+            signal = enriched.signal;
+            outcome.model_calls = u32::from(enriched.sent);
         }
         if signal.decision == Decision::ShortlistLlm {
             signal.decision = degrade(&signal);

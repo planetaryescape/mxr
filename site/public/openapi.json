@@ -5597,9 +5597,26 @@
         "tags": [],
         "summary": "Rebuild relationship profiles for every contact with recent mail, or count them on a dry run",
         "operationId": "mail_relationships_rebuild",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RebuildRelationshipsRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Contacts and model calls, made or predicted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebuildRelationshipsResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -15488,7 +15505,7 @@
           "model_calls": {
             "type": "integer",
             "format": "int32",
-            "description": "Messages this scan sent to the model, or on a dry run would send.\nBackground scans of synced mail report none here.",
+            "description": "Messages this scan sent to the model, or on a dry run would send on\na working endpoint. A message the model was not asked about (paused,\nbacking off, privacy-blocked) does not count.",
             "minimum": 0
           },
           "scanned": {
@@ -23722,6 +23739,43 @@
           "mailto",
           "none"
         ]
+      },
+      "RebuildRelationshipsRequest": {
+        "type": "object",
+        "description": "Rebuild every contact with mail in the window, or count them on a dry run.",
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One account; all accounts when absent."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Count contacts and model calls without writing or calling the model."
+          },
+          "since_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Window in days; 30 when absent.",
+            "minimum": 0
+          }
+        }
+      },
+      "RebuildRelationshipsResponse": {
+        "type": "object",
+        "required": [
+          "summary"
+        ],
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/RelationshipRebuildSummary"
+          }
+        }
       },
       "RecipientSendTimeRowData": {
         "type": "object",

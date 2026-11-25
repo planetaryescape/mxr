@@ -106,10 +106,15 @@ pub async fn enrich(
     force: bool,
     input: &LlmInput<'_>,
     base: DeliverySignal,
-) -> DeliverySignal {
+) -> Enrichment {
     const FINGERPRINT: &str = "";
+    let unsent = |signal| Enrichment {
+        signal,
+        sent: false,
+    };
+    let sent = |signal| Enrichment { signal, sent: true };
     if !force && !runtime.background_attempt_due(message_key, FINGERPRINT) {
-        return base;
+        return unsent(base);
     }
     let email_block = format!(
         "From: {} <{}>\nSubject: {}\n\nBody:\n{}",
@@ -132,15 +137,15 @@ pub async fn enrich(
 
     let resp = match runtime.complete_background(req).await {
         Ok(r) => r,
-        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => return base,
+        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => return unsent(base),
         Err(error @ LlmError::CircuitOpen { .. }) => {
             runtime.record_background_failure(message_key, FINGERPRINT, &error);
-            return base;
+            return unsent(base);
         }
         Err(error) => {
             runtime.record_background_failure(message_key, FINGERPRINT, &error);
             tracing::warn!(message = message_key, %error, "delivery LLM enrich failed; using heuristic");
-            return base;
+            return sent(base);
         }
     };
 
@@ -155,25 +160,34 @@ pub async fn enrich(
                 finish_reason = ?resp.finish_reason,
                 "delivery LLM returned non-JSON; using heuristic"
             );
-            return base;
+            return sent(base);
         }
     };
     runtime.record_background_attempt(message_key, FINGERPRINT, true);
 
     if !parsed.is_shipment_related {
-        return DeliverySignal {
+        return sent(DeliverySignal {
             decision: Decision::Reject,
             ..base
-        };
+        });
     }
 
-    merge(
+    sent(merge(
         base,
         parsed,
         &email_block,
         input.received_at,
         input.time_prefs,
-    )
+    ))
+}
+
+/// What [`enrich`] decided, and whether it sent the message to the model.
+/// A call that failed in flight counts as sent; a refusal before sending
+/// (disabled, privacy-blocked, paused, backing off) does not.
+#[derive(Debug, Clone)]
+pub struct Enrichment {
+    pub signal: DeliverySignal,
+    pub sent: bool,
 }
 
 /// Merge LLM output into the heuristic signal: deterministic/schema fields win,
@@ -487,7 +501,9 @@ mod tests {
         };
 
         for _ in 0..3 {
-            let signal = enrich(&feature, "msg-1", false, &input, base_signal()).await;
+            let signal = enrich(&feature, "msg-1", false, &input, base_signal())
+                .await
+                .signal;
             assert_eq!(
                 signal.decision,
                 Decision::ShortlistLlm,

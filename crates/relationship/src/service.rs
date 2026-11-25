@@ -30,7 +30,7 @@ enum RelationshipCommand {
     RebuildContact {
         account_id: AccountId,
         email: String,
-        resp: oneshot::Sender<Result<bool>>,
+        resp: oneshot::Sender<Result<crate::summary::SummaryRun>>,
     },
     Shutdown {
         resp: oneshot::Sender<()>,
@@ -108,10 +108,13 @@ impl RelationshipServiceHandle {
                             )
                             .await
                             {
-                                Ok(run) => Ok(run.sent),
+                                Ok(run) => Ok(run),
                                 Err(error) => {
                                     tracing::warn!(%account_id, %email, %error, "relationship summary rebuild failed");
-                                    Ok(false)
+                                    Ok(crate::summary::SummaryRun {
+                                        failed: true,
+                                        ..Default::default()
+                                    })
                                 }
                             },
                             Err(error) => Err(error),
@@ -157,8 +160,13 @@ impl RelationshipServiceHandle {
     }
 
     /// Rebuild one contact's style, then its summary even when its mail was
-    /// backfilled. Returns whether its mail went to the model.
-    pub async fn rebuild_contact(&self, account_id: AccountId, email: String) -> Result<bool> {
+    /// backfilled. An error means the style rebuild failed; a failed summary
+    /// shows in the returned run.
+    pub async fn rebuild_contact(
+        &self,
+        account_id: AccountId,
+        email: String,
+    ) -> Result<crate::summary::SummaryRun> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
             .send(RelationshipCommand::RebuildContact {

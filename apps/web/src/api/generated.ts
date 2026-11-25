@@ -7126,8 +7126,9 @@ export interface components {
             dry_run: boolean;
             /**
              * Format: int32
-             * @description Messages this scan sent to the model, or on a dry run would send.
-             *     Background scans of synced mail report none here.
+             * @description Messages this scan sent to the model, or on a dry run would send on
+             *     a working endpoint. A message the model was not asked about (paused,
+             *     backing off, privacy-blocked) does not count.
              */
             model_calls?: number;
             /**
@@ -10218,6 +10219,21 @@ export interface components {
          * @enum {string}
          */
         ReadingUnsubscribeData: "one_click" | "link" | "mailto" | "none";
+        /** @description Rebuild every contact with mail in the window, or count them on a dry run. */
+        RebuildRelationshipsRequest: {
+            /** @description One account; all accounts when absent. */
+            account_id?: string | null;
+            /** @description Count contacts and model calls without writing or calling the model. */
+            dry_run?: boolean;
+            /**
+             * Format: int32
+             * @description Window in days; 30 when absent.
+             */
+            since_days?: number | null;
+        };
+        RebuildRelationshipsResponse: {
+            summary: components["schemas"]["RelationshipRebuildSummary"];
+        };
         RecipientSendTimeRowData: {
             /** Format: int64 */
             best_expected_reply_seconds?: number | null;
@@ -22920,14 +22936,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RebuildRelationshipsRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Contacts and model calls, made or predicted */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RebuildRelationshipsResponse"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

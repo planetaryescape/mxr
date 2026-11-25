@@ -737,6 +737,13 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
             .execute(&mut *connection)
             .await?;
     }
+    if version < 115 {
+        sqlx::raw_sql(include_str!(
+            "../migrations/115_message_arrivals_arrived_live.sql"
+        ))
+        .execute(&mut *connection)
+        .await?;
+    }
     sqlx::query("PRAGMA foreign_keys=ON")
         .execute(&mut *connection)
         .await?;

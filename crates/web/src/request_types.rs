@@ -420,6 +420,26 @@ pub(super) struct CommitUnsubscribePreviewRequest {
     pub(super) archive_on_no_method: bool,
 }
 
+/// Rebuild every contact with mail in the window, or count them on a dry run.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(super) struct RebuildRelationshipsRequest {
+    /// One account; all accounts when absent.
+    #[serde(default)]
+    pub(super) account_id: Option<String>,
+    /// Window in days; 30 when absent.
+    #[serde(default)]
+    pub(super) since_days: Option<u32>,
+    /// Count contacts and model calls without writing or calling the model.
+    #[serde(default)]
+    pub(super) dry_run: bool,
+}
+
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+pub(super) struct RebuildRelationshipsResponse {
+    summary: mxr_protocol::RelationshipRebuildSummary,
+}
+
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
 pub(super) struct ComposeSessionData {

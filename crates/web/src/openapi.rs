@@ -563,7 +563,15 @@ endpoint!(post mail_humanizer_score "/api/v1/mail/humanizer/score", "Score draft
 endpoint!(post mail_humanizer_rewrite "/api/v1/mail/humanizer/rewrite", "Rewrite draft toward target voice");
 endpoint!(get mail_relationship_profile "/api/v1/mail/relationship", "Relationship profile for a contact");
 endpoint!(post mail_relationship_rebuild "/api/v1/mail/relationship/rebuild", "Rebuild relationship analytics");
-endpoint!(post mail_relationships_rebuild "/api/v1/mail/relationships/rebuild", "Rebuild relationship profiles for every contact with recent mail, or count them on a dry run");
+#[utoipa::path(
+    post, path = "/api/v1/mail/relationships/rebuild",
+    summary = "Rebuild relationship profiles for every contact with recent mail, or count them on a dry run",
+    request_body = crate::request_types::RebuildRelationshipsRequest,
+    responses((status = 200, description = "Contacts and model calls, made or predicted", body = crate::request_types::RebuildRelationshipsResponse),
+        (status = 401, description = "Missing or invalid bridge token"))
+)]
+#[allow(dead_code)]
+fn mail_relationships_rebuild() {}
 endpoint!(get mail_commitments_list "/api/v1/mail/commitments", "List detected commitments");
 endpoint!(post mail_commitments_resolve "/api/v1/mail/commitments/{commitment_id}/resolve", "Resolve a commitment");
 endpoint!(get mail_thread_briefing "/api/v1/mail/threads/{thread_id}/briefing", "Briefing for a dormant thread");

@@ -13,12 +13,16 @@ use std::sync::atomic::{AtomicU32, Ordering};
 #[derive(Default)]
 struct CountingModel {
     calls: AtomicU32,
+    down: std::sync::atomic::AtomicBool,
 }
 
 #[async_trait]
 impl LlmProvider for CountingModel {
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.down.load(Ordering::SeqCst) {
+            return Err(LlmError::Unreachable("connection refused".into()));
+        }
         let prompt: String = req.messages.iter().map(|m| m.content.as_str()).collect();
         let content = if prompt.contains("relationship profile") {
             r#"{"text":"tends to reply within a day","known_topics":[]}"#
@@ -190,4 +194,31 @@ async fn delivery_scan_makes_exactly_the_calls_its_dry_run_predicted() {
     let run: DeliveryScanSummary = summary(request(&fx, scan(false)).await);
     assert_eq!(run.model_calls, 2);
     assert_eq!(model.calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_rebuild_during_an_outage_counts_errors_and_reruns_once_the_endpoint_is_back() {
+    let (fx, model) = backfilled().await;
+    correspondent(&fx, "bob@example.com", 3).await;
+    correspondent(&fx, "carol@example.com", 10).await;
+    model.down.store(true, Ordering::SeqCst);
+
+    let run = rebuild(&fx, false).await;
+    assert_eq!((run.model_calls, run.errors), (2, 2));
+
+    model.down.store(false, Ordering::SeqCst);
+    crate::llm_background::rerun_deferred(&fx.state, &[mxr_llm::LlmFeature::RelationshipSummary])
+        .await;
+    assert_eq!(model.calls.load(Ordering::SeqCst), 4);
+    for email in ["bob@example.com", "carol@example.com"] {
+        assert!(
+            fx.state
+                .store
+                .get_contact_relationship_summary(&fx.account, email)
+                .await
+                .unwrap()
+                .is_some(),
+            "{email}: an explicit rebuild put off by the outage still runs"
+        );
+    }
 }

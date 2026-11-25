@@ -5774,8 +5774,9 @@ pub struct DeliveryScanSummary {
     pub updated: u32,
     /// Candidates handed to the LLM for confirmation.
     pub shortlisted: u32,
-    /// Messages this scan sent to the model, or on a dry run would send.
-    /// Background scans of synced mail report none here.
+    /// Messages this scan sent to the model, or on a dry run would send on
+    /// a working endpoint. A message the model was not asked about (paused,
+    /// backing off, privacy-blocked) does not count.
     #[serde(default)]
     pub model_calls: u32,
     /// Whether this was a preview (no writes).

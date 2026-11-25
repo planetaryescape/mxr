@@ -428,6 +428,8 @@ expression: summary
     "ReadingSourceBody",
     "ReadingSourceData",
     "ReadingUnsubscribeData",
+    "RebuildRelationshipsRequest",
+    "RebuildRelationshipsResponse",
     "RecipientSendTimeRowData",
     "RecordAmountData",
     "RecordAnswerCardData",

@@ -1655,21 +1655,11 @@ async fn rebuild_relationship_profile(
     passthrough(response)
 }
 
-#[derive(Debug, Deserialize)]
-struct RebuildRelationshipsBody {
-    #[serde(default)]
-    account_id: Option<String>,
-    #[serde(default)]
-    since_days: Option<u32>,
-    #[serde(default)]
-    dry_run: bool,
-}
-
 async fn rebuild_relationship_profiles(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
-    Json(body): Json<RebuildRelationshipsBody>,
+    Json(body): Json<crate::request_types::RebuildRelationshipsRequest>,
 ) -> Result<Json<Value>, BridgeError> {
     let account_id = body
         .account_id
@@ -1687,7 +1677,10 @@ async fn rebuild_relationship_profiles(
         },
     )
     .await?;
-    passthrough(response)
+    match response {
+        ResponseData::RelationshipRebuild { summary } => Ok(Json(json!({ "summary": summary }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
 }
 
 #[derive(Debug, Deserialize)]

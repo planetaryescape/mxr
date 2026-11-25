@@ -39,6 +39,8 @@ pub struct SummaryRun {
     pub sent: bool,
     /// A new summary was stored.
     pub written: bool,
+    /// The model call or storing its answer failed.
+    pub failed: bool,
 }
 
 /// `force` is for explicit user rebuilds: it skips the backoff that
@@ -130,13 +132,14 @@ pub async fn generate_relationship_summary(
             return Ok(SummaryRun {
                 sent: true,
                 written: false,
+                failed: true,
             });
         }
     };
     feature_llm.record_background_attempt(&attempt_key, &style.source_hash, true);
     let sent = SummaryRun {
         sent: true,
-        written: false,
+        ..SummaryRun::default()
     };
     let parsed = parse_summary_response(&response.content)?;
     if parsed.text.trim().is_empty() {
@@ -163,11 +166,16 @@ pub async fn generate_relationship_summary(
             &source_ids,
         )
         .await;
-    let written = stored.unwrap_or_else(|error| {
-        tracing::warn!(%account_id, %email, %error, "relationship summary was not stored");
-        false
-    });
-    Ok(SummaryRun { written, ..sent })
+    Ok(match stored {
+        Ok(written) => SummaryRun { written, ..sent },
+        Err(error) => {
+            tracing::warn!(%account_id, %email, %error, "relationship summary was not stored");
+            SummaryRun {
+                failed: true,
+                ..sent
+            }
+        }
+    })
 }
 
 /// Whether a contact's summary is stale enough to regenerate: it has none,

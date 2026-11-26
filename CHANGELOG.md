@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.253](https://github.com/planetaryescape/mxr/compare/v0.6.252...v0.6.253) (2026-11-26)
+
+
+### Bug Fixes
+
+* **release:** read the IPC protocol version from the daemon in the launch proof ([#1040](https://github.com/planetaryescape/mxr/issues/1040)) ([63de358](https://github.com/planetaryescape/mxr/commit/63de358ff7cd8623c049da16386b7d3294bc194a))
+
 ## [0.6.252](https://github.com/planetaryescape/mxr/compare/v0.6.251...v0.6.252) (2026-11-26)
 
 

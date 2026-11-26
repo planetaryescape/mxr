@@ -95,6 +95,7 @@ version="$(run_mxr --version | head -n1)"
 emit binary_invocation ok "$(python3 -c 'import json,sys; print(json.dumps({"version": sys.argv[1]}))' "$version")"
 
 status_json="$(run_mxr status --format json)"
+ipc_protocol_version="$(python3 -c 'import json,sys; print(int(json.load(sys.stdin)["protocol_version"]))' <<<"${status_json}")"
 reported_socket_path="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("socket_path") or "")' <<<"${status_json}")"
 if [[ "${reported_socket_path}" != "${owned_socket_path}" ]]; then
   echo "daemon status reported unexpected socket path: ${reported_socket_path}" >&2
@@ -150,10 +151,10 @@ with open(dst, 'w', encoding='utf-8') as f:
     json.dump(draft, f)
 PY
 
-agent_json="$(python3 - "$MXR_INSTANCE" "$message_id" "$draft_id" "$draft_json_file" "$expected_workspace" <<'PY'
+agent_json="$(python3 - "$MXR_INSTANCE" "$message_id" "$draft_id" "$draft_json_file" "$expected_workspace" "$ipc_protocol_version" <<'PY'
 import json, os, socket, struct, sys, uuid
 
-instance, message_id, draft_id, draft_path, owner_json = sys.argv[1:6]
+instance, message_id, draft_id, draft_path, owner_json, protocol_version = sys.argv[1:7]
 owner = json.loads(owner_json)
 sock_path = os.environ.get('MXR_SOCKET_PATH')
 if not sock_path:
@@ -191,7 +192,7 @@ def call(req):
 
 # IPC 32 binds the client profile at connect time: the first frame must
 # declare who is speaking before any ordinary request or event.
-ack = call({'cmd': 'DeclareClient', 'kind': 'agent', 'protocol_version': 32})
+ack = call({'cmd': 'DeclareClient', 'kind': 'agent', 'protocol_version': int(protocol_version)})
 if ack.get('payload', {}).get('status') != 'Ok':
     raise RuntimeError('agent DeclareClient failed: ' + json.dumps(ack))
 

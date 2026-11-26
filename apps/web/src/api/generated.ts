@@ -2695,6 +2695,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/relationships/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rebuild relationship profiles for every contact with recent mail, or count them on a dry run */
+        post: operations["mail_relationships_rebuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/reminders": {
         parameters: {
             query?: never;
@@ -6535,7 +6552,6 @@ export interface components {
             /** Format: int64 */
             size_bytes: number;
         };
-        /** @description YAML frontmatter for compose files. */
         ComposeFrontmatter: {
             attach?: string[];
             bcc?: string;
@@ -6547,7 +6563,6 @@ export interface components {
             references?: string[];
             signature?: string | null;
             subject: string;
-            /** @description Provider-native thread hint (e.g. Gmail thread id). Used so replies stay in-thread. */
             "thread-id"?: string | null;
             to: string;
         };
@@ -7109,6 +7124,13 @@ export interface components {
             created: number;
             /** @description Whether this was a preview (no writes). */
             dry_run: boolean;
+            /**
+             * Format: int32
+             * @description Messages this scan sent to the model, or on a dry run would send on
+             *     a working endpoint. A message the model was not asked about (paused,
+             *     backing off, privacy-blocked) does not count.
+             */
+            model_calls?: number;
             /**
              * Format: int32
              * @description Messages examined in the window.
@@ -8361,6 +8383,19 @@ export interface components {
             size_bytes: number;
             subject: string;
         };
+        /**
+         * @description How many inputs one background job held back from the model because
+         *     their mail was backfilled.
+         */
+        LlmBackfillHeldData: {
+            /**
+             * Format: int64
+             * @description Distinct contacts, messages or to-do checks held back.
+             */
+            inputs: number;
+            /** @description `relationship_summary`, `delivery_extraction` or `todo_resolution`. */
+            job: string;
+        };
         LlmConfigData: {
             allow_cloud_relationship_data?: boolean;
             api_key_env: string;
@@ -8553,6 +8588,17 @@ export interface components {
             allow_cloud_relationship_data?: boolean;
             api_key_env?: string | null;
             api_key_present: boolean;
+            /**
+             * @description Inputs each background job held back because their mail was
+             *     backfilled, since the daemon started.
+             */
+            backfill_held?: components["schemas"]["LlmBackfillHeldData"][];
+            /**
+             * @description Background model work runs only on mail that arrived live, never on
+             *     mail the initial backfill downloaded; commands you run reach older
+             *     mail. False from a daemon older than this rule.
+             */
+            background_live_only?: boolean;
             /**
              * Format: date-time
              * @description When the pause on background model calls after repeated endpoint
@@ -10173,6 +10219,21 @@ export interface components {
          * @enum {string}
          */
         ReadingUnsubscribeData: "one_click" | "link" | "mailto" | "none";
+        /** @description Rebuild every contact with mail in the window, or count them on a dry run. */
+        RebuildRelationshipsRequest: {
+            /** @description One account; all accounts when absent. */
+            account_id?: string | null;
+            /** @description Count contacts and model calls without writing or calling the model. */
+            dry_run?: boolean;
+            /**
+             * Format: int32
+             * @description Window in days; 30 when absent.
+             */
+            since_days?: number | null;
+        };
+        RebuildRelationshipsResponse: {
+            summary: components["schemas"]["RelationshipRebuildSummary"];
+        };
         RecipientSendTimeRowData: {
             /** Format: int64 */
             best_expected_reply_seconds?: number | null;
@@ -10882,6 +10943,27 @@ export interface components {
             style?: components["schemas"]["ContactStyleData"] | null;
             summary?:
                 components["schemas"]["ContactRelationshipSummaryData"] | null;
+        };
+        /** @description Result of a `RebuildRelationshipProfiles` run. */
+        RelationshipRebuildSummary: {
+            /**
+             * Format: int32
+             * @description Contacts with mail in the window.
+             */
+            contacts: number;
+            /** @description Whether this was a preview (no writes, no model calls). */
+            dry_run: boolean;
+            /**
+             * Format: int32
+             * @description Contacts whose rebuild failed.
+             */
+            errors: number;
+            /**
+             * Format: int32
+             * @description Contacts whose mail went to the model, or on a dry run would go on a
+             *     working endpoint.
+             */
+            model_calls: number;
         };
         RelationshipWatchEntryData: {
             account_id: components["schemas"]["AccountId"];
@@ -12271,6 +12353,14 @@ export interface components {
                   /** @enum {string} */
                   cmd: "RebuildRelationshipProfile";
                   email: string;
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
+                  cmd: "RebuildRelationshipProfiles";
+                  dry_run?: boolean;
+                  /** Format: int32 */
+                  since_days?: number;
               }
             | {
                   account_id: components["schemas"]["AccountId"];
@@ -13835,6 +13925,11 @@ export interface components {
                   /** @enum {string} */
                   kind: "DeliveryScan";
                   summary: components["schemas"]["DeliveryScanSummary"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "RelationshipRebuild";
+                  summary: components["schemas"]["RelationshipRebuildSummary"];
               }
             | {
                   /** @enum {string} */
@@ -22824,6 +22919,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_relationships_rebuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RebuildRelationshipsRequest"];
+            };
+        };
+        responses: {
+            /** @description Contacts and model calls, made or predicted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RebuildRelationshipsResponse"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

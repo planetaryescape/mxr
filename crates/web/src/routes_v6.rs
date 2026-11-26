@@ -1655,6 +1655,34 @@ async fn rebuild_relationship_profile(
     passthrough(response)
 }
 
+async fn rebuild_relationship_profiles(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<crate::request_types::RebuildRelationshipsRequest>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = body
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::RebuildRelationshipProfiles {
+            account_id,
+            since_days: body.since_days.unwrap_or(30),
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    match response {
+        ResponseData::RelationshipRebuild { summary } => Ok(Json(json!({ "summary": summary }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct CommitmentsQuery {
     #[serde(default)]
@@ -3276,6 +3304,10 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/contacts/autocomplete", get(contacts_autocomplete))
         .route("/relationship", get(get_relationship_profile))
         .route("/relationship/rebuild", post(rebuild_relationship_profile))
+        .route(
+            "/relationships/rebuild",
+            post(rebuild_relationship_profiles),
+        )
         .route("/commitments", get(list_commitments))
         .route(
             "/commitments/{commitment_id}/resolve",

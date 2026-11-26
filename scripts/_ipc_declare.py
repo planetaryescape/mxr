@@ -10,7 +10,7 @@ Bump ``IPC_PROTOCOL_VERSION`` with ``mxr_protocol::IPC_PROTOCOL_VERSION``.
 import json
 import struct
 
-IPC_PROTOCOL_VERSION = 32
+IPC_PROTOCOL_VERSION = 33
 
 
 def declare(stream, source, owner=None, frame_id=2):

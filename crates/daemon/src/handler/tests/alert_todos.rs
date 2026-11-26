@@ -212,6 +212,7 @@ async fn store_prior(fx: &Fixture, host: &str, at: DateTime<Utc>) {
                     host: host.to_string(),
                 },
             },
+            false,
         )
         .await
         .unwrap();
@@ -245,6 +246,7 @@ pub(super) async fn authenticated_known_source(fx: &Fixture, message: &Envelope)
                 message_fingerprint: Some(message.id.to_string()),
                 is_live: true,
             },
+            false,
         )
         .await
         .expect("synthetic verified source");
@@ -329,6 +331,7 @@ async fn arrange(case: &Case, config: mxr_config::MxrConfig) -> Run {
             &candidate.account_id,
             &candidate.from.email,
             &candidate_evidence,
+            false,
         )
         .await
         .unwrap();

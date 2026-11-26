@@ -60,6 +60,7 @@ pub mod reading;
 pub mod record_subscriptions;
 pub mod records;
 pub mod recovery;
+pub mod relationships;
 pub mod remind;
 pub mod replies;
 pub mod reset;

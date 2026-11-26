@@ -814,6 +814,14 @@ status says until when (`background_paused_until` in JSON). Status never probes 
 same observations; core mail stays usable when an optional model is
 unavailable.
 
+Background model work (delivery confirmation, relationship summaries, to-do
+"looks resolved" checks) runs only on mail that arrived after an account's
+first sync. No setting changes this. Status says so
+(`background_live_only` in JSON) and counts the inputs it held back since the
+daemon started (`backfill_held`). Commands such as `mxr relationships rebuild`
+and `mxr deliveries scan` reach older mail; see
+[LLM features](/guides/llm-features/#background-ai-skips-the-mail-your-first-sync-downloaded).
+
 The web app's Settings > LLM panel edits the same keys through the daemon and
 reloads the provider immediately after save. `background_request_timeout_secs`,
 `gist_concurrency` and `[llm.fallback]` are config-file only; the panel keeps

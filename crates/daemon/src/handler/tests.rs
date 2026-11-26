@@ -711,6 +711,7 @@ mod asks_delivery;
 mod assessment_authority;
 mod assistant;
 mod assistant_models;
+mod backfill_on_demand;
 mod body_and_invites;
 mod categories;
 mod category_rules;

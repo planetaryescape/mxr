@@ -809,6 +809,7 @@ pub fn map_request(
         | Request::ReindexSemantic { .. }
         | Request::BackfillSemantic
         | Request::RebuildRelationshipProfile { .. }
+        | Request::RebuildRelationshipProfiles { .. }
         | Request::RebuildUserVoice { .. }
         | Request::RebuildDecisionLog { .. }
         | Request::ResetOrphanedDraft { .. } => {

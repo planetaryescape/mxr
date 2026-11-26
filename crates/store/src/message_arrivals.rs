@@ -38,13 +38,16 @@ fn host_of(email: &str) -> Option<String> {
 
 /// Keep the first verified evidence and first sync eligibility. Unverified
 /// records may gain evidence after a transient DNS failure; refetch cannot
-/// change the original live/backfill decision.
+/// change the original live/backfill decision. `arrived_live` says a sync
+/// stored the message for the first time after the account's initial
+/// backfill; see [`Store::message_arrived_live`].
 pub(crate) async fn record_message_arrival_tx(
     tx: &mut SqliteConnection,
     message_id: &MessageId,
     account_id: &AccountId,
     from_email: &str,
     arrival: &ArrivalEvidence,
+    arrived_live: bool,
 ) -> Result<(), sqlx::Error> {
     let Some(host) = host_of(from_email) else {
         return Ok(());
@@ -55,8 +58,8 @@ pub(crate) async fn record_message_arrival_tx(
     };
     sqlx::query(
         "INSERT INTO message_arrivals
-            (message_id, account_id, from_host, received_at, verified_host, unverified_reason, is_live, message_fingerprint)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            (message_id, account_id, from_host, received_at, verified_host, unverified_reason, is_live, message_fingerprint, arrived_live)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(message_id) DO UPDATE SET
             from_host = excluded.from_host,
             received_at = COALESCE(excluded.received_at, message_arrivals.received_at),
@@ -73,6 +76,7 @@ pub(crate) async fn record_message_arrival_tx(
     .bind(reason)
     .bind(arrival.is_live)
     .bind(&arrival.message_fingerprint)
+    .bind(arrived_live || arrival.is_live)
     .execute(tx)
     .await?;
     Ok(())
@@ -94,16 +98,68 @@ impl AlertTodoOutcome {
 
 impl Store {
     /// Record one message's arrival outside a sync page (a repair or a
-    /// test); the same first-record-wins rule applies.
+    /// test); the same first-record-wins rule applies. Live alert
+    /// eligibility (`arrival.is_live`) implies `arrived_live`.
     pub async fn record_message_arrival(
         &self,
         message_id: &MessageId,
         account_id: &AccountId,
         from_email: &str,
         arrival: &ArrivalEvidence,
+        arrived_live: bool,
     ) -> Result<(), sqlx::Error> {
         let mut connection = self.writer().acquire().await?;
-        record_message_arrival_tx(&mut connection, message_id, account_id, from_email, arrival)
+        record_message_arrival_tx(
+            &mut connection,
+            message_id,
+            account_id,
+            from_email,
+            arrival,
+            arrived_live,
+        )
+        .await
+    }
+
+    /// Whether a sync stored this message for the first time after its
+    /// account's initial backfill. Background model work runs only on such
+    /// mail. Backfilled mail, mail stored before arrivals were recorded and
+    /// mail with no arrival record all count as backfill.
+    pub async fn message_arrived_live(&self, message_id: &MessageId) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM message_arrivals WHERE message_id = ? AND arrived_live = 1)",
+        )
+        .bind(message_id.as_str())
+        .fetch_one(self.reader())
+        .await
+    }
+
+    /// Whether any mail from or to `email` in this account arrived live, by
+    /// the rule of [`Store::message_arrived_live`]. Deleted and trashed mail
+    /// counts for nothing, as in the contact's relationship samples.
+    pub async fn contact_has_live_arrival(
+        &self,
+        account_id: &AccountId,
+        email: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let sql = format!(
+            r#"SELECT EXISTS(
+                 SELECT 1 FROM message_arrivals a
+                 JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id
+                 WHERE a.account_id = ?1 AND a.arrived_live = 1
+                   AND (
+                     LOWER(m.from_email) = LOWER(?2)
+                     OR EXISTS (SELECT 1 FROM json_each(m.to_addrs) WHERE LOWER(json_extract(value, '$.email')) = LOWER(?2))
+                     OR EXISTS (SELECT 1 FROM json_each(m.cc_addrs) WHERE LOWER(json_extract(value, '$.email')) = LOWER(?2))
+                     OR EXISTS (SELECT 1 FROM json_each(m.bcc_addrs) WHERE LOWER(json_extract(value, '$.email')) = LOWER(?2))
+                   )
+                   AND {live}
+               )"#,
+            live = crate::places::live_mail_sql("m")
+        );
+        sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
+            .bind(account_id.as_str())
+            .bind(email)
+            .fetch_one(self.reader())
             .await
     }
 

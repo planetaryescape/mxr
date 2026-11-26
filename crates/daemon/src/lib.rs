@@ -747,6 +747,11 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             commands::profile::run(email, account, rebuild, format).await?;
             anyhow::Ok(())
         }),
+        Some(Command::Relationships { action }) => boxed(move || async move {
+            crate::server::ensure_daemon_running().await?;
+            commands::relationships::run(action).await?;
+            anyhow::Ok(())
+        }),
         Some(Command::Commitments {
             action,
             contact,

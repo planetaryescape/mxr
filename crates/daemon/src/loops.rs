@@ -3723,3 +3723,6 @@ mod rule_message_text_tests {
         assert_eq!(not_empty.evaluate_known(&with_html), Some(false));
     }
 }
+
+#[cfg(test)]
+mod live_only_inference_tests;

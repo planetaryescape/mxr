@@ -141,6 +141,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ListScheduledSends { account_id }
         | Request::ListDeliveries { account_id, .. }
         | Request::ScanDeliveries { account_id, .. }
+        | Request::RebuildRelationshipProfiles { account_id, .. }
         | Request::SetSignatureDefault { account_id, .. }
         | Request::ClearSignatureDefault { account_id, .. }
         | Request::ResolveSignature { account_id, .. }

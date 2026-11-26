@@ -723,6 +723,11 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_mcp", &["mcp", "--help"]),
         ("cli_help_mcp_serve", &["mcp", "serve", "--help"]),
         ("cli_help_profile", &["profile", "--help"]),
+        ("cli_help_relationships", &["relationships", "--help"]),
+        (
+            "cli_help_relationships_rebuild",
+            &["relationships", "rebuild", "--help"],
+        ),
         (
             "cli_help_reading_marginalia_disconnect",
             &["reading", "marginalia", "disconnect", "--help"],

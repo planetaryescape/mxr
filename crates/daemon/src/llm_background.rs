@@ -118,8 +118,11 @@ async fn background_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<
     }
 }
 
-/// Run each input put off for `features` once, through the path that first
-/// ran it. An input the endpoint fails again is put off again by that path.
+/// Run each input put off for `features` once. An input the endpoint fails
+/// again is put off again. Each was already allowed to reach the model, by
+/// mail that arrived live or by an explicit request, so relationship
+/// summaries re-run as rebuilds and deliveries as rescans: the background
+/// paths would hold a backfilled contact or message back.
 pub(crate) async fn rerun_deferred(state: &AppState, features: &[LlmFeature]) {
     let take = |feature| {
         if features.contains(&feature) {
@@ -137,8 +140,10 @@ pub(crate) async fn rerun_deferred(state: &AppState, features: &[LlmFeature]) {
             contacts = contacts.len(),
             "re-running relationship summaries put off while the LLM endpoint was out"
         );
-        if let Err(error) = state.relationship.enqueue_contacts(contacts).await {
-            tracing::warn!(%error, "could not re-queue relationship summaries");
+        for (account_id, email) in contacts {
+            if let Err(error) = state.relationship.rebuild_contact(account_id, email).await {
+                tracing::warn!(%error, "could not re-run a relationship summary");
+            }
         }
     }
 
@@ -151,7 +156,7 @@ pub(crate) async fn rerun_deferred(state: &AppState, features: &[LlmFeature]) {
             messages = messages.len(),
             "re-scanning deliveries put off while the LLM endpoint was out"
         );
-        crate::handler::deliveries::scan_messages(state, &messages).await;
+        crate::handler::deliveries::rescan_put_off(state, &messages).await;
     }
 }
 
@@ -252,6 +257,17 @@ mod tests {
                 fetched_at: chrono::Utc::now(),
                 metadata: mxr_core::types::MessageMetadata::default(),
             })
+            .await
+            .unwrap();
+        state
+            .store
+            .record_message_arrival(
+                &id,
+                &envelope.account_id,
+                "orders@mail.acme.com",
+                &mxr_core::ArrivalEvidence::default(),
+                true,
+            )
             .await
             .unwrap();
 

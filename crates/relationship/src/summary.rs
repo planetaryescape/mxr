@@ -1,11 +1,11 @@
 use anyhow::Result;
 use mxr_core::id::AccountId;
 use mxr_llm::{
-    wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime,
-    UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END, UNTRUSTED_MAIL_GUARD,
+    wrap_untrusted_mail, BackfillHeldJob, ChatMessage, CompletionRequest, LlmError, LlmFeature,
+    LlmRuntime, UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END, UNTRUSTED_MAIL_GUARD,
 };
 use mxr_reader::{clean, ReaderConfig};
-use mxr_store::{ContactRelationshipSummaryRecord, Store};
+use mxr_store::{ContactRelationshipSummaryRecord, RelationshipMessageSample, Store};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -32,38 +32,44 @@ pub fn parse_attempt_key(key: &str) -> Option<(AccountId, String)> {
     Some((account_id.parse().ok()?, email.to_string()))
 }
 
+/// What one summary refresh did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SummaryRun {
+    /// The contact's mail went to the model.
+    pub sent: bool,
+    /// A new summary was stored.
+    pub written: bool,
+    /// The model call or storing its answer failed.
+    pub failed: bool,
+}
+
 /// `force` is for explicit user rebuilds: it skips the backoff that
-/// otherwise stops re-sending an input that recently failed.
+/// otherwise stops re-sending an input that recently failed, and the rule
+/// that background summaries wait for mail with the contact that arrived
+/// live rather than through the initial backfill.
 pub async fn generate_relationship_summary(
     store: &Store,
     llm: &Arc<LlmRuntime>,
     account_id: &AccountId,
     email: &str,
     force: bool,
-) -> Result<bool> {
+) -> Result<SummaryRun> {
+    let not_sent = SummaryRun::default();
     let Some(style) = store.get_contact_style(account_id, email).await? else {
-        return Ok(false);
+        return Ok(not_sent);
     };
     let feature_llm = llm.for_feature(LlmFeature::RelationshipSummary);
     let attempt_key = attempt_key(account_id, email);
     if !force && !feature_llm.background_attempt_due(&attempt_key, &style.source_hash) {
-        return Ok(false);
+        return Ok(not_sent);
     }
     let samples = store.recent_contact_messages(account_id, email, 40).await?;
-    if let Some(existing) = store
-        .get_contact_relationship_summary(account_id, email)
-        .await?
-    {
-        if existing.source_hash == style.source_hash {
-            return Ok(false);
-        }
-        let unsummarized = samples
-            .iter()
-            .filter(|sample| !sample.is_list_sender && sample.date > existing.computed_at)
-            .count();
-        if unsummarized < 3 {
-            return Ok(false);
-        }
+    if !summary_due(store, account_id, email, &style.source_hash, &samples).await? {
+        return Ok(not_sent);
+    }
+    if !force && !store.contact_has_live_arrival(account_id, email).await? {
+        llm.record_backfill_hold(BackfillHeldJob::RelationshipSummary, &attempt_key);
+        return Ok(not_sent);
     }
 
     let reader_config = ReaderConfig::default();
@@ -114,23 +120,32 @@ pub async fn generate_relationship_summary(
         .await
     {
         Ok(response) => response,
-        Err(LlmError::Disabled) => return Ok(false),
+        Err(LlmError::Disabled) => return Ok(not_sent),
         Err(error @ LlmError::PrivacyBlocked(_)) => return Err(error.into()),
         Err(error @ LlmError::CircuitOpen { .. }) => {
             feature_llm.record_background_failure(&attempt_key, &style.source_hash, &error);
-            return Ok(false);
+            return Ok(not_sent);
         }
         Err(error) => {
             feature_llm.record_background_failure(&attempt_key, &style.source_hash, &error);
-            return Err(error.into());
+            tracing::warn!(%account_id, %email, %error, "relationship summary call failed");
+            return Ok(SummaryRun {
+                sent: true,
+                written: false,
+                failed: true,
+            });
         }
     };
     feature_llm.record_background_attempt(&attempt_key, &style.source_hash, true);
+    let sent = SummaryRun {
+        sent: true,
+        ..SummaryRun::default()
+    };
     let parsed = parse_summary_response(&response.content)?;
     if parsed.text.trim().is_empty() {
-        return Ok(false);
+        return Ok(sent);
     }
-    let written = store
+    let stored = store
         .upsert_contact_relationship_summary_if_sources_exist(
             &ContactRelationshipSummaryRecord {
                 account_id: account_id.clone(),
@@ -150,8 +165,61 @@ pub async fn generate_relationship_summary(
             },
             &source_ids,
         )
-        .await?;
-    Ok(written)
+        .await;
+    Ok(match stored {
+        Ok(written) => SummaryRun { written, ..sent },
+        Err(error) => {
+            tracing::warn!(%account_id, %email, %error, "relationship summary was not stored");
+            SummaryRun {
+                failed: true,
+                ..sent
+            }
+        }
+    })
+}
+
+/// Whether a contact's summary is stale enough to regenerate: it has none,
+/// or its style changed and at least three messages came after it.
+async fn summary_due(
+    store: &Store,
+    account_id: &AccountId,
+    email: &str,
+    source_hash: &str,
+    samples: &[RelationshipMessageSample],
+) -> Result<bool> {
+    let Some(existing) = store
+        .get_contact_relationship_summary(account_id, email)
+        .await?
+    else {
+        return Ok(true);
+    };
+    if existing.source_hash == source_hash {
+        return Ok(false);
+    }
+    let unsummarized = samples
+        .iter()
+        .filter(|sample| !sample.is_list_sender && sample.date > existing.computed_at)
+        .count();
+    Ok(unsummarized >= 3)
+}
+
+/// Whether an explicit rebuild of this contact (a style rebuild, then a
+/// forced summary) would send its mail to the model, on a working endpoint.
+/// The dry run of a bulk rebuild counts these; it writes nothing.
+pub async fn rebuild_would_send(
+    store: &Store,
+    account_id: &AccountId,
+    email: &str,
+) -> Result<bool> {
+    let source_hash = match crate::service::style_source_hash(store, account_id, email).await? {
+        Some(hash) => hash,
+        None => match store.get_contact_style(account_id, email).await? {
+            Some(style) => style.source_hash,
+            None => return Ok(false),
+        },
+    };
+    let samples = store.recent_contact_messages(account_id, email, 40).await?;
+    summary_due(store, account_id, email, &source_hash, &samples).await
 }
 
 fn parse_summary_response(content: &str) -> Result<SummaryResponse> {
@@ -239,7 +307,7 @@ mod tests {
                 .await
                 .expect("generate");
 
-        assert!(!generated);
+        assert!(!generated.sent);
         let summary = store
             .get_contact_relationship_summary(&account.id, "alice@example.com")
             .await
@@ -305,17 +373,30 @@ mod tests {
             })
             .await
             .expect("style");
-        insert_message(&store, &account, "m1", now).await;
+        let backfilled = insert_message(&store, &account, "m1", now).await;
+        record_arrival(&store, &account, &backfilled, false).await;
 
         let cap = std::sync::Arc::new(Capture::default());
         let llm = std::sync::Arc::new(LlmRuntime::new(
             cap.clone() as std::sync::Arc<dyn LlmProvider>
         ));
+        let held =
+            generate_relationship_summary(&store, &llm, &account.id, "alice@example.com", false)
+                .await
+                .expect("held");
+        assert_eq!(held, SummaryRun::default(), "backfilled mail waits");
+        assert!(cap.msgs.lock().expect("msgs lock").is_empty());
+        assert!(llm
+            .backfill_holds()
+            .contains(&(BackfillHeldJob::RelationshipSummary, 1)));
+
+        let live = insert_message(&store, &account, "m2", now).await;
+        record_arrival(&store, &account, &live, true).await;
         let generated =
             generate_relationship_summary(&store, &llm, &account.id, "alice@example.com", false)
                 .await
                 .expect("generate");
-        assert!(generated, "summary should have been generated");
+        assert!(generated.written, "summary should have been generated");
 
         let msgs = cap.msgs.lock().expect("msgs lock");
         let user = &msgs[0].content;
@@ -352,12 +433,25 @@ mod tests {
         }
     }
 
+    async fn record_arrival(store: &Store, account: &Account, id: &MessageId, live: bool) {
+        store
+            .record_message_arrival(
+                id,
+                &account.id,
+                "alice@example.com",
+                &mxr_core::ArrivalEvidence::default(),
+                live,
+            )
+            .await
+            .expect("arrival");
+    }
+
     async fn insert_message(
         store: &Store,
         account: &Account,
         provider_id: &str,
         date: chrono::DateTime<Utc>,
-    ) {
+    ) -> MessageId {
         let message_id = MessageId::new();
         let envelope = mxr_core::types::Envelope {
             id: message_id.clone(),
@@ -395,7 +489,7 @@ mod tests {
             .expect("envelope");
         store
             .insert_body(&MessageBody {
-                message_id,
+                message_id: message_id.clone(),
                 text_plain: Some("Can you send the update?".to_string()),
                 text_html: None,
                 attachments: Vec::new(),
@@ -404,5 +498,6 @@ mod tests {
             })
             .await
             .expect("body");
+        message_id
     }
 }

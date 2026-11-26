@@ -43,6 +43,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 mod anthropic;
+mod backfill_holds;
 mod background;
 mod demo;
 mod demo_assistant;
@@ -66,6 +67,7 @@ use background::{AttemptLedger, BackgroundBreaker, Clocks, Gate, PROBE_TIMEOUT};
 use failure::{classify_status, parse_retry_after, AttemptError, ErrorClass};
 use health::RouteFailure;
 
+pub use backfill_holds::BackfillHeldJob;
 pub use background::BackgroundState;
 
 pub use demo::DemoLlmProvider;
@@ -410,6 +412,7 @@ pub struct LlmRuntime {
     /// last handed them out.
     background_unsaved: AtomicBool,
     observations: CompletionObservations,
+    backfill_holds: backfill_holds::BackfillHolds,
     /// What mxr remembers about each provider route. Shared with the routed
     /// providers built for this runtime.
     route_health: RouteHealth,
@@ -437,6 +440,7 @@ impl LlmRuntime {
             background_attempts: Mutex::new(AttemptLedger::default()),
             background_unsaved: AtomicBool::new(false),
             observations: CompletionObservations::default(),
+            backfill_holds: backfill_holds::BackfillHolds::default(),
         }
     }
 
@@ -568,6 +572,18 @@ impl LlmRuntime {
 
     pub fn observations(&self) -> Vec<(Option<LlmFeature>, CompletionObservation)> {
         self.observations.snapshot()
+    }
+
+    /// Count `input` as one `job` did not send to the model because its mail
+    /// was backfilled. `input` names it, so a repeat counts once.
+    pub fn record_backfill_hold(&self, job: BackfillHeldJob, input: &str) {
+        self.backfill_holds.record(job, input);
+    }
+
+    /// Inputs each job held back because their mail was backfilled, since
+    /// this runtime started.
+    pub fn backfill_holds(&self) -> Vec<(BackfillHeldJob, u64)> {
+        self.backfill_holds.snapshot()
     }
 
     /// The background budget and breaker around one call: refuse while the

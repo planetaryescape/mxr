@@ -509,6 +509,7 @@ the events stream and refetch the conversation.
 |--------|------|---------|
 | `GET` | `/mail/relationship?account_id=...&email=...` | Per-contact relationship profile |
 | `POST` | `/mail/relationship/rebuild` | JSON `{account_id, email}` — rebuild relationship summaries |
+| `POST` | `/mail/relationships/rebuild` | JSON `{account_id?, since_days?, dry_run}` — rebuild every contact with mail in the last `since_days` days (default 30); `dry_run` counts contacts and model calls |
 | `GET` | `/mail/commitments?account_id=...&email=...&status=...` | List open commitments |
 | `POST` | `/mail/commitments/{commitment_id}/resolve` | Mark a commitment resolved |
 

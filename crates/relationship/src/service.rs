@@ -30,7 +30,7 @@ enum RelationshipCommand {
     RebuildContact {
         account_id: AccountId,
         email: String,
-        resp: oneshot::Sender<Result<()>>,
+        resp: oneshot::Sender<Result<crate::summary::SummaryRun>>,
     },
     Shutdown {
         resp: oneshot::Sender<()>,
@@ -98,8 +98,8 @@ impl RelationshipServiceHandle {
                         let result =
                             rebuild_contact_style_with_options(&store, &account_id, &email, false)
                                 .await;
-                        if result.is_ok() {
-                            if let Err(error) = crate::summary::generate_relationship_summary(
+                        let result = match result {
+                            Ok(()) => match crate::summary::generate_relationship_summary(
                                 &store,
                                 &llm,
                                 &account_id,
@@ -108,9 +108,17 @@ impl RelationshipServiceHandle {
                             )
                             .await
                             {
-                                tracing::warn!(%account_id, %email, %error, "relationship summary rebuild failed");
-                            }
-                        }
+                                Ok(run) => Ok(run),
+                                Err(error) => {
+                                    tracing::warn!(%account_id, %email, %error, "relationship summary rebuild failed");
+                                    Ok(crate::summary::SummaryRun {
+                                        failed: true,
+                                        ..Default::default()
+                                    })
+                                }
+                            },
+                            Err(error) => Err(error),
+                        };
                         let _ = resp.send(result);
                     }
                     RelationshipCommand::Shutdown { resp } => {
@@ -151,7 +159,14 @@ impl RelationshipServiceHandle {
             .map_err(|_| anyhow::anyhow!("relationship service stopped"))?
     }
 
-    pub async fn rebuild_contact(&self, account_id: AccountId, email: String) -> Result<()> {
+    /// Rebuild one contact's style, then its summary even when its mail was
+    /// backfilled. An error means the style rebuild failed; a failed summary
+    /// shows in the returned run.
+    pub async fn rebuild_contact(
+        &self,
+        account_id: AccountId,
+        email: String,
+    ) -> Result<crate::summary::SummaryRun> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
             .send(RelationshipCommand::RebuildContact {
@@ -200,12 +215,15 @@ pub async fn rebuild_contact_style(
     rebuild_contact_style_with_options(store, account_id, email, true).await
 }
 
-async fn rebuild_contact_style_with_options(
+/// A cleaned sample a contact's style is measured from: id, text, date.
+type CleanedSample = (String, String, DateTime<Utc>);
+
+/// The contact's recent mail, cleaned and split into yours and theirs.
+async fn cleaned_style_samples(
     store: &Store,
     account_id: &AccountId,
     email: &str,
-    detect_drift: bool,
-) -> Result<()> {
+) -> Result<(Vec<CleanedSample>, Vec<CleanedSample>)> {
     let samples = store
         .recent_contact_messages(account_id, email, 100)
         .await?;
@@ -223,22 +241,47 @@ async fn rebuild_contact_style_with_options(
             theirs_cleaned.push((sample.message_id.as_str(), cleaned, sample.date));
         }
     }
-    let yours: Vec<_> = yours_cleaned
+    Ok((yours_cleaned, theirs_cleaned))
+}
+
+fn weighted(samples: &[CleanedSample]) -> Vec<WeightedText<'_>> {
+    samples
         .iter()
         .map(|(id, text, date)| WeightedText {
             id: id.clone(),
             text,
             date: *date,
         })
-        .collect();
-    let theirs: Vec<_> = theirs_cleaned
-        .iter()
-        .map(|(id, text, date)| WeightedText {
-            id: id.clone(),
-            text,
-            date: *date,
-        })
-        .collect();
+        .collect()
+}
+
+/// The source hash a style rebuild of this contact would store, or `None`
+/// when it has too little mail and the rebuild would leave the stored style.
+pub(crate) async fn style_source_hash(
+    store: &Store,
+    account_id: &AccountId,
+    email: &str,
+) -> Result<Option<String>> {
+    let (yours_cleaned, theirs_cleaned) = cleaned_style_samples(store, account_id, email).await?;
+    let yours = weighted(&yours_cleaned);
+    let theirs = weighted(&theirs_cleaned);
+    if yours.len() < 5 || theirs.is_empty() {
+        return Ok(None);
+    }
+    let (_, your_hash) = aggregate_metrics(&yours);
+    let (_, their_hash) = aggregate_metrics(&theirs);
+    Ok(Some(format!("{your_hash}:{their_hash}")))
+}
+
+async fn rebuild_contact_style_with_options(
+    store: &Store,
+    account_id: &AccountId,
+    email: &str,
+    detect_drift: bool,
+) -> Result<()> {
+    let (yours_cleaned, theirs_cleaned) = cleaned_style_samples(store, account_id, email).await?;
+    let yours = weighted(&yours_cleaned);
+    let theirs = weighted(&theirs_cleaned);
     if yours.len() < 5 || theirs.is_empty() {
         return Ok(());
     }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.252](https://github.com/planetaryescape/mxr/compare/v0.6.251...v0.6.252) (2026-11-26)
+
+
+### Features
+
+* run background AI only on mail that arrives live ([#1037](https://github.com/planetaryescape/mxr/issues/1037)) ([dd44cb2](https://github.com/planetaryescape/mxr/commit/dd44cb2c97040324f1d1bb8708800875958e1f82))
+
+
+### Documentation
+
+* repoint docs at tests that survived the cull ([#1035](https://github.com/planetaryescape/mxr/issues/1035)) ([96e8785](https://github.com/planetaryescape/mxr/commit/96e8785f5fd48be555e08a46947baec4b327ed93))
+
 ## [0.6.251](https://github.com/planetaryescape/mxr/compare/v0.6.250...v0.6.251) (2026-11-22)
 
 

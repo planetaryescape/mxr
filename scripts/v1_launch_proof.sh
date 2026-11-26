@@ -150,10 +150,12 @@ with open(dst, 'w', encoding='utf-8') as f:
     json.dump(draft, f)
 PY
 
-agent_json="$(python3 - "$MXR_INSTANCE" "$message_id" "$draft_id" "$draft_json_file" "$expected_workspace" <<'PY'
+agent_json="$(python3 - "$MXR_INSTANCE" "$message_id" "$draft_id" "$draft_json_file" "$expected_workspace" "${root}/scripts" <<'PY'
 import json, os, socket, struct, sys, uuid
 
-instance, message_id, draft_id, draft_path, owner_json = sys.argv[1:6]
+instance, message_id, draft_id, draft_path, owner_json, scripts_dir = sys.argv[1:7]
+sys.path.insert(0, scripts_dir)
+from _ipc_declare import declare
 owner = json.loads(owner_json)
 sock_path = os.environ.get('MXR_SOCKET_PATH')
 if not sock_path:
@@ -164,7 +166,6 @@ if not sock_path:
 
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.connect(sock_path)
-next_id = 1
 
 def recv_exact(n):
     chunks = []
@@ -189,11 +190,8 @@ def call(req):
         if resp.get('id') == msg['id'] and resp.get('payload', {}).get('type') == 'Response':
             return resp
 
-# IPC 32 binds the client profile at connect time: the first frame must
-# declare who is speaking before any ordinary request or event.
-ack = call({'cmd': 'DeclareClient', 'kind': 'agent', 'protocol_version': 32})
-if ack.get('payload', {}).get('status') != 'Ok':
-    raise RuntimeError('agent DeclareClient failed: ' + json.dumps(ack))
+declare(sock, 'agent', owner=owner, frame_id=1)
+next_id = 2
 
 try:
     try:

@@ -609,6 +609,42 @@ fn folder_info_from_status(
     }
 }
 
+/// Gmail's system labels, as X-GM-LABELS and SPECIAL-USE name them after the
+/// backslash, and as `normalize_gmail_label_provider_id` maps them.
+const GMAIL_SYSTEM_LABELS: [&str; 12] = [
+    "Inbox",
+    "Sent",
+    "Draft",
+    "Drafts",
+    "Important",
+    "Starred",
+    "Flagged",
+    "Trash",
+    "Spam",
+    "Junk",
+    "All",
+    "AllMail",
+];
+
+/// imap-proto returns a quoted string's content with its escapes still in, in
+/// LIST and X-GM-LABELS alike, so a user label keeps them and still matches
+/// its folder's name and provider ID. Only Gmail's quoted system labels change:
+/// `"\\Inbox"` arrives as `\\Inbox` and becomes `\Inbox`, as its atom form is.
+/// A user label such as `\Work` looks the same once quoted, so it is told
+/// apart by name and keeps the escaped form its folder has.
+fn gmail_label_from_fetch(value: &str) -> String {
+    match value.strip_prefix("\\\\") {
+        Some(name)
+            if GMAIL_SYSTEM_LABELS
+                .iter()
+                .any(|system| system.eq_ignore_ascii_case(name)) =>
+        {
+            format!("\\{name}")
+        }
+        _ => value.to_string(),
+    }
+}
+
 fn fetched_message_from_attrs(
     attrs: &[async_imap::imap_proto::types::AttributeValue<'_>],
 ) -> Option<FetchedMessage> {
@@ -656,7 +692,7 @@ fn fetched_message_from_attrs(
             AttributeValue::GmailLabels(values) => {
                 gmail_labels = values
                     .iter()
-                    .map(|label| label.as_ref().to_string())
+                    .map(|label| gmail_label_from_fetch(label.as_ref()))
                     .collect();
             }
             AttributeValue::GmailMsgId(value) => gmail_msg_id = Some(*value),
@@ -1604,6 +1640,102 @@ mod tests {
         let error = ImapProviderError::fetch_detail(error.to_string());
 
         assert!(error.is_malformed_fetch_response());
+    }
+
+    async fn parse_one_response(response: &[u8]) -> async_imap::types::ResponseData {
+        let transport = futures::io::Cursor::new(response.to_vec());
+        let mut client = async_imap::Client::new(transport);
+        client
+            .read_response()
+            .await
+            .expect("the response should produce one parser result")
+            .unwrap()
+    }
+
+    async fn fetched_gmail_labels(response: &[u8]) -> Option<Vec<String>> {
+        let response = parse_one_response(response).await;
+        match response.parsed() {
+            async_imap::imap_proto::Response::Fetch(_, attrs) => {
+                fetched_message_from_attrs(attrs).map(|message| message.gmail_labels)
+            }
+            _ => None,
+        }
+    }
+
+    async fn listed_folder_name(response: &[u8]) -> Option<String> {
+        let response = parse_one_response(response).await;
+        match response.parsed() {
+            async_imap::imap_proto::Response::MailboxData(
+                async_imap::imap_proto::MailboxDatum::List { name, .. },
+            ) => Some(name.to_string()),
+            _ => None,
+        }
+    }
+
+    /// Regression: Gmail sends system labels as quoted strings
+    /// (`X-GM-LABELS ("\\Inbox" "\\Sent")`), and imap-proto returns a quoted
+    /// string with its escapes still in. They must reach label mapping as
+    /// `\Inbox` and `\Sent`, as atoms do, or `INBOX` and `SENT` never match.
+    #[tokio::test]
+    async fn quoted_gmail_system_labels_arrive_without_their_escapes() {
+        let labels = fetched_gmail_labels(
+            b"* 1 FETCH (UID 7 X-GM-LABELS (\"\\\\Inbox\" \"\\\\Sent\" \"\\\\Important\" \"Muy Importante\" Work \\Starred))\r\n",
+        )
+        .await;
+
+        assert_eq!(
+            labels,
+            Some(vec![
+                "\\Inbox".to_string(),
+                "\\Sent".to_string(),
+                "\\Important".to_string(),
+                "Muy Importante".to_string(),
+                "Work".to_string(),
+                "\\Starred".to_string(),
+            ])
+        );
+    }
+
+    /// A user label whose name holds `"` or `\` must give the same provider ID
+    /// from X-GM-LABELS as its folder does from LIST, or its mail loses the
+    /// label. Both keep imap-proto's escaped form, so folder provider IDs, and
+    /// the message provider IDs built from them, stay as they were. That holds
+    /// for a user label that starts with a backslash, such as `\Work`, too:
+    /// quoted, it looks like a system label, but only Gmail's own lose the
+    /// escape.
+    #[tokio::test]
+    async fn user_labels_with_escapes_match_their_folders() {
+        let account = mxr_core::id::AccountId::from_provider_id("imap", "labels@example.com");
+        let mut folder_ids = Vec::new();
+        for list in [
+            &b"* LIST (\\HasNoChildren) \"/\" \"Foo\\\"Bar\"\r\n"[..],
+            &b"* LIST (\\HasNoChildren) \"/\" \"a\\\\b\"\r\n"[..],
+            &b"* LIST (\\HasNoChildren) \"/\" \"\\\\Work\"\r\n"[..],
+        ] {
+            let name = listed_folder_name(list)
+                .await
+                .expect("the response should be a LIST");
+            folder_ids
+                .push(crate::folders::map_gmail_folder_to_label(&name, None, &account).provider_id);
+        }
+        let label_ids: Vec<String> = fetched_gmail_labels(
+            b"* 1 FETCH (UID 7 X-GM-LABELS (\"Foo\\\"Bar\" \"a\\\\b\" \"\\\\Work\"))\r\n",
+        )
+        .await
+        .expect("the response should be a FETCH")
+        .into_iter()
+        .filter_map(|label| crate::folders::normalize_gmail_label_provider_id(&label))
+        .collect();
+
+        assert_eq!(
+            folder_ids,
+            vec![
+                "Foo\\\"Bar".to_string(),
+                "a\\\\b".to_string(),
+                "\\\\Work".to_string()
+            ]
+        );
+        assert_eq!(label_ids, folder_ids);
     }
 
     #[tokio::test]

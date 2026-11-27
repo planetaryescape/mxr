@@ -70,6 +70,9 @@ pub async fn run_daemon() -> anyhow::Result<()> {
 /// (the dispatcher calls `init_tracing(false)`, as for `dial-stdio`); nothing on
 /// this path writes to stdout before or during serving. Diagnostics and the
 /// index-lock conflict message go to stderr.
+///
+/// It runs the socket daemon's startup maintenance too, which rebuilds a stale
+/// or missing lexical index from SQLite and ends the startup rebuild hold.
 pub async fn run_stdio() -> anyhow::Result<()> {
     let state = Arc::new(match AppState::new().await {
         Ok(state) => state,
@@ -85,6 +88,8 @@ pub async fn run_stdio() -> anyhow::Result<()> {
     let llm_tracing = crate::llm_tracing::start();
 
     loops::spawn_history_prune_loop(state.clone());
+    let startup_handle = spawn_startup_maintenance(state.clone());
+    state.register_startup_maintenance(startup_handle);
 
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
     let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
